@@ -51,6 +51,32 @@ GitHub - colmap/colmap: COLMAP - Structure-from-Motion and Multi-View Stereo
 예시 데이터셋 south-building 구축 결과
 ![COLMAP 예시](./colmap_example.png)
 
+## 7. VPS 원리 조사
+
+### VPS
+
+VPS는 특정 장소의 시각적 3D 지도를 구축하는 Mapping 단계와, 사용자가 촬영한 사진을 이용해 현재 카메라의 위치와 방향을 계산하는 Localization 단계로 구분된다.
+
+Mapping
+특정 장소를 여러 위치와 방향에서 촬영한다.
+각 이미지에서 SIFT나 SuperPoint 등을 이용해 2D 특징점과 descriptor를 추출한다.
+서로 다른 이미지에서 동일한 실제 지점을 나타내는 특징점들을 매칭한다.
+매칭 결과를 이용해 각 이미지를 촬영한 카메라의 상대적인 위치와 방향을 추정한다.
+여러 카메라에서 동일한 특징점으로 향하는 광선을 삼각측량하여 3D Point의 위치를 계산한다.
+Bundle Adjustment를 통해 카메라 자세와 3D Point의 위치를 함께 보정한다.
+기준 이미지, 이미지의 2D 특징점, descriptor, 카메라 자세, 3D Point 및 이들의 연결 관계를 저장하여 3D Map을 구축한다.
+
+Localization
+사용자가 현재 장소의 사진을 촬영한다.
+사진 전체를 하나의 Global descriptor로 변환한다.
+Mapping에 사용한 기준 이미지들의 Global descriptor와 비교해 비슷한 기준 이미지 Top-K를 찾는다.
+사용자 사진에서 2D 지역 특징점과 각각의 Local descriptor를 추출한다.
+사용자 사진의 특징점과 Top-K 기준 이미지의 특징점을 descriptor를 이용해 매칭한다.
+기준 이미지 특징점에 연결된 3D Point를 조회하여 사용자 이미지의 2D 특징점과 Map의 3D Point 사이의 대응 관계를 만든다.
+PnP와 RANSAC을 이용해 잘못된 매칭을 제거하고 카메라의 3차원 위치와 방향을 계산한다.
+재투영 오차를 최소화하도록 카메라 자세를 추가로 보정한다.
+3D Map이 실제 도면 좌표계와 정렬되어 있다면 결과를 건물 내부의 실제 위치로 변환한다.
+
 ---
 
 **전체 파이프라인**
