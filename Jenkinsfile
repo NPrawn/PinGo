@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        disableConcurrentBuilds()
+    }
+
     environment {
         SPRING_PROFILES_ACTIVE = 'local'
         SPRING_DATASOURCE_URL = 'jdbc:mysql://localhost:3306/pingo?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useSSL=false'
