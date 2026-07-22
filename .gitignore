@@ -30,6 +30,7 @@ backend/.gradle/
 backend/application-local.yml
 backend/application-secret.yml
 backend/*.key
+backend/uploads/
 
 # Infra
 infra/.env

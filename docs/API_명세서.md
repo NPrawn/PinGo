@@ -87,7 +87,7 @@ Authorization: Bearer {accessToken}
 | WebRTC signaling | WebSocket |
 | STUN/TURN | 무료 STUN 우선, 연결 불안정 시 TURN 추가 |
 | 지도 표현 방식 | 이미지 지도 + 좌표 오버레이 |
-| 지도 파일 관리 | 서버 정적 파일에 저장하고 DB에는 URL 저장 |
+| 지도 파일 관리 | 서버 정적 파일에 저장하고 DB에는 상대 URL(`/uploads/maps/...`) 저장 |
 | 경로 탐색 | 백엔드 Dijkstra |
 | 카메라 이미지 처리 | 위치 인식 처리 후 즉시 폐기 원칙 |
 | 외부 지도 연계 | 네이버지도 우선 |
@@ -334,7 +334,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "floorId": 1,
       "floorCode": "B1",
       "mapType": "image",
-      "mapUrl": "https://example.com/maps/station-1-b1.png",
+      "mapUrl": "/uploads/maps/3f2a1b.png",
       "width": 1200,
       "height": 800,
       "scaleMPerPx": 0.05,
@@ -1306,9 +1306,11 @@ WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
 
 ---
 
-## 13.4 지도 등록
+## 13.4 지도 등록·조회
 
 ### POST `/admin/floors/{floorId}/maps`
+
+층별 지도 이미지를 업로드한다. 파일은 서버 정적 디렉토리에 저장하고 DB에는 상대 URL(`/uploads/maps/{fileName}`)을 저장한다. 같은 층에 이미 활성 지도가 있으면 자동으로 비활성화하고 새 지도를 활성 지도로 등록한다. `version`은 `v1`, `v2` 순으로 자동 부여한다.
 
 #### Content-Type
 
@@ -1325,6 +1327,46 @@ multipart/form-data
 | width | number | N | 지도 너비 |
 | height | number | N | 지도 높이 |
 | scaleMPerPx | number | N | 픽셀당 실제 거리 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "mapId": 1
+  },
+  "message": null
+}
+```
+
+---
+
+### GET `/admin/floors/{floorId}/maps`
+
+관리자 화면에서 등록된 지도를 미리보기 위해 해당 층의 활성 지도 목록을 조회한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "mapId": 1,
+      "floorId": 2,
+      "floorCode": "B2",
+      "mapType": "image",
+      "mapUrl": "/uploads/maps/3f2a1b.png",
+      "width": 1200,
+      "height": 800,
+      "scaleMPerPx": 0.05,
+      "version": "v1"
+    }
+  ],
+  "message": null
+}
+```
 
 ---
 
@@ -1560,6 +1602,10 @@ multipart/form-data
 | INVALID_REQUEST | 요청 형식이 잘못됨 |
 | STATION_NOT_FOUND | 역을 찾을 수 없음 |
 | FACILITY_NOT_FOUND | 시설을 찾을 수 없음 |
+| FLOOR_NOT_FOUND | 층을 찾을 수 없음 |
+| INVALID_MAP_FILE | 지도 파일이 비어 있거나 올바르지 않음 |
+| UNSUPPORTED_MAP_TYPE | 지원하지 않는 지도 유형 |
+| FILE_STORAGE_FAILED | 파일 저장 실패 |
 | PLACE_NOT_FOUND | 주변 장소를 찾을 수 없음 |
 | USER_SESSION_NOT_FOUND | 사용자 세션을 찾을 수 없음 |
 | LOCALIZATION_FAILED | 위치 인식 실패 |
