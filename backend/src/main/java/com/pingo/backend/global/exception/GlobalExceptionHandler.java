@@ -3,6 +3,7 @@ package com.pingo.backend.global.exception;
 import com.pingo.backend.global.response.ApiResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -18,10 +19,8 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(errorCode.getCodeName(), exception.getMessage()));
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValidException(
-            MethodArgumentNotValidException exception
-    ) {
+    @ExceptionHandler({MethodArgumentNotValidException.class, MissingServletRequestParameterException.class})
+    public ResponseEntity<ApiResponse<Void>> handleInvalidRequestException(Exception exception) {
         ErrorCode errorCode = ErrorCode.INVALID_REQUEST;
 
         return ResponseEntity

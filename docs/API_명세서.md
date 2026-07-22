@@ -1370,7 +1370,17 @@ multipart/form-data
 
 ---
 
-## 13.5 시설 등록
+## 13.5 시설·출구 관리
+
+시설(출구·개찰구·승강장·엘리베이터 등)을 등록·조회·수정·삭제한다. `facilityType`은 ERD_초안.md 의 시설 유형(`exit`, `gate`, `platform`, `transfer_passage`, `stair`, `escalator`, `elevator`, `restroom`, `station_office`, `ticket_machine`, `card_charger`, `locker`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_FACILITY_TYPE`로 거부한다. `facilityType`이 `exit`이고 `exitDetail`이 있으면 출구 상세를 함께 저장한다. 삭제는 물리 삭제 대신 `is_active=false` 처리한다.
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/admin/facilities` | 시설 등록 |
+| GET | `/admin/facilities` | 시설 목록 조회 (`stationId` 필수, `floorId`·`facilityType` 선택 필터) |
+| GET | `/admin/facilities/{facilityId}` | 시설 상세 조회 (출구면 `exitDetail` 포함) |
+| PATCH | `/admin/facilities/{facilityId}` | 시설 수정 |
+| DELETE | `/admin/facilities/{facilityId}` | 시설 비활성화 |
 
 ### POST `/admin/facilities`
 
@@ -1380,6 +1390,104 @@ multipart/form-data
 {
   "stationId": 1,
   "floorId": 2,
+  "facilityType": "exit",
+  "nameKo": "5번 출구",
+  "nameEn": "Exit 5",
+  "mapX": 820.4,
+  "mapY": 120.7,
+  "linkedNodeId": 44,
+  "isAccessible": true,
+  "exitDetail": {
+    "exitNumber": "5",
+    "outsideLatitude": 37.4982,
+    "outsideLongitude": 127.0281
+  }
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "facilityId": 10
+  },
+  "message": null
+}
+```
+
+### GET `/admin/facilities`
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| stationId | number | Y | 역 ID |
+| floorId | number | N | 층 필터 |
+| facilityType | string | N | 시설 유형 필터 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "facilityId": 10,
+      "stationId": 1,
+      "floorId": 2,
+      "facilityType": "exit",
+      "nameKo": "5번 출구",
+      "nameEn": "Exit 5",
+      "mapX": 820.4,
+      "mapY": 120.7,
+      "linkedNodeId": 44,
+      "isAccessible": true
+    }
+  ],
+  "message": null
+}
+```
+
+### GET `/admin/facilities/{facilityId}`
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "facilityId": 10,
+    "stationId": 1,
+    "floorId": 2,
+    "facilityType": "exit",
+    "nameKo": "5번 출구",
+    "nameEn": "Exit 5",
+    "mapX": 820.4,
+    "mapY": 120.7,
+    "linkedNodeId": 44,
+    "isAccessible": true,
+    "exitDetail": {
+      "exitNumber": "5",
+      "outsideLatitude": 37.4982,
+      "outsideLongitude": 127.0281,
+      "descriptionKo": null,
+      "descriptionEn": null
+    }
+  },
+  "message": null
+}
+```
+
+### PATCH `/admin/facilities/{facilityId}`
+
+수정 요청은 `stationId`·`floorId`를 제외한 필드로 구성한다. `facilityType`이 `exit`가 아닌 값으로 변경되면 기존 `exitDetail`은 삭제된다.
+
+#### Request
+
+```json
+{
   "facilityType": "exit",
   "nameKo": "5번 출구",
   "nameEn": "Exit 5",
@@ -1606,6 +1714,7 @@ multipart/form-data
 | INVALID_MAP_FILE | 지도 파일이 비어 있거나 올바르지 않음 |
 | UNSUPPORTED_MAP_TYPE | 지원하지 않는 지도 유형 |
 | FILE_STORAGE_FAILED | 파일 저장 실패 |
+| UNSUPPORTED_FACILITY_TYPE | 지원하지 않는 시설 유형 |
 | PLACE_NOT_FOUND | 주변 장소를 찾을 수 없음 |
 | USER_SESSION_NOT_FOUND | 사용자 세션을 찾을 수 없음 |
 | LOCALIZATION_FAILED | 위치 인식 실패 |
