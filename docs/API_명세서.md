@@ -506,7 +506,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ### GET `/places/{placeId}/recommended-exits`
 
-역 주변 장소와 가까운 추천 출구를 조회한다.
+역 주변 장소와 연결된 추천 출구를 우선순위(`priority` 오름차순)로 조회한다. 관리자가 등록한 장소-출구 추천(`place_exit_recommendation`)을 기준으로 하며, 추천 출구 시설이 비활성/삭제된 경우 결과에서 제외한다. `exitLocation`은 출구 상세(`exit_detail`)의 외부 좌표이며 좌표가 없으면 `null`이다. 장소가 없거나 비활성이면 `PLACE_NOT_FOUND`.
 
 #### Response
 
@@ -518,10 +518,12 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "recommendationId": 1,
       "placeId": 3,
       "exitFacilityId": 10,
-      "exitName": "5번 출구",
+      "exitNameKo": "5번 출구",
+      "exitNameEn": "Exit 5",
       "priority": 1,
       "isPrimary": true,
-      "reason": "목적지와 가장 가까운 출구입니다.",
+      "reasonKo": "목적지와 가장 가까운 출구입니다.",
+      "reasonEn": "This is the closest exit to your destination.",
       "walkingTimeMin": 6,
       "exitLocation": {
         "latitude": 37.4982,
