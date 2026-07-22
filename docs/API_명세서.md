@@ -369,11 +369,11 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
   "data": [
     {
       "facilityId": 10,
+      "stationId": 1,
+      "floorId": 1,
       "facilityType": "exit",
-      "name": "5번 출구",
       "nameKo": "5번 출구",
       "nameEn": "Exit 5",
-      "floorId": 1,
       "mapX": 820.4,
       "mapY": 120.7,
       "linkedNodeId": 44,
@@ -399,22 +399,28 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
   "success": true,
   "data": {
     "facilityId": 10,
+    "stationId": 1,
+    "floorId": 1,
     "facilityType": "exit",
     "nameKo": "5번 출구",
     "nameEn": "Exit 5",
-    "floorId": 1,
     "mapX": 820.4,
     "mapY": 120.7,
     "linkedNodeId": 44,
+    "isAccessible": true,
     "exitDetail": {
       "exitNumber": "5",
       "outsideLatitude": 37.4982,
-      "outsideLongitude": 127.0281
+      "outsideLongitude": 127.0281,
+      "descriptionKo": null,
+      "descriptionEn": null
     }
   },
   "message": null
 }
 ```
+
+출구가 아닌 시설은 `exitDetail`이 `null`이다.
 
 ---
 
