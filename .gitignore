@@ -34,3 +34,4 @@ backend/*.key
 # Infra
 infra/.env
 infra/.env.*
+infra/coturn/turnserver.conf
