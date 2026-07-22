@@ -11,6 +11,7 @@ import com.pingo.backend.station.dto.response.FloorIdResponse;
 import com.pingo.backend.station.dto.response.FloorResponse;
 import com.pingo.backend.station.dto.response.StationDetailResponse;
 import com.pingo.backend.station.dto.response.StationIdResponse;
+import com.pingo.backend.station.dto.response.StationSearchResponse;
 import com.pingo.backend.station.repository.StationFloorRepository;
 import com.pingo.backend.station.repository.StationRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -67,6 +69,34 @@ class StationServiceTest {
         StationIdResponse response = stationService.createStation(request);
 
         assertThat(response.stationId()).isEqualTo(1L);
+    }
+
+    @Test
+    void searchStationsTrimsKeywordAndMapsResults() {
+        Station station = createStation(1L);
+        when(stationRepository.searchActiveByKeyword("역삼")).thenReturn(List.of(station));
+
+        List<StationSearchResponse> responses = stationService.searchStations("  역삼  ");
+
+        assertThat(responses)
+                .extracting(StationSearchResponse::stationId, StationSearchResponse::nameKo)
+                .containsExactly(tuple(1L, "역삼역"));
+    }
+
+    @Test
+    void searchStationsThrowsWhenKeywordIsBlank() {
+        assertThatThrownBy(() -> stationService.searchStations("   "))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+        verify(stationRepository, never()).searchActiveByKeyword(any());
+    }
+
+    @Test
+    void searchStationsThrowsWhenKeywordIsNull() {
+        assertThatThrownBy(() -> stationService.searchStations(null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+        verify(stationRepository, never()).searchActiveByKeyword(any());
     }
 
     @Test
