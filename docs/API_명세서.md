@@ -1511,7 +1511,17 @@ multipart/form-data
 
 ---
 
-## 13.6 경로 노드 등록
+## 13.6 경로 노드 관리
+
+경로 탐색용 노드를 등록·조회·수정·삭제한다. `nodeType`은 ERD_초안.md 의 노드 유형(`normal`, `junction`, `facility`, `floor_transition`, `exit`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_NODE_TYPE`로 거부한다. 노드는 물리 삭제하며, 간선·시설 등에서 참조 중이면 `ROUTE_NODE_IN_USE`로 삭제를 막는다.
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/admin/route-nodes` | 노드 등록 |
+| GET | `/admin/route-nodes` | 노드 목록 조회 (`stationId` 필수, `floorId` 선택 필터) |
+| GET | `/admin/route-nodes/{nodeId}` | 노드 상세 조회 |
+| PATCH | `/admin/route-nodes/{nodeId}` | 노드 수정 |
+| DELETE | `/admin/route-nodes/{nodeId}` | 노드 삭제 |
 
 ### POST `/admin/route-nodes`
 
@@ -1529,9 +1539,52 @@ multipart/form-data
 }
 ```
 
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "nodeId": 15
+  },
+  "message": null
+}
+```
+
+### GET `/admin/route-nodes/{nodeId}`
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "nodeId": 15,
+    "stationId": 1,
+    "floorId": 2,
+    "nodeType": "junction",
+    "name": "B2 갈림길 1",
+    "mapX": 300.0,
+    "mapY": 200.0,
+    "isLandmark": true
+  },
+  "message": null
+}
+```
+
 ---
 
-## 13.7 경로 간선 등록
+## 13.7 경로 간선 관리
+
+노드 간 이동 간선을 등록·조회·수정·삭제한다. `moveType`은 ERD_초안.md 의 이동 유형(`walkway`, `stair`, `escalator`, `elevator`, `gate`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_MOVE_TYPE`로 거부한다. `fromNodeId`와 `toNodeId`는 같은 역의 노드여야 하고 서로 달라야 한다. 삭제는 `is_active=false` 처리한다.
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/admin/route-edges` | 간선 등록 |
+| GET | `/admin/route-edges` | 간선 목록 조회 (`stationId` 필수) |
+| GET | `/admin/route-edges/{edgeId}` | 간선 상세 조회 |
+| PATCH | `/admin/route-edges/{edgeId}` | 간선 수정 |
+| DELETE | `/admin/route-edges/{edgeId}` | 간선 비활성화 |
 
 ### POST `/admin/route-edges`
 
@@ -1547,6 +1600,40 @@ multipart/form-data
   "moveType": "walkway",
   "isAccessible": true,
   "isBidirectional": true
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "edgeId": 30
+  },
+  "message": null
+}
+```
+
+### GET `/admin/route-edges/{edgeId}`
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "edgeId": 30,
+    "stationId": 1,
+    "fromNodeId": 15,
+    "toNodeId": 16,
+    "distanceM": 20,
+    "estimatedTimeSec": 30,
+    "moveType": "walkway",
+    "isAccessible": true,
+    "isBidirectional": true
+  },
+  "message": null
 }
 ```
 
@@ -1716,15 +1803,20 @@ multipart/form-data
 | INVALID_REQUEST | 요청 형식이 잘못됨 |
 | STATION_NOT_FOUND | 역을 찾을 수 없음 |
 | FACILITY_NOT_FOUND | 시설을 찾을 수 없음 |
+| UNSUPPORTED_FACILITY_TYPE | 지원하지 않는 시설 유형 |
 | FLOOR_NOT_FOUND | 층을 찾을 수 없음 |
 | INVALID_MAP_FILE | 지도 파일이 비어 있거나 올바르지 않음 |
 | UNSUPPORTED_MAP_TYPE | 지원하지 않는 지도 유형 |
 | FILE_STORAGE_FAILED | 파일 저장 실패 |
-| UNSUPPORTED_FACILITY_TYPE | 지원하지 않는 시설 유형 |
 | PLACE_NOT_FOUND | 주변 장소를 찾을 수 없음 |
 | USER_SESSION_NOT_FOUND | 사용자 세션을 찾을 수 없음 |
 | LOCALIZATION_FAILED | 위치 인식 실패 |
 | ROUTE_NOT_FOUND | 경로를 찾을 수 없음 |
+| ROUTE_NODE_NOT_FOUND | 경로 노드를 찾을 수 없음 |
+| ROUTE_EDGE_NOT_FOUND | 경로 간선을 찾을 수 없음 |
+| ROUTE_NODE_IN_USE | 사용 중인 경로 노드는 삭제할 수 없음 |
+| UNSUPPORTED_NODE_TYPE | 지원하지 않는 노드 유형 |
+| UNSUPPORTED_MOVE_TYPE | 지원하지 않는 이동 유형 |
 | CONSULTATION_NOT_FOUND | 상담 세션을 찾을 수 없음 |
 | COUNSELOR_UNAUTHORIZED | 상담자 인증 실패 |
 | ADMIN_UNAUTHORIZED | 관리자 인증 실패 |

@@ -14,6 +14,11 @@ public enum ErrorCode {
     INVALID_MAP_FILE(HttpStatus.BAD_REQUEST, "INVALID_MAP_FILE", "지도 파일이 비어 있거나 올바르지 않습니다."),
     UNSUPPORTED_MAP_TYPE(HttpStatus.BAD_REQUEST, "UNSUPPORTED_MAP_TYPE", "지원하지 않는 지도 유형입니다."),
     FILE_STORAGE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_STORAGE_FAILED", "파일 저장에 실패했습니다."),
+    ROUTE_NODE_NOT_FOUND(HttpStatus.NOT_FOUND, "ROUTE_NODE_NOT_FOUND", "경로 노드를 찾을 수 없습니다."),
+    ROUTE_EDGE_NOT_FOUND(HttpStatus.NOT_FOUND, "ROUTE_EDGE_NOT_FOUND", "경로 간선을 찾을 수 없습니다."),
+    ROUTE_NODE_IN_USE(HttpStatus.CONFLICT, "ROUTE_NODE_IN_USE", "사용 중인 경로 노드는 삭제할 수 없습니다."),
+    UNSUPPORTED_NODE_TYPE(HttpStatus.BAD_REQUEST, "UNSUPPORTED_NODE_TYPE", "지원하지 않는 노드 유형입니다."),
+    UNSUPPORTED_MOVE_TYPE(HttpStatus.BAD_REQUEST, "UNSUPPORTED_MOVE_TYPE", "지원하지 않는 이동 유형입니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다.");
 
     private final HttpStatus status;

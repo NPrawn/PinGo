@@ -13,6 +13,7 @@ import com.pingo.backend.station.dto.response.FloorResponse;
 import com.pingo.backend.station.dto.response.StationDetailResponse;
 import com.pingo.backend.station.dto.response.StationIdResponse;
 import com.pingo.backend.station.dto.response.StationResponse;
+import com.pingo.backend.station.dto.response.StationSearchResponse;
 import com.pingo.backend.station.repository.StationFloorRepository;
 import com.pingo.backend.station.repository.StationRepository;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,17 @@ public class StationService {
     public List<StationResponse> getStations() {
         return stationRepository.findAllByActiveTrueOrderByNameKoAsc().stream()
                 .map(StationResponse::from)
+                .toList();
+    }
+
+    public List<StationSearchResponse> searchStations(String keyword) {
+        String normalizedKeyword = trimToNull(keyword);
+        if (normalizedKeyword == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+
+        return stationRepository.searchActiveByKeyword(normalizedKeyword).stream()
+                .map(StationSearchResponse::from)
                 .toList();
     }
 
