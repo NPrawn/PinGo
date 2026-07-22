@@ -17,5 +17,18 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
 
+  coturn:
+    image: coturn/coturn:4
+    container_name: pingo-coturn
+    restart: unless-stopped
+    profiles:
+      - webrtc
+    network_mode: host
+    volumes:
+      - ./infra/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command:
+      - -c
+      - /etc/coturn/turnserver.conf
+
 volumes:
   pingo-mysql-data:
