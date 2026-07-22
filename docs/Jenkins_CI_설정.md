@@ -206,13 +206,23 @@ Build Trigger:
 Authentication Token: REDACTED_BUILD_TOKEN
 ```
 
-현재는 Pipeline Script를 Jenkins UI에 직접 작성한다. 이후 유지보수를 위해 `Jenkinsfile` 방식으로 전환하는 것을 권장한다.
+Pipeline Script는 repo root의 `Jenkinsfile`로 관리한다.
+
+Frontend CI는 `frontend/package.json`이 있을 때만 조건부로 실행한다. 현재 frontend 코드가 없는 상태에서는 Frontend CI stage가 skip되는 것이 정상이다.
+
+Frontend CI 기준:
+
+- 패키지 매니저: npm
+- Node.js: 20 LTS
+- lockfile: `frontend/package-lock.json`
+- 필수 명령: `npm ci`, `npm run build`
+- 선택 명령: `npm run lint`, `npm run test`
 
 ---
 
 ## 9. Jenkins Pipeline Script
 
-현재 Jenkins Job에 설정된 Pipeline Script:
+현재 Jenkins Job은 `Pipeline script from SCM` 방식으로 repo root의 `Jenkinsfile`을 사용한다.
 
 ```groovy
 pipeline {
@@ -226,14 +236,6 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'develop',
-                    credentialsId: 'gitlab-read-repository',
-                    url: 'REDACTED_GITLAB_URL'
-            }
-        }
-
         stage('Backend CI') {
             steps {
                 gitlabCommitStatus(name: 'backend-ci') {
@@ -265,6 +267,30 @@ pipeline {
             post {
                 always {
                     sh 'docker rm -f pingo-ci-mysql || true'
+                }
+            }
+        }
+
+        stage('Frontend CI') {
+            when {
+                expression { fileExists('frontend/package.json') }
+            }
+            steps {
+                gitlabCommitStatus(name: 'frontend-ci') {
+                    dir('frontend') {
+                        sh '''
+                            npm ci
+                            npm run build
+
+                            if npm run | grep -q " lint"; then
+                              npm run lint
+                            fi
+
+                            if npm run | grep -q " test"; then
+                              npm run test -- --run
+                            fi
+                        '''
+                    }
                 }
             }
         }
