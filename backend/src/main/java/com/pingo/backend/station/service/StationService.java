@@ -12,6 +12,7 @@ import com.pingo.backend.station.dto.response.FloorIdResponse;
 import com.pingo.backend.station.dto.response.FloorResponse;
 import com.pingo.backend.station.dto.response.StationDetailResponse;
 import com.pingo.backend.station.dto.response.StationIdResponse;
+import com.pingo.backend.station.dto.response.StationNearbyResponse;
 import com.pingo.backend.station.dto.response.StationResponse;
 import com.pingo.backend.station.dto.response.StationSearchResponse;
 import com.pingo.backend.station.repository.StationFloorRepository;
@@ -21,6 +22,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -61,6 +63,33 @@ public class StationService {
         return stationRepository.searchActiveByKeyword(normalizedKeyword).stream()
                 .map(StationSearchResponse::from)
                 .toList();
+    }
+
+    public List<StationNearbyResponse> getNearbyStations(Double latitude, Double longitude) {
+        if (latitude == null || longitude == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+
+        return stationRepository.findAllByActiveTrueAndLatitudeIsNotNullAndLongitudeIsNotNull().stream()
+                .map(station -> StationNearbyResponse.of(station, distanceMeters(latitude, longitude, station)))
+                .sorted(Comparator.comparingLong(StationNearbyResponse::distanceM))
+                .toList();
+    }
+
+    // 두 좌표 사이의 대권 거리를 Haversine 공식으로 계산해 미터 단위로 반환한다.
+    private long distanceMeters(double latitude, double longitude, Station station) {
+        double earthRadiusMeters = 6_371_000.0;
+        double stationLatitude = station.getLatitude().doubleValue();
+        double stationLongitude = station.getLongitude().doubleValue();
+
+        double latitudeDelta = Math.toRadians(stationLatitude - latitude);
+        double longitudeDelta = Math.toRadians(stationLongitude - longitude);
+        double a = Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2)
+                + Math.cos(Math.toRadians(latitude)) * Math.cos(Math.toRadians(stationLatitude))
+                * Math.sin(longitudeDelta / 2) * Math.sin(longitudeDelta / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return Math.round(earthRadiusMeters * c);
     }
 
     public StationDetailResponse getStation(Long stationId) {
