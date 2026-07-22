@@ -2,6 +2,7 @@ package com.pingo.backend.station.controller;
 
 import com.pingo.backend.global.response.ApiResponse;
 import com.pingo.backend.station.dto.response.StationDetailResponse;
+import com.pingo.backend.station.dto.response.StationNearbyResponse;
 import com.pingo.backend.station.dto.response.StationSearchResponse;
 import com.pingo.backend.station.service.StationService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,14 @@ import java.util.List;
 public class StationController {
 
     private final StationService stationService;
+
+    @GetMapping("/nearby")
+    public ApiResponse<List<StationNearbyResponse>> getNearbyStations(
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude
+    ) {
+        return ApiResponse.success(stationService.getNearbyStations(latitude, longitude));
+    }
 
     @GetMapping("/search")
     public ApiResponse<List<StationSearchResponse>> searchStations(
