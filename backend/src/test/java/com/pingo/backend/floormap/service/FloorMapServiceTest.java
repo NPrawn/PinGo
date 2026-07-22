@@ -10,6 +10,7 @@ import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.domain.StationFloor;
 import com.pingo.backend.station.repository.StationFloorRepository;
+import com.pingo.backend.station.repository.StationRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,13 +42,17 @@ class FloorMapServiceTest {
     private StationFloorRepository stationFloorRepository;
 
     @Mock
+    private StationRepository stationRepository;
+
+    @Mock
     private FileStorageService fileStorageService;
 
     private FloorMapService floorMapService;
 
     @BeforeEach
     void setUp() {
-        floorMapService = new FloorMapService(floorMapRepository, stationFloorRepository, fileStorageService);
+        floorMapService = new FloorMapService(
+                floorMapRepository, stationFloorRepository, stationRepository, fileStorageService);
     }
 
     @Test
@@ -120,6 +125,53 @@ class FloorMapServiceTest {
                 .containsExactly(org.assertj.core.api.Assertions.tuple(10L, "B2", "/uploads/maps/old.png"));
     }
 
+    @Test
+    void getMapsByStationReturnsActiveMapsInFloorOrder() {
+        Station station = createStationEntity(1L, true);
+        StationFloor basementTwo = createFloorOf(2L, station, "B2", 1);
+        StationFloor basementOne = createFloorOf(3L, station, "B1", 2);
+        when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(station));
+        when(stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(1L))
+                .thenReturn(List.of(basementTwo, basementOne));
+        when(floorMapRepository.findAllByFloorIdInAndActiveTrue(any()))
+                .thenReturn(List.of(createFloorMap(11L, 3L), createFloorMap(10L, 2L)));
+
+        List<FloorMapResponse> responses = floorMapService.getMapsByStation(1L);
+
+        assertThat(responses)
+                .extracting(FloorMapResponse::mapId, FloorMapResponse::floorCode)
+                .containsExactly(
+                        org.assertj.core.api.Assertions.tuple(10L, "B2"),
+                        org.assertj.core.api.Assertions.tuple(11L, "B1"));
+    }
+
+    @Test
+    void getMapsByStationSkipsFloorsWithoutActiveMap() {
+        Station station = createStationEntity(1L, true);
+        StationFloor basementTwo = createFloorOf(2L, station, "B2", 1);
+        StationFloor basementOne = createFloorOf(3L, station, "B1", 2);
+        when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(station));
+        when(stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(1L))
+                .thenReturn(List.of(basementTwo, basementOne));
+        when(floorMapRepository.findAllByFloorIdInAndActiveTrue(any()))
+                .thenReturn(List.of(createFloorMap(10L, 2L)));
+
+        List<FloorMapResponse> responses = floorMapService.getMapsByStation(1L);
+
+        assertThat(responses)
+                .extracting(FloorMapResponse::floorCode)
+                .containsExactly("B2");
+    }
+
+    @Test
+    void getMapsByStationThrowsWhenStationNotFound() {
+        when(stationRepository.findByIdAndActiveTrue(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> floorMapService.getMapsByStation(99L))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.STATION_NOT_FOUND));
+    }
+
     private MultipartFile mapFile() {
         return new MockMultipartFile("mapFile", "b1.png", "image/png", "data".getBytes());
     }
@@ -143,5 +195,22 @@ class FloorMapServiceTest {
                 floorId, "image", "/uploads/maps/old.png", 1200, 800, null, "v1");
         ReflectionTestUtils.setField(floorMap, "id", mapId);
         return floorMap;
+    }
+
+    private Station createStationEntity(Long id, boolean active) {
+        Station station = Station.create(
+                "역삼역", "Yeoksam Station", "2호선",
+                new BigDecimal("37.5007000"), new BigDecimal("127.0365000"));
+        if (!active) {
+            station.deactivate();
+        }
+        ReflectionTestUtils.setField(station, "id", id);
+        return station;
+    }
+
+    private StationFloor createFloorOf(Long floorId, Station station, String floorCode, int floorOrder) {
+        StationFloor floor = StationFloor.create(station, floorCode, floorCode, floorOrder);
+        ReflectionTestUtils.setField(floor, "id", floorId);
+        return floor;
     }
 }

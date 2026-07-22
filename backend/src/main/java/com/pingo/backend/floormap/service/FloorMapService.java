@@ -9,6 +9,7 @@ import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.station.domain.StationFloor;
 import com.pingo.backend.station.repository.StationFloorRepository;
+import com.pingo.backend.station.repository.StationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +17,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +32,7 @@ public class FloorMapService {
 
     private final FloorMapRepository floorMapRepository;
     private final StationFloorRepository stationFloorRepository;
+    private final StationRepository stationRepository;
     private final FileStorageService fileStorageService;
 
     @Transactional
@@ -56,6 +61,28 @@ public class FloorMapService {
 
         return floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(floorId).stream()
                 .map(floorMap -> FloorMapResponse.of(floorMap, floor.getFloorCode()))
+                .toList();
+    }
+
+    public List<FloorMapResponse> getMapsByStation(Long stationId) {
+        if (stationRepository.findByIdAndActiveTrue(stationId).isEmpty()) {
+            throw new BusinessException(ErrorCode.STATION_NOT_FOUND);
+        }
+
+        List<StationFloor> floors = stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(stationId);
+        if (floors.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, StationFloor> floorsById = floors.stream()
+                .collect(Collectors.toMap(StationFloor::getId, Function.identity()));
+        Map<Long, FloorMap> mapsByFloorId = floorMapRepository.findAllByFloorIdInAndActiveTrue(floorsById.keySet()).stream()
+                .collect(Collectors.toMap(FloorMap::getFloorId, Function.identity(), (first, second) -> first));
+
+        // 층 정렬 순서(floorOrder)대로, 활성 지도가 있는 층만 응답한다.
+        return floors.stream()
+                .filter(floor -> mapsByFloorId.containsKey(floor.getId()))
+                .map(floor -> FloorMapResponse.of(mapsByFloorId.get(floor.getId()), floor.getFloorCode()))
                 .toList();
     }
 
