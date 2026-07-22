@@ -1,0 +1,1631 @@
+# 외국인 관광객 대상 지하철 실내 내비게이션 API 명세서
+
+## 1. 문서 목적
+
+본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 API 초안을 정의한다.
+
+본 문서는 프론트엔드, 백엔드, VPS, WebRTC, 관리자 기능 개발 시 요청/응답 구조를 맞추기 위한 기준 문서이다.
+
+---
+
+## 2. 공통 규칙
+
+### 2.1 Base URL
+
+```text
+개발 환경: http://localhost:{port}/api
+배포 환경: https://{domain}/api
+```
+
+### 2.2 응답 형식
+
+모든 API는 JSON 형식을 기본으로 한다.
+
+#### 성공 응답
+
+```json
+{
+  "success": true,
+  "data": {},
+  "message": null
+}
+```
+
+#### 실패 응답
+
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "오류 메시지",
+  "errorCode": "ERROR_CODE"
+}
+```
+
+### 2.3 공통 HTTP 상태 코드
+
+| 코드 | 의미 |
+| --- | --- |
+| 200 | 요청 성공 |
+| 201 | 생성 성공 |
+| 400 | 잘못된 요청 |
+| 401 | 인증 필요 |
+| 403 | 권한 없음 |
+| 404 | 리소스 없음 |
+| 409 | 상태 충돌 |
+| 500 | 서버 오류 |
+
+### 2.4 인증 정책
+
+| 사용자 유형 | 인증 방식 |
+| --- | --- |
+| 일반 사용자 | 비로그인, `userSessionId` 기반 |
+| 상담자 | 로그인 후 JWT Access Token 사용 |
+| 관리자 | 로그인 후 JWT Access Token 사용 |
+
+MVP에서는 JWT Access Token을 HTTP Authorization Header로 전달한다.
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+### 2.5 확정 구현 선택
+
+| 항목 | 확정안 |
+| --- | --- |
+| 프론트엔드 | React + TypeScript + Vite |
+| UI 스타일링 | Tailwind CSS |
+| 아이콘 | lucide-react |
+| 백엔드 프레임워크 | Spring Boot 기준 |
+| DBMS | MySQL |
+| ORM/DB 접근 | Spring Data JPA |
+| 인증 방식 | JWT Access Token |
+| JWT 만료 시간 | 12시간 |
+| Refresh Token | MVP에서는 생략 |
+| 사용자 세션 만료 | 마지막 활동 기준 24시간 |
+| 상담 세션 ID | UUID 또는 ULID 기반 문자열 |
+| WebRTC signaling | WebSocket |
+| STUN/TURN | 무료 STUN 우선, 연결 불안정 시 TURN 추가 |
+| 지도 표현 방식 | 이미지 지도 + 좌표 오버레이 |
+| 지도 파일 관리 | 서버 정적 파일에 저장하고 DB에는 URL 저장 |
+| 경로 탐색 | 백엔드 Dijkstra |
+| 카메라 이미지 처리 | 위치 인식 처리 후 즉시 폐기 원칙 |
+| 외부 지도 연계 | 네이버지도 우선 |
+| 관리자 API | MVP에서 전체 구현 |
+| 배포 방식 | Nginx reverse proxy + HTTPS |
+| HTTPS 인증서 | Let's Encrypt 기준 |
+| 다국어 응답 | `nameKo`, `nameEn`을 함께 응답하고 프론트에서 선택 |
+
+### 2.6 API 책임 기준
+
+API 책임자는 `PinGo_역할분배_최종기획안_v4.md`를 따른다.
+
+| API 영역 | 최종 책임 |
+| --- | --- |
+| 역·지도·시설·목적지 검색·출구 추천·경로 | 신재령 |
+| 인증·상담·상담자·관리자 로그인·WebRTC signaling·DataChannel 계약 | 오서현 |
+| VPS 이미지 요청·AI Adapter·위치 인식 상태 판정·외부 지도·위치 공유·배포 네트워크 | 이정우 |
+| 카메라·IMU·실시간 방향 보정·화면 표시 | 김은지 |
+| 교통카드 추천 UX·정적 룰·문구 | 최주연 |
+
+VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeout, 상태 판정을 책임진다. 신재령은 검증된 위치 결과의 좌표 앵커링과 유효 노드 매핑을 책임진다. 실시간 IMU 기반 방향 보정은 프론트엔드 책임이며 백엔드 API는 지속적인 센서 스트림을 처리하지 않는다.
+
+### 2.7 공통 데이터 타입
+
+#### 좌표
+
+```json
+{
+  "latitude": 37.4979,
+  "longitude": 127.0276
+}
+```
+
+#### 실내 위치
+
+```json
+{
+  "stationId": 1,
+  "floorId": 2,
+  "nodeId": 15,
+  "label": "B2 개찰구 앞",
+  "mapX": 320.5,
+  "mapY": 180.2
+}
+```
+
+#### 신뢰도
+
+```json
+{
+  "confidenceScore": 0.87,
+  "confidenceLabel": "high"
+}
+```
+
+`confidenceLabel` 값은 `high`, `medium`, `low` 중 하나를 사용한다.
+
+---
+
+## 3. 사용자 세션 API
+
+## 3.1 사용자 세션 생성
+
+### POST `/user-sessions`
+
+비로그인 사용자의 임시 세션을 생성한다.
+
+#### Request
+
+```json
+{
+  "language": "en"
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "userSessionId": "usr_9f3a2b",
+    "language": "en",
+    "expiresAt": "2026-07-16T12:00:00Z"
+  },
+  "message": null
+}
+```
+
+---
+
+## 3.2 사용자 세션 갱신
+
+### PATCH `/user-sessions/{userSessionId}`
+
+사용자의 선택 언어, 현재 역, 현재 위치, 목적지 등을 갱신한다.
+
+#### Request
+
+```json
+{
+  "language": "en",
+  "selectedStationId": 1,
+  "currentNodeId": 15,
+  "destinationType": "place",
+  "destinationId": 3,
+  "lastGpsLatitude": 37.4979,
+  "lastGpsLongitude": 127.0276
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "userSessionId": "usr_9f3a2b",
+    "selectedStationId": 1,
+    "currentNodeId": 15,
+    "destinationType": "place",
+    "destinationId": 3
+  },
+  "message": null
+}
+```
+
+---
+
+## 4. 역 API
+
+## 4.1 주변 역 조회
+
+### GET `/stations/nearby`
+
+GPS 좌표를 기준으로 주변 역 후보를 조회한다.
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| latitude | number | Y | 현재 위도 |
+| longitude | number | Y | 현재 경도 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "stationId": 1,
+      "nameKo": "강남역",
+      "nameEn": "Gangnam Station",
+      "lineInfo": "2호선, 신분당선",
+      "distanceM": 120
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 4.2 역 검색
+
+### GET `/stations/search`
+
+역 이름으로 역을 검색한다.
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| keyword | string | Y | 검색어 |
+| language | string | N | ko, en |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "stationId": 1,
+      "nameKo": "강남역",
+      "nameEn": "Gangnam Station",
+      "lineInfo": "2호선, 신분당선"
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 4.3 역 상세 조회
+
+### GET `/stations/{stationId}`
+
+선택한 역의 기본 정보와 층 정보를 조회한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "stationId": 1,
+    "nameKo": "강남역",
+    "nameEn": "Gangnam Station",
+    "lineInfo": "2호선, 신분당선",
+    "floors": [
+      {
+        "floorId": 1,
+        "floorCode": "B1",
+        "floorName": "지하 1층",
+        "floorOrder": 1
+      }
+    ]
+  },
+  "message": null
+}
+```
+
+---
+
+## 5. 지도 및 시설 API
+
+## 5.1 층별 지도 조회
+
+### GET `/stations/{stationId}/maps`
+
+역의 층별 지도 정보를 조회한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "mapId": 1,
+      "floorId": 1,
+      "floorCode": "B1",
+      "mapType": "image",
+      "mapUrl": "https://example.com/maps/station-1-b1.png",
+      "width": 1200,
+      "height": 800,
+      "scaleMPerPx": 0.05,
+      "version": "v1"
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 5.2 시설 목록 조회
+
+### GET `/stations/{stationId}/facilities`
+
+역 내부 시설 목록을 조회한다.
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| floorId | number | N | 특정 층 필터 |
+| facilityType | string | N | 시설 유형 필터 |
+| language | string | N | ko, en |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "facilityId": 10,
+      "facilityType": "exit",
+      "name": "5번 출구",
+      "nameKo": "5번 출구",
+      "nameEn": "Exit 5",
+      "floorId": 1,
+      "mapX": 820.4,
+      "mapY": 120.7,
+      "linkedNodeId": 44,
+      "isAccessible": true
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 5.3 시설 상세 조회
+
+### GET `/facilities/{facilityId}`
+
+시설 상세 정보를 조회한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "facilityId": 10,
+    "facilityType": "exit",
+    "nameKo": "5번 출구",
+    "nameEn": "Exit 5",
+    "floorId": 1,
+    "mapX": 820.4,
+    "mapY": 120.7,
+    "linkedNodeId": 44,
+    "exitDetail": {
+      "exitNumber": "5",
+      "outsideLatitude": 37.4982,
+      "outsideLongitude": 127.0281
+    }
+  },
+  "message": null
+}
+```
+
+---
+
+## 6. 목적지 및 주변 장소 API
+
+## 6.1 목적지 통합 검색
+
+### GET `/destinations/search`
+
+역 내부 시설과 역 주변 장소를 통합 검색한다.
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| stationId | number | Y | 역 ID |
+| keyword | string | Y | 검색어 |
+| language | string | N | ko, en |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "destinationType": "facility",
+      "destinationId": 10,
+      "name": "Exit 5",
+      "category": "exit"
+    },
+    {
+      "destinationType": "place",
+      "destinationId": 3,
+      "name": "COEX Mall",
+      "category": "shopping"
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 6.2 역 주변 장소 목록 조회
+
+### GET `/stations/{stationId}/places`
+
+역 주변 장소 목록을 조회한다.
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| category | string | N | 장소 카테고리 |
+| language | string | N | ko, en |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "placeId": 3,
+      "nameKo": "코엑스몰",
+      "nameEn": "COEX Mall",
+      "category": "shopping",
+      "address": "서울특별시 강남구 영동대로 513",
+      "latitude": 37.5118,
+      "longitude": 127.0592
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 6.3 추천 출구 조회
+
+### GET `/places/{placeId}/recommended-exits`
+
+역 주변 장소와 가까운 추천 출구를 조회한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "recommendationId": 1,
+      "placeId": 3,
+      "exitFacilityId": 10,
+      "exitName": "5번 출구",
+      "priority": 1,
+      "isPrimary": true,
+      "reason": "목적지와 가장 가까운 출구입니다.",
+      "walkingTimeMin": 6,
+      "exitLocation": {
+        "latitude": 37.4982,
+        "longitude": 127.0281
+      }
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 7. VPS 및 위치 인식 API
+
+## 7.1 현재 위치 인식
+
+### POST `/vps/localize`
+
+카메라 이미지 또는 프레임을 기반으로 사용자의 실내 위치를 인식한다.
+
+#### Content-Type
+
+```text
+multipart/form-data
+```
+
+#### Request
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| userSessionId | string | Y | 사용자 세션 ID |
+| stationId | number | Y | 현재 역 ID |
+| image | file | Y | 카메라 이미지 |
+| heading | number | N | 단말 방향 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "resultStatus": "success",
+    "candidates": [
+      {
+        "nodeId": 15,
+        "floorId": 2,
+        "label": "B2 개찰구 앞",
+        "mapX": 320.5,
+        "mapY": 180.2,
+        "confidenceScore": 0.87,
+        "confidenceLabel": "high"
+      }
+    ]
+  },
+  "message": null
+}
+```
+
+#### 실패 또는 낮은 신뢰도 Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "resultStatus": "low_confidence",
+    "candidates": [],
+    "fallbackOptions": [
+      "retry_capture",
+      "select_landmark",
+      "select_on_map",
+      "request_consultation"
+    ]
+  },
+  "message": "위치를 정확히 찾지 못했습니다."
+}
+```
+
+---
+
+## 7.2 랜드마크 후보 조회
+
+### GET `/stations/{stationId}/landmarks`
+
+위치 인식 실패 시 사용자가 선택할 수 있는 랜드마크 후보를 조회한다.
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| floorId | number | N | 층 ID |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "nodeId": 20,
+      "name": "B2 개찰구 앞 안내판",
+      "floorId": 2,
+      "mapX": 300.0,
+      "mapY": 210.0
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 7.3 수동 위치 확정
+
+### POST `/localization/manual`
+
+사용자가 지도에서 직접 선택한 위치를 현재 위치로 확정한다.
+
+#### Request
+
+```json
+{
+  "userSessionId": "usr_9f3a2b",
+  "stationId": 1,
+  "floorId": 2,
+  "nodeId": 15,
+  "mapX": 320.5,
+  "mapY": 180.2
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "currentIndoorLocation": {
+      "stationId": 1,
+      "floorId": 2,
+      "nodeId": 15,
+      "label": "선택한 위치",
+      "mapX": 320.5,
+      "mapY": 180.2
+    }
+  },
+  "message": null
+}
+```
+
+---
+
+## 8. 경로 API
+
+## 8.1 경로 옵션 조회
+
+### POST `/routes/indoor/options`
+
+현재 위치에서 목적지까지 가능한 경로 옵션을 조회한다.
+
+#### Request
+
+```json
+{
+  "stationId": 1,
+  "startNodeId": 15,
+  "targetType": "facility",
+  "targetId": 10
+}
+```
+
+#### routeType 기준
+
+| routeType | 화면 표시명 | 처리 기준 |
+| --- | --- | --- |
+| fastest | 빠른 경로 | 모든 active edge 허용 |
+| no_stairs | 계단 없는 경로 | `moveType = stair` 제외 |
+| no_stairs_no_escalators | 엘리베이터 중심 경로 | `moveType = stair`, `moveType = escalator` 제외 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "routeOptionId": "route_fastest",
+      "routeType": "fastest",
+      "title": "빠른 경로",
+      "distanceM": 180,
+      "estimatedTimeSec": 240,
+      "includesStairs": true,
+      "excludedMoveTypes": [],
+      "steps": [
+        {
+          "order": 1,
+          "fromNodeId": 15,
+          "toNodeId": 16,
+          "instruction": "20m 직진하세요.",
+          "distanceM": 20,
+          "moveType": "walkway"
+        }
+      ]
+    },
+    {
+      "routeOptionId": "route_no_stairs",
+      "routeType": "no_stairs",
+      "title": "계단 없는 경로",
+      "distanceM": 210,
+      "estimatedTimeSec": 310,
+      "includesStairs": false,
+      "excludedMoveTypes": ["stair"],
+      "steps": []
+    },
+    {
+      "routeOptionId": "route_elevator_centered",
+      "routeType": "no_stairs_no_escalators",
+      "title": "엘리베이터 중심 경로",
+      "distanceM": 230,
+      "estimatedTimeSec": 360,
+      "includesStairs": false,
+      "excludedMoveTypes": ["stair", "escalator"],
+      "steps": []
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 8.2 경로 생성
+
+### POST `/routes/indoor`
+
+선택한 경로 옵션 또는 기본 조건으로 실내 경로를 생성한다.
+
+#### Request
+
+```json
+{
+  "userSessionId": "usr_9f3a2b",
+  "stationId": 1,
+  "startNodeId": 15,
+  "targetType": "facility",
+  "targetId": 10,
+  "routeType": "no_stairs_no_escalators"
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "routeId": "rt_12345",
+    "stationId": 1,
+    "routeType": "no_stairs_no_escalators",
+    "distanceM": 230,
+    "estimatedTimeSec": 360,
+    "startNodeId": 15,
+    "targetNodeId": 44,
+    "steps": [
+      {
+        "order": 1,
+        "instruction": "오른쪽 통로로 30m 이동하세요.",
+        "fromNodeId": 15,
+        "toNodeId": 18,
+        "distanceM": 30,
+        "moveType": "walkway",
+        "direction": "right"
+      }
+    ],
+    "pathNodes": [
+      {
+        "nodeId": 15,
+        "floorId": 2,
+        "mapX": 320.5,
+        "mapY": 180.2
+      }
+    ]
+  },
+  "message": null
+}
+```
+
+---
+
+## 8.3 경로 재계산
+
+### POST `/routes/indoor/recalculate`
+
+경로 안내 중 현재 위치가 바뀌었을 때 경로를 다시 계산한다.
+
+#### Request
+
+```json
+{
+  "routeId": "rt_12345",
+  "stationId": 1,
+  "currentNodeId": 20,
+  "targetNodeId": 44,
+  "routeType": "fastest"
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "routeId": "rt_67890",
+    "distanceM": 150,
+    "estimatedTimeSec": 210,
+    "steps": []
+  },
+  "message": null
+}
+```
+
+---
+
+## 9. 외부 지도 연계 API
+
+## 9.1 네이버지도 길찾기 링크 생성
+
+### POST `/external-maps/directions`
+
+사용자의 실제 현재 GPS 위치를 출발지로 사용하여 네이버지도 길찾기 링크를 생성한다.
+
+#### Request
+
+```json
+{
+  "provider": "naver",
+  "origin": {
+    "latitude": 37.4982,
+    "longitude": 127.0281
+  },
+  "destination": {
+    "placeId": 3,
+    "name": "COEX Mall",
+    "latitude": 37.5118,
+    "longitude": 127.0592,
+    "address": "서울특별시 강남구 영동대로 513"
+  },
+  "mode": "walking"
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "provider": "naver",
+    "url": "https://map.naver.com/p/directions/-/37.5118,127.0592,COEX%20Mall/-/walk",
+    "fallbackUrl": "https://map.naver.com"
+  },
+  "message": null
+}
+```
+
+---
+
+## 10. 상담 API
+
+## 10.1 상담 요청 생성
+
+### POST `/consultations`
+
+사용자가 상담 요청을 생성한다.
+
+#### Request
+
+```json
+{
+  "userSessionId": "usr_9f3a2b",
+  "stationId": 1,
+  "problemType": "cannot_find_exit",
+  "currentNodeId": 15,
+  "destinationType": "place",
+  "destinationId": 3,
+  "videoConsent": true,
+  "audioConsent": true
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "waiting",
+    "requestedAt": "2026-07-16T03:00:00Z"
+  },
+  "message": null
+}
+```
+
+---
+
+## 10.2 상담 상태 조회
+
+### GET `/consultations/{consultationId}`
+
+사용자가 상담 요청 상태를 확인한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "accepted",
+    "counselorId": 7,
+    "signalingRoomId": "room_cs_abc123"
+  },
+  "message": null
+}
+```
+
+---
+
+## 10.3 상담 요청 취소
+
+### DELETE `/consultations/{consultationId}`
+
+사용자가 상담 요청을 취소한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "canceled"
+  },
+  "message": null
+}
+```
+
+---
+
+## 11. 상담자 API
+
+## 11.1 상담자 로그인
+
+### POST `/counselors/login`
+
+상담자가 로그인한다.
+
+#### Request
+
+```json
+{
+  "loginId": "counselor01",
+  "password": "password"
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "access-token",
+    "counselor": {
+      "counselorId": 7,
+      "name": "역무원",
+      "stationId": 1,
+      "status": "available"
+    }
+  },
+  "message": null
+}
+```
+
+---
+
+## 11.2 상담 요청 목록 조회
+
+### GET `/counselor/consultations`
+
+상담자가 담당 역의 상담 요청 목록을 조회한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| status | string | N | waiting, accepted 등 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "consultationId": "cs_abc123",
+      "stationId": 1,
+      "problemType": "cannot_find_exit",
+      "status": "waiting",
+      "currentLocationLabel": "B2 개찰구 앞",
+      "destinationLabel": "COEX Mall",
+      "requestedAt": "2026-07-16T03:00:00Z"
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 11.3 상담 수락
+
+### POST `/consultations/{consultationId}/accept`
+
+상담자가 상담 요청을 수락한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "accepted",
+    "signalingRoomId": "room_cs_abc123"
+  },
+  "message": null
+}
+```
+
+---
+
+## 11.4 상담 거절
+
+### POST `/consultations/{consultationId}/reject`
+
+상담자가 상담 요청을 거절한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "rejected"
+  },
+  "message": null
+}
+```
+
+---
+
+## 11.5 상담 종료
+
+### POST `/consultations/{consultationId}/end`
+
+사용자 또는 상담자가 상담을 종료한다.
+
+#### Request
+
+```json
+{
+  "endedBy": "counselor"
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "ended"
+  },
+  "message": null
+}
+```
+
+---
+
+## 12. WebRTC Signaling API 초안
+
+WebRTC signaling은 WebSocket 기반으로 구현한다.
+
+## 12.1 WebSocket 연결
+
+### WS `/ws/signaling?roomId={signalingRoomId}&role={user|counselor}`
+
+#### 메시지 타입
+
+| type | 설명 |
+| --- | --- |
+| offer | WebRTC offer |
+| answer | WebRTC answer |
+| ice_candidate | ICE candidate |
+| join | 방 입장 |
+| leave | 방 퇴장 |
+| error | 오류 |
+
+#### 예시 메시지
+
+```json
+{
+  "type": "offer",
+  "roomId": "room_cs_abc123",
+  "sender": "user",
+  "payload": {
+    "sdp": "..."
+  }
+}
+```
+
+---
+
+## 12.2 DataChannel 이벤트
+
+WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
+
+| eventType | 설명 |
+| --- | --- |
+| draw_arrow | 사용자 화면에 화살표 표시 |
+| set_destination | 사용자 목적지 변경 |
+| update_location | 사용자 현재 위치 수정 |
+| send_message | 짧은 안내 메시지 표시 |
+| sync_status | 상담 상태 동기화 |
+
+### draw_arrow 예시
+
+```json
+{
+  "eventType": "draw_arrow",
+  "payload": {
+    "x": 180,
+    "y": 240,
+    "direction": "left",
+    "durationMs": 3000
+  }
+}
+```
+
+### set_destination 예시
+
+```json
+{
+  "eventType": "set_destination",
+  "payload": {
+    "targetType": "facility",
+    "targetId": 12,
+    "label": "엘리베이터"
+  }
+}
+```
+
+---
+
+## 13. 관리자 API
+
+관리자 API는 MVP에서 전체 구현한다.
+
+## 13.1 관리자 로그인
+
+### POST `/admins/login`
+
+#### Request
+
+```json
+{
+  "loginId": "admin",
+  "password": "password"
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "admin-access-token",
+    "admin": {
+      "adminId": 1,
+      "name": "관리자",
+      "role": "admin"
+    }
+  },
+  "message": null
+}
+```
+
+---
+
+## 13.2 역 관리
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/admin/stations` | 역 등록 |
+| GET | `/admin/stations` | 활성 역 목록 조회 |
+| GET | `/admin/stations/{stationId}` | 역과 층 상세 조회 |
+| PATCH | `/admin/stations/{stationId}` | 역 정보 수정 |
+| DELETE | `/admin/stations/{stationId}` | 역 비활성화 |
+
+### 역 등록·수정 Request
+
+#### Request
+
+```json
+{
+  "nameKo": "강남역",
+  "nameEn": "Gangnam Station",
+  "lineInfo": "2호선, 신분당선",
+  "latitude": 37.4979,
+  "longitude": 127.0276
+}
+```
+
+### 역 등록 Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "stationId": 1
+  },
+  "message": null
+}
+```
+
+---
+
+## 13.3 층 관리
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/admin/stations/{stationId}/floors` | 해당 역에 층 등록 |
+| GET | `/admin/stations/{stationId}/floors` | 해당 역의 층 목록 조회 |
+| PATCH | `/admin/floors/{floorId}` | 층 정보 수정 |
+| DELETE | `/admin/floors/{floorId}` | 층 삭제 |
+
+### 층 등록·수정 Request
+
+#### Request
+
+```json
+{
+  "floorCode": "B2",
+  "floorName": "지하 2층",
+  "floorOrder": 2
+}
+```
+
+### 층 등록 Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "floorId": 2
+  },
+  "message": null
+}
+```
+
+동일한 역에는 같은 `floorCode`를 중복 등록할 수 없다. 지도·시설·경로 노드 등에서 참조 중인 층은 삭제할 수 없다.
+
+---
+
+## 13.4 지도 등록
+
+### POST `/admin/floors/{floorId}/maps`
+
+#### Content-Type
+
+```text
+multipart/form-data
+```
+
+#### Request
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| mapType | string | Y | image, svg |
+| mapFile | file | Y | 지도 파일 |
+| width | number | N | 지도 너비 |
+| height | number | N | 지도 높이 |
+| scaleMPerPx | number | N | 픽셀당 실제 거리 |
+
+---
+
+## 13.5 시설 등록
+
+### POST `/admin/facilities`
+
+#### Request
+
+```json
+{
+  "stationId": 1,
+  "floorId": 2,
+  "facilityType": "exit",
+  "nameKo": "5번 출구",
+  "nameEn": "Exit 5",
+  "mapX": 820.4,
+  "mapY": 120.7,
+  "linkedNodeId": 44,
+  "isAccessible": true,
+  "exitDetail": {
+    "exitNumber": "5",
+    "outsideLatitude": 37.4982,
+    "outsideLongitude": 127.0281
+  }
+}
+```
+
+---
+
+## 13.6 경로 노드 등록
+
+### POST `/admin/route-nodes`
+
+#### Request
+
+```json
+{
+  "stationId": 1,
+  "floorId": 2,
+  "nodeType": "junction",
+  "name": "B2 갈림길 1",
+  "mapX": 300.0,
+  "mapY": 200.0,
+  "isLandmark": true
+}
+```
+
+---
+
+## 13.7 경로 간선 등록
+
+### POST `/admin/route-edges`
+
+#### Request
+
+```json
+{
+  "stationId": 1,
+  "fromNodeId": 15,
+  "toNodeId": 16,
+  "distanceM": 20,
+  "estimatedTimeSec": 30,
+  "moveType": "walkway",
+  "isAccessible": true,
+  "isBidirectional": true
+}
+```
+
+---
+
+## 13.8 주변 장소 등록
+
+### POST `/admin/nearby-places`
+
+#### Request
+
+```json
+{
+  "stationId": 1,
+  "nameKo": "코엑스몰",
+  "nameEn": "COEX Mall",
+  "category": "shopping",
+  "address": "서울특별시 강남구 영동대로 513",
+  "latitude": 37.5118,
+  "longitude": 127.0592
+}
+```
+
+---
+
+## 13.9 장소-출구 추천 등록
+
+### POST `/admin/place-exit-recommendations`
+
+#### Request
+
+```json
+{
+  "placeId": 3,
+  "exitFacilityId": 10,
+  "priority": 1,
+  "reasonKo": "목적지와 가장 가까운 출구입니다.",
+  "reasonEn": "This is the closest exit to your destination.",
+  "walkingTimeMin": 6,
+  "isPrimary": true
+}
+```
+
+---
+
+## 13.10 상담자 계정 등록
+
+### POST `/admin/counselors`
+
+#### Request
+
+```json
+{
+  "stationId": 1,
+  "loginId": "counselor01",
+  "password": "password",
+  "name": "역무원"
+}
+```
+
+---
+
+## 14. 위치 공유 API
+
+위치 공유는 최종 기능 요구사항 32개에 포함된 필수 기능이다.
+
+## 14.1 위치 공유 링크 생성
+
+### POST `/location-shares`
+
+#### Request
+
+```json
+{
+  "ownerSessionId": "usr_9f3a2b",
+  "stationId": 1,
+  "sharedNodeId": 15,
+  "expiresInMinutes": 30
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "shareId": "share_xyz",
+    "shareUrl": "https://example.com/share/share_xyz",
+    "expiresAt": "2026-07-16T03:30:00Z"
+  },
+  "message": null
+}
+```
+
+---
+
+## 14.2 공유 위치 조회
+
+### GET `/location-shares/{shareId}`
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "shareId": "share_xyz",
+    "stationId": 1,
+    "sharedLocation": {
+      "nodeId": 15,
+      "floorId": 2,
+      "label": "B2 개찰구 앞",
+      "mapX": 320.5,
+      "mapY": 180.2
+    },
+    "expiresAt": "2026-07-16T03:30:00Z"
+  },
+  "message": null
+}
+```
+
+---
+
+## 15. 교통카드 추천 API
+
+교통카드 추천은 최종 기능 요구사항 32개에 포함된 필수 기능이다.
+
+## 15.1 교통카드 추천
+
+### POST `/transport-cards/recommend`
+
+#### Request
+
+```json
+{
+  "stayDays": 2,
+  "visitOutsideSeoul": false,
+  "dailyTransitCount": 4,
+  "airportTransfer": true,
+  "places": ["강남", "홍대"]
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "recommendedCard": "기후동행카드",
+    "reason": "서울 내 대중교통 이용 횟수가 많아 정액권이 유리할 수 있습니다.",
+    "alternatives": ["일반 Tmoney", "1일권"],
+    "purchasePlaces": ["지하철역 고객안전실", "일부 편의점"],
+    "cautions": ["서울 외 지역 이용 가능 여부를 확인하세요."]
+  },
+  "message": null
+}
+```
+
+---
+
+## 16. 오류 코드 초안
+
+| 코드 | 설명 |
+| --- | --- |
+| INVALID_REQUEST | 요청 형식이 잘못됨 |
+| STATION_NOT_FOUND | 역을 찾을 수 없음 |
+| FACILITY_NOT_FOUND | 시설을 찾을 수 없음 |
+| PLACE_NOT_FOUND | 주변 장소를 찾을 수 없음 |
+| USER_SESSION_NOT_FOUND | 사용자 세션을 찾을 수 없음 |
+| LOCALIZATION_FAILED | 위치 인식 실패 |
+| ROUTE_NOT_FOUND | 경로를 찾을 수 없음 |
+| CONSULTATION_NOT_FOUND | 상담 세션을 찾을 수 없음 |
+| COUNSELOR_UNAUTHORIZED | 상담자 인증 실패 |
+| ADMIN_UNAUTHORIZED | 관리자 인증 실패 |
+| WEBRTC_SIGNALING_FAILED | WebRTC signaling 실패 |
+| EXTERNAL_MAP_LINK_FAILED | 외부 지도 링크 생성 실패 |
+
+---
+
+## 17. MVP 필수 API 요약
+
+| 구분 | API |
+| --- | --- |
+| 사용자 세션 | POST /user-sessions |
+| 역 | GET /stations/nearby, GET /stations/search, GET /stations/{stationId} |
+| 지도/시설 | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities |
+| 목적지 | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits |
+| 위치 인식 | POST /vps/localize, POST /localization/manual |
+| 경로 | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate |
+| 외부 지도 | POST /external-maps/directions |
+| 위치 공유 | POST /location-shares, GET /location-shares/{shareId} |
+| 상담 | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId} |
+| 상담자 | POST /counselors/login, GET /counselor/consultations, POST /consultations/{id}/accept |
+| WebRTC | WS /ws/signaling |
+| 교통카드 | POST /transport-cards/recommend |
+| 관리자 | 관리자 데이터 등록 API 전체 구현 |
+
+---
+
+## 18. 확정된 구현 사항
+
+| 항목 | 결정 |
+| --- | --- |
+| 프론트엔드 | React + TypeScript + Vite |
+| UI 스타일링 | Tailwind CSS |
+| 아이콘 | lucide-react |
+| 실제 백엔드 프레임워크 | Spring Boot |
+| DBMS | MySQL |
+| ORM/DB 접근 | Spring Data JPA |
+| 인증 방식 | JWT Access Token |
+| JWT 만료 시간 | 12시간 |
+| Refresh Token | MVP에서는 생략 |
+| 사용자 세션 만료 | 마지막 활동 기준 24시간 |
+| 상담 세션 ID | UUID 또는 ULID 기반 문자열 |
+| WebRTC signaling | WebSocket |
+| STUN/TURN | 무료 STUN 우선, 연결 불안정 시 TURN 추가 |
+| 지도 표현 방식 | 이미지 지도 + 좌표 오버레이 |
+| 지도 파일 업로드 방식 | 서버 정적 파일에 저장하고 DB에는 URL 저장 |
+| 경로 탐색 | 백엔드 Dijkstra |
+| 카메라 이미지 처리 | 서버 장기 저장 없이 처리 후 즉시 폐기 |
+| 이미지 폐기 로그 | 이미지 원본은 저장하지 않고 요청 ID, 처리 결과, 폐기 시각만 기록 |
+| 외부 지도 우선 연동 | 네이버지도 |
+| 관리자 API | MVP에서 전체 구현 |
+| 배포 방식 | Nginx reverse proxy + HTTPS |
+| HTTPS 인증서 | Let's Encrypt 기준 |
+| API 응답 다국어 처리 | `nameKo`, `nameEn` 함께 응답 |
+
+## 19. 아직 의사결정이 필요한 사항
+
+1. 실제 시연 대표 동선 확정
+
+## 20. 구현 중 검증할 사항
+
+1. 네이버지도 URL Scheme 또는 웹 링크의 최종 형식 검증
+2. 실제 배포 도메인 확정
+3. 카메라 이미지 즉시 폐기 로그 검증

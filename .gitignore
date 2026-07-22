@@ -1,0 +1,37 @@
+# Environment variables
+*.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/*.local
+
+# Backend
+backend/target/
+backend/build/
+backend/.gradle/
+backend/application-local.yml
+backend/application-secret.yml
+backend/*.key
+
+# Infra
+infra/.env
+infra/.env.*
+infra/coturn/turnserver.conf
