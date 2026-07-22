@@ -11,6 +11,7 @@ import com.pingo.backend.station.dto.response.FloorIdResponse;
 import com.pingo.backend.station.dto.response.FloorResponse;
 import com.pingo.backend.station.dto.response.StationDetailResponse;
 import com.pingo.backend.station.dto.response.StationIdResponse;
+import com.pingo.backend.station.dto.response.StationNearbyResponse;
 import com.pingo.backend.station.dto.response.StationSearchResponse;
 import com.pingo.backend.station.repository.StationFloorRepository;
 import com.pingo.backend.station.repository.StationRepository;
@@ -192,6 +193,29 @@ class StationServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FLOOR_IN_USE));
     }
 
+    @Test
+    void getNearbyStationsReturnsStationsSortedByDistance() {
+        Station near = createStationAt(1L, "역삼역", "37.5001000", "127.0001000");
+        Station far = createStationAt(2L, "강남역", "37.6000000", "127.2000000");
+        when(stationRepository.findAllByActiveTrueAndLatitudeIsNotNullAndLongitudeIsNotNull())
+                .thenReturn(List.of(far, near));
+
+        List<StationNearbyResponse> responses = stationService.getNearbyStations(37.5000, 127.0000);
+
+        assertThat(responses)
+                .extracting(StationNearbyResponse::stationId)
+                .containsExactly(1L, 2L);
+        assertThat(responses.get(0).distanceM()).isLessThan(responses.get(1).distanceM());
+    }
+
+    @Test
+    void getNearbyStationsThrowsWhenCoordinatesAreNull() {
+        assertThatThrownBy(() -> stationService.getNearbyStations(null, 127.0))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+        verify(stationRepository, never()).findAllByActiveTrueAndLatitudeIsNotNullAndLongitudeIsNotNull();
+    }
+
     private Station createStation(Long id) {
         Station station = Station.create(
                 "역삼역",
@@ -199,6 +223,15 @@ class StationServiceTest {
                 "2호선",
                 new BigDecimal("37.5007000"),
                 new BigDecimal("127.0365000")
+        );
+        ReflectionTestUtils.setField(station, "id", id);
+        return station;
+    }
+
+    private Station createStationAt(Long id, String nameKo, String latitude, String longitude) {
+        Station station = Station.create(
+                nameKo, nameKo, "2호선",
+                new BigDecimal(latitude), new BigDecimal(longitude)
         );
         ReflectionTestUtils.setField(station, "id", id);
         return station;
