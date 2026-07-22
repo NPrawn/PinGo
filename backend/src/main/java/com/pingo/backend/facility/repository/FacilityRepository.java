@@ -25,4 +25,14 @@ public interface FacilityRepository extends JpaRepository<Facility, Long> {
             @Param("floorId") Long floorId,
             @Param("facilityType") String facilityType
     );
+
+    @Query("""
+            SELECT f FROM Facility f
+            WHERE f.active = true
+              AND f.stationId = :stationId
+              AND (LOWER(f.nameKo) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(f.nameEn) LIKE LOWER(CONCAT('%', :keyword, '%')))
+            ORDER BY f.floorId ASC, f.id ASC
+            """)
+    List<Facility> searchActiveByKeyword(@Param("stationId") Long stationId, @Param("keyword") String keyword);
 }

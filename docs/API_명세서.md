@@ -424,14 +424,14 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ### GET `/destinations/search`
 
-역 내부 시설과 역 주변 장소를 통합 검색한다.
+역 내부 시설과 역 주변 장소를 이름 키워드로 통합 검색한다. 활성 시설(`facility`)을 먼저, 이어서 활성 주변 장소(`place`)를 반환한다. `category`는 시설이면 `facilityType`, 장소면 장소 카테고리다.
 
 #### Query
 
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
 | stationId | number | Y | 역 ID |
-| keyword | string | Y | 검색어 |
+| keyword | string | Y | 검색어 (공백·누락 시 `INVALID_REQUEST`) |
 | language | string | N | ko, en |
 
 #### Response
@@ -443,13 +443,15 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
     {
       "destinationType": "facility",
       "destinationId": 10,
-      "name": "Exit 5",
+      "nameKo": "5번 출구",
+      "nameEn": "Exit 5",
       "category": "exit"
     },
     {
       "destinationType": "place",
       "destinationId": 3,
-      "name": "COEX Mall",
+      "nameKo": "코엑스몰",
+      "nameEn": "COEX Mall",
       "category": "shopping"
     }
   ],
