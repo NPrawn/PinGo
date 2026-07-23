@@ -80,7 +80,7 @@ Authorization: Bearer {accessToken}
 | DBMS | MySQL |
 | ORM/DB 접근 | Spring Data JPA |
 | 인증 방식 | JWT Access Token |
-| JWT 만료 시간 | 12시간 |
+| JWT 만료 시간 | 6시간 |
 | Refresh Token | MVP에서는 생략 |
 | 사용자 세션 만료 | 마지막 활동 기준 24시간 |
 | 상담 세션 ID | UUID 또는 ULID 기반 문자열 |
@@ -144,6 +144,57 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 ```
 
 `confidenceLabel` 값은 `high`, `medium`, `low` 중 하나를 사용한다.
+
+### 2.8 인증 API (통합 로그인)
+
+상담자와 관리자는 별도 엔드포인트가 아닌 하나의 통합 로그인 API를 공유한다. 응답의 `accountType` 값(`COUNSELOR` | `ADMIN`)으로 프론트엔드가 역할을 구분해 라우팅한다.
+
+#### POST `/auth/login`
+
+#### Request
+
+```json
+{
+  "loginId": "counselor01",
+  "password": "password"
+}
+```
+
+#### Response (상담자)
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "access-token",
+    "accountType": "COUNSELOR",
+    "accountId": 7,
+    "name": "역무원",
+    "stationId": 1,
+    "status": "available"
+  },
+  "message": null
+}
+```
+
+#### Response (관리자)
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "access-token",
+    "accountType": "ADMIN",
+    "accountId": 1,
+    "name": "관리자",
+    "stationId": null,
+    "status": null
+  },
+  "message": null
+}
+```
+
+> 이전 초안에서는 `/counselors/login`, `/admins/login`을 별도로 정의했으나(11.1, 13.1 참고), account 테이블 통합(ERD_초안.md 5.6 참고)에 맞춰 `POST /auth/login` 하나로 합쳤다. 응답도 `counselor`/`admin` 중첩 객체가 아니라 평평한(flat) 구조이며, 관리자 세부 역할 구분 필드(`role`: admin/super_admin)는 아직 구현되지 않았다 — 필요해지면 추가 논의 필요.
 
 ---
 
@@ -979,36 +1030,7 @@ multipart/form-data
 
 ## 11.1 상담자 로그인
 
-### POST `/counselors/login`
-
-상담자가 로그인한다.
-
-#### Request
-
-```json
-{
-  "loginId": "counselor01",
-  "password": "password"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "accessToken": "access-token",
-    "counselor": {
-      "counselorId": 7,
-      "name": "역무원",
-      "stationId": 1,
-      "status": "available"
-    }
-  },
-  "message": null
-}
-```
+로그인은 상담자/관리자 공통 통합 로그인 API(`POST /auth/login`, 2.8절 참고)를 사용한다. 별도의 `/counselors/login` 엔드포인트는 존재하지 않는다.
 
 ---
 
@@ -1211,33 +1233,7 @@ WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
 
 ## 13.1 관리자 로그인
 
-### POST `/admins/login`
-
-#### Request
-
-```json
-{
-  "loginId": "admin",
-  "password": "password"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "accessToken": "admin-access-token",
-    "admin": {
-      "adminId": 1,
-      "name": "관리자",
-      "role": "admin"
-    }
-  },
-  "message": null
-}
-```
+로그인은 상담자/관리자 공통 통합 로그인 API(`POST /auth/login`, 2.8절 참고)를 사용한다. 별도의 `/admins/login` 엔드포인트는 존재하지 않는다.
 
 ---
 
@@ -1822,8 +1818,8 @@ multipart/form-data
 | UNSUPPORTED_NODE_TYPE | 지원하지 않는 노드 유형 |
 | UNSUPPORTED_MOVE_TYPE | 지원하지 않는 이동 유형 |
 | CONSULTATION_NOT_FOUND | 상담 세션을 찾을 수 없음 |
-| COUNSELOR_UNAUTHORIZED | 상담자 인증 실패 |
-| ADMIN_UNAUTHORIZED | 관리자 인증 실패 |
+| INVALID_CREDENTIALS | 로그인 ID 또는 비밀번호가 올바르지 않음 |
+| INACTIVE_ACCOUNT | 비활성화된 계정으로 로그인 시도 |
 | WEBRTC_SIGNALING_FAILED | WebRTC signaling 실패 |
 | EXTERNAL_MAP_LINK_FAILED | 외부 지도 링크 생성 실패 |
 
@@ -1842,7 +1838,8 @@ multipart/form-data
 | 외부 지도 | POST /external-maps/directions |
 | 위치 공유 | POST /location-shares, GET /location-shares/{shareId} |
 | 상담 | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId} |
-| 상담자 | POST /counselors/login, GET /counselor/consultations, POST /consultations/{id}/accept |
+| 인증 | POST /auth/login |
+| 상담자 | GET /counselor/consultations, POST /consultations/{id}/accept |
 | WebRTC | WS /ws/signaling |
 | 교통카드 | POST /transport-cards/recommend |
 | 관리자 | 관리자 데이터 등록 API 전체 구현 |
@@ -1860,7 +1857,7 @@ multipart/form-data
 | DBMS | MySQL |
 | ORM/DB 접근 | Spring Data JPA |
 | 인증 방식 | JWT Access Token |
-| JWT 만료 시간 | 12시간 |
+| JWT 만료 시간 | 6시간 |
 | Refresh Token | MVP에서는 생략 |
 | 사용자 세션 만료 | 마지막 활동 기준 24시간 |
 | 상담 세션 ID | UUID 또는 ULID 기반 문자열 |
