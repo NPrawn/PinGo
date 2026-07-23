@@ -68,7 +68,7 @@ erDiagram
     FACILITY ||--o{ PLACE_EXIT_RECOMMENDATION : exit
 
     USER_SESSION ||--o{ CONSULTATION_SESSION : requests
-    COUNSELOR ||--o{ CONSULTATION_SESSION : handles
+    ACCOUNT ||--o{ CONSULTATION_SESSION : handles
     STATION ||--o{ CONSULTATION_SESSION : occurs_at
     CONSULTATION_SESSION ||--o{ CONSULTATION_EVENT : has
 
@@ -81,7 +81,7 @@ erDiagram
     STATION ||--o{ LOCALIZATION_LOG : occurs_at
     ROUTE_NODE ||--o{ LOCALIZATION_LOG : matched_to
 
-    ADMIN ||--o{ ADMIN_AUDIT_LOG : creates
+    ACCOUNT ||--o{ ADMIN_AUDIT_LOG : creates
 ```
 
 ---
@@ -102,8 +102,7 @@ erDiagram
 | 사용자 | user_session | 비로그인 사용자 임시 세션 | 필수 |
 | 상담 | consultation_session | 상담 요청 및 세션 | 필수 |
 | 상담 | consultation_event | 상담 중 발생 이벤트 | 중요 |
-| 계정 | counselor | 상담자 계정 | 필수 |
-| 계정 | admin | 관리자 계정 | 중요 |
+| 계정 | account | 상담자·관리자 통합 계정 (account_type으로 구분) | 필수 |
 | VPS | vps_map | VPS 맵 버전 | 필수 |
 | VPS | vps_reference_image | VPS 기준 이미지 | 중요 |
 | VPS | localization_log | 위치 인식 시도 로그 | 중요 |
@@ -385,23 +384,37 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 
 ---
 
-## 5.6 상담 데이터
+## 5.6 계정 및 상담 데이터
 
-### counselor
+### account
 
-상담자 또는 역무원 계정을 저장한다.
+상담자(counselor)와 관리자(admin) 계정을 하나의 테이블로 통합해서 저장한다. `account_type`으로 역할을 구분한다.
+
+> 2026-07 통합 로그인(FR-C-001/FR-A-001) 구현 과정에서 기존에 분리했던 counselor/admin 테이블을 하나의 account 테이블로 병합했다. 로그인 ID 하나로 역할과 무관하게 계정을 조회해야 통합 로그인 엔드포인트를 단순하게 유지할 수 있기 때문이다. (Flyway `V3__merge_counselor_admin_into_account.sql`)
 
 | 컬럼 | 타입 예시 | 설명 | 제약 |
 | --- | --- | --- | --- |
-| counselor_id | bigint | 상담자 ID | PK |
-| station_id | bigint | 담당 역 ID | FK station.station_id |
+| account_id | bigint | 계정 ID | PK |
+| account_type | varchar | 계정 유형 | COUNSELOR, ADMIN |
+| station_id | bigint | 담당 역 ID (상담자만 사용) | FK station.station_id, nullable |
 | login_id | varchar | 로그인 ID | unique, not null |
 | password_hash | varchar | 비밀번호 해시 | not null |
-| name | varchar | 상담자 이름 | not null |
-| status | varchar | 상담 상태 | available, busy, offline |
+| name | varchar | 계정 이름 | not null |
+| status | varchar | 상담 상태 (상담자만 사용) | available, busy, offline, nullable |
 | is_active | boolean | 계정 활성 여부 | default true |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |
+
+#### account_type 예시
+
+| 값 | 설명 |
+| --- | --- |
+| COUNSELOR | 상담자(역무원) 계정. station_id, status 사용 |
+| ADMIN | 관리자 계정. station_id, status는 사용하지 않음(NULL) |
+
+#### 설계 이유
+
+기존에는 counselor, admin을 완전히 분리된 테이블로 설계했으나, 통합 로그인 API가 로그인 ID 하나로 역할과 무관하게 계정을 조회해야 해서 단일 테이블 + account_type 구분 방식으로 변경했다. 관리자 전용 필드가 늘어나면 추후 account를 부모 테이블로 두고 하위 프로필 테이블로 다시 분리하는 것도 검토할 수 있다.
 
 ---
 
@@ -414,7 +427,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | consultation_id | varchar | 상담 세션 ID | PK |
 | user_session_id | varchar | 사용자 세션 ID | FK user_session.user_session_id |
 | station_id | bigint | 상담 대상 역 | FK station.station_id |
-| counselor_id | bigint | 상담자 ID | FK counselor.counselor_id, nullable |
+| counselor_id | bigint | 상담자 ID | FK account.account_id (account_type=COUNSELOR), nullable |
 | problem_type | varchar | 문제 유형 | not null |
 | status | varchar | 상담 상태 | waiting, accepted, ended 등 |
 | current_node_id | bigint | 요청 시 현재 위치 | FK route_node.node_id, nullable |
@@ -425,6 +438,8 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | requested_at | datetime | 요청 시각 | not null |
 | accepted_at | datetime | 수락 시각 | nullable |
 | ended_at | datetime | 종료 시각 | nullable |
+
+> 컬럼명은 마이그레이션 호환을 위해 `counselor_id`를 그대로 유지하지만, FK 대상은 `counselor` 테이블이 아닌 `account` 테이블이다 (`account_type = COUNSELOR`인 행만 참조).
 
 #### problem_type 예시
 
@@ -478,24 +493,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 
 ---
 
-## 5.7 관리자 계정 및 운영 데이터
-
-### admin
-
-관리자 계정을 저장한다.
-
-| 컬럼 | 타입 예시 | 설명 | 제약 |
-| --- | --- | --- | --- |
-| admin_id | bigint | 관리자 ID | PK |
-| login_id | varchar | 로그인 ID | unique, not null |
-| password_hash | varchar | 비밀번호 해시 | not null |
-| name | varchar | 관리자 이름 | not null |
-| role | varchar | 관리자 역할 | admin, super_admin |
-| is_active | boolean | 계정 활성 여부 | default true |
-| created_at | datetime | 생성 시각 | not null |
-| updated_at | datetime | 수정 시각 | not null |
-
----
+## 5.7 운영 데이터
 
 ### admin_audit_log
 
@@ -504,13 +502,15 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | 컬럼 | 타입 예시 | 설명 | 제약 |
 | --- | --- | --- | --- |
 | audit_log_id | bigint | 로그 ID | PK |
-| admin_id | bigint | 관리자 ID | FK admin.admin_id |
+| admin_id | bigint | 관리자 ID | FK account.account_id (account_type=ADMIN), not null |
 | action_type | varchar | 작업 유형 | create, update, delete |
 | target_table | varchar | 대상 테이블 | not null |
 | target_id | varchar | 대상 데이터 ID | not null |
 | before_json | json | 변경 전 데이터 | nullable |
 | after_json | json | 변경 후 데이터 | nullable |
 | created_at | datetime | 생성 시각 | not null |
+
+> 컬럼명은 마이그레이션 호환을 위해 `admin_id`를 그대로 유지하지만, FK 대상은 `admin` 테이블이 아닌 `account` 테이블이다 (`account_type = ADMIN`인 행만 참조).
 
 ---
 
@@ -666,12 +666,12 @@ nearby_place 1 ─ N place_exit_recommendation N ─ 1 facility(exit)
 
 ```text
 user_session 1 ─ N consultation_session
-counselor 1 ─ N consultation_session
+account(COUNSELOR) 1 ─ N consultation_session
 consultation_session 1 ─ N consultation_event
 ```
 
 - 비로그인 사용자도 익명 세션을 기준으로 상담 요청을 생성한다.
-- 상담자가 요청을 수락하면 상담 세션에 상담자 ID가 연결된다.
+- 상담자가 요청을 수락하면 상담 세션에 상담자 계정(account, account_type=COUNSELOR)의 ID가 연결된다.
 - 상담 중 화살표 표시, 목적지 지정, 메시지 전송은 consultation_event에 기록할 수 있다.
 
 ### 6.6 VPS 위치 인식
@@ -703,13 +703,12 @@ MVP 구현에 필요한 최소 테이블은 다음과 같다.
 | 1 | nearby_place |
 | 1 | place_exit_recommendation |
 | 1 | user_session |
-| 1 | counselor |
+| 1 | account |
 | 1 | consultation_session |
 | 1 | vps_map |
 | 1 | localization_log |
 | 2 | consultation_event |
 | 2 | vps_reference_image |
-| 2 | admin |
 | 2 | admin_audit_log |
 | 3 | location_share |
 | 3 | translation |
@@ -724,7 +723,7 @@ MVP 구현에 필요한 최소 테이블은 다음과 같다.
 
 - 관리자 API를 통해 역, 층, 지도, 시설, 경로, 주변 장소, 상담자 계정을 등록·수정할 수 있어야 한다.
 - 시연 안정성을 위해 초기 데이터는 seed로 미리 준비할 수 있지만, seed는 관리자 API를 대체하지 않는다.
-- `admin` 테이블은 MVP에 포함한다.
+- `account` 테이블(ADMIN 타입)은 MVP에 포함한다.
 - `admin_audit_log`는 가능하면 구현하되, 일정이 부족할 경우 최근 수정 시각과 수정자 기록으로 축소할 수 있다.
 
 ### 8.2 다국어 간소화
@@ -758,7 +757,7 @@ MVP 구현에 필요한 최소 테이블은 다음과 같다.
 | consultation_session | station_id, status | 상담 요청 목록 조회 |
 | consultation_session | user_session_id | 사용자 상담 조회 |
 | localization_log | station_id, created_at | VPS 통계 |
-| counselor | station_id, status | 상담 가능자 조회 |
+| account | account_type, station_id, status | 상담 가능자 조회(역할·역별) |
 
 ---
 
@@ -773,7 +772,7 @@ MVP 구현에 필요한 최소 테이블은 다음과 같다.
 | route_node, route_edge | 신재령 |
 | user_session | 이정우 |
 | consultation_session, consultation_event | 오서현 |
-| counselor, admin | 오서현 |
+| account (counselor+admin 통합) | 오서현 |
 | vps_map, vps_reference_image | 강민수 |
 | localization_log | 이정우 |
 | location_share | 이정우 |
