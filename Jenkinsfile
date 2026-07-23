@@ -7,7 +7,6 @@ pipeline {
 
     environment {
         SPRING_PROFILES_ACTIVE = 'local'
-        SPRING_DATASOURCE_URL = 'jdbc:mysql://localhost:3306/pingo?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useSSL=false'
         SPRING_DATASOURCE_USERNAME = 'pingo'
         SPRING_DATASOURCE_PASSWORD = 'REDACTED'
     }
@@ -23,8 +22,12 @@ pipeline {
                           -e MYSQL_USER=pingo \
                           -e MYSQL_PASSWORD=REDACTED \
                           -e MYSQL_ROOT_PASSWORD=REDACTED \
-                          -p 3306:3306 \
+                          -p 3306 \
                           mysql:8.4
+
+                        CI_MYSQL_PORT=$(docker port pingo-ci-mysql 3306/tcp | awk -F: 'NR == 1 {print $NF}')
+                        export SPRING_DATASOURCE_URL="jdbc:mysql://localhost:${CI_MYSQL_PORT}/pingo?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useSSL=false"
+                        echo "CI MySQL host port: ${CI_MYSQL_PORT}"
 
                         for i in $(seq 1 30); do
                           if docker exec pingo-ci-mysql mysqladmin ping -h localhost -uREDACTED -pREDACTED --silent; then

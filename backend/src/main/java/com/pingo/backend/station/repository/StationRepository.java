@@ -12,6 +12,8 @@ public interface StationRepository extends JpaRepository<Station, Long> {
 
     List<Station> findAllByActiveTrueOrderByNameKoAsc();
 
+    List<Station> findAllByActiveTrueAndLatitudeIsNotNullAndLongitudeIsNotNull();
+
     Optional<Station> findByIdAndActiveTrue(Long id);
 
     @Query("""
