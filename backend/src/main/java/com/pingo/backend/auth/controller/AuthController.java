@@ -31,6 +31,7 @@ public class AuthController {
     @GetMapping("/check-login-id")
     public ApiResponse<Boolean> checkLoginId(@RequestParam String loginId){
         boolean available = authService.isLoginIdAvailable(loginId);
-        return ApiResponse.success(available);
+        String message = available ? "사용 가능한 아이디입니다." : "이미 사용 중인 아이디입니다.";
+        return ApiResponse.success(available, message);
     }
 }

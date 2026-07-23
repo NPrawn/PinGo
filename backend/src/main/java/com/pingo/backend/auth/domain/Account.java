@@ -31,7 +31,9 @@ public class Account {
     @Column(nullable = false)
     private String name;
 
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(length =  20)
+    private CounselorStatus status;
 
     @Column(nullable = false)
     private boolean isActive;
@@ -71,5 +73,9 @@ public class Account {
 
     public void deactivate(){
         this.isActive = false;
+    }
+
+    public void changeStation(Long stationId){
+        this.stationId = stationId;
     }
 }
