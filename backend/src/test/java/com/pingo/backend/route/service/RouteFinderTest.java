@@ -141,6 +141,20 @@ class RouteFinderTest {
         assertThat(path.totalTimeSec()).isNull();
     }
 
+    @Test
+    @DisplayName("출발지와 도착지가 같으면 거리 0인 단일 노드 경로를 반환한다")
+    void sameStartAndTargetReturnsZeroDistancePath() {
+        List<GraphEdge> edges = List.of(edge(1, 2, 10, RouteMoveType.WALKWAY, true));
+
+        RoutePath path = routeFinder.find(edges, 1, 1, RouteType.FASTEST);
+
+        assertThat(path.isReachable()).isTrue();
+        assertThat(path.nodeIds()).containsExactly(1L);
+        assertThat(path.segments()).isEmpty();
+        assertThat(path.totalDistanceM()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(path.totalTimeSec()).isEqualTo(0);
+    }
+
     private GraphEdge edge(long from, long to, long distanceM, RouteMoveType moveType, boolean bidirectional) {
         return new GraphEdge(from, to, BigDecimal.valueOf(distanceM), null, moveType, bidirectional);
     }
