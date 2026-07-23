@@ -17,4 +17,4 @@ spring:
 
 jwt:
   secret: ${JWT_SECRET:change-this-to-a-long-random-secret-key-for-local-only}
-  counselor-expiration-ms: 7200000
+  expiration-ms: 21600000

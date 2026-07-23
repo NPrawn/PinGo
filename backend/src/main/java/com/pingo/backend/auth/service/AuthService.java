@@ -16,12 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AuthService {
-    private final AccountRepository counselorRepository;
+    private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
 
     public LoginResponse login(LoginRequest request){
-        Account account = counselorRepository.findByLoginId(request.loginId())
+        Account account = accountRepository.findByLoginId(request.loginId())
                 .orElseThrow(()-> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
         if(!passwordEncoder.matches(request.password(), account.getPasswordHash())){
