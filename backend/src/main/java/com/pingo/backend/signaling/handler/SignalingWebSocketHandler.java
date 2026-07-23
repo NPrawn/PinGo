@@ -1,5 +1,14 @@
 package com.pingo.backend.signaling.handler;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pingo.backend.signaling.dto.SignalingErrorPayload;
+import com.pingo.backend.signaling.dto.SignalingMessage;
+import com.pingo.backend.signaling.dto.SignalingMessageType;
+import com.pingo.backend.signaling.dto.SignalingSenderType;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -7,9 +16,19 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Set;
+
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class SignalingWebSocketHandler extends TextWebSocketHandler {
+
+    private static final String INVALID_SIGNALING_MESSAGE = "INVALID_SIGNALING_MESSAGE";
+
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final Validator validator;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -17,8 +36,29 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        log.info("WebSocket message received. sessionId={}, payload={}", session.getId(), message.getPayload());
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
+        try {
+            SignalingMessage signalingMessage = objectMapper.readValue(message.getPayload(), SignalingMessage.class);
+            Set<ConstraintViolation<SignalingMessage>> violations = validator.validate(signalingMessage);
+
+            if (!violations.isEmpty()) {
+                log.warn("Invalid signaling message. websocketSessionId={}, violations={}", session.getId(), violations);
+                sendError(session, signalingMessage.sessionId(), "Required signaling fields are missing or invalid.");
+                return;
+            }
+
+            log.info("Signaling message received. websocketSessionId={}, sessionId={}, senderType={}, type={}",
+                    session.getId(),
+                    signalingMessage.sessionId(),
+                    signalingMessage.senderType(),
+                    signalingMessage.type());
+        } catch (JsonProcessingException exception) {
+            log.warn("Failed to parse signaling message. websocketSessionId={}, payload={}",
+                    session.getId(),
+                    message.getPayload(),
+                    exception);
+            sendError(session, null, "Invalid signaling message format.");
+        }
     }
 
     @Override
@@ -27,5 +67,21 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 session.getId(),
                 status.getCode(),
                 status.getReason());
+    }
+
+    private void sendError(WebSocketSession session, String signalingSessionId, String message) throws IOException {
+        SignalingMessage errorMessage = new SignalingMessage(
+                signalingSessionId == null ? session.getId() : signalingSessionId,
+                SignalingSenderType.SYSTEM,
+                SignalingMessageType.ERROR,
+                objectMapper.valueToTree(new SignalingErrorPayload(
+                        INVALID_SIGNALING_MESSAGE,
+                        message,
+                        false
+                )),
+                Instant.now()
+        );
+
+        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorMessage)));
     }
 }
