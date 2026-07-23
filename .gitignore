@@ -38,6 +38,7 @@ infra/.env.*
 infra/coturn/turnserver.conf
 
 # AI local/generated artifacts
+ai/AGENTS.md
 ai/pipeline_output/*
 !ai/pipeline_output/README.md
 !ai/pipeline_output/verification_report.json
