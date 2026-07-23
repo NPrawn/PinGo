@@ -53,4 +53,23 @@ public class Account {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public static Account signUpCounselor(String loginIdl, String passwordHash, String name, Long stationId){
+        Account account = new Account();
+        account.accountType = AccountType.COUNSELOR;
+        account.loginId = loginIdl;
+        account.passwordHash = passwordHash;
+        account.name = name;
+        account.stationId = stationId;
+        account.status = null;
+        account.isActive = false;
+        return account;
+    }
+
+    public void approve(){
+        this.isActive = true;
+    }
+
+    public void deactivate(){
+        this.isActive = false;
+    }
 }
