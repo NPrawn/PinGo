@@ -731,9 +731,9 @@ multipart/form-data
 
 ## 8.1 경로 옵션 조회
 
-### POST `/routes/indoor/options`
+### POST `/api/routes/indoor/options`
 
-현재 위치에서 목적지까지 가능한 경로 옵션을 조회한다.
+출발 노드에서 도착 노드까지 가능한 경로 옵션을 조회한다. 도착지는 실내 노드 ID(`targetNodeId`)로 직접 지정하며, 외부 목적지 검색·출구 추천은 이 API 범위 밖이다. 응답은 옵션별 요약이며 상세 `steps`·`pathNodes`는 포함하지 않는다.
 
 #### Request
 
@@ -741,8 +741,7 @@ multipart/form-data
 {
   "stationId": 1,
   "startNodeId": 15,
-  "targetType": "facility",
-  "targetId": 10
+  "targetNodeId": 44
 }
 ```
 
@@ -750,9 +749,10 @@ multipart/form-data
 
 | routeType | 화면 표시명 | 처리 기준 |
 | --- | --- | --- |
-| fastest | 빠른 경로 | 모든 active edge 허용 |
-| no_stairs | 계단 없는 경로 | `moveType = stair` 제외 |
-| no_stairs_no_escalators | 엘리베이터 중심 경로 | `moveType = stair`, `moveType = escalator` 제외 |
+| fastest | 빠른 경로 | 모든 active edge 허용 (가중치는 `distanceM`, 즉 최단 거리 기준) |
+| elevator_only | 엘리베이터 이용 경로 | `moveType = stair`, `moveType = escalator` 제외 (일반 통로·엘리베이터·개찰구 허용) |
+
+`elevator_only`는 엘리베이터 간선만 사용하는 경로가 아니라, 계단·에스컬레이터 없이 도달 가능한 경로를 의미한다.
 
 #### Response
 
@@ -761,67 +761,44 @@ multipart/form-data
   "success": true,
   "data": [
     {
-      "routeOptionId": "route_fastest",
       "routeType": "fastest",
-      "title": "빠른 경로",
-      "distanceM": 180,
-      "estimatedTimeSec": 240,
-      "includesStairs": true,
-      "excludedMoveTypes": [],
-      "steps": [
-        {
-          "order": 1,
-          "fromNodeId": 15,
-          "toNodeId": 16,
-          "instruction": "20m 직진하세요.",
-          "distanceM": 20,
-          "moveType": "walkway"
-        }
-      ]
+      "displayName": "빠른 경로",
+      "available": true,
+      "unavailableReason": null,
+      "totalDistanceM": 180,
+      "estimatedTimeSec": 240
     },
     {
-      "routeOptionId": "route_no_stairs",
-      "routeType": "no_stairs",
-      "title": "계단 없는 경로",
-      "distanceM": 210,
-      "estimatedTimeSec": 310,
-      "includesStairs": false,
-      "excludedMoveTypes": ["stair"],
-      "steps": []
-    },
-    {
-      "routeOptionId": "route_elevator_centered",
-      "routeType": "no_stairs_no_escalators",
-      "title": "엘리베이터 중심 경로",
-      "distanceM": 230,
-      "estimatedTimeSec": 360,
-      "includesStairs": false,
-      "excludedMoveTypes": ["stair", "escalator"],
-      "steps": []
+      "routeType": "elevator_only",
+      "displayName": "엘리베이터 이용 경로",
+      "available": false,
+      "unavailableReason": "NO_ACCESSIBLE_ROUTE",
+      "totalDistanceM": null,
+      "estimatedTimeSec": null
     }
   ],
   "message": null
 }
 ```
 
+이용 불가한 옵션도 목록에서 제외하지 않고 `available=false`와 `unavailableReason`으로 표현한다. `unavailableReason`은 `NO_ROUTE`(연결된 경로 없음) 또는 `NO_ACCESSIBLE_ROUTE`(계단·에스컬레이터 제외 시 도달 불가)이다. `estimatedTimeSec`은 경로상 모든 간선에 예상 시간이 있을 때만 채워지며, 하나라도 없으면 `null`이다.
+
 ---
 
 ## 8.2 경로 생성
 
-### POST `/routes/indoor`
+### POST `/api/routes/indoor`
 
-선택한 경로 옵션 또는 기본 조건으로 실내 경로를 생성한다.
+선택한 경로 옵션으로 실내 경로 상세를 생성한다. 도착지는 `targetNodeId`로 지정하며, `routeType`이 `fastest`·`elevator_only`가 아니면 `UNSUPPORTED_ROUTE_TYPE`로 거부한다.
 
 #### Request
 
 ```json
 {
-  "userSessionId": "usr_9f3a2b",
   "stationId": 1,
   "startNodeId": 15,
-  "targetType": "facility",
-  "targetId": 10,
-  "routeType": "no_stairs_no_escalators"
+  "targetNodeId": 44,
+  "routeType": "elevator_only"
 }
 ```
 
@@ -831,22 +808,23 @@ multipart/form-data
 {
   "success": true,
   "data": {
-    "routeId": "rt_12345",
-    "stationId": 1,
-    "routeType": "no_stairs_no_escalators",
-    "distanceM": 230,
-    "estimatedTimeSec": 360,
+    "routeType": "elevator_only",
+    "displayName": "엘리베이터 이용 경로",
+    "available": true,
+    "unavailableReason": null,
     "startNodeId": 15,
     "targetNodeId": 44,
+    "totalDistanceM": 230,
+    "estimatedTimeSec": 360,
     "steps": [
       {
         "order": 1,
-        "instruction": "오른쪽 통로로 30m 이동하세요.",
         "fromNodeId": 15,
         "toNodeId": 18,
         "distanceM": 30,
+        "estimatedTimeSec": 45,
         "moveType": "walkway",
-        "direction": "right"
+        "instruction": "30m 직진하세요."
       }
     ],
     "pathNodes": [
@@ -862,6 +840,8 @@ multipart/form-data
 }
 ```
 
+도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다. 방향(좌/우) 안내는 좌표 기반 계산이 필요하여 현재 범위에서 제외한다.
+
 ---
 
 ## 8.3 경로 재계산
@@ -869,6 +849,8 @@ multipart/form-data
 ### POST `/routes/indoor/recalculate`
 
 경로 안내 중 현재 위치가 바뀌었을 때 경로를 다시 계산한다.
+
+> 재계산은 별도 작업(Task)으로 분리되어 있으며 현재 미구현이다.
 
 #### Request
 
@@ -1817,6 +1799,7 @@ multipart/form-data
 | ROUTE_NODE_IN_USE | 사용 중인 경로 노드는 삭제할 수 없음 |
 | UNSUPPORTED_NODE_TYPE | 지원하지 않는 노드 유형 |
 | UNSUPPORTED_MOVE_TYPE | 지원하지 않는 이동 유형 |
+| UNSUPPORTED_ROUTE_TYPE | 지원하지 않는 경로 옵션 유형 |
 | CONSULTATION_NOT_FOUND | 상담 세션을 찾을 수 없음 |
 | INVALID_CREDENTIALS | 로그인 ID 또는 비밀번호가 올바르지 않음 |
 | INACTIVE_ACCOUNT | 비활성화된 계정으로 로그인 시도 |
