@@ -1,0 +1,29 @@
+@import './reset.css';
+@import './variables.css';
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: system-ui, sans-serif;
+  font-size: var(--font-size-base);
+}
+
+main {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-3);
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+a {
+  color: var(--color-primary);
+}
