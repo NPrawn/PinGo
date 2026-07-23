@@ -71,11 +71,11 @@ feat: 언어 선택 화면 구현
 Git Hook 적용 후 실제 저장 형식:
 
 ```text
-[<jira-key>] <type>: <한국어 작업 내용>
+<type>: <한국어 작업 내용> <jira-key>
 ```
 
 ```text
-[S15P11A206-70] feat: 언어 선택 화면 구현
+feat: 언어 선택 화면 구현 S15P11A206-70
 ```
 
 ### Merge Request
@@ -96,7 +96,7 @@ Git Hook 적용 후 실제 저장 형식:
 
 커밋
 → Jira 키를 직접 작성하지 않는다.
-→ Git Hook이 브랜치명에서 Jira 키를 추출해 자동으로 앞에 추가한다.
+→ Git Hook이 브랜치명에서 Jira 키를 추출해 자동으로 맨 끝에 추가한다.
 
 MR
 → Jira 키를 맨 끝에 직접 작성한다.
@@ -140,7 +140,7 @@ GitLab 연동에는 Jira 이슈 키를 사용한다.
 * 브랜치명에는 Jira 키를 반드시 직접 작성한다.
 * MR 제목에는 Jira 키를 맨 끝에 반드시 직접 작성한다.
 * 커밋 메시지에는 Jira 키를 직접 작성하지 않는다.
-* `.githooks`의 Git Hook이 브랜치명에서 Jira 키를 추출해 커밋 메시지 맨 앞에 자동 추가한다.
+* `.githooks`의 Git Hook이 브랜치명에서 Jira 키를 추출해 커밋 메시지 맨 끝에 자동 추가한다.
 * 하나의 작업 브랜치는 하나의 Jira Task를 기준으로 생성한다.
 * 다른 Jira Task 작업이 추가되면 별도의 브랜치를 생성한다.
 
@@ -222,7 +222,7 @@ git commit -m "feat: 언어 선택 화면 구현"
 실제 저장 결과:
 
 ```text
-[S15P11A206-70] feat: 언어 선택 화면 구현
+feat: 언어 선택 화면 구현 S15P11A206-70
 ```
 
 ### 4.4 주의사항
@@ -435,11 +435,11 @@ docs: API 명세서 업데이트
 ### 8.2 Git Hook 적용 후 실제 형식
 
 ```text
-[<jira-key>] <type>: <한국어 작업 내용>
+<type>: <한국어 작업 내용> <jira-key>
 ```
 
 ```text
-[S15P11A206-70] feat: 언어 선택 화면 구현
+feat: 언어 선택 화면 구현 S15P11A206-70
 ```
 
 개발자는 Jira 키를 직접 입력하지 않는다. Git Hook이 현재 브랜치명에서 Jira 키를 추출해 자동으로 추가한다.
@@ -500,7 +500,7 @@ git log -1 --pretty=%B
 정상 결과:
 
 ```text
-[S15P11A206-70] feat: 언어 선택 화면 구현
+feat: 언어 선택 화면 구현 S15P11A206-70
 ```
 
 ---
@@ -545,7 +545,7 @@ GitLab에서는 Pull Request가 아니라 **Merge Request, MR**이라는 용어�
 
 # ❌ 나쁜 예
 [FE] feat: 언어 선택 화면 구현
-[FE] feat: 언어 선택 화면 구현-S15P11A206-70
+[fe] feat: 언어 선택 화면 구현-S15P11A206-70
 [FE] 수정-S15P11A206-70
 [FE] feat: 언어 선택 화면 구현-S15P11A20670
 ```
@@ -784,96 +784,89 @@ test: 위치 추정 벤치마크 테스트 추가
 
 ## 14. Merge Request 템플릿
 
-다음 경로에 MR 템플릿을 생성한다.
-
-```text
-.gitlab/merge_request_templates/Default.md
-```
-
-템플릿의 제목과 항목은 팀의 영어 작성 원칙에 따라 영어로 작성한다.
-
 ```markdown
-## Overview
 
-> What was implemented or changed in this Merge Request?
+## 개요
 
-## Jira Issue
+> 이 Merge Request에서 구현하거나 변경한 내용을 작성해 주세요.
 
-- Jira Key:
-- Jira Link:
+## Jira 이슈
 
-## Changes
+- Jira 키:
+- Jira 링크:
 
-### Change Type
+## 변경 사항
 
-- [ ] New feature
-- [ ] Bug fix
-- [ ] Refactoring
-- [ ] Test addition or update
-- [ ] Documentation update
-- [ ] Environment or build configuration
-- [ ] Breaking change
-- [ ] Other
+### 변경 유형
 
-## Implementation Details
+- [ ] 신규 기능
+- [ ] 버그 수정
+- [ ] 리팩터링
+- [ ] 테스트 추가 또는 수정
+- [ ] 문서 수정
+- [ ] 환경 또는 빌드 설정
+- [ ] 호환성을 깨는 변경
+- [ ] 기타
+
+## 구현 상세
 
 -
 -
 -
 
-## Test Results
+## 테스트 결과
 
-- [ ] Verified that the feature works correctly in the local environment.
-- [ ] Verified the primary success scenarios.
-- [ ] Verified failure and exception scenarios.
-- [ ] Verified that existing features have no regression issues.
+- [ ] 로컬 환경에서 기능이 정상적으로 동작하는지 확인했습니다.
+- [ ] 주요 성공 시나리오를 확인했습니다.
+- [ ] 실패 및 예외 시나리오를 확인했습니다.
+- [ ] 기존 기능에 회귀 문제가 없는지 확인했습니다.
 
-### Test Steps
+### 테스트 절차
 
 1.
 2.
 3.
 
-## Related Merge Requests
+## 관련 Merge Request
 
 - FE:
 - BE:
 - AI:
 - Infra:
 
-## Checklist
+## 체크리스트
 
-- [ ] Is the target branch `develop`?
-- [ ] Does the branch name include the Jira key at the end?
+- [ ] 대상 브랜치가 `develop`인가요?
+- [ ] 브랜치명 끝에 Jira 키가 포함되어 있나요?
 - [ ] Git Hook 설정이 적용되어 있나요?
 - [ ] 커밋 메시지에 Jira 키가 자동으로 추가되었나요?
 - [ ] 커밋 메시지의 작업 설명이 한국어인가요?
 - [ ] MR 제목의 작업 설명이 한국어인가요?
 - [ ] MR 제목 맨 끝에 브랜치와 동일한 Jira 키가 있나요?
-- [ ] Does the project compile or build successfully?
-- [ ] Are unnecessary files excluded?
-- [ ] Are API keys and passwords excluded from the source code?
-- [ ] Was the API specification updated when the API changed?
-- [ ] Were related documents updated when the database changed?
-- [ ] Is the impact of the breaking change documented?
-- [ ] Are related FE, BE, AI, or Infra MRs ready?
-- [ ] Are the Jira acceptance criteria satisfied?
+- [ ] 프로젝트가 정상적으로 컴파일 또는 빌드되나요?
+- [ ] 불필요한 파일이 제외되어 있나요?
+- [ ] 소스 코드에 API 키와 비밀번호가 포함되지 않았나요?
+- [ ] API 변경 시 API 명세를 수정했나요?
+- [ ] 데이터베이스 변경 시 관련 문서를 수정했나요?
+- [ ] 호환성을 깨는 변경의 영향 범위를 문서화했나요?
+- [ ] 관련 FE, BE, AI 또는 Infra MR이 준비되었나요?
+- [ ] Jira 인수 조건을 충족했나요?
 
-## Breaking Change
+## 호환성을 깨는 변경
 
-> Write `None` when this section is not applicable.
+> 해당 사항이 없으면 `없음`으로 작성해 주세요.
 
-- Change:
-- Impact:
-- Migration or application steps:
+- 변경 내용:
+- 영향 범위:
+- 마이그레이션 또는 적용 절차:
 
-## Screenshots
+## 스크린샷
 
-> Attach screenshots when the UI has changed.
+> UI가 변경된 경우 스크린샷을 첨부해 주세요.
 
-## Notes
+## 참고 사항
 
-> Add any information reviewers should know.
+> 리뷰어가 알아야 할 내용을 작성해 주세요.
 ```
 
 ---
@@ -1022,7 +1015,7 @@ cache/
 ### 형식
 
 ```text
-v<major>.<minor>.<patch>-<stage>
+v<major>.<minor>.<patch>[-<stage>]
 ```
 
 예시:
@@ -1030,7 +1023,7 @@ v<major>.<minor>.<patch>-<stage>
 ```bash
 v0.1.0-alpha
 v0.5.0-demo
-v1.0.0-final
+v1.0.0
 ```
 
 ### 규칙
@@ -1038,6 +1031,7 @@ v1.0.0-final
 * 테스트되지 않은 커밋에 태그를 생성하지 않는다.
 * 태그 생성 전 `master`의 최종 커밋을 확인한다.
 * 시연 버전과 최종 제출 버전을 구분한다.
+* `alpha`, `demo` 등의 사전 배포 단계는 하이픈 뒤에 작성하고, 정식 버전에는 단계를 붙이지 않는다.
 * 공유된 태그를 임의로 삭제하거나 덮어쓰지 않는다.
 
 ### 생성 예시
@@ -1045,8 +1039,8 @@ v1.0.0-final
 ```bash
 git checkout master
 git pull origin master
-git tag -a v1.0.0-final -m "PinGo final release"
-git push origin v1.0.0-final
+git tag -a v1.0.0 -m "PinGo final release"
+git push origin v1.0.0
 ```
 
 ---
@@ -1057,7 +1051,6 @@ git push origin v1.0.0-final
 
 * `master`, `develop` 직접 push
 * Jira Task 없이 기능 개발 시작
-* Jira 키가 없는 브랜치 생성
 * Jira 키가 없는 브랜치 생성
 * 커밋 메시지에 Jira 키를 직접 작성
 * Jira 키가 없는 MR 생성
@@ -1201,7 +1194,7 @@ MR 병합
 <type>: <한국어 작업 내용>
 
 Git Hook 적용 후 커밋 메시지
-[<jira-key>] <type>: <한국어 작업 내용>
+<type>: <한국어 작업 내용> <jira-key>
 
 Merge Request 제목
 [<PART>] <type>: <한국어 작업 내용>-<jira-key>
@@ -1217,7 +1210,7 @@ feature/fe-language-select-S15P11A206-70
 feat: 언어 선택 화면 구현
 
 커밋 저장 결과
-[S15P11A206-70] feat: 언어 선택 화면 구현
+feat: 언어 선택 화면 구현 S15P11A206-70
 
 Merge Request
 [FE] feat: 언어 선택 화면 구현-S15P11A206-70
