@@ -93,6 +93,24 @@ public class NearbyPlace {
         return new NearbyPlace(stationId, nameKo, nameEn, category, address, latitude, longitude, externalMapUrl);
     }
 
+    public void update(
+            String nameKo,
+            String nameEn,
+            String category,
+            String address,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            String externalMapUrl
+    ) {
+        this.nameKo = nameKo;
+        this.nameEn = nameEn;
+        this.category = category;
+        this.address = address;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.externalMapUrl = externalMapUrl;
+    }
+
     public void deactivate() {
         this.active = false;
     }
