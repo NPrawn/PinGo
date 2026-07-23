@@ -13,6 +13,9 @@ pipeline {
         BACKEND_BACKUP_JAR = '/opt/pingo/backend/releases/pingo-backend.previous.jar'
         BACKEND_SERVICE_NAME = 'pingo-backend'
         BACKEND_HEALTH_URL = 'http://127.0.0.1:8080/api/health'
+        FRONTEND_RELEASE_DIR = '/opt/pingo/frontend/releases/current'
+        FRONTEND_BACKUP_DIR = '/opt/pingo/frontend/releases/previous'
+        FRONTEND_HEALTH_URL = 'https://jenkins.example.invalid/'
     }
 
     stages {
@@ -105,6 +108,32 @@ pipeline {
                         echo "Backend health check failed"
                         sudo systemctl status "${BACKEND_SERVICE_NAME}" --no-pager || true
                         exit 1
+                    '''
+                }
+            }
+        }
+
+        stage('Frontend CD') {
+            when {
+                expression { fileExists('frontend/package.json') }
+            }
+            steps {
+                gitlabCommitStatus(name: 'frontend-cd') {
+                    sh '''
+                        test -f frontend/dist/index.html
+
+                        if [ -d "${FRONTEND_RELEASE_DIR}" ]; then
+                          sudo rm -rf "${FRONTEND_BACKUP_DIR}"
+                          sudo cp -a "${FRONTEND_RELEASE_DIR}" "${FRONTEND_BACKUP_DIR}"
+                        fi
+
+                        sudo rm -rf "${FRONTEND_RELEASE_DIR}"
+                        sudo install -d -o www-data -g www-data "${FRONTEND_RELEASE_DIR}"
+                        sudo cp -a frontend/dist/. "${FRONTEND_RELEASE_DIR}/"
+                        sudo chown -R www-data:www-data "${FRONTEND_RELEASE_DIR}"
+
+                        curl -fsSI "${FRONTEND_HEALTH_URL}"
+                        echo "Frontend health check succeeded"
                     '''
                 }
             }
