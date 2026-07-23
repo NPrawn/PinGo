@@ -118,6 +118,22 @@ class IndoorRouteServiceTest {
     }
 
     @Test
+    @DisplayName("빠른 경로도 도달할 수 없으면 available=false와 NO_ROUTE를 반환한다")
+    void createRouteReturnsNoRouteWhenFastestUnreachable() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L));
+        givenEdges(1L, edge(1L, 1L, 5L, 10, RouteMoveType.WALKWAY)); // 목적지 2와 단절
+
+        RouteResponse response =
+                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, "fastest"));
+
+        assertThat(response.available()).isFalse();
+        assertThat(response.unavailableReason()).isEqualTo("NO_ROUTE");
+        assertThat(response.steps()).isEmpty();
+        assertThat(response.pathNodes()).isEmpty();
+    }
+
+    @Test
     @DisplayName("지원하지 않는 routeType이면 예외가 발생한다")
     void createRouteRejectsUnsupportedRouteType() {
         assertThatThrownBy(() ->
