@@ -1,5 +1,12 @@
 spring:
   application:
     name: backend
-  profiles:
-    active: local
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 15MB
+
+app:
+  file:
+    upload-dir: uploads
+    url-prefix: /uploads

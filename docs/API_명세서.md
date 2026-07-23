@@ -87,7 +87,7 @@ Authorization: Bearer {accessToken}
 | WebRTC signaling | WebSocket |
 | STUN/TURN | 무료 STUN 우선, 연결 불안정 시 TURN 추가 |
 | 지도 표현 방식 | 이미지 지도 + 좌표 오버레이 |
-| 지도 파일 관리 | 서버 정적 파일에 저장하고 DB에는 URL 저장 |
+| 지도 파일 관리 | 서버 정적 파일에 저장하고 DB에는 상대 URL(`/uploads/maps/...`) 저장 |
 | 경로 탐색 | 백엔드 Dijkstra |
 | 카메라 이미지 처리 | 위치 인식 처리 후 즉시 폐기 원칙 |
 | 외부 지도 연계 | 네이버지도 우선 |
@@ -334,7 +334,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "floorId": 1,
       "floorCode": "B1",
       "mapType": "image",
-      "mapUrl": "https://example.com/maps/station-1-b1.png",
+      "mapUrl": "/uploads/maps/3f2a1b.png",
       "width": 1200,
       "height": 800,
       "scaleMPerPx": 0.05,
@@ -369,11 +369,11 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
   "data": [
     {
       "facilityId": 10,
+      "stationId": 1,
+      "floorId": 1,
       "facilityType": "exit",
-      "name": "5번 출구",
       "nameKo": "5번 출구",
       "nameEn": "Exit 5",
-      "floorId": 1,
       "mapX": 820.4,
       "mapY": 120.7,
       "linkedNodeId": 44,
@@ -399,22 +399,28 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
   "success": true,
   "data": {
     "facilityId": 10,
+    "stationId": 1,
+    "floorId": 1,
     "facilityType": "exit",
     "nameKo": "5번 출구",
     "nameEn": "Exit 5",
-    "floorId": 1,
     "mapX": 820.4,
     "mapY": 120.7,
     "linkedNodeId": 44,
+    "isAccessible": true,
     "exitDetail": {
       "exitNumber": "5",
       "outsideLatitude": 37.4982,
-      "outsideLongitude": 127.0281
+      "outsideLongitude": 127.0281,
+      "descriptionKo": null,
+      "descriptionEn": null
     }
   },
   "message": null
 }
 ```
+
+출구가 아닌 시설은 `exitDetail`이 `null`이다.
 
 ---
 
@@ -424,14 +430,14 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ### GET `/destinations/search`
 
-역 내부 시설과 역 주변 장소를 통합 검색한다.
+역 내부 시설과 역 주변 장소를 이름 키워드로 통합 검색한다. 활성 시설(`facility`)을 먼저, 이어서 활성 주변 장소(`place`)를 반환한다. `category`는 시설이면 `facilityType`, 장소면 장소 카테고리다.
 
 #### Query
 
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
 | stationId | number | Y | 역 ID |
-| keyword | string | Y | 검색어 |
+| keyword | string | Y | 검색어 (공백·누락 시 `INVALID_REQUEST`) |
 | language | string | N | ko, en |
 
 #### Response
@@ -443,13 +449,15 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
     {
       "destinationType": "facility",
       "destinationId": 10,
-      "name": "Exit 5",
+      "nameKo": "5번 출구",
+      "nameEn": "Exit 5",
       "category": "exit"
     },
     {
       "destinationType": "place",
       "destinationId": 3,
-      "name": "COEX Mall",
+      "nameKo": "코엑스몰",
+      "nameEn": "COEX Mall",
       "category": "shopping"
     }
   ],
@@ -498,7 +506,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ### GET `/places/{placeId}/recommended-exits`
 
-역 주변 장소와 가까운 추천 출구를 조회한다.
+역 주변 장소와 연결된 추천 출구를 우선순위(`priority` 오름차순)로 조회한다. 관리자가 등록한 장소-출구 추천(`place_exit_recommendation`)을 기준으로 하며, 추천 출구 시설이 비활성/삭제된 경우 결과에서 제외한다. `exitLocation`은 출구 상세(`exit_detail`)의 외부 좌표이며 좌표가 없으면 `null`이다. 장소가 없거나 비활성이면 `PLACE_NOT_FOUND`.
 
 #### Response
 
@@ -510,10 +518,12 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "recommendationId": 1,
       "placeId": 3,
       "exitFacilityId": 10,
-      "exitName": "5번 출구",
+      "exitNameKo": "5번 출구",
+      "exitNameEn": "Exit 5",
       "priority": 1,
       "isPrimary": true,
-      "reason": "목적지와 가장 가까운 출구입니다.",
+      "reasonKo": "목적지와 가장 가까운 출구입니다.",
+      "reasonEn": "This is the closest exit to your destination.",
       "walkingTimeMin": 6,
       "exitLocation": {
         "latitude": 37.4982,
@@ -1306,9 +1316,11 @@ WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
 
 ---
 
-## 13.4 지도 등록
+## 13.4 지도 등록·조회
 
 ### POST `/admin/floors/{floorId}/maps`
+
+층별 지도 이미지를 업로드한다. 파일은 서버 정적 디렉토리에 저장하고 DB에는 상대 URL(`/uploads/maps/{fileName}`)을 저장한다. 같은 층에 이미 활성 지도가 있으면 자동으로 비활성화하고 새 지도를 활성 지도로 등록한다. `version`은 `v1`, `v2` 순으로 자동 부여한다.
 
 #### Content-Type
 
@@ -1326,9 +1338,59 @@ multipart/form-data
 | height | number | N | 지도 높이 |
 | scaleMPerPx | number | N | 픽셀당 실제 거리 |
 
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "mapId": 1
+  },
+  "message": null
+}
+```
+
 ---
 
-## 13.5 시설 등록
+### GET `/admin/floors/{floorId}/maps`
+
+관리자 화면에서 등록된 지도를 미리보기 위해 해당 층의 활성 지도 목록을 조회한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "mapId": 1,
+      "floorId": 2,
+      "floorCode": "B2",
+      "mapType": "image",
+      "mapUrl": "/uploads/maps/3f2a1b.png",
+      "width": 1200,
+      "height": 800,
+      "scaleMPerPx": 0.05,
+      "version": "v1"
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+## 13.5 시설·출구 관리
+
+시설(출구·개찰구·승강장·엘리베이터 등)을 등록·조회·수정·삭제한다. `facilityType`은 ERD_초안.md 의 시설 유형(`exit`, `gate`, `platform`, `transfer_passage`, `stair`, `escalator`, `elevator`, `restroom`, `station_office`, `ticket_machine`, `card_charger`, `locker`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_FACILITY_TYPE`로 거부한다. `facilityType`이 `exit`이고 `exitDetail`이 있으면 출구 상세를 함께 저장한다. 삭제는 물리 삭제 대신 `is_active=false` 처리한다.
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/admin/facilities` | 시설 등록 |
+| GET | `/admin/facilities` | 시설 목록 조회 (`stationId` 필수, `floorId`·`facilityType` 선택 필터) |
+| GET | `/admin/facilities/{facilityId}` | 시설 상세 조회 (출구면 `exitDetail` 포함) |
+| PATCH | `/admin/facilities/{facilityId}` | 시설 수정 |
+| DELETE | `/admin/facilities/{facilityId}` | 시설 비활성화 |
 
 ### POST `/admin/facilities`
 
@@ -1353,9 +1415,117 @@ multipart/form-data
 }
 ```
 
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "facilityId": 10
+  },
+  "message": null
+}
+```
+
+### GET `/admin/facilities`
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| stationId | number | Y | 역 ID |
+| floorId | number | N | 층 필터 |
+| facilityType | string | N | 시설 유형 필터 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "facilityId": 10,
+      "stationId": 1,
+      "floorId": 2,
+      "facilityType": "exit",
+      "nameKo": "5번 출구",
+      "nameEn": "Exit 5",
+      "mapX": 820.4,
+      "mapY": 120.7,
+      "linkedNodeId": 44,
+      "isAccessible": true
+    }
+  ],
+  "message": null
+}
+```
+
+### GET `/admin/facilities/{facilityId}`
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "facilityId": 10,
+    "stationId": 1,
+    "floorId": 2,
+    "facilityType": "exit",
+    "nameKo": "5번 출구",
+    "nameEn": "Exit 5",
+    "mapX": 820.4,
+    "mapY": 120.7,
+    "linkedNodeId": 44,
+    "isAccessible": true,
+    "exitDetail": {
+      "exitNumber": "5",
+      "outsideLatitude": 37.4982,
+      "outsideLongitude": 127.0281,
+      "descriptionKo": null,
+      "descriptionEn": null
+    }
+  },
+  "message": null
+}
+```
+
+### PATCH `/admin/facilities/{facilityId}`
+
+수정 요청은 `stationId`·`floorId`를 제외한 필드로 구성한다. `facilityType`이 `exit`가 아닌 값으로 변경되면 기존 `exitDetail`은 삭제된다.
+
+#### Request
+
+```json
+{
+  "facilityType": "exit",
+  "nameKo": "5번 출구",
+  "nameEn": "Exit 5",
+  "mapX": 820.4,
+  "mapY": 120.7,
+  "linkedNodeId": 44,
+  "isAccessible": true,
+  "exitDetail": {
+    "exitNumber": "5",
+    "outsideLatitude": 37.4982,
+    "outsideLongitude": 127.0281
+  }
+}
+```
+
 ---
 
-## 13.6 경로 노드 등록
+## 13.6 경로 노드 관리
+
+경로 탐색용 노드를 등록·조회·수정·삭제한다. `nodeType`은 ERD_초안.md 의 노드 유형(`normal`, `junction`, `facility`, `floor_transition`, `exit`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_NODE_TYPE`로 거부한다. 노드는 물리 삭제하며, 간선·시설 등에서 참조 중이면 `ROUTE_NODE_IN_USE`로 삭제를 막는다.
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/admin/route-nodes` | 노드 등록 |
+| GET | `/admin/route-nodes` | 노드 목록 조회 (`stationId` 필수, `floorId` 선택 필터) |
+| GET | `/admin/route-nodes/{nodeId}` | 노드 상세 조회 |
+| PATCH | `/admin/route-nodes/{nodeId}` | 노드 수정 |
+| DELETE | `/admin/route-nodes/{nodeId}` | 노드 삭제 |
 
 ### POST `/admin/route-nodes`
 
@@ -1373,9 +1543,52 @@ multipart/form-data
 }
 ```
 
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "nodeId": 15
+  },
+  "message": null
+}
+```
+
+### GET `/admin/route-nodes/{nodeId}`
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "nodeId": 15,
+    "stationId": 1,
+    "floorId": 2,
+    "nodeType": "junction",
+    "name": "B2 갈림길 1",
+    "mapX": 300.0,
+    "mapY": 200.0,
+    "isLandmark": true
+  },
+  "message": null
+}
+```
+
 ---
 
-## 13.7 경로 간선 등록
+## 13.7 경로 간선 관리
+
+노드 간 이동 간선을 등록·조회·수정·삭제한다. `moveType`은 ERD_초안.md 의 이동 유형(`walkway`, `stair`, `escalator`, `elevator`, `gate`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_MOVE_TYPE`로 거부한다. `fromNodeId`와 `toNodeId`는 같은 역의 노드여야 하고 서로 달라야 한다. 삭제는 `is_active=false` 처리한다.
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/admin/route-edges` | 간선 등록 |
+| GET | `/admin/route-edges` | 간선 목록 조회 (`stationId` 필수) |
+| GET | `/admin/route-edges/{edgeId}` | 간선 상세 조회 |
+| PATCH | `/admin/route-edges/{edgeId}` | 간선 수정 |
+| DELETE | `/admin/route-edges/{edgeId}` | 간선 비활성화 |
 
 ### POST `/admin/route-edges`
 
@@ -1391,6 +1604,40 @@ multipart/form-data
   "moveType": "walkway",
   "isAccessible": true,
   "isBidirectional": true
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "edgeId": 30
+  },
+  "message": null
+}
+```
+
+### GET `/admin/route-edges/{edgeId}`
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "edgeId": 30,
+    "stationId": 1,
+    "fromNodeId": 15,
+    "toNodeId": 16,
+    "distanceM": 20,
+    "estimatedTimeSec": 30,
+    "moveType": "walkway",
+    "isAccessible": true,
+    "isBidirectional": true
+  },
+  "message": null
 }
 ```
 
@@ -1560,10 +1807,20 @@ multipart/form-data
 | INVALID_REQUEST | 요청 형식이 잘못됨 |
 | STATION_NOT_FOUND | 역을 찾을 수 없음 |
 | FACILITY_NOT_FOUND | 시설을 찾을 수 없음 |
+| UNSUPPORTED_FACILITY_TYPE | 지원하지 않는 시설 유형 |
+| FLOOR_NOT_FOUND | 층을 찾을 수 없음 |
+| INVALID_MAP_FILE | 지도 파일이 비어 있거나 올바르지 않음 |
+| UNSUPPORTED_MAP_TYPE | 지원하지 않는 지도 유형 |
+| FILE_STORAGE_FAILED | 파일 저장 실패 |
 | PLACE_NOT_FOUND | 주변 장소를 찾을 수 없음 |
 | USER_SESSION_NOT_FOUND | 사용자 세션을 찾을 수 없음 |
 | LOCALIZATION_FAILED | 위치 인식 실패 |
 | ROUTE_NOT_FOUND | 경로를 찾을 수 없음 |
+| ROUTE_NODE_NOT_FOUND | 경로 노드를 찾을 수 없음 |
+| ROUTE_EDGE_NOT_FOUND | 경로 간선을 찾을 수 없음 |
+| ROUTE_NODE_IN_USE | 사용 중인 경로 노드는 삭제할 수 없음 |
+| UNSUPPORTED_NODE_TYPE | 지원하지 않는 노드 유형 |
+| UNSUPPORTED_MOVE_TYPE | 지원하지 않는 이동 유형 |
 | CONSULTATION_NOT_FOUND | 상담 세션을 찾을 수 없음 |
 | COUNSELOR_UNAUTHORIZED | 상담자 인증 실패 |
 | ADMIN_UNAUTHORIZED | 관리자 인증 실패 |
