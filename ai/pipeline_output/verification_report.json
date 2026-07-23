@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-07-23T04:03:59.776011+00:00",
+  "source": {
+    "pipelineOutput": "pipeline_output",
+    "mapDirectory": "colmap_aliked_lightglue_v4_2fps",
+    "database": "colmap_aliked_lightglue_v4_2fps/database.db",
+    "sparseModel": "colmap_aliked_lightglue_v4_2fps/sparse/0"
+  },
+  "featureConfiguration": {
+    "extractor": "ALIKED_N16ROT",
+    "matcher": "ALIKED_LIGHTGLUE",
+    "maxNumFeatures": 4096,
+    "descriptorDimension": 128,
+    "descriptorStorage": "FLOAT32"
+  },
+  "counts": {
+    "databaseImages": 766,
+    "registeredImages": 766,
+    "referenceImageFiles": 766,
+    "keypointRows": 766,
+    "descriptorRows": 766,
+    "points3D": 203384,
+    "point3DTrackObservations": 1505366,
+    "linkedImageObservations": 1505366,
+    "descriptorBlobBytes": 1027265024
+  },
+  "errors": {
+    "missingFeatureRows": 0,
+    "featureRowMismatches": 0,
+    "invalidSparseImageReferences": 0,
+    "imageNameMismatches": 0,
+    "invalidPoint2dIndices": 0,
+    "keypointCoordinateMismatches": 0,
+    "point3dTrackBackReferenceErrors": 0
+  },
+  "metrics": {
+    "maxKeypointCoordinateDeltaPx": 0.0
+  },
+  "checks": {
+    "featureStageIsAlikedN16Rot": true,
+    "matcherStageIsAlikedLightGlue": true,
+    "allDatabaseImagesHaveFeatures": true,
+    "keypointDescriptorRowsMatch": true,
+    "allSparseImagesExistInDatabase": true,
+    "sparseAndDatabaseNamesMatch": true,
+    "point2dIndicesAreValid": true,
+    "sparseAndDatabaseKeypointCoordinatesMatch": true,
+    "point3dTracksAreBidirectionallyConsistent": true,
+    "allRegisteredImagesObserve3dPoints": true,
+    "referenceImagesArePreserved": true,
+    "descriptorStorageMatches128Float32": true
+  },
+  "compatible": true,
+  "conclusion": "The sparse model directly references ALIKED_N16ROT keypoints and can be used without retriangulation."
+}

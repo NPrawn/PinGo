@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-07-23T04:07:20.207950+00:00",
+  "image": "B2/frame_000001.jpg",
+  "configuration": {
+    "modelName": "aliked-n16rot",
+    "resize": null,
+    "maxNumKeypoints": 4096,
+    "detectionThreshold": 0.2,
+    "nmsRadius": 2
+  },
+  "referenceKeypoints": 3233,
+  "queryKeypoints": 4096,
+  "nearestWithin1Px": 2078,
+  "medianNearestDistancePx": 0.985884428024292,
+  "meanCosineWithin1Px": 0.9461840391159058,
+  "medianCosineWithin1Px": 0.955844521522522,
+  "compatible": true,
+  "criterion": "at least 100 nearest points within 1px and median cosine >= 0.90"
+}

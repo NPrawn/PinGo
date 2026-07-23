@@ -17,7 +17,6 @@ class AlikedConfig:
     max_num_keypoints: int = 4096
     detection_threshold: float = 0.2
     nms_radius: int = 2
-    # 기준 맵이 원본 1920x1080 해상도에서 생성되었으므로 Query도 크기를 변경하지 않는다.
     resize: int | None = None
     descriptor_dim: int = 128
 
