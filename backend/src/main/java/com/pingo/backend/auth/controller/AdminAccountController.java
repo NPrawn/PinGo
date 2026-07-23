@@ -34,7 +34,7 @@ public class AdminAccountController {
     @DeleteMapping("/{accountId}")
     public ApiResponse<Void> deactivate(
             @PathVariable Long accountId){
-        adminAccountService.deactiveCounselor(accountId);
+        adminAccountService.deactivateCounselor(accountId);
         return ApiResponse.success();
     }
 }

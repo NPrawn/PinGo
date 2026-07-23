@@ -56,7 +56,7 @@ public class AdminAccountService {
     }
 
     @Transactional
-    public void deactiveCounselor(Long accountId){
+    public void deactivateCounselor(Long accountId){
         Account account = findCounselor(accountId);
         account.deactivate();
     }
