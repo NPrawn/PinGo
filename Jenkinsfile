@@ -9,6 +9,10 @@ pipeline {
         SPRING_PROFILES_ACTIVE = 'local'
         SPRING_DATASOURCE_USERNAME = 'pingo'
         SPRING_DATASOURCE_PASSWORD = 'REDACTED'
+        BACKEND_RELEASE_JAR = '/opt/pingo/backend/releases/pingo-backend.jar'
+        BACKEND_BACKUP_JAR = '/opt/pingo/backend/releases/pingo-backend.previous.jar'
+        BACKEND_SERVICE_NAME = 'pingo-backend'
+        BACKEND_HEALTH_URL = 'http://127.0.0.1:8080/api/health'
     }
 
     stages {
@@ -71,6 +75,37 @@ pipeline {
                             fi
                         '''
                     }
+                }
+            }
+        }
+
+        stage('Backend CD') {
+            steps {
+                gitlabCommitStatus(name: 'backend-cd') {
+                    sh '''
+                        chmod +x backend/gradlew
+                        ./backend/gradlew -p backend bootJar
+
+                        if [ -f "${BACKEND_RELEASE_JAR}" ]; then
+                          sudo cp "${BACKEND_RELEASE_JAR}" "${BACKEND_BACKUP_JAR}"
+                        fi
+
+                        sudo install -m 644 backend/build/libs/backend-0.0.1-SNAPSHOT.jar "${BACKEND_RELEASE_JAR}"
+                        sudo systemctl restart "${BACKEND_SERVICE_NAME}"
+
+                        for i in $(seq 1 30); do
+                          if curl -fsS "${BACKEND_HEALTH_URL}"; then
+                            echo "Backend health check succeeded"
+                            exit 0
+                          fi
+                          echo "Waiting for backend health..."
+                          sleep 2
+                        done
+
+                        echo "Backend health check failed"
+                        sudo systemctl status "${BACKEND_SERVICE_NAME}" --no-pager || true
+                        exit 1
+                    '''
                 }
             }
         }
