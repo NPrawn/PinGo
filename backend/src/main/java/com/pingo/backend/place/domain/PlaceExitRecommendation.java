@@ -82,6 +82,10 @@ public class PlaceExitRecommendation {
         return new PlaceExitRecommendation(placeId, exitFacilityId, priority, reasonKo, reasonEn, walkingTimeMin, primary);
     }
 
+    public void unsetPrimary() {
+        this.primary = false;
+    }
+
     @PrePersist
     private void prePersist() {
         LocalDateTime now = LocalDateTime.now();
