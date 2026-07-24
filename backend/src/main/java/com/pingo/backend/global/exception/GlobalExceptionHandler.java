@@ -1,6 +1,7 @@
 package com.pingo.backend.global.exception;
 
 import com.pingo.backend.global.response.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -19,7 +20,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(errorCode.getCodeName(), exception.getMessage()));
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, MissingServletRequestParameterException.class})
+    @ExceptionHandler({MethodArgumentNotValidException.class, MissingServletRequestParameterException.class, ConstraintViolationException.class})
     public ResponseEntity<ApiResponse<Void>> handleInvalidRequestException(Exception exception) {
         ErrorCode errorCode = ErrorCode.INVALID_REQUEST;
 

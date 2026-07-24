@@ -145,11 +145,11 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 `confidenceLabel` 값은 `high`, `medium`, `low` 중 하나를 사용한다.
 
-### 2.8 인증 API (통합 로그인)
+## 2.8 인증 API (통합 로그인)
 
 상담자와 관리자는 별도 엔드포인트가 아닌 하나의 통합 로그인 API를 공유한다. 응답의 `accountType` 값(`COUNSELOR` | `ADMIN`)으로 프론트엔드가 역할을 구분해 라우팅한다.
 
-#### POST `/auth/login`
+### POST `/auth/login`
 
 #### Request
 
@@ -195,6 +195,66 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 ```
 
 > 이전 초안에서는 `/counselors/login`, `/admins/login`을 별도로 정의했으나(11.1, 13.1 참고), account 테이블 통합(ERD_초안.md 5.6 참고)에 맞춰 `POST /auth/login` 하나로 합쳤다. 응답도 `counselor`/`admin` 중첩 객체가 아니라 평평한(flat) 구조이며, 관리자 세부 역할 구분 필드(`role`: admin/super_admin)는 아직 구현되지 않았다 — 필요해지면 추가 논의 필요.
+
+
+## 2.9 상담자(역무원) 회원가입
+
+### POST `/auth/signup`
+
+상담자만 자가 회원가입이 가능하다. 관리자 계정은 회원가입 API로 생성하지 않는다(13.10 참고). 가입 즉시 로그인 가능한 상태가 아니라 **승인 대기(비활성)** 상태로 생성되며, 관리자 승인 후에만 로그인할 수 있다.
+
+#### Request
+
+```json
+{
+  "loginId": "counselor02",
+  "password": "password123",
+  "name": "김상담",
+  "stationId": 1
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "accountId": 8,
+    "loginId": "counselor02",
+    "name": "김상담",
+    "stationId": 1
+  },
+  "message": null
+}
+```
+
+> 생성된 계정은 `is_active = false` 상태다. 관리자 승인 전 로그인 시도는 `INACTIVE_ACCOUNT`로 거부된다. 이미 사용 중인 `loginId`로 요청하면 `DUPLICATE_LOGIN_ID`(409), 존재하지 않는 `stationId`면 `STATION_NOT_FOUND`(404)로 거부된다.
+
+
+## 2.10 중복 아이디 체크
+
+### GET `/auth/check-login-id`
+
+회원가입 폼에서 아이디를 입력하는 시점에 실시간으로 중복 여부를 확인하기 위한 API다. 이 API를 호출하지 않고 바로 `/auth/signup`을 호출해도 되며, 최종 중복 검증은 signup API 쪽에서 다시 수행한다(위 참고).
+
+#### Query
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| loginId | string | Y | 확인할 로그인 ID |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": true,
+  "message": null
+}
+```
+
+`data`는 사용 가능하면 `true`, 이미 사용 중이면 `false`다.
 
 ---
 
@@ -1837,6 +1897,7 @@ multipart/form-data
 | 코드 | 설명 |
 | --- | --- |
 | INVALID_REQUEST | 요청 형식이 잘못됨 |
+| DUPLICATE_LOGIN_ID | 이미 사용 중인 로그인 ID |
 | STATION_NOT_FOUND | 역을 찾을 수 없음 |
 | FACILITY_NOT_FOUND | 시설을 찾을 수 없음 |
 | UNSUPPORTED_FACILITY_TYPE | 지원하지 않는 시설 유형 |
@@ -1877,7 +1938,7 @@ multipart/form-data
 | 외부 지도 | POST /external-maps/directions |
 | 위치 공유 | POST /location-shares, GET /location-shares/{shareId} |
 | 상담 | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId} |
-| 인증 | POST /auth/login |
+| 인증 | POST /auth/login, POST /auth/signup, GET /auth/check-login-id |
 | 상담자 | GET /counselor/consultations, POST /consultations/{id}/accept |
 | WebRTC | WS /ws/signaling |
 | 교통카드 | POST /transport-cards/recommend |
