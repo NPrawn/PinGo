@@ -12,6 +12,8 @@ public interface NearbyPlaceRepository extends JpaRepository<NearbyPlace, Long> 
 
     Optional<NearbyPlace> findByIdAndActiveTrue(Long id);
 
+    List<NearbyPlace> findAllByStationIdOrderByNameKoAsc(Long stationId);
+
     @Query("""
             SELECT p FROM NearbyPlace p
             WHERE p.active = true

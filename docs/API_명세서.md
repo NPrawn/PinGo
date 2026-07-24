@@ -1621,9 +1621,13 @@ multipart/form-data
 
 ---
 
-## 13.8 주변 장소 등록
+## 13.8 주변 장소 관리
+
+주변 장소(역 외부 목적지)를 등록·조회·수정·삭제한다. 좌표(위경도)는 실외 GPS·관리자 입력값을 그대로 저장하며 서버에서 계산하지 않는다. 위도는 −90~90, 경도는 −180~180 범위를 벗어나면 `INVALID_REQUEST`. 단건 조회·수정·삭제는 **활성 장소만** 대상으로 하며, 비활성 장소는 `PLACE_NOT_FOUND`. 삭제는 물리 삭제 대신 `is_active=false` 처리하고, **연결된 장소-출구 추천도 함께 삭제**한다.
 
 ### POST `/admin/nearby-places`
+
+주변 장소를 등록한다. 성공 시 `201`과 생성된 `placeId`를 반환한다.
 
 #### Request
 
@@ -1635,15 +1639,57 @@ multipart/form-data
   "category": "shopping",
   "address": "서울특별시 강남구 영동대로 513",
   "latitude": 37.5118,
-  "longitude": 127.0592
+  "longitude": 127.0592,
+  "externalMapUrl": null
+}
+```
+
+### GET `/admin/nearby-places?stationId={stationId}`
+
+역별 주변 장소 목록을 조회한다. 관리자용이므로 비활성 장소도 포함한다. `stationId` 누락 시 `INVALID_REQUEST`.
+
+### GET `/admin/nearby-places/{placeId}`
+
+주변 장소 상세를 조회한다. 없으면 `PLACE_NOT_FOUND`.
+
+### PATCH `/admin/nearby-places/{placeId}`
+
+주변 장소를 수정한다. 소속 역(`stationId`)은 변경 대상이 아니다.
+
+### DELETE `/admin/nearby-places/{placeId}`
+
+주변 장소를 비활성화(`is_active=false`)한다.
+
+#### Response (상세·목록 요소 공통)
+
+```json
+{
+  "success": true,
+  "data": {
+    "placeId": 10,
+    "stationId": 1,
+    "nameKo": "코엑스몰",
+    "nameEn": "COEX Mall",
+    "category": "shopping",
+    "address": "서울특별시 강남구 영동대로 513",
+    "latitude": 37.5118,
+    "longitude": 127.0592,
+    "externalMapUrl": null,
+    "active": true
+  },
+  "message": null
 }
 ```
 
 ---
 
-## 13.9 장소-출구 추천 등록
+## 13.9 장소-출구 추천 관리
+
+주변 장소와 추천 출구(시설)를 연결·조회·삭제한다. 대상 장소는 **활성 장소**여야 하며 아니면 `PLACE_NOT_FOUND`. `exitFacilityId`는 **장소와 같은 역의 활성 출구(`facilityType=exit`) 시설**이어야 하며, 각각 없음/출구 아님/다른 역이면 `FACILITY_NOT_FOUND`·`UNSUPPORTED_FACILITY_TYPE`·`INVALID_REQUEST`로 거부한다. 동일한 `(placeId, exitFacilityId)` 조합을 중복 등록하면 `DUPLICATE_EXIT_RECOMMENDATION`. `isPrimary=true`로 등록하면 같은 장소의 **기존 대표 추천은 자동 해제**되어 대표는 항상 하나만 유지된다. `priority`는 0 이상이어야 한다. 추천은 물리 삭제한다. (수정은 삭제 후 재등록으로 대체하며 PATCH는 제공하지 않는다.)
 
 ### POST `/admin/place-exit-recommendations`
+
+장소-출구 추천을 등록한다. 성공 시 `201`과 생성된 `recommendationId`를 반환한다.
 
 #### Request
 
@@ -1658,6 +1704,14 @@ multipart/form-data
   "isPrimary": true
 }
 ```
+
+### GET `/admin/place-exit-recommendations?placeId={placeId}`
+
+장소별 추천 목록을 우선순위(`priority` 오름차순) 순으로 조회한다. `placeId` 누락 시 `INVALID_REQUEST`, 장소가 없으면 `PLACE_NOT_FOUND`.
+
+### DELETE `/admin/place-exit-recommendations/{recommendationId}`
+
+장소-출구 추천을 삭제한다. 없으면 `EXIT_RECOMMENDATION_NOT_FOUND`.
 
 ---
 
@@ -1791,6 +1845,8 @@ multipart/form-data
 | UNSUPPORTED_MAP_TYPE | 지원하지 않는 지도 유형 |
 | FILE_STORAGE_FAILED | 파일 저장 실패 |
 | PLACE_NOT_FOUND | 주변 장소를 찾을 수 없음 |
+| EXIT_RECOMMENDATION_NOT_FOUND | 장소-출구 추천을 찾을 수 없음 |
+| DUPLICATE_EXIT_RECOMMENDATION | 이미 등록된 장소-출구 추천 |
 | USER_SESSION_NOT_FOUND | 사용자 세션을 찾을 수 없음 |
 | LOCALIZATION_FAILED | 위치 인식 실패 |
 | ROUTE_NOT_FOUND | 경로를 찾을 수 없음 |

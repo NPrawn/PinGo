@@ -8,4 +8,10 @@ import java.util.List;
 public interface PlaceExitRecommendationRepository extends JpaRepository<PlaceExitRecommendation, Long> {
 
     List<PlaceExitRecommendation> findAllByPlaceIdOrderByPriorityAscIdAsc(Long placeId);
+
+    boolean existsByPlaceIdAndExitFacilityId(Long placeId, Long exitFacilityId);
+
+    List<PlaceExitRecommendation> findAllByPlaceIdAndPrimaryTrue(Long placeId);
+
+    void deleteAllByPlaceId(Long placeId);
 }
