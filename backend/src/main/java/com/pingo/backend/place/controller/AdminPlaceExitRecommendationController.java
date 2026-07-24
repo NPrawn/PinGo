@@ -37,7 +37,7 @@ public class AdminPlaceExitRecommendationController {
 
     @GetMapping
     public ApiResponse<List<PlaceExitRecommendationResponse>> getRecommendations(
-            @RequestParam Long placeId
+            @RequestParam(required = false) Long placeId
     ) {
         return ApiResponse.success(adminPlaceService.getRecommendations(placeId));
     }
