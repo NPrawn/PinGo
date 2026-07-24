@@ -1641,7 +1641,7 @@ multipart/form-data
 
 ## 13.8 주변 장소 관리
 
-주변 장소(역 외부 목적지)를 등록·조회·수정·삭제한다. 좌표(위경도)는 실외 GPS·관리자 입력값을 그대로 저장하며 서버에서 계산하지 않는다. 삭제는 물리 삭제 대신 `is_active=false` 처리한다.
+주변 장소(역 외부 목적지)를 등록·조회·수정·삭제한다. 좌표(위경도)는 실외 GPS·관리자 입력값을 그대로 저장하며 서버에서 계산하지 않는다. 위도는 −90~90, 경도는 −180~180 범위를 벗어나면 `INVALID_REQUEST`. 단건 조회·수정·삭제는 **활성 장소만** 대상으로 하며, 비활성 장소는 `PLACE_NOT_FOUND`. 삭제는 물리 삭제 대신 `is_active=false` 처리하고, **연결된 장소-출구 추천도 함께 삭제**한다.
 
 ### POST `/admin/nearby-places`
 
@@ -1703,7 +1703,7 @@ multipart/form-data
 
 ## 13.9 장소-출구 추천 관리
 
-주변 장소와 추천 출구(시설)를 연결·조회·삭제한다. `exitFacilityId`는 **장소와 같은 역의 활성 출구(`facilityType=exit`) 시설**이어야 하며, 각각 없음/출구 아님/다른 역이면 `FACILITY_NOT_FOUND`·`UNSUPPORTED_FACILITY_TYPE`·`INVALID_REQUEST`로 거부한다. 추천은 물리 삭제한다. (수정은 삭제 후 재등록으로 대체하며 PATCH는 제공하지 않는다.)
+주변 장소와 추천 출구(시설)를 연결·조회·삭제한다. 대상 장소는 **활성 장소**여야 하며 아니면 `PLACE_NOT_FOUND`. `exitFacilityId`는 **장소와 같은 역의 활성 출구(`facilityType=exit`) 시설**이어야 하며, 각각 없음/출구 아님/다른 역이면 `FACILITY_NOT_FOUND`·`UNSUPPORTED_FACILITY_TYPE`·`INVALID_REQUEST`로 거부한다. 동일한 `(placeId, exitFacilityId)` 조합을 중복 등록하면 `DUPLICATE_EXIT_RECOMMENDATION`. `isPrimary=true`로 등록하면 같은 장소의 **기존 대표 추천은 자동 해제**되어 대표는 항상 하나만 유지된다. `priority`는 0 이상이어야 한다. 추천은 물리 삭제한다. (수정은 삭제 후 재등록으로 대체하며 PATCH는 제공하지 않는다.)
 
 ### POST `/admin/place-exit-recommendations`
 
@@ -1864,6 +1864,7 @@ multipart/form-data
 | FILE_STORAGE_FAILED | 파일 저장 실패 |
 | PLACE_NOT_FOUND | 주변 장소를 찾을 수 없음 |
 | EXIT_RECOMMENDATION_NOT_FOUND | 장소-출구 추천을 찾을 수 없음 |
+| DUPLICATE_EXIT_RECOMMENDATION | 이미 등록된 장소-출구 추천 |
 | USER_SESSION_NOT_FOUND | 사용자 세션을 찾을 수 없음 |
 | LOCALIZATION_FAILED | 위치 인식 실패 |
 | ROUTE_NOT_FOUND | 경로를 찾을 수 없음 |
