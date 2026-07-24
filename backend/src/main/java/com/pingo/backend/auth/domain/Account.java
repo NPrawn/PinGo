@@ -20,6 +20,7 @@ public class Account {
     @Column(nullable = false, length = 20)
     private AccountType accountType;
 
+
     private Long stationId;
 
     @Column(nullable = false, unique = true)
@@ -55,10 +56,10 @@ public class Account {
         this.updatedAt = LocalDateTime.now();
     }
 
-    public static Account signUpCounselor(String loginIdl, String passwordHash, String name, Long stationId){
+    public static Account signUpCounselor(String loginId, String passwordHash, String name, Long stationId){
         Account account = new Account();
         account.accountType = AccountType.COUNSELOR;
-        account.loginId = loginIdl;
+        account.loginId = loginId;
         account.passwordHash = passwordHash;
         account.name = name;
         account.stationId = stationId;

@@ -11,6 +11,7 @@ import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.global.security.JwtProvider;
 import com.pingo.backend.station.repository.StationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,21 +59,18 @@ public class AuthService {
             throw new BusinessException(ErrorCode.DUPLICATE_LOGIN_ID);
         }
 
-        stationRepository.findById(request.stationId())
+        stationRepository.findByIdAndActiveTrue(request.stationId())
                 .orElseThrow(()-> new BusinessException(ErrorCode.STATION_NOT_FOUND));
 
         String passwordHash = passwordEncoder.encode(request.password());
-        Account account = Account.signUpCounselor(
-                request.loginId(), passwordHash, request.name(), request.stationId()
-        );
 
-        Account saved = accountRepository.save(account);
-
-        return new SignupResponse(
-                saved.getAccountId(),
-                saved.getLoginId(),
-                saved.getName(),
-                saved.getStationId()
+        Account account = Account.signUpCounselor(request.loginId(), passwordHash, request.name(), request.stationId()
         );
+        try {
+            Account saved = accountRepository.save(account);
+            return SignupResponse.from(saved);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.DUPLICATE_LOGIN_ID);
+        }
     }
 }
