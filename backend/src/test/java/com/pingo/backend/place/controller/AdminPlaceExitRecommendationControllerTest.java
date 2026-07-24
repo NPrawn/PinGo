@@ -1,5 +1,7 @@
 package com.pingo.backend.place.controller;
 
+import com.pingo.backend.global.exception.BusinessException;
+import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.global.exception.GlobalExceptionHandler;
 import com.pingo.backend.place.dto.response.PlaceExitRecommendationIdResponse;
 import com.pingo.backend.place.dto.response.PlaceExitRecommendationResponse;
@@ -84,6 +86,9 @@ class AdminPlaceExitRecommendationControllerTest {
     @Test
     @DisplayName("placeId 없이 추천 목록을 조회하면 400을 반환한다")
     void getRecommendationsRejectsMissingPlaceId() throws Exception {
+        when(adminPlaceService.getRecommendations(null))
+                .thenThrow(new BusinessException(ErrorCode.INVALID_REQUEST));
+
         mockMvc.perform(get("/api/admin/place-exit-recommendations"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
