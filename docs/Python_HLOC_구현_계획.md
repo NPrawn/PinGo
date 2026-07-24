@@ -113,13 +113,13 @@ Python 서비스의 책임은 다음으로 제한한다.
 
 ### 체크포인트 2. 맵 아티팩트 구성
 
-- [ ] 기존 sparse model을 `reference_sfm/`으로 구성
-- [ ] 원본 DB에서 image·ALIKED keypoint·descriptor만 `reference_features.db`로 정리
-- [ ] 기준 이미지 NetVLAD descriptor 생성
-- [ ] 기준 이미지 이름과 descriptor index 연결
-- [ ] `manifest.json` 생성
-- [ ] mapVersion, hloc commit, pycolmap 및 모델 설정 기록
-- [ ] 아티팩트 SHA-256 checksum 생성
+- [x] 기존 sparse model을 `reference_sfm/`으로 구성
+- [x] 원본 DB에서 image·ALIKED keypoint·descriptor만 `reference_features.db`로 정리
+- [x] 기준 이미지 NetVLAD descriptor 생성
+- [x] 기준 이미지 이름과 descriptor index 연결
+- [x] `manifest.json` 생성
+- [x] mapVersion, hloc commit, pycolmap 및 모델 설정 기록
+- [x] 아티팩트 SHA-256 checksum 생성
 
 완료 기준:
 
@@ -277,7 +277,7 @@ HTTP 요청으로 이미지와 카메라 정보를 받아 COLMAP 기준 6DoF pos
 
 - [ ] ALIKED N16Rot·NetVLAD·LightGlue를 process 시작 시 로딩
 - [x] FastAPI lifespan에서 `pycolmap.Reconstruction` 사전 로딩
-- [ ] 기준 이미지 global descriptor 메모리 로딩
+- [x] 기준 이미지 global descriptor 메모리 로딩
 - [x] 이미지 이름–COLMAP image ID index 생성
 - [x] mapVersion별 불변 `MapContext` 생성
 - [ ] 서버 시작 후 warm-up inference 실행

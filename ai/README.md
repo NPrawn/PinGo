@@ -56,14 +56,47 @@ Query feature extractor는 `aliked-n16rot`, keypoint 최대 4,096개, 원본 이
 이상으로 측정되었다. 이 맵에 SuperPoint descriptor 또는 크기를 변경한 Query
 descriptor를 혼합해서는 안 된다.
 
-검색용 descriptor를 생성한 후 다음 명령으로 서버 업로드용 번들을 만든다.
+맵 빌드 의존성을 설치하고 HLOC 공식 NetVLAD 설정으로 기준 이미지 검색용
+descriptor를 생성한다.
+
+```bash
+pip install -e ".[map-build]"
+pip install --no-deps \
+  "git+https://github.com/cvg/Hierarchical-Localization.git@c13273bd0ecc2917a35910fd843712a1c6243193"
+python tools/build_retrieval_index.py
+```
+
+생성 결과는 기준 이미지 이름을 key로 사용하는 4,096차원 L2 정규화 HDF5다.
+이후 다음 명령으로 서버 업로드용 번들을 만든다.
 
 ```bash
 python tools/build_serving_map.py \
-  --map-version station-b2-v1 \
-  --global-descriptors /path/to/global_descriptors.h5
+  --map-version YS-2026-07-23.1 \
+  --global-descriptors pipeline_output/global_descriptors.h5
 ```
 
-생성된 `runtime_maps/station-b2-v1/` 디렉터리는 하나의 불변 단위로 업로드한다.
+생성된 `runtime_maps/YS-2026-07-23.1/` 디렉터리는 하나의 불변 단위로
+업로드한다. Manifest의 파일 크기와 SHA-256 checksum이 모두 일치하고 sparse
+model, reference feature, global descriptor의 이미지 이름이 일치해야 로딩된다.
 `build_serving_map.py`는 원본 전체 DB에서 기준 feature 테이블만 내보내므로
 이미지 pair match 및 two-view geometry는 서빙용 DB에 포함되지 않는다.
+
+## 백엔드 없는 단일 이미지 위치추정
+
+로컬 serving map이 있으면 사진 파일 하나로 retrieval, LightGlue matching,
+2D–3D correspondence, PnP를 차례로 실행할 수 있다.
+
+```bash
+python tools/localize_image.py path/to/query.jpg \
+  --top-k 20 \
+  --focal-length-px 1700
+```
+
+`--map`을 생략하면 `runtime_maps/` 아래의 B2/B3 맵을 모두 발견해 전역 검색하고,
+각 층에서 기하 검증을 수행한다. 특정 층만 확인할 때는 `--floor B2` 또는
+`--floor B3`를 사용한다.
+
+`--focal-length-px`를 생략하면 이미지 긴 변의 1.2배를 임시 근삿값으로 사용한다.
+이 기본값은 파이프라인 연결을 확인하는 smoke test용이며, 실제 위치 정확도를
+평가할 때는 촬영 기기의 보정된 focal length를 전달해야 한다. 출력 좌표는 실내
+지도 좌표가 아니라 COLMAP world 좌표다.

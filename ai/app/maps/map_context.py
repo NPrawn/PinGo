@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.maps.global_descriptor_index import GlobalDescriptorIndex
+
 
 @dataclass(frozen=True, slots=True)
 class MapContext:
@@ -16,6 +18,18 @@ class MapContext:
     camera_count: int
     registered_image_count: int
     point3d_count: int
+    artifact_path: Path | None = None
+    reference_features_path: Path | None = None
+    global_descriptor_index: GlobalDescriptorIndex | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    manifest: Mapping[str, Any] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def find_image_id(self, image_name: str) -> int | None:
         """COLMAP에 등록된 이미지 이름으로 image ID를 조회한다."""
