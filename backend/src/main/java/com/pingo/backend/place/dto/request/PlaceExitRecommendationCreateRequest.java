@@ -1,6 +1,7 @@
 package com.pingo.backend.place.dto.request;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -15,6 +16,7 @@ public record PlaceExitRecommendationCreateRequest(
         Long exitFacilityId,
 
         @NotNull
+        @PositiveOrZero
         Integer priority,
 
         @Size(max = 255)
@@ -23,6 +25,7 @@ public record PlaceExitRecommendationCreateRequest(
         @Size(max = 255)
         String reasonEn,
 
+        @PositiveOrZero
         Integer walkingTimeMin,
 
         Boolean isPrimary
