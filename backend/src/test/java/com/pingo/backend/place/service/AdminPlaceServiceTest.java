@@ -12,6 +12,7 @@ import com.pingo.backend.place.dto.request.NearbyPlaceUpdateRequest;
 import com.pingo.backend.place.dto.request.PlaceExitRecommendationCreateRequest;
 import com.pingo.backend.place.dto.response.NearbyPlaceIdResponse;
 import com.pingo.backend.place.dto.response.NearbyPlaceResponse;
+import com.pingo.backend.place.dto.response.PlaceExitRecommendationResponse;
 import com.pingo.backend.place.repository.NearbyPlaceRepository;
 import com.pingo.backend.place.repository.PlaceExitRecommendationRepository;
 import com.pingo.backend.station.domain.Station;
@@ -107,9 +108,9 @@ class AdminPlaceServiceTest {
     }
 
     @Test
-    @DisplayName("존재하지 않는 장소를 조회하면 예외가 발생한다")
+    @DisplayName("존재하지 않거나 비활성인 장소를 조회하면 예외가 발생한다")
     void getPlaceNotFound() {
-        when(nearbyPlaceRepository.findById(99L)).thenReturn(Optional.empty());
+        when(nearbyPlaceRepository.findByIdAndActiveTrue(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> adminPlaceService.getPlace(99L))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -120,7 +121,7 @@ class AdminPlaceServiceTest {
     @DisplayName("주변 장소를 수정하면 필드가 갱신된다")
     void updatePlaceChangesFields() {
         NearbyPlace place = place(10L, 1L);
-        when(nearbyPlaceRepository.findById(10L)).thenReturn(Optional.of(place));
+        when(nearbyPlaceRepository.findByIdAndActiveTrue(10L)).thenReturn(Optional.of(place));
 
         NearbyPlaceResponse response = adminPlaceService.updatePlace(10L,
                 new NearbyPlaceUpdateRequest("스타필드", "Starfield", "shopping", "하남시", null, null, null));
@@ -130,14 +131,26 @@ class AdminPlaceServiceTest {
     }
 
     @Test
-    @DisplayName("주변 장소를 삭제하면 비활성화된다")
-    void deletePlaceDeactivates() {
+    @DisplayName("존재하지 않거나 비활성인 장소를 수정하면 예외가 발생한다")
+    void updatePlaceNotFound() {
+        when(nearbyPlaceRepository.findByIdAndActiveTrue(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminPlaceService.updatePlace(99L,
+                new NearbyPlaceUpdateRequest("스타필드", null, "shopping", null, null, null, null)))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PLACE_NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("장소를 삭제하면 비활성화하고 연결된 추천을 함께 제거한다")
+    void deletePlaceDeactivatesAndRemovesRecommendations() {
         NearbyPlace place = place(10L, 1L);
-        when(nearbyPlaceRepository.findById(10L)).thenReturn(Optional.of(place));
+        when(nearbyPlaceRepository.findByIdAndActiveTrue(10L)).thenReturn(Optional.of(place));
 
         adminPlaceService.deletePlace(10L);
 
         assertThat(place.isActive()).isFalse();
+        verify(placeExitRecommendationRepository).deleteAllByPlaceId(10L);
     }
 
     // ---------- 장소-출구 추천 ----------
@@ -148,7 +161,7 @@ class AdminPlaceServiceTest {
         when(nearbyPlaceRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(place(3L, 1L)));
         when(facilityRepository.findByIdAndActiveTrue(10L))
                 .thenReturn(Optional.of(facility(10L, 1L, FacilityType.EXIT.getCode())));
-        when(placeExitRecommendationRepository.save(any())).thenReturn(recommendation(20L, 3L, 10L));
+        when(placeExitRecommendationRepository.save(any())).thenReturn(recommendation(20L, 3L, 10L, true));
 
         var response = adminPlaceService.createRecommendation(
                 new PlaceExitRecommendationCreateRequest(3L, 10L, 1, "가장 가까운 출구", null, 6, true));
@@ -157,7 +170,7 @@ class AdminPlaceServiceTest {
     }
 
     @Test
-    @DisplayName("존재하지 않는 장소에 추천을 등록하면 예외가 발생한다")
+    @DisplayName("존재하지 않거나 비활성인 장소에 추천을 등록하면 예외가 발생한다")
     void createRecommendationRejectsUnknownPlace() {
         when(nearbyPlaceRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.empty());
 
@@ -165,6 +178,18 @@ class AdminPlaceServiceTest {
                 new PlaceExitRecommendationCreateRequest(3L, 10L, 1, null, null, null, null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PLACE_NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 출구 시설을 추천하면 예외가 발생한다")
+    void createRecommendationRejectsMissingFacility() {
+        when(nearbyPlaceRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(place(3L, 1L)));
+        when(facilityRepository.findByIdAndActiveTrue(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminPlaceService.createRecommendation(
+                new PlaceExitRecommendationCreateRequest(3L, 10L, 1, null, null, null, null)))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FACILITY_NOT_FOUND));
     }
 
     @Test
@@ -194,6 +219,57 @@ class AdminPlaceServiceTest {
     }
 
     @Test
+    @DisplayName("동일한 장소-출구 조합을 중복 등록하면 예외가 발생한다")
+    void createRecommendationRejectsDuplicate() {
+        when(nearbyPlaceRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(place(3L, 1L)));
+        when(facilityRepository.findByIdAndActiveTrue(10L))
+                .thenReturn(Optional.of(facility(10L, 1L, FacilityType.EXIT.getCode())));
+        when(placeExitRecommendationRepository.existsByPlaceIdAndExitFacilityId(3L, 10L)).thenReturn(true);
+
+        assertThatThrownBy(() -> adminPlaceService.createRecommendation(
+                new PlaceExitRecommendationCreateRequest(3L, 10L, 1, null, null, null, false)))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_EXIT_RECOMMENDATION));
+    }
+
+    @Test
+    @DisplayName("대표 추천으로 등록하면 기존 대표 추천을 해제한다")
+    void createRecommendationDemotesExistingPrimary() {
+        when(nearbyPlaceRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(place(3L, 1L)));
+        when(facilityRepository.findByIdAndActiveTrue(11L))
+                .thenReturn(Optional.of(facility(11L, 1L, FacilityType.EXIT.getCode())));
+        PlaceExitRecommendation existingPrimary = recommendation(20L, 3L, 10L, true);
+        when(placeExitRecommendationRepository.findAllByPlaceIdAndPrimaryTrue(3L))
+                .thenReturn(List.of(existingPrimary));
+        when(placeExitRecommendationRepository.save(any())).thenReturn(recommendation(21L, 3L, 11L, true));
+
+        adminPlaceService.createRecommendation(
+                new PlaceExitRecommendationCreateRequest(3L, 11L, 1, null, null, null, true));
+
+        assertThat(existingPrimary.isPrimary()).isFalse();
+    }
+
+    @Test
+    @DisplayName("장소별 추천 목록을 우선순위 순으로 조회한다")
+    void getRecommendationsReturnsList() {
+        when(nearbyPlaceRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(place(3L, 1L)));
+        when(placeExitRecommendationRepository.findAllByPlaceIdOrderByPriorityAscIdAsc(3L))
+                .thenReturn(List.of(recommendation(20L, 3L, 10L, true)));
+
+        List<PlaceExitRecommendationResponse> responses = adminPlaceService.getRecommendations(3L);
+
+        assertThat(responses).extracting(PlaceExitRecommendationResponse::recommendationId).containsExactly(20L);
+    }
+
+    @Test
+    @DisplayName("placeId 없이 추천 목록을 조회하면 예외가 발생한다")
+    void getRecommendationsRejectsNullPlaceId() {
+        assertThatThrownBy(() -> adminPlaceService.getRecommendations(null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    @Test
     @DisplayName("존재하지 않는 추천을 삭제하면 예외가 발생한다")
     void deleteRecommendationNotFound() {
         when(placeExitRecommendationRepository.findById(99L)).thenReturn(Optional.empty());
@@ -206,7 +282,7 @@ class AdminPlaceServiceTest {
     @Test
     @DisplayName("추천을 삭제하면 저장소에서 제거한다")
     void deleteRecommendationRemoves() {
-        PlaceExitRecommendation recommendation = recommendation(20L, 3L, 10L);
+        PlaceExitRecommendation recommendation = recommendation(20L, 3L, 10L, true);
         when(placeExitRecommendationRepository.findById(20L)).thenReturn(Optional.of(recommendation));
 
         adminPlaceService.deleteRecommendation(20L);
@@ -236,9 +312,9 @@ class AdminPlaceServiceTest {
         return facility;
     }
 
-    private PlaceExitRecommendation recommendation(long id, long placeId, long exitFacilityId) {
+    private PlaceExitRecommendation recommendation(long id, long placeId, long exitFacilityId, boolean primary) {
         PlaceExitRecommendation recommendation = PlaceExitRecommendation.create(
-                placeId, exitFacilityId, 1, "가까운 출구", null, 6, true);
+                placeId, exitFacilityId, 1, "가까운 출구", null, 6, primary);
         ReflectionTestUtils.setField(recommendation, "id", id);
         return recommendation;
     }
