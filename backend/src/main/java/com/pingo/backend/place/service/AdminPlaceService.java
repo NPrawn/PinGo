@@ -25,6 +25,7 @@ import java.util.List;
 
 /**
  * 주변 장소 및 장소-출구 추천 관리자 서비스. 좌표는 실외 GPS·관리자 입력값을 그대로 저장하며 서버에서 계산하지 않는다.
+ * 단건 장소 조회/수정/삭제와 추천 등록은 모두 활성(is_active=true) 장소만 대상으로 한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,9 +45,9 @@ public class AdminPlaceService {
 
         NearbyPlace place = NearbyPlace.create(
                 request.stationId(),
-                request.nameKo(),
+                trim(request.nameKo()),
                 trimToNull(request.nameEn()),
-                request.category(),
+                trim(request.category()),
                 trimToNull(request.address()),
                 request.latitude(),
                 request.longitude(),
@@ -66,16 +67,16 @@ public class AdminPlaceService {
     }
 
     public NearbyPlaceResponse getPlace(Long placeId) {
-        return NearbyPlaceResponse.from(getPlaceEntity(placeId));
+        return NearbyPlaceResponse.from(getActivePlaceEntity(placeId));
     }
 
     @Transactional
     public NearbyPlaceResponse updatePlace(Long placeId, NearbyPlaceUpdateRequest request) {
-        NearbyPlace place = getPlaceEntity(placeId);
+        NearbyPlace place = getActivePlaceEntity(placeId);
         place.update(
-                request.nameKo(),
+                trim(request.nameKo()),
                 trimToNull(request.nameEn()),
-                request.category(),
+                trim(request.category()),
                 trimToNull(request.address()),
                 request.latitude(),
                 request.longitude(),
@@ -86,7 +87,9 @@ public class AdminPlaceService {
 
     @Transactional
     public void deletePlace(Long placeId) {
-        getPlaceEntity(placeId).deactivate();
+        NearbyPlace place = getActivePlaceEntity(placeId);
+        place.deactivate();
+        placeExitRecommendationRepository.deleteAllByPlaceId(placeId);
     }
 
     // ---------- 장소-출구 추천 ----------
@@ -96,6 +99,16 @@ public class AdminPlaceService {
         NearbyPlace place = getActivePlaceEntity(request.placeId());
         validateExitFacility(request.exitFacilityId(), place.getStationId());
 
+        if (placeExitRecommendationRepository.existsByPlaceIdAndExitFacilityId(request.placeId(), request.exitFacilityId())) {
+            throw new BusinessException(ErrorCode.DUPLICATE_EXIT_RECOMMENDATION);
+        }
+
+        boolean primary = Boolean.TRUE.equals(request.isPrimary());
+        if (primary) {
+            placeExitRecommendationRepository.findAllByPlaceIdAndPrimaryTrue(request.placeId())
+                    .forEach(PlaceExitRecommendation::unsetPrimary);
+        }
+
         PlaceExitRecommendation recommendation = PlaceExitRecommendation.create(
                 request.placeId(),
                 request.exitFacilityId(),
@@ -103,14 +116,15 @@ public class AdminPlaceService {
                 trimToNull(request.reasonKo()),
                 trimToNull(request.reasonEn()),
                 request.walkingTimeMin(),
-                Boolean.TRUE.equals(request.isPrimary())
+                primary
         );
 
         return new PlaceExitRecommendationIdResponse(placeExitRecommendationRepository.save(recommendation).getId());
     }
 
     public List<PlaceExitRecommendationResponse> getRecommendations(Long placeId) {
-        getPlaceEntity(placeId);
+        requirePlaceId(placeId);
+        getActivePlaceEntity(placeId);
 
         return placeExitRecommendationRepository.findAllByPlaceIdOrderByPriorityAscIdAsc(placeId).stream()
                 .map(PlaceExitRecommendationResponse::from)
@@ -137,11 +151,6 @@ public class AdminPlaceService {
         }
     }
 
-    private NearbyPlace getPlaceEntity(Long placeId) {
-        return nearbyPlaceRepository.findById(placeId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
-    }
-
     private NearbyPlace getActivePlaceEntity(Long placeId) {
         return nearbyPlaceRepository.findByIdAndActiveTrue(placeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
@@ -153,10 +162,20 @@ public class AdminPlaceService {
         }
     }
 
+    private void requirePlaceId(Long placeId) {
+        if (placeId == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+    }
+
     private void validateStationActive(Long stationId) {
         if (stationRepository.findByIdAndActiveTrue(stationId).isEmpty()) {
             throw new BusinessException(ErrorCode.STATION_NOT_FOUND);
         }
+    }
+
+    private String trim(String value) {
+        return value == null ? null : value.trim();
     }
 
     private String trimToNull(String value) {
