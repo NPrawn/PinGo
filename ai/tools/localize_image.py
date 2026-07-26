@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import gc
 import json
 import sys
 from dataclasses import asdict
@@ -14,7 +13,7 @@ AI_ROOT = Path(__file__).resolve().parents[1]
 if str(AI_ROOT) not in sys.path:
     sys.path.insert(0, str(AI_ROOT))
 
-from app.engine.localizer import ImageLocalizer
+from app.engine.localizer import MultiMapLocalizer
 from app.maps.map_loader import MapLoader
 
 
@@ -86,36 +85,28 @@ def main() -> int:
         width, height = normalized.size
     focal_length = args.focal_length_px or max(width, height) * 1.2
 
-    floor_results: list[dict[str, Any]] = []
-    for floor, version, map_path in discover_maps(args.map, args.floor):
-        context = MapLoader().load(version, map_path)
-        localizer = ImageLocalizer(context)
-        result = localizer.localize(
-            image,
-            focal_length_px=focal_length,
-            top_k=args.top_k,
-        )
-        result_payload = asdict(result)
-        prefix_candidate_names(result_payload, floor)
-        result_payload["floor"] = floor
-        result_payload["map_version"] = version
-        floor_results.append(result_payload)
-        del localizer
-        gc.collect()
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
-
-    localized = [result for result in floor_results if result["status"] == "LOCALIZED"]
-    ranked = localized or floor_results
-    best = max(
-        ranked,
-        key=lambda result: (result["num_inliers"], result["inlier_ratio"]),
+    discovered = discover_maps(args.map, args.floor)
+    contexts = {
+        version: MapLoader().load(version, map_path)
+        for _floor, version, map_path in discovered
+    }
+    result = MultiMapLocalizer(contexts).localize(
+        image,
+        focal_length_px=focal_length,
+        top_k=args.top_k,
     )
+    floor_results: list[dict[str, Any]] = []
+    for item in result.map_results:
+        result_payload = asdict(item.result)
+        floor = item.floor or item.map_version
+        prefix_candidate_names(result_payload, floor)
+        result_payload["floor"] = item.floor
+        result_payload["map_version"] = item.map_version
+        floor_results.append(result_payload)
+
+    best = asdict(result.result)
+    if result.floor is not None:
+        prefix_candidate_names(best, result.floor)
     combined_candidates = sorted(
         (candidate for floor_result in floor_results for candidate in floor_result["candidates"]),
         key=lambda candidate: candidate["similarity"],
@@ -123,7 +114,8 @@ def main() -> int:
     )[: args.top_k]
     payload = {
         **best,
-        "floor": best["floor"] if localized else None,
+        "floor": result.floor,
+        "map_version": result.selected_map_version,
         "candidates": combined_candidates,
         "floor_results": floor_results,
     }
@@ -131,7 +123,7 @@ def main() -> int:
     payload["image_size"] = [width, height]
     payload["focal_length_px"] = focal_length
     print(json.dumps(payload, ensure_ascii=False, indent=2))
-    return 0 if localized else 2
+    return 0 if result.selected_map_version is not None else 2
 
 
 if __name__ == "__main__":

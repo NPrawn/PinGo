@@ -44,11 +44,21 @@ class TimingResponse(BaseModel):
     inference: int | None = None
 
 
+class MapResultResponse(BaseModel):
+    mapVersion: str
+    floor: str | None = None
+    status: LocalizationStatus
+    quality: QualityResponse
+
+
 class LocalizationResponse(BaseModel):
     requestId: str
     status: LocalizationStatus
     mapVersion: str
+    selectedMapVersion: str | None = None
+    floor: str | None = None
     pose: PoseResponse | None = None
     quality: QualityResponse | None = None
+    mapResults: list[MapResultResponse] = Field(default_factory=list)
     timingMs: TimingResponse
     failureReason: str | None = None

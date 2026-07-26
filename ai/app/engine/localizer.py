@@ -34,6 +34,29 @@ class LocalizationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedQuery:
+    """모든 맵이 공유하는 Query 전역·지역 특징."""
+
+    global_descriptor: np.ndarray
+    local_features: LocalFeatures
+
+
+@dataclass(frozen=True, slots=True)
+class MapLocalizationResult:
+    map_version: str
+    floor: str | None
+    result: LocalizationResult
+
+
+@dataclass(frozen=True, slots=True)
+class MultiMapLocalizationResult:
+    selected_map_version: str | None
+    floor: str | None
+    result: LocalizationResult
+    map_results: tuple[MapLocalizationResult, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _ReferenceFeatures:
     keypoints: np.ndarray
     descriptors: np.ndarray
@@ -59,19 +82,33 @@ class ImageLocalizer:
         self,
         context: MapContext,
         device: str | torch.device | None = None,
+        global_extractor: NetVladFeatureExtractor | None = None,
+        local_extractor: AlikedFeatureExtractor | None = None,
+        matcher: Any | None = None,
     ) -> None:
         if context.reference_features_path is None:
             raise ValueError("reference feature DB가 포함된 serving map이 필요합니다.")
         if context.global_descriptor_index is None:
             raise ValueError("global descriptor가 포함된 serving map이 필요합니다.")
         self.context = context
-        self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
-        self.global_extractor = NetVladFeatureExtractor(
+        requested_device = str(device or "auto").lower()
+        if requested_device == "auto":
+            requested_device = "cuda" if torch.cuda.is_available() else "cpu"
+        if requested_device == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("AI_DEVICE=cuda로 설정됐지만 CUDA를 사용할 수 없습니다.")
+        self.device = torch.device(requested_device)
+        self.global_extractor = global_extractor or NetVladFeatureExtractor(
             resize_max=context.global_descriptor_index.resize_max,
             device=self.device,
         )
-        self.local_extractor = AlikedFeatureExtractor(device=self.device)
-        self._matcher: Any | None = None
+        self.local_extractor = local_extractor or AlikedFeatureExtractor(device=self.device)
+        self._matcher: Any | None = matcher
+
+    def load(self) -> None:
+        """서버 시작 시 세 모델을 한 번 로드하여 요청 경로에서 재사용한다."""
+        self.global_extractor.load()
+        self.local_extractor.load()
+        self._load_matcher()
 
     def localize(
         self,
@@ -79,9 +116,27 @@ class ImageLocalizer:
         focal_length_px: float,
         top_k: int = 20,
     ) -> LocalizationResult:
-        query_global = self.global_extractor.extract(image)
-        candidates = self._retrieve(query_global, top_k)
-        query = self.local_extractor.extract(image)
+        return self.localize_prepared(
+            self.prepare_query(image),
+            focal_length_px=focal_length_px,
+            top_k=top_k,
+        )
+
+    def prepare_query(self, image: bytes) -> PreparedQuery:
+        """Query 특징을 한 번 추출하여 여러 맵에서 재사용할 수 있게 한다."""
+        return PreparedQuery(
+            global_descriptor=self.global_extractor.extract(image),
+            local_features=self.local_extractor.extract(image),
+        )
+
+    def localize_prepared(
+        self,
+        prepared: PreparedQuery,
+        focal_length_px: float,
+        top_k: int = 20,
+    ) -> LocalizationResult:
+        candidates = self._retrieve(prepared.global_descriptor, top_k)
+        query = prepared.local_features
         correspondences, total_matches = self._match_candidates(query, candidates)
         selected = self._select_correspondences(correspondences)
         if len(selected) < 4:
@@ -241,10 +296,7 @@ class ImageLocalizer:
         query: LocalFeatures,
         reference: _ReferenceFeatures,
     ) -> tuple[np.ndarray, np.ndarray]:
-        if self._matcher is None:
-            from lightglue import LightGlue
-
-            self._matcher = LightGlue(features="aliked").eval().to(self.device)
+        self._load_matcher()
         data = {
             "image0": self._as_matcher_input(query.keypoints, query.descriptors, query.image_size),
             "image1": self._as_matcher_input(
@@ -259,6 +311,12 @@ class ImageLocalizer:
             result["matches"][0].detach().cpu().numpy(),
             result["scores"][0].detach().cpu().numpy(),
         )
+
+    def _load_matcher(self) -> None:
+        if self._matcher is None:
+            from lightglue import LightGlue
+
+            self._matcher = LightGlue(features="aliked").eval().to(self.device)
 
     def _as_matcher_input(
         self,
@@ -314,3 +372,120 @@ class ImageLocalizer:
             camera_center=None,
             cam_from_world=None,
         )
+
+
+class MultiMapLocalizer:
+    """하나의 Query 특징으로 여러 층 맵을 비교하는 공유 추론 엔진."""
+
+    def __init__(
+        self,
+        contexts: dict[str, MapContext],
+        device: str | torch.device | None = None,
+        global_extractor: NetVladFeatureExtractor | None = None,
+        local_extractor: AlikedFeatureExtractor | None = None,
+        matcher: Any | None = None,
+    ) -> None:
+        if not contexts:
+            raise ValueError("하나 이상의 serving map이 필요합니다.")
+        requested_device = str(device or "auto").lower()
+        if requested_device == "auto":
+            requested_device = "cuda" if torch.cuda.is_available() else "cpu"
+        if requested_device == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("AI_DEVICE=cuda로 설정됐지만 CUDA를 사용할 수 없습니다.")
+        self.device = torch.device(requested_device)
+        self.contexts = dict(contexts)
+
+        indexes = [context.global_descriptor_index for context in contexts.values()]
+        if any(index is None for index in indexes):
+            raise ValueError("모든 맵에 global descriptor가 필요합니다.")
+        resize_values = {index.resize_max for index in indexes if index is not None}
+        model_names = {index.model_name for index in indexes if index is not None}
+        if len(resize_values) != 1 or len(model_names) != 1:
+            raise ValueError("모든 맵의 NetVLAD 모델과 resize 설정이 같아야 합니다.")
+
+        self.global_extractor = global_extractor or NetVladFeatureExtractor(
+            resize_max=resize_values.pop(),
+            device=self.device,
+        )
+        self.local_extractor = local_extractor or AlikedFeatureExtractor(device=self.device)
+        self._matcher = matcher
+        self._localizers: dict[str, ImageLocalizer] = {}
+
+    def load(self) -> None:
+        """공유 모델은 한 번만 로드하고 맵별 로컬라이저에 같은 객체를 주입한다."""
+        self.global_extractor.load()
+        self.local_extractor.load()
+        if self._matcher is None:
+            from lightglue import LightGlue
+
+            self._matcher = LightGlue(features="aliked").eval().to(self.device)
+        if not self._localizers:
+            self._localizers = {
+                version: ImageLocalizer(
+                    context,
+                    device=self.device,
+                    global_extractor=self.global_extractor,
+                    local_extractor=self.local_extractor,
+                    matcher=self._matcher,
+                )
+                for version, context in self.contexts.items()
+            }
+
+    def localize(
+        self,
+        image: bytes,
+        focal_length_px: float,
+        top_k: int = 20,
+        map_versions: tuple[str, ...] | None = None,
+    ) -> MultiMapLocalizationResult:
+        self.load()
+        versions = map_versions or tuple(self.contexts)
+        unknown = sorted(set(versions) - set(self.contexts))
+        if unknown:
+            raise ValueError(f"로드되지 않은 mapVersion입니다: {', '.join(unknown)}")
+
+        prepared = PreparedQuery(
+            global_descriptor=self.global_extractor.extract(image),
+            local_features=self.local_extractor.extract(image),
+        )
+        map_results = tuple(
+            MapLocalizationResult(
+                map_version=version,
+                floor=self._floor(self.contexts[version]),
+                result=self._localizers[version].localize_prepared(
+                    prepared,
+                    focal_length_px=focal_length_px,
+                    top_k=top_k,
+                ),
+            )
+            for version in versions
+        )
+        localized = tuple(
+            item for item in map_results if item.result.status == "LOCALIZED"
+        )
+        ranked = localized or map_results
+        best = max(
+            ranked,
+            key=lambda item: (
+                item.result.num_inliers,
+                item.result.inlier_ratio,
+                -(
+                    item.result.median_reprojection_error
+                    if item.result.median_reprojection_error is not None
+                    else float("inf")
+                ),
+            ),
+        )
+        return MultiMapLocalizationResult(
+            selected_map_version=best.map_version if localized else None,
+            floor=best.floor if localized else None,
+            result=best.result,
+            map_results=map_results,
+        )
+
+    @staticmethod
+    def _floor(context: MapContext) -> str | None:
+        if context.manifest is None:
+            return None
+        floor = context.manifest.get("floor")
+        return str(floor) if floor is not None else None

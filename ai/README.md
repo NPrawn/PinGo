@@ -93,8 +93,8 @@ python tools/localize_image.py path/to/query.jpg \
 ```
 
 `--map`을 생략하면 `runtime_maps/` 아래의 B2/B3 맵을 모두 발견해 전역 검색하고,
-각 층에서 기하 검증을 수행한다. 특정 층만 확인할 때는 `--floor B2` 또는
-`--floor B3`를 사용한다.
+Query NetVLAD·ALIKED 특징을 한 번만 추출한 뒤 각 층에서 기하 검증을 수행한다.
+특정 층만 확인할 때는 `--floor B2` 또는 `--floor B3`를 사용한다.
 
 `--focal-length-px`를 생략하면 이미지 긴 변의 1.2배를 임시 근삿값으로 사용한다.
 이 기본값은 파이프라인 연결을 확인하는 smoke test용이며, 실제 위치 정확도를

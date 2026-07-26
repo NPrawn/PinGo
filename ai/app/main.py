@@ -9,7 +9,8 @@ from app.api.localization import LocalizerFactory, router as localization_router
 from app.core.config import AppSettings
 from app.core.inference_limiter import InferenceLimiter
 from app.core.readiness import ReadinessState
-from app.engine.localizer import ImageLocalizer
+from app.engine.localizer import MultiMapLocalizer
+from app.maps.map_context import MapContext
 from app.maps.map_loader import MapLoadError, MapLoader
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,12 @@ def create_app(
     readiness_state = readiness or ReadinessState()
     app_settings = settings or AppSettings.from_env()
     loader = map_loader or MapLoader()
-    factory = localizer_factory or ImageLocalizer
+    factory = localizer_factory or (
+        lambda contexts: MultiMapLocalizer(
+            dict(contexts),
+            device=app_settings.device,
+        )
+    )
     limiter = inference_limiter or InferenceLimiter(
         max_concurrent=app_settings.max_concurrent_inferences,
         max_queue_size=app_settings.max_queue_size,
@@ -34,27 +40,55 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.map_context = None
-        if app_settings.map_version is None or app_settings.map_model_path is None:
+        application.state.map_contexts = {}
+        application.state.localizer = None
+        application.state.engine_preload_failed = False
+        map_specs = app_settings.configured_maps()
+        if not map_specs:
             readiness_state.mark_not_ready("map", "MAP_NOT_CONFIGURED")
         else:
             try:
-                application.state.map_context = loader.load(
-                    app_settings.map_version,
-                    app_settings.map_model_path,
-                )
+                contexts: dict[str, MapContext] = {
+                    spec.map_version: loader.load(spec.map_version, spec.path)
+                    for spec in map_specs
+                }
             except MapLoadError:
                 logger.exception(
-                    "COLMAP 맵 로딩에 실패했습니다: mapVersion=%s",
-                    app_settings.map_version,
+                    "COLMAP 맵 세트 로딩에 실패했습니다: mapVersions=%s",
+                    [spec.map_version for spec in map_specs],
                 )
                 readiness_state.mark_not_ready("map", "MAP_LOAD_FAILED")
             else:
+                application.state.map_contexts = contexts
+                application.state.map_context = (
+                    next(iter(contexts.values())) if len(contexts) == 1 else None
+                )
                 readiness_state.mark_ready("map")
+                try:
+                    localizer = factory(contexts)
+                    load = getattr(localizer, "load", None)
+                    if callable(load):
+                        load()
+                except Exception:
+                    logger.exception(
+                        "다중 맵 위치추정 엔진 사전 로딩에 실패했습니다: "
+                        "mapVersions=%s device=%s",
+                        list(contexts),
+                        app_settings.device,
+                    )
+                    application.state.engine_preload_failed = True
+                    readiness_state.mark_not_ready("engine", "ENGINE_LOAD_FAILED")
+                else:
+                    application.state.localizer = localizer
+                    readiness_state.mark_ready("engine")
 
         try:
             yield
         finally:
+            application.state.localizer = None
             application.state.map_context = None
+            application.state.map_contexts = {}
+            readiness_state.mark_not_ready("engine")
             readiness_state.mark_not_ready("map")
 
     application = FastAPI(
@@ -67,6 +101,9 @@ def create_app(
     application.state.readiness = readiness_state
     application.state.settings = app_settings
     application.state.map_context = None
+    application.state.map_contexts = {}
+    application.state.localizer = None
+    application.state.engine_preload_failed = False
     application.state.localizer_factory = factory
     application.state.inference_limiter = limiter
     application.include_router(health_router)

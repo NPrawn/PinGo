@@ -8,7 +8,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.core.config import AppSettings
-from app.engine.localizer import LocalizationResult, RetrievalCandidate
+from app.engine.localizer import (
+    LocalizationResult,
+    MapLocalizationResult,
+    MultiMapLocalizationResult,
+    RetrievalCandidate,
+)
 from app.main import create_app
 
 
@@ -22,15 +27,16 @@ def _jpeg_bytes(width=16, height=12):
 class _FakeLocalizer:
     calls: list
 
-    def localize(self, image, focal_length_px, top_k):
+    def localize(self, image, focal_length_px, top_k, map_versions=None):
         self.calls.append(
             {
                 "image": image,
                 "focal_length_px": focal_length_px,
                 "top_k": top_k,
+                "map_versions": map_versions,
             }
         )
-        return LocalizationResult(
+        result = LocalizationResult(
             status="LOCALIZED",
             candidates=(RetrievalCandidate("B2/frame_000001.jpg", 0.91),),
             total_matches=30,
@@ -44,6 +50,21 @@ class _FakeLocalizer:
                 "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
                 "translation": [4.0, 5.0, 6.0],
             },
+        )
+        version = map_versions[-1]
+        floor = "B3" if "b3" in version.lower() else "B2"
+        return MultiMapLocalizationResult(
+            selected_map_version=version,
+            floor=floor,
+            result=result,
+            map_results=tuple(
+                MapLocalizationResult(
+                    item,
+                    "B3" if "b3" in item.lower() else "B2",
+                    result,
+                )
+                for item in map_versions
+            ),
         )
 
 
@@ -104,6 +125,8 @@ class LocalizationApiTest(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["requestId"], "loc_test")
         self.assertEqual(payload["status"], "LOCALIZED")
+        self.assertEqual(payload["selectedMapVersion"], "station-b2-v1")
+        self.assertEqual(payload["floor"], "B2")
         self.assertEqual(payload["pose"]["cameraCenter"], [1.0, 2.0, 3.0])
         self.assertEqual(payload["quality"]["intrinsicsSource"], "DEVICE_PROFILE")
         self.assertIsInstance(payload["timingMs"]["validation"], int)
@@ -111,6 +134,7 @@ class LocalizationApiTest(unittest.TestCase):
         self.assertIsInstance(payload["timingMs"]["inference"], int)
         self.assertEqual(self.calls[0]["focal_length_px"], 900.0)
         self.assertEqual(self.calls[0]["top_k"], 30)
+        self.assertEqual(self.calls[0]["map_versions"], ("station-b2-v1",))
 
     def test_uses_estimated_focal_length_when_intrinsics_are_missing(self):
         with TestClient(self.app) as client:
@@ -124,6 +148,36 @@ class LocalizationApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.calls[0]["focal_length_px"], 24.0)
         self.assertEqual(response.json()["quality"]["intrinsicsSource"], "ESTIMATED")
+
+    def test_map_set_request_compares_all_loaded_maps(self):
+        app = create_app(
+            settings=AppSettings(
+                internal_token="secret",
+                map_set_version="station-v1",
+            ),
+            localizer_factory=lambda _contexts: _FakeLocalizer(self.calls),
+        )
+        with TestClient(app) as client:
+            app.state.map_contexts = {
+                "station-b2-v1": SimpleNamespace(map_version="station-b2-v1"),
+                "station-b3-v1": SimpleNamespace(map_version="station-b3-v1"),
+            }
+            response = client.post(
+                "/internal/v1/maps/station-v1/localize",
+                headers={"X-Internal-Token": "secret"},
+                files={"image": ("query.jpg", _jpeg_bytes(), "image/jpeg")},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self.calls[0]["map_versions"],
+            ("station-b2-v1", "station-b3-v1"),
+        )
+        payload = response.json()
+        self.assertEqual(payload["mapVersion"], "station-v1")
+        self.assertEqual(payload["selectedMapVersion"], "station-b3-v1")
+        self.assertEqual(payload["floor"], "B3")
+        self.assertEqual(len(payload["mapResults"]), 2)
 
     def test_rejects_missing_internal_token(self):
         with TestClient(self.app) as client:

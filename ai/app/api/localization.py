@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 import math
 import time
@@ -13,10 +14,16 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import AppSettings
 from app.core.inference_limiter import InferenceLimiter
-from app.engine.localizer import ImageLocalizer, LocalizationResult
+from app.engine.localizer import (
+    LocalizationResult,
+    MapLocalizationResult,
+    MultiMapLocalizationResult,
+    MultiMapLocalizer,
+)
 from app.maps.map_context import MapContext
 from app.schemas.localization import (
     LocalizationResponse,
+    MapResultResponse,
     PoseResponse,
     QualityResponse,
     TimingResponse,
@@ -24,7 +31,7 @@ from app.schemas.localization import (
 
 router = APIRouter(prefix="/internal/v1/maps", tags=["localization"])
 
-LocalizerFactory = Callable[[MapContext], ImageLocalizer]
+LocalizerFactory = Callable[[Mapping[str, MapContext]], MultiMapLocalizer]
 
 
 @router.post("/{map_version}/localize", response_model=LocalizationResponse)
@@ -46,8 +53,12 @@ async def localize(
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return _failure(request_id, map_version, "INTERNAL_ERROR", "UNAUTHORIZED", started)
 
-    context: MapContext | None = request.app.state.map_context
-    if context is None or context.map_version != map_version:
+    contexts: dict[str, MapContext] = dict(request.app.state.map_contexts)
+    legacy_context: MapContext | None = request.app.state.map_context
+    if not contexts and legacy_context is not None:
+        contexts = {legacy_context.map_version: legacy_context}
+    map_versions = _requested_map_versions(map_version, settings, contexts)
+    if not contexts or map_versions is None:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return _failure(
             request_id,
@@ -87,6 +98,20 @@ async def localize(
     top_k = _top_k(parsed_metadata, settings)
     validation_ms = _elapsed_ms(validation_started)
     factory: LocalizerFactory = request.app.state.localizer_factory
+    localizer: MultiMapLocalizer | None = request.app.state.localizer
+    if localizer is None and request.app.state.engine_preload_failed:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return _failure(
+            request_id,
+            map_version,
+            "INTERNAL_ERROR",
+            "ENGINE_NOT_READY",
+            started,
+            validation_ms=_elapsed_ms(validation_started),
+        )
+    if localizer is None:
+        # 테스트/개발 중 lifespan 외부에서 주입한 map context를 지원한다.
+        localizer = factory(contexts)
     limiter: InferenceLimiter = request.app.state.inference_limiter
     queue_started = time.perf_counter()
     if not await limiter.acquire():
@@ -105,10 +130,11 @@ async def localize(
     inference_started = time.perf_counter()
     try:
         result = await run_in_threadpool(
-            lambda: factory(context).localize(
+            lambda: localizer.localize(
                 image_bytes,
                 focal_length_px=focal_length,
                 top_k=top_k,
+                map_versions=map_versions,
             )
         )
     except Exception:
@@ -204,44 +230,75 @@ def _intrinsics_source(metadata: dict[str, Any]) -> str:
 def _from_result(
     request_id: str,
     map_version: str,
-    result: LocalizationResult,
+    result: MultiMapLocalizationResult,
     intrinsics_source: str,
     started: float,
     validation_ms: int | None = None,
     queue_ms: int | None = None,
     inference_ms: int | None = None,
 ) -> LocalizationResponse:
+    selected = result.result
     pose = None
-    if result.camera_center is not None and result.cam_from_world is not None:
+    if selected.camera_center is not None and selected.cam_from_world is not None:
         pose = PoseResponse(
             convention="CAM_FROM_COLMAP_WORLD",
-            rotationXyzw=result.cam_from_world["rotation_xyzw"],
-            translation=result.cam_from_world["translation"],
-            cameraCenter=list(result.camera_center),
+            rotationXyzw=selected.cam_from_world["rotation_xyzw"],
+            translation=selected.cam_from_world["translation"],
+            cameraCenter=list(selected.camera_center),
         )
     return LocalizationResponse(
         requestId=request_id,
-        status=result.status,
+        status=selected.status,
         mapVersion=map_version,
+        selectedMapVersion=result.selected_map_version,
+        floor=result.floor,
         pose=pose,
-        quality=QualityResponse(
-            numMatches=result.total_matches,
-            numCorrespondences=result.correspondence_count,
-            numInliers=result.num_inliers,
-            inlierRatio=result.inlier_ratio,
-            medianReprojectionErrorPx=result.median_reprojection_error,
-            retrievedImages=len(result.candidates),
-            supportingImages=result.supporting_reference_images,
-            intrinsicsSource=intrinsics_source,
-        ),
+        quality=_quality(selected, intrinsics_source),
+        mapResults=[
+            MapResultResponse(
+                mapVersion=item.map_version,
+                floor=item.floor,
+                status=item.result.status,
+                quality=_quality(item.result, intrinsics_source),
+            )
+            for item in result.map_results
+        ],
         timingMs=TimingResponse(
             total=_elapsed_ms(started),
             validation=validation_ms,
             queue=queue_ms,
             inference=inference_ms,
         ),
-        failureReason=None if result.status == "LOCALIZED" else result.status,
+        failureReason=None if selected.status == "LOCALIZED" else selected.status,
     )
+
+
+def _quality(
+    result: LocalizationResult,
+    intrinsics_source: str,
+) -> QualityResponse:
+    return QualityResponse(
+        numMatches=result.total_matches,
+        numCorrespondences=result.correspondence_count,
+        numInliers=result.num_inliers,
+        inlierRatio=result.inlier_ratio,
+        medianReprojectionErrorPx=result.median_reprojection_error,
+        retrievedImages=len(result.candidates),
+        supportingImages=result.supporting_reference_images,
+        intrinsicsSource=intrinsics_source,
+    )
+
+
+def _requested_map_versions(
+    requested_version: str,
+    settings: AppSettings,
+    contexts: Mapping[str, MapContext],
+) -> tuple[str, ...] | None:
+    if requested_version == settings.effective_map_set_version():
+        return tuple(contexts)
+    if requested_version in contexts:
+        return (requested_version,)
+    return None
 
 
 def _failure(
