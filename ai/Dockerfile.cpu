@@ -1,0 +1,37 @@
+FROM python:3.12-slim
+
+ARG TORCH_VERSION=2.4.1
+ARG TORCHVISION_VERSION=0.19.1
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TORCH_HOME=/opt/pingo/model-cache
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git libglib2.0-0 libgl1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /srv/pingo-ai
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+COPY tools ./tools
+
+RUN python -m pip install \
+      --index-url https://download.pytorch.org/whl/cpu \
+      "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}" \
+    && python -m pip install .
+
+RUN useradd --system --create-home --uid 10001 pingo \
+    && mkdir -p /opt/pingo/model-cache /maps \
+    && chown -R pingo:pingo /srv/pingo-ai /opt/pingo/model-cache
+
+USER pingo
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10m --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"
+
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
