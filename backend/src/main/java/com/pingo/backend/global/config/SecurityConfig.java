@@ -39,9 +39,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/signup", "/api/auth/check-login-id").permitAll()
-                        // [TODO] OO 임시 개방
-                        .requestMatchers("/api/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/counselors/**").hasRole("COUNSELOR")
                         .requestMatchers("/swagger-ui/**","/v3/api-docs/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .anyRequest().authenticated()
