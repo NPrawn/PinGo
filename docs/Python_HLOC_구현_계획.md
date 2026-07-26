@@ -249,7 +249,7 @@ pose 계산 성공과 신뢰할 수 있는 pose를 구분해 반환한다.
 - [x] multipart 이미지와 camera metadata 요청 구현
 - [x] request ID 생성 및 전파
 - [x] 공통 오류 상태와 응답 schema 정의
-- [ ] 단계별 처리시간 응답 추가
+- [x] 단계별 처리시간 응답 추가
 - [x] 내부 인증 token 검증
 
 주요 응답 상태:
@@ -292,11 +292,11 @@ HTTP 요청으로 이미지와 카메라 정보를 받아 COLMAP 기준 6DoF pos
 
 ### 체크포인트 11. 동시성과 임시 데이터
 
-- [ ] GPU당 동시 추론 1건으로 시작
-- [ ] 최대 대기 queue 2건 적용
-- [ ] queue 초과 시 `OVERLOADED` 즉시 반환
+- [x] GPU당 동시 추론 1건으로 시작
+- [x] 최대 대기 queue 2건 적용
+- [x] queue 초과 시 `OVERLOADED` 즉시 반환
 - [ ] GPU 하나당 Uvicorn worker 1개 적용
-- [ ] 요청별 mutable 전역 상태 공유 금지
+- [x] 요청별 mutable 전역 상태 공유 금지
 - [ ] 임시 파일 사용 시 request ID별 디렉터리 격리
 - [ ] 성공·실패 모두 Query 이미지와 임시 파일 삭제
 - [ ] CUDA OOM 상태 처리 및 readiness 반영
