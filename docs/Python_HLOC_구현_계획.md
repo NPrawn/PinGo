@@ -129,10 +129,10 @@ Python 서비스의 책임은 다음으로 제한한다.
 
 ### 체크포인트 3. Query 이미지 전처리
 
-- [ ] JPEG·PNG magic byte 검증
-- [ ] 이미지 decode 실패 처리
-- [ ] 최대 파일 크기와 pixel 수 제한
-- [ ] EXIF orientation 적용
+- [x] JPEG·PNG magic byte 검증
+- [x] 이미지 decode 실패 처리
+- [x] 최대 파일 크기와 pixel 수 제한
+- [x] EXIF orientation 적용
 - [x] ALIKED local feature는 원본 해상도(`resize=None`) 사용으로 확정
 - [ ] NetVLAD 입력 resize를 ALIKED local feature 전처리와 분리
 - [ ] resize가 필요한 단계에서만 비율에 맞게 camera intrinsics 변환
@@ -243,14 +243,14 @@ pose 계산 성공과 신뢰할 수 있는 pose를 구분해 반환한다.
 ### 체크포인트 9. FastAPI 구현
 
 - [x] FastAPI application factory와 readiness 상태 관리 구현
-- [ ] `POST /internal/v1/maps/{mapVersion}/localize`
+- [x] `POST /internal/v1/maps/{mapVersion}/localize`
 - [x] `GET /health/live`
 - [x] `GET /health/ready`
-- [ ] multipart 이미지와 camera metadata 요청 구현
-- [ ] request ID 생성 및 전파
-- [ ] 공통 오류 상태와 응답 schema 정의
+- [x] multipart 이미지와 camera metadata 요청 구현
+- [x] request ID 생성 및 전파
+- [x] 공통 오류 상태와 응답 schema 정의
 - [ ] 단계별 처리시간 응답 추가
-- [ ] 내부 인증 token 검증
+- [x] 내부 인증 token 검증
 
 주요 응답 상태:
 

@@ -48,6 +48,9 @@ ai/runtime_maps/
 ai/visualization_models/
 ai/tests/*.mp4
 ai/tests/images.jpg
+ai/.venv/
+ai/.pytest_cache/
 ai/.cache/
+ai/*.egg-info/
 ai/**/__pycache__/
 ai/**/*.py[cod]
