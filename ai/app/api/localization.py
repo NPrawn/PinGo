@@ -9,8 +9,10 @@ from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, Header, Request, Response, UploadFile, status
 from PIL import Image, ImageOps, UnidentifiedImageError
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import AppSettings
+from app.core.inference_limiter import InferenceLimiter
 from app.engine.localizer import ImageLocalizer, LocalizationResult
 from app.maps.map_context import MapContext
 from app.schemas.localization import (
@@ -38,6 +40,7 @@ async def localize(
     started = time.perf_counter()
     request_id = _request_id(x_request_id)
     settings: AppSettings = request.app.state.settings
+    validation_started = time.perf_counter()
 
     if settings.internal_token is not None and x_internal_token != settings.internal_token:
         response.status_code = status.HTTP_401_UNAUTHORIZED
@@ -46,13 +49,27 @@ async def localize(
     context: MapContext | None = request.app.state.map_context
     if context is None or context.map_version != map_version:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        return _failure(request_id, map_version, "MAP_NOT_LOADED", "MAP_NOT_LOADED", started)
+        return _failure(
+            request_id,
+            map_version,
+            "MAP_NOT_LOADED",
+            "MAP_NOT_LOADED",
+            started,
+            validation_ms=_elapsed_ms(validation_started),
+        )
 
     image_bytes = await image.read(settings.max_image_bytes + 1)
     dimensions = _validate_image_bytes(image_bytes, settings)
     if dimensions is None:
         response.status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
-        return _failure(request_id, map_version, "INVALID_IMAGE", "INVALID_IMAGE", started)
+        return _failure(
+            request_id,
+            map_version,
+            "INVALID_IMAGE",
+            "INVALID_IMAGE",
+            started,
+            validation_ms=_elapsed_ms(validation_started),
+        )
 
     parsed_metadata = _parse_metadata(metadata)
     focal_length = _focal_length_px(parsed_metadata, dimensions)
@@ -64,15 +81,50 @@ async def localize(
             "INVALID_INTRINSICS",
             "INVALID_INTRINSICS",
             started,
+            validation_ms=_elapsed_ms(validation_started),
         )
 
     top_k = _top_k(parsed_metadata, settings)
+    validation_ms = _elapsed_ms(validation_started)
     factory: LocalizerFactory = request.app.state.localizer_factory
+    limiter: InferenceLimiter = request.app.state.inference_limiter
+    queue_started = time.perf_counter()
+    if not await limiter.acquire():
+        response.status_code = status.HTTP_429_TOO_MANY_REQUESTS
+        return _failure(
+            request_id,
+            map_version,
+            "OVERLOADED",
+            "OVERLOADED",
+            started,
+            validation_ms=validation_ms,
+            queue_ms=_elapsed_ms(queue_started),
+        )
+
+    queue_ms = _elapsed_ms(queue_started)
+    inference_started = time.perf_counter()
     try:
-        result = factory(context).localize(image_bytes, focal_length_px=focal_length, top_k=top_k)
+        result = await run_in_threadpool(
+            lambda: factory(context).localize(
+                image_bytes,
+                focal_length_px=focal_length,
+                top_k=top_k,
+            )
+        )
     except Exception:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        return _failure(request_id, map_version, "INTERNAL_ERROR", "INTERNAL_ERROR", started)
+        return _failure(
+            request_id,
+            map_version,
+            "INTERNAL_ERROR",
+            "INTERNAL_ERROR",
+            started,
+            validation_ms=validation_ms,
+            queue_ms=queue_ms,
+            inference_ms=_elapsed_ms(inference_started),
+        )
+    finally:
+        await limiter.release()
 
     return _from_result(
         request_id=request_id,
@@ -80,6 +132,9 @@ async def localize(
         result=result,
         intrinsics_source=_intrinsics_source(parsed_metadata),
         started=started,
+        validation_ms=validation_ms,
+        queue_ms=queue_ms,
+        inference_ms=_elapsed_ms(inference_started),
     )
 
 
@@ -152,6 +207,9 @@ def _from_result(
     result: LocalizationResult,
     intrinsics_source: str,
     started: float,
+    validation_ms: int | None = None,
+    queue_ms: int | None = None,
+    inference_ms: int | None = None,
 ) -> LocalizationResponse:
     pose = None
     if result.camera_center is not None and result.cam_from_world is not None:
@@ -176,7 +234,12 @@ def _from_result(
             supportingImages=result.supporting_reference_images,
             intrinsicsSource=intrinsics_source,
         ),
-        timingMs=TimingResponse(total=_elapsed_ms(started)),
+        timingMs=TimingResponse(
+            total=_elapsed_ms(started),
+            validation=validation_ms,
+            queue=queue_ms,
+            inference=inference_ms,
+        ),
         failureReason=None if result.status == "LOCALIZED" else result.status,
     )
 
@@ -187,12 +250,20 @@ def _failure(
     status_value: str,
     reason: str,
     started: float,
+    validation_ms: int | None = None,
+    queue_ms: int | None = None,
+    inference_ms: int | None = None,
 ) -> LocalizationResponse:
     return LocalizationResponse(
         requestId=request_id,
         status=status_value,
         mapVersion=map_version,
-        timingMs=TimingResponse(total=_elapsed_ms(started)),
+        timingMs=TimingResponse(
+            total=_elapsed_ms(started),
+            validation=validation_ms,
+            queue=queue_ms,
+            inference=inference_ms,
+        ),
         failureReason=reason,
     )
 

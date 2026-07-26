@@ -39,6 +39,9 @@ class QualityResponse(BaseModel):
 
 class TimingResponse(BaseModel):
     total: int
+    validation: int | None = None
+    queue: int | None = None
+    inference: int | None = None
 
 
 class LocalizationResponse(BaseModel):

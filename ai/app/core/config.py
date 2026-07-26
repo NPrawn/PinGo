@@ -16,6 +16,8 @@ class AppSettings:
     max_pixels: int = 12_000_000
     default_top_k: int = 20
     max_top_k: int = 50
+    max_concurrent_inferences: int = 1
+    max_queue_size: int = 2
 
     @classmethod
     def from_env(cls) -> AppSettings:
@@ -35,6 +37,11 @@ class AppSettings:
             max_pixels=_read_positive_int("AI_MAX_PIXELS", 12_000_000),
             default_top_k=_read_positive_int("AI_DEFAULT_TOP_K", 20),
             max_top_k=_read_positive_int("AI_MAX_TOP_K", 50),
+            max_concurrent_inferences=_read_positive_int(
+                "AI_MAX_CONCURRENT_INFERENCES",
+                1,
+            ),
+            max_queue_size=_read_non_negative_int("AI_MAX_QUEUE_SIZE", 2),
         )
 
 
@@ -47,3 +54,14 @@ def _read_positive_int(name: str, default: int) -> int:
     except ValueError:
         return default
     return value if value > 0 else default
+
+
+def _read_non_negative_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return default
+    return value if value >= 0 else default

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from app.api.health import router as health_router
 from app.api.localization import LocalizerFactory, router as localization_router
 from app.core.config import AppSettings
+from app.core.inference_limiter import InferenceLimiter
 from app.core.readiness import ReadinessState
 from app.engine.localizer import ImageLocalizer
 from app.maps.map_loader import MapLoadError, MapLoader
@@ -19,11 +20,16 @@ def create_app(
     settings: AppSettings | None = None,
     map_loader: MapLoader | None = None,
     localizer_factory: LocalizerFactory | None = None,
+    inference_limiter: InferenceLimiter | None = None,
 ) -> FastAPI:
     readiness_state = readiness or ReadinessState()
     app_settings = settings or AppSettings.from_env()
     loader = map_loader or MapLoader()
     factory = localizer_factory or ImageLocalizer
+    limiter = inference_limiter or InferenceLimiter(
+        max_concurrent=app_settings.max_concurrent_inferences,
+        max_queue_size=app_settings.max_queue_size,
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -62,6 +68,7 @@ def create_app(
     application.state.settings = app_settings
     application.state.map_context = None
     application.state.localizer_factory = factory
+    application.state.inference_limiter = limiter
     application.include_router(health_router)
     application.include_router(localization_router)
     return application
