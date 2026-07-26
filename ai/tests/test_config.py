@@ -13,6 +13,11 @@ class AppSettingsTest(unittest.TestCase):
             {
                 "AI_MAP_VERSION": " station-b2-v1 ",
                 "AI_MAP_MODEL_PATH": "maps/station-b2-v1/reference_sfm",
+                "AI_INTERNAL_TOKEN": " secret ",
+                "AI_MAX_IMAGE_BYTES": "1234",
+                "AI_MAX_PIXELS": "5678",
+                "AI_DEFAULT_TOP_K": "12",
+                "AI_MAX_TOP_K": "34",
             },
             clear=True,
         ):
@@ -23,6 +28,11 @@ class AppSettingsTest(unittest.TestCase):
             settings.map_model_path,
             Path("maps/station-b2-v1/reference_sfm"),
         )
+        self.assertEqual(settings.internal_token, "secret")
+        self.assertEqual(settings.max_image_bytes, 1234)
+        self.assertEqual(settings.max_pixels, 5678)
+        self.assertEqual(settings.default_top_k, 12)
+        self.assertEqual(settings.max_top_k, 34)
 
     def test_empty_environment_values_are_treated_as_missing(self):
         with patch.dict(
