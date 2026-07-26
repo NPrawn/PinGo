@@ -47,6 +47,17 @@ class _FakeLocalizer:
         )
 
 
+class _RejectingLimiter:
+    def __init__(self):
+        self.release_called = False
+
+    async def acquire(self):
+        return False
+
+    async def release(self):
+        self.release_called = True
+
+
 class LocalizationApiTest(unittest.TestCase):
     def setUp(self):
         self.calls = []
@@ -95,6 +106,9 @@ class LocalizationApiTest(unittest.TestCase):
         self.assertEqual(payload["status"], "LOCALIZED")
         self.assertEqual(payload["pose"]["cameraCenter"], [1.0, 2.0, 3.0])
         self.assertEqual(payload["quality"]["intrinsicsSource"], "DEVICE_PROFILE")
+        self.assertIsInstance(payload["timingMs"]["validation"], int)
+        self.assertIsInstance(payload["timingMs"]["queue"], int)
+        self.assertIsInstance(payload["timingMs"]["inference"], int)
         self.assertEqual(self.calls[0]["focal_length_px"], 900.0)
         self.assertEqual(self.calls[0]["top_k"], 30)
 
@@ -147,6 +161,23 @@ class LocalizationApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["status"], "MAP_NOT_LOADED")
+        self.assertEqual(self.calls, [])
+
+    def test_returns_overloaded_when_inference_queue_is_full(self):
+        limiter = _RejectingLimiter()
+        self.app.state.inference_limiter = limiter
+        with TestClient(self.app) as client:
+            self.app.state.map_context = SimpleNamespace(map_version="station-b2-v1")
+            response = client.post(
+                "/internal/v1/maps/station-b2-v1/localize",
+                headers={"X-Internal-Token": "secret"},
+                files={"image": ("query.jpg", _jpeg_bytes(), "image/jpeg")},
+            )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json()["status"], "OVERLOADED")
+        self.assertIsInstance(response.json()["timingMs"]["queue"], int)
+        self.assertFalse(limiter.release_called)
         self.assertEqual(self.calls, [])
 
 

@@ -18,6 +18,8 @@ class AppSettingsTest(unittest.TestCase):
                 "AI_MAX_PIXELS": "5678",
                 "AI_DEFAULT_TOP_K": "12",
                 "AI_MAX_TOP_K": "34",
+                "AI_MAX_CONCURRENT_INFERENCES": "2",
+                "AI_MAX_QUEUE_SIZE": "3",
             },
             clear=True,
         ):
@@ -33,6 +35,8 @@ class AppSettingsTest(unittest.TestCase):
         self.assertEqual(settings.max_pixels, 5678)
         self.assertEqual(settings.default_top_k, 12)
         self.assertEqual(settings.max_top_k, 34)
+        self.assertEqual(settings.max_concurrent_inferences, 2)
+        self.assertEqual(settings.max_queue_size, 3)
 
     def test_empty_environment_values_are_treated_as_missing(self):
         with patch.dict(
