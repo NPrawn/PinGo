@@ -20,7 +20,8 @@ public class UserSession {
     private String userSessionId;
 
     @Column(nullable = false, length = 10)
-    private String language;
+    @Enumerated(EnumType.STRING)
+    private Language language;
 
     private Long selectedStationId;
 
@@ -45,7 +46,7 @@ public class UserSession {
 
     private LocalDateTime expiresAt;
 
-    public static UserSession create(String language){
+    public static UserSession create(Language language){
         UserSession session = new UserSession();
         session.userSessionId = generateId();
         session.language = language;
@@ -61,5 +62,42 @@ public class UserSession {
         LocalDateTime now = LocalDateTime.now();
         this.createdAt = now;
         this.lastActiveAt = now;
+        this.expiresAt = now.plusHours(24);
+    }
+
+    public void changeLanguage(Language language){
+        this.language = language;
+    }
+
+    public void changeSelectedStation(Long selectedStationId){
+        this.selectedStationId = selectedStationId;
+    }
+
+    public void changeCurrentNode(Long currentNodeId){
+        this.currentNodeId = currentNodeId;
+    }
+
+    public void changeDestination(String destinationType, Long destinationId){
+        this.destinationType = destinationType;
+        this.destinationId = destinationId;
+    }
+
+    public void updateGpsLocation(BigDecimal latitude, BigDecimal longitude){
+        this.lastGpsLatitude = latitude;
+        this.lastGpsLongitude = longitude;
+    }
+
+    public void renewActivity(){
+        LocalDateTime now = LocalDateTime.now();
+        this.lastActiveAt = now;
+        this.expiresAt = now.plusHours(24);
+    }
+
+    public void changeDestinationType(String destinationType) {
+        this.destinationType = destinationType;
+    }
+
+    public void changeDestinationId(Long destinationId) {
+        this.destinationId = destinationId;
     }
 }
