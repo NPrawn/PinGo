@@ -1,6 +1,8 @@
 export {
+  requestCameraPermission,
   requestLocationPermission,
   requestMediaPermissions,
+  requestMicrophonePermission,
   requestRequiredPermissions,
   stopMediaStream,
 } from './model/permission.service';
@@ -22,11 +24,9 @@ export type {
   PermissionRequestResult,
   PermissionStatus,
   RequiredPermissionsResult,
+  SingleMediaPermissionResult,
 } from './model/permission.service';
 
 export type { StoredRequiredPermissionState } from './model/permission.storage';
 
-export type {
-  PermissionRequestPhase,
-  UsePermissionRequestValue,
-} from './model/permission.hook';
+export type { PermissionRequestPhase, UsePermissionRequestValue } from './model/permission.hook';

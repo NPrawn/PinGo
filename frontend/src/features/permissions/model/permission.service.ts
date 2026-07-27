@@ -14,12 +14,7 @@ export type PermissionKind = 'location' | 'camera' | 'microphone';
  * - unsupported: 브라우저 또는 실행 환경에서 지원하지 않음
  * - error: 권한 거부 외의 일반 오류
  */
-export type PermissionStatus =
-  | 'idle'
-  | 'granted'
-  | 'denied'
-  | 'unsupported'
-  | 'error';
+export type PermissionStatus = 'idle' | 'granted' | 'denied' | 'unsupported' | 'error';
 
 /**
  * 브라우저 권한 요청 중 발생한 오류 정보.
@@ -300,9 +295,7 @@ export async function requestMediaPermissions(): Promise<MediaPermissionsResult>
      * 사용자가 거부했거나, 장치가 없거나, 브라우저 정책상 실패한 경우.
      */
     const permissionError = toPermissionError(error);
-    const status: PermissionStatus = isPermissionDenied(permissionError)
-      ? 'denied'
-      : 'error';
+    const status: PermissionStatus = isPermissionDenied(permissionError) ? 'denied' : 'error';
 
     return {
       camera: {
@@ -317,6 +310,82 @@ export async function requestMediaPermissions(): Promise<MediaPermissionsResult>
       },
     };
   }
+}
+
+/**
+ * 카메라 또는 마이크 중 하나만 요청한 결과.
+ *
+ * 권한이 허용되면 열린 MediaStream을 함께 반환하므로, 카메라 미리보기처럼
+ * 스트림이 필요한 화면에서 사용할 수 있다. 사용 후에는 stopMediaStream으로 정리한다.
+ */
+export interface SingleMediaPermissionResult extends PermissionRequestResult {
+  kind: 'camera' | 'microphone';
+  stream?: MediaStream;
+}
+
+/**
+ * 카메라 또는 마이크 권한을 개별적으로 요청한다.
+ *
+ * requestMediaPermissions는 카메라와 마이크를 함께 요청하지만,
+ * 테스트 페이지처럼 각각을 따로 확인해야 하는 경우 이 함수를 사용한다.
+ */
+async function requestSingleMediaPermission(
+  kind: 'camera' | 'microphone',
+  constraints: MediaStreamConstraints,
+): Promise<SingleMediaPermissionResult> {
+  if (!window.isSecureContext) {
+    return {
+      kind,
+      status: 'unsupported',
+      error: {
+        name: 'InsecureContextError',
+        message: 'Camera and microphone permissions require HTTPS or localhost.',
+      },
+    };
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return {
+      kind,
+      status: 'unsupported',
+      error: {
+        name: 'UnsupportedError',
+        message: 'Camera and microphone permissions are not supported in this browser.',
+      },
+    };
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    return {
+      kind,
+      status: 'granted',
+      stream,
+    };
+  } catch (error) {
+    const permissionError = toPermissionError(error);
+
+    return {
+      kind,
+      status: isPermissionDenied(permissionError) ? 'denied' : 'error',
+      error: permissionError,
+    };
+  }
+}
+
+/**
+ * 카메라 권한만 요청한다. 허용되면 미리보기에 사용할 수 있는 stream을 함께 반환한다.
+ */
+export function requestCameraPermission(): Promise<SingleMediaPermissionResult> {
+  return requestSingleMediaPermission('camera', { video: true });
+}
+
+/**
+ * 마이크 권한만 요청한다. 허용되면 오디오 트랙을 가진 stream을 함께 반환한다.
+ */
+export function requestMicrophonePermission(): Promise<SingleMediaPermissionResult> {
+  return requestSingleMediaPermission('microphone', { audio: true });
 }
 
 /**
