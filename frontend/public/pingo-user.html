@@ -27,7 +27,10 @@ body.pingo-runtime .scr.pingo-active>.phone{margin:24px 24px 0;flex:none}
 body.pingo-runtime .scr.pingo-active>.win{margin:24px;flex:none}
 body.pingo-runtime .scr.pingo-active>.phone{height:max(726px,calc(100vh - 24px))!important}
 body.pingo-runtime #s-cam-land.pingo-active>div:not(.lab){margin:24px;flex:none}
-.reroute-modal>:not(.reroute-dismiss){transform:translateY(24px)}
+.landscape-frame{position:relative;width:726px;height:342px;border-radius:40px;overflow:hidden}
+.landscape-frame>.phone{border-radius:40px!important}
+.landscape-canvas{border-radius:40px;overflow:hidden}
+.reroute-modal>:not(.reroute-dismiss){transform:translateY(40px)}
 @media(max-width:600px){body.pingo-runtime .scr.pingo-active>.phone{margin:0;min-height:100vh;border-radius:0}body.pingo-runtime .scr.pingo-active>.win{margin:12px}}
 </style></head>
 <body>
@@ -556,6 +559,8 @@ body::after{
   box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--vio) 35%, transparent);
 }
 .pill.gh{ background:transparent; border-color:transparent; color:var(--v3-sub); }
+.permission-pills{display:flex;justify-content:center;gap:6px;margin-top:14px;flex-wrap:nowrap}
+.permission-pills .pill{flex:0 1 auto;min-width:0;padding:7px 8px;gap:4px;font-size:11.5px;white-space:nowrap}
 
 /* ─── Sel row — glass card + accent ring ─── */
 .sel{
@@ -1166,7 +1171,7 @@ a, button{ -webkit-tap-highlight-color: transparent; }
 <div style="width:60px;height:60px;border-radius:50%;background:#fdf4e3;color:#b7851f;display:flex;align-items:center;justify-content:center;margin:0 auto"><svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="flex:none"><use href="#i-warning"></use></svg></div>
 <h2 style="font-size:19px;font-weight:800;margin:16px 0 8px">모든 권한이 필요해요</h2>
 <p style="font-size:13px;color:var(--sub);line-height:1.6;margin:0">위치 정보·카메라·마이크 권한을 <b style="color:var(--ink)">모두 선택</b>해야 서비스를 시작할 수 있어요. 남은 권한을 허용해주세요.</p>
-<div style="display:flex;justify-content:center;gap:8px;margin-top:14px;flex-wrap:wrap">
+<div class="permission-pills">
 <span class="pill" data-on="{{ permLoc }}" style="background:{{ locBg }};color:{{ locFg }};border-color:{{ locBg }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex:none"><use href="#i-pin"></use></svg>위치</span>
 <span class="pill" data-on="{{ permCam }}" style="background:{{ camBg }};color:{{ camFg }};border-color:{{ camBg }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex:none"><use href="#i-camera"></use></svg>카메라</span>
 <span class="pill" data-on="{{ permMic }}" style="background:{{ micBg }};color:{{ micFg }};border-color:{{ micBg }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex:none"><use href="#i-mic"></use></svg>마이크</span>
@@ -1314,10 +1319,10 @@ a, button{ -webkit-tap-highlight-color: transparent; }
 </div></div></div>
 
 <div class="scr" id="s-cam-land"><div class="lab">05b <b>가로 촬영</b> <span class="fr">FR-U-004 · 기기를 90° 눕힌 상태</span></div>
-<div style="position:relative;width:722px;height:338px">
+<div class="landscape-frame">
 <div class="phone dark" style="position:absolute;left:50%;top:50%;width:338px;height:722px;transform:translate(-50%,-50%) rotate(90deg);display:block;padding:0">
 
-  <div style="position:absolute;left:50%;top:50%;width:722px;height:338px;transform:translate(-50%,-50%) rotate(-90deg);overflow:hidden;background:#061310">
+  <div class="landscape-canvas" style="position:absolute;left:50%;top:50%;width:726px;height:342px;transform:translate(-50%,-50%) rotate(-90deg);overflow:hidden;background:#061310">
     <svg viewBox="0 0 722 338" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;opacity:.55">
       <path d="M0 338 L259.92 155.48000000000002 H462.08 L722 338 Z" fill="rgba(60,216,160,0.07)"></path>
       <path d="M0 338 L259.92 155.48000000000002 M722 338 L462.08 155.48000000000002 M259.92 155.48000000000002 H462.08" stroke="rgba(127,239,195,0.24)" stroke-width="1.2" fill="none"></path>
@@ -2773,7 +2778,7 @@ class Component extends DCLogic {
     window.location.hash=id==='admin'?'a-console':'c-list'};
   onLoginKey=e=>{if(e.key==='Enter')this.doLogin()};
   setSat=e=>this.setState({sat:+e.currentTarget.dataset.n});
-  rateSat=e=>{this.setState({sat:+e.currentTarget.dataset.n});setTimeout(()=>{location.hash='s-dest'},550)};
+  rateSat=e=>{this.setState({sat:+e.currentTarget.dataset.n});setTimeout(()=>{location.hash='s-nav'},550)};
   toggleDraw=()=>this.setState(s=>({drawMode:!s.drawMode}),()=>this.syncCanvas());
   clearDraw=()=>{const c=document.getElementById('c-draw-canvas');if(c){const x=c.getContext('2d');x.clearRect(0,0,c.width,c.height)}};
   syncCanvas=()=>{const c=document.getElementById('c-draw-canvas');if(!c)return;const r=c.getBoundingClientRect();if(r.width&&(c.width!==Math.round(r.width)||c.height!==Math.round(r.height))){const x=c.getContext('2d');const snap=c.width?x.getImageData(0,0,c.width,c.height):null;c.width=Math.round(r.width);c.height=Math.round(r.height);if(snap)try{x.putImageData(snap,0,0)}catch(e){}}};
