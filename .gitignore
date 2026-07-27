@@ -36,3 +36,8 @@ backend/uploads/
 infra/.env
 infra/.env.*
 infra/coturn/turnserver.conf
+
+# Local verification output
+frontend/.tmp/
+frontend/test-results/
+frontend/playwright-report/
