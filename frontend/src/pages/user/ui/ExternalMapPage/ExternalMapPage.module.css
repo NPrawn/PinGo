@@ -192,7 +192,6 @@
   color: var(--color-sub);
 }
 
-/* Kakao-branded CTA keeps its own palette. */
 .kakao {
   gap: 7px;
   margin-top: 12px;

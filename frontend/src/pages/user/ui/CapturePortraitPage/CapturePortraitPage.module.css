@@ -2,7 +2,7 @@
 
 .body {
   position: relative;
-  background: #061310;
+  background: #0a1b16;
 }
 
 /* The viewfinder darkens the notch so the chrome reads on the camera feed. */
@@ -19,6 +19,21 @@
   width: 100%;
   height: 100%;
   opacity: 0.55;
+}
+
+.viewfinder {
+  position: absolute;
+  top: 68px;
+  right: 16px;
+  bottom: 258px;
+  left: 16px;
+  overflow: hidden;
+  background: #061310;
+  border: 1px solid rgb(127 239 195 / 18%);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 5%),
+    0 12px 28px -20px rgb(0 0 0 / 75%);
 }
 
 .band {
@@ -62,22 +77,19 @@
 }
 
 .topBar {
-  position: absolute;
-  top: 14px;
-  right: 16px;
-  left: 16px;
+  position: relative;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.topBarSpacer {
-  width: 32px;
+  height: 54px;
+  padding-top: 10px;
+  margin: 0 16px;
 }
 
 .hint {
   position: absolute;
-  top: 44%;
+  top: 50%;
   left: 50%;
   display: flex;
   gap: 9px;

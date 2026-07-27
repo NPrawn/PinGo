@@ -43,6 +43,12 @@
   color: #7a7a83;
 }
 
+.consult {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+}
+
 @keyframes analyze-spin {
   to {
     transform: rotate(360deg);

@@ -57,12 +57,15 @@ export function ConsultWaitingPage() {
 
         <Card className={styles.tip}>
           <span className={styles.tipIcon}>
-            <Icon name="bulb" size={16} />
+            <Icon name="bulb" size={18} />
           </span>
-          <span>
-            상담원이 없다면 <b>B1 고객안내센터</b>를 방문하세요. 역무원에게 보여줄 안내 문장이
-            준비돼 있어요.
-          </span>
+          <div className={styles.tipCopy}>
+            <strong className={styles.tipTitle}>상담원 연결이 어려운 경우</strong>
+            <span className={styles.tipLine}>
+              <b>B1 고객안내센터</b>를 방문해 주세요.
+            </span>
+            <span className={styles.tipLine}>역무원에게 보여줄 안내 문장이 준비되어 있어요.</span>
+          </div>
         </Card>
 
         <Spring />

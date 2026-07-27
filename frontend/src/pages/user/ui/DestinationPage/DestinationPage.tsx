@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useStationStore } from '@/entities/station';
+import { ConsultCta } from '@/features/consult-request';
 import { DestinationSearch } from '@/features/destination-search';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, Card, Kicker, Title } from '@/shared/ui';
@@ -11,7 +12,7 @@ export function DestinationPage() {
   const station = useStationStore((state) => state.station);
 
   return (
-    <PhoneFrame>
+    <PhoneFrame overlay={<ConsultCta variant="icon" className={styles.consult} />}>
       <div className={styles.topSpacer} />
 
       <div className={styles.header}>

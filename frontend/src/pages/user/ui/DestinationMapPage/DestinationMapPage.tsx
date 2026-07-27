@@ -102,9 +102,9 @@ export function DestinationMapPage() {
           <Kicker className={styles.kicker}>목적지</Kicker>
           <Title className={styles.title}>{destination}</Title>
           <Sub className={styles.sub}>3번 출구 방면 · 현재 위치에서 도보 약 4분</Sub>
-          <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS} className={styles.cta}>
-            이 위치로 길찾기
-          </ButtonLink>
+          <div className={styles.cta}>
+            <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>이 위치로 길찾기</ButtonLink>
+          </div>
         </MapScreenPanel>
       </>
     </PhoneFrame>

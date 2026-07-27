@@ -1,4 +1,5 @@
 import { useStationStore } from '@/entities/station';
+import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { BackLink, ButtonLink, Card, GhostLink, LivePill, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -26,7 +27,10 @@ export function CaptureGuidePage() {
   return (
     <PhoneFrame>
       <div className={styles.topSpacer} />
-      <BackLink to={USER_ROUTES.STATION}>역 다시 선택</BackLink>
+      <div className={styles.headerBar}>
+        <BackLink to={USER_ROUTES.STATION}>역 다시 선택</BackLink>
+        <ConsultCta variant="icon" />
+      </div>
       <LivePill tone="gps">{station} · 위치 인식</LivePill>
       <Title className={styles.title}>
         제자리에서 주변을

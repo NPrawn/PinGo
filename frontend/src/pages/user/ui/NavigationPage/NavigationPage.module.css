@@ -65,80 +65,13 @@
   color: rgb(223 246 230 / 72%);
 }
 
-/**
- * The consult shortcut sits on the dark camera feed, where a translucent chip
- * disappeared. It uses the gold accent the prototype gives the consult FAB, so
- * it reads as the same action while standing out against the mint UI.
- */
-.consultCta {
-  display: flex;
-  flex: none;
-  gap: 6px;
-  align-items: center;
-  padding: 8px 13px;
-  text-decoration: none;
-  background: linear-gradient(135deg, #ffc59e 0%, var(--color-gold) 100%);
-  border: 1px solid rgb(255 255 255 / 45%);
-  border-radius: var(--radius-pill);
+.consult {
+  color: #256b50;
+  background: linear-gradient(145deg, #e3f8ed 0%, #c8efd9 58%, #a8dfc2 100%);
+  border-color: rgb(255 255 255 / 68%);
   box-shadow:
-    0 6px 16px -4px rgb(240 179 106 / 55%),
-    inset 0 1px 0 rgb(255 255 255 / 55%);
-  animation: consult-attention 2.6s var(--ease-out) infinite;
-}
-
-.consultCta:hover {
-  filter: brightness(1.05);
-}
-
-.consultCtaIcon {
-  display: flex;
-  animation: consult-bounce 1.6s var(--ease-out) infinite;
-}
-
-.consultCtaLabel {
-  font-size: 11.5px;
-  font-weight: 800;
-  white-space: nowrap;
-  color: #5c3a0f;
-}
-
-/* Icon hop — the emphasis the label asked for. */
-@keyframes consult-bounce {
-  0%,
-  55%,
-  100% {
-    transform: translateY(0);
-  }
-
-  15% {
-    transform: translateY(-3.5px) scale(1.08);
-  }
-
-  30% {
-    transform: translateY(0);
-  }
-
-  42% {
-    transform: translateY(-1.5px);
-  }
-}
-
-/* A slow halo pulse so the chip catches the eye without nagging. */
-@keyframes consult-attention {
-  0%,
-  100% {
-    box-shadow:
-      0 6px 16px -4px rgb(240 179 106 / 55%),
-      inset 0 1px 0 rgb(255 255 255 / 55%),
-      0 0 0 0 rgb(240 179 106 / 55%);
-  }
-
-  50% {
-    box-shadow:
-      0 6px 16px -4px rgb(240 179 106 / 55%),
-      inset 0 1px 0 rgb(255 255 255 / 55%),
-      0 0 0 7px rgb(240 179 106 / 0%);
-  }
+    0 6px 16px -7px rgb(64 167 124 / 58%),
+    inset 0 1px 0 rgb(255 255 255 / 74%);
 }
 
 .arrow {

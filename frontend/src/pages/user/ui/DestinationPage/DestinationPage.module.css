@@ -4,6 +4,16 @@
   height: 8px;
 }
 
+.consult {
+  position: absolute;
+  right: 16px;
+  bottom: 18px;
+  z-index: 5;
+  width: 52px;
+  height: 52px;
+  font-size: 27px;
+}
+
 .header {
   display: flex;
   gap: 10px;

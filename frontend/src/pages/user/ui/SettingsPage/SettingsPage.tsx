@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useAccessibilityStore } from '@/entities/accessibility';
 import { usePermissionStore } from '@/entities/permission';
+import { ConsultCta } from '@/features/consult-request';
 import { PERMISSION_CATALOG } from '@/features/permission-request';
 import { USER_ROUTES } from '@/shared/config';
 import { BackLink, Card, Kicker, PillButton, SelectRow, Sub, Title, Toggle } from '@/shared/ui';
@@ -96,6 +97,9 @@ export function SettingsPage() {
           </div>
         ))}
       </Card>
+
+      <Kicker className={styles.sectionLabel}>도움이 필요하신가요?</Kicker>
+      <ConsultCta size="sm" className={styles.consult} />
     </PhoneFrame>
   );
 }

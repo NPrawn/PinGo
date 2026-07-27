@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, ButtonLink, HeadingMarker, Icon, MapPreview } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -82,10 +83,7 @@ export function ReroutePage() {
                 <Icon name="refresh" size={15} />
                 위치 재인식
               </ButtonLink>
-              <ButtonLink to={USER_ROUTES.CONSULT_REQUEST} className={styles.action}>
-                <Icon name="headset" size={15} />
-                상담 요청
-              </ButtonLink>
+              <ConsultCta className={styles.action} />
             </div>
           </div>
         </div>

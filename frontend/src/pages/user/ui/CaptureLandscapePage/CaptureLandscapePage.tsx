@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useStationStore } from '@/entities/station';
+import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink } from '@/shared/ui';
 import styles from './CaptureLandscapePage.module.css';
@@ -35,49 +36,51 @@ export function CaptureLandscapePage() {
       <div className={styles.rotatedArea}>
         <div className={styles.phone}>
           <div className={styles.viewport}>
-            <svg
-              viewBox="0 0 722 338"
-              preserveAspectRatio="none"
-              className={styles.scene}
-              aria-hidden
-            >
-              <path d="M0 338 L259.92 155.48 H462.08 L722 338 Z" fill="rgba(60,216,160,0.07)" />
-              <path
-                d="M0 338 L259.92 155.48 M722 338 L462.08 155.48 M259.92 155.48 H462.08"
-                stroke="rgba(127,239,195,0.24)"
-                strokeWidth="1.2"
-                fill="none"
-              />
-              <path
-                d="M259.92 155.48 V43.94 H462.08 V155.48"
-                stroke="rgba(127,239,195,0.16)"
-                strokeWidth="1.2"
-                fill="none"
-              />
-              <rect
-                x="303.24"
-                y="64.22"
-                width="115.52"
-                height="30.42"
-                rx="3"
-                fill="rgba(127,239,195,0.2)"
-              />
-              <path
-                d="M0 263.64 H187.72 M534.28 263.64 H722"
-                stroke="rgba(127,239,195,0.12)"
-                strokeWidth="1"
-                fill="none"
-              />
-            </svg>
+            <div className={styles.cameraFrame}>
+              <svg
+                viewBox="0 0 722 338"
+                preserveAspectRatio="none"
+                className={styles.scene}
+                aria-hidden
+              >
+                <path d="M0 338 L259.92 155.48 H462.08 L722 338 Z" fill="rgba(60,216,160,0.07)" />
+                <path
+                  d="M0 338 L259.92 155.48 M722 338 L462.08 155.48 M259.92 155.48 H462.08"
+                  stroke="rgba(127,239,195,0.24)"
+                  strokeWidth="1.2"
+                  fill="none"
+                />
+                <path
+                  d="M259.92 155.48 V43.94 H462.08 V155.48"
+                  stroke="rgba(127,239,195,0.16)"
+                  strokeWidth="1.2"
+                  fill="none"
+                />
+                <rect
+                  x="303.24"
+                  y="64.22"
+                  width="115.52"
+                  height="30.42"
+                  rx="3"
+                  fill="rgba(127,239,195,0.2)"
+                />
+                <path
+                  d="M0 263.64 H187.72 M534.28 263.64 H722"
+                  stroke="rgba(127,239,195,0.12)"
+                  strokeWidth="1"
+                  fill="none"
+                />
+              </svg>
 
-            <div className={styles.band} aria-hidden />
-            <div className={styles.horizon} aria-hidden />
+              <div className={styles.band} aria-hidden />
+              <div className={styles.horizon} aria-hidden />
 
-            <div className={styles.frameGuides} aria-hidden>
-              <div className={styles.cornerTl} />
-              <div className={styles.cornerTr} />
-              <div className={styles.cornerBl} />
-              <div className={styles.cornerBr} />
+              <div className={styles.frameGuides} aria-hidden>
+                <div className={styles.cornerTl} />
+                <div className={styles.cornerTr} />
+                <div className={styles.cornerBl} />
+                <div className={styles.cornerBr} />
+              </div>
             </div>
 
             <div className={styles.statusBar} aria-hidden>
@@ -106,7 +109,16 @@ export function CaptureLandscapePage() {
                 <span className={styles.recLabel}>REC · {station}</span>
               </span>
               <span className={styles.modeBadge}>가로 모드 · 시야 2배</span>
+              <div className={styles.topActions}>
+                <Link to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.switchLink}>
+                  세로로 전환
+                </Link>
+                <ButtonLink to={USER_ROUTES.ANALYZING} className={styles.finish}>
+                  완료
+                </ButtonLink>
+              </div>
             </div>
+            <ConsultCta variant="icon" className={styles.help} />
 
             <div className={styles.hint}>
               <span className={styles.hintText}>천천히 오른쪽으로</span>
@@ -165,48 +177,6 @@ export function CaptureLandscapePage() {
                   </div>
                 ))}
               </div>
-            </div>
-
-            <div className={styles.rail}>
-              <div className={styles.gauge}>
-                <svg
-                  width="64"
-                  height="64"
-                  viewBox="0 0 64 64"
-                  className={styles.gaugeSvg}
-                  aria-hidden
-                >
-                  <circle
-                    cx="32"
-                    cy="32"
-                    r="28"
-                    fill="none"
-                    stroke="rgba(255,255,255,.16)"
-                    strokeWidth="4"
-                  />
-                  <circle
-                    cx="32"
-                    cy="32"
-                    r="28"
-                    fill="none"
-                    stroke="#3CD8A0"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                    strokeDasharray="176"
-                    strokeDashoffset="65"
-                  />
-                </svg>
-                <div className={styles.gaugeValue}>
-                  <span className={styles.gaugeNumber}>63</span>
-                  <span className={styles.gaugeUnit}>%</span>
-                </div>
-              </div>
-              <ButtonLink to={USER_ROUTES.ANALYZING} className={styles.finish}>
-                완료
-              </ButtonLink>
-              <Link to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.switchLink}>
-                세로로 전환
-              </Link>
             </div>
           </div>
 

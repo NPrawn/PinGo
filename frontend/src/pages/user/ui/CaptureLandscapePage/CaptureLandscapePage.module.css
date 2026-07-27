@@ -56,9 +56,24 @@
   width: 726px;
   height: 342px;
   overflow: hidden;
-  background: #061310;
+  background: #0a1b16;
   border-radius: 40px;
   transform: translate(-50%, -50%) rotate(-90deg);
+}
+
+.cameraFrame {
+  position: absolute;
+  top: 82px;
+  right: 46px;
+  bottom: 92px;
+  left: 46px;
+  overflow: hidden;
+  background: #061310;
+  border: 1px solid rgb(127 239 195 / 18%);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 5%),
+    0 12px 28px -20px rgb(0 0 0 / 75%);
 }
 
 .scene {
@@ -90,9 +105,9 @@
 .frameGuides {
   position: absolute;
   top: 12px;
-  right: 132px;
+  right: 12px;
   bottom: 12px;
-  left: 46px;
+  left: 12px;
   pointer-events: none;
 }
 
@@ -157,11 +172,26 @@
 .topBar {
   position: absolute;
   top: 38px;
+  right: 82px;
   left: 46px;
   z-index: 3;
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.topActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.help {
+  position: absolute;
+  top: 38px;
+  right: 28px;
+  z-index: 5;
 }
 
 .back {
@@ -213,8 +243,8 @@
 
 .hint {
   position: absolute;
-  top: 50%;
-  left: calc(50% - 43px);
+  top: 51%;
+  left: calc(50% - 45px);
   z-index: 3;
   display: flex;
   gap: 12px;
@@ -235,7 +265,7 @@
 
 .dock {
   position: absolute;
-  right: 136px;
+  right: 46px;
   bottom: 16px;
   left: 46px;
   z-index: 3;
@@ -309,68 +339,24 @@
   color: rgb(223 246 230 / 45%);
 }
 
-/* Right-hand action rail. */
-.rail {
-  position: absolute;
-  top: 0;
-  right: 26px;
-  bottom: 0;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 13px;
-  align-items: center;
-  justify-content: center;
-  width: 110px;
-  padding: 0 12px;
-  background: linear-gradient(270deg, rgb(6 19 16 / 94%), rgb(6 19 16 / 0%));
-}
-
-.gauge {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
-}
-
-.gaugeSvg {
-  position: absolute;
-  inset: 0;
-  transform: rotate(-90deg);
-}
-
-.gaugeValue {
-  display: flex;
-  align-items: baseline;
-  line-height: 1;
-}
-
-.gaugeNumber {
-  font-size: 17px;
-  font-weight: 800;
-  color: #fff;
-}
-
-.gaugeUnit {
-  margin-left: 1px;
-  font-size: 9px;
-  font-weight: 700;
-  color: rgb(223 246 230 / 60%);
-}
-
 .finish {
-  height: 44px;
-  font-size: 13px;
-  border-radius: 12px;
+  width: auto;
+  min-width: 58px;
+  height: 34px;
+  padding: 0 16px;
+  font-size: 11px;
+  border-radius: var(--radius-pill);
 }
 
 .switchLink {
+  padding: 7px 10px;
   font-size: 11px;
   font-weight: 700;
-  color: rgb(223 246 230 / 62%);
+  color: #dff6e6;
   text-decoration: none;
+  background: rgb(6 19 16 / 72%);
+  border: 1px solid rgb(127 239 195 / 25%);
+  border-radius: var(--radius-pill);
 }
 
 /* Notch and home indicator, drawn on the unrotated shell. */

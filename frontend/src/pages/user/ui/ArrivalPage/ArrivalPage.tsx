@@ -1,3 +1,4 @@
+import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import {
   Blob,
@@ -54,6 +55,7 @@ export function ArrivalPage() {
           <Icon name="compass" size={16} />
           카카오지도로 이어서 길찾기
         </ButtonLink>
+        <ConsultCta size="sm" className={styles.consult} />
         <GhostLink to={USER_ROUTES.CONSULT_ENDED} className={styles.secondary}>
           상담 만족도 남기고 종료
         </GhostLink>

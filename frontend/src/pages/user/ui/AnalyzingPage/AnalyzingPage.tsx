@@ -1,3 +1,4 @@
+import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink, GhostLink, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -16,6 +17,7 @@ export function AnalyzingPage() {
   return (
     <PhoneFrame dark bodyClassName={styles.body}>
       <>
+        <ConsultCta variant="icon" className={styles.consult} />
         <div className={styles.spinner} aria-hidden />
         <Title className={styles.title}>분석 중이에요…</Title>
         <Sub className={styles.sub}>주변 이미지를 서버 VPS와 대조하고 있어요</Sub>

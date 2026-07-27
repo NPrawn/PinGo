@@ -1,3 +1,4 @@
+import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink, Card, Kicker, LivePill, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -108,13 +109,7 @@ export function LocateFailedPage() {
           >
             지도에서 선택
           </ButtonLink>
-          <ButtonLink
-            to={USER_ROUTES.CONSULT_REQUEST}
-            variant="secondary"
-            className={styles.actionHalf}
-          >
-            상담 요청
-          </ButtonLink>
+          <ConsultCta className={styles.actionHalf} />
         </div>
       </div>
     </PhoneFrame>

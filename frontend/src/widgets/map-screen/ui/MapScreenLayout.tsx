@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { ConsultCta } from '@/features/consult-request';
 import { BackLink, MapPreview } from '@/shared/ui';
 import styles from './MapScreenLayout.module.css';
 
@@ -58,7 +59,10 @@ type MapScreenHeaderProps = {
 export function MapScreenHeader({ backTo, backLabel, title, lede }: MapScreenHeaderProps) {
   return (
     <div className={styles.header}>
-      <BackLink to={backTo}>{backLabel}</BackLink>
+      <div className={styles.headerBar}>
+        <BackLink to={backTo}>{backLabel}</BackLink>
+        <ConsultCta variant="icon" />
+      </div>
       <div className={styles.headerText}>
         <h1 className={styles.title}>{title}</h1>
         <p className={styles.lede}>{lede}</p>

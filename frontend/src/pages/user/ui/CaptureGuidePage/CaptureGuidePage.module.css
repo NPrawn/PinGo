@@ -4,6 +4,12 @@
   height: 6px;
 }
 
+.headerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .title {
   margin-top: 14px;
 }

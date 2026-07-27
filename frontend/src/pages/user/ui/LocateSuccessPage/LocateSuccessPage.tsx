@@ -1,4 +1,5 @@
 import { useStationStore } from '@/entities/station';
+import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import {
   Blob,
@@ -24,6 +25,7 @@ export function LocateSuccessPage() {
       <>
         <div className={styles.topPill}>
           <LivePill tone="gps">LIVE · 인식 완료</LivePill>
+          <ConsultCta variant="icon" />
         </div>
         <div className={styles.topSpacer} />
 

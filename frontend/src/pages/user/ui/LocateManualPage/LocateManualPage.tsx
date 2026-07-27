@@ -1,4 +1,5 @@
 import { useStationStore } from '@/entities/station';
+import { ConsultCta } from '@/features/consult-request';
 import type { FloorId } from '@/shared/types';
 import { USER_ROUTES } from '@/shared/config';
 import { BackLink, ButtonLink, Icon, MapPreview, PillButton, Sub, Title } from '@/shared/ui';
@@ -33,7 +34,10 @@ export function LocateManualPage() {
 
   return (
     <PhoneFrame>
-      <BackLink to={USER_ROUTES.LOCATE_FAILED}>뒤로</BackLink>
+      <div className={styles.headerBar}>
+        <BackLink to={USER_ROUTES.LOCATE_FAILED}>뒤로</BackLink>
+        <ConsultCta variant="icon" />
+      </div>
       <Title>
         지도에서 현재
         <br />
@@ -175,9 +179,11 @@ export function LocateManualPage() {
       </MapPreview>
 
       <p className={styles.hint}>지도에 표시된 랜드마크를 참고해 현재 위치를 탭하세요</p>
-      <ButtonLink to={USER_ROUTES.DESTINATION} className={styles.confirm}>
-        이 위치로 확정
-      </ButtonLink>
+      <div className={styles.actions}>
+        <ButtonLink to={USER_ROUTES.LOCATE_SUCCESS} className={styles.confirm}>
+          이 위치로 확정
+        </ButtonLink>
+      </div>
     </PhoneFrame>
   );
 }

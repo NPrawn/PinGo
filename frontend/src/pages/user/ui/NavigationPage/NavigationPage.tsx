@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
+import { ConsultCta } from '@/features/consult-request';
 import type { FloorId } from '@/shared/types';
 import { USER_ROUTES } from '@/shared/config';
 import { Button, ButtonLink, HeadingMarker, Icon, MapPreview } from '@/shared/ui';
@@ -48,27 +49,7 @@ export function NavigationPage() {
               </div>
               <div className={styles.camBarMeta}>도보 4분 · 에스컬레이터 1회</div>
             </div>
-            <Link to={USER_ROUTES.CONSULT_REQUEST} className={styles.consultCta}>
-              <span className={styles.consultCtaIcon}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#5C3A0F"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M4 14v-2a8 8 0 0116 0v2" />
-                  <rect x="2.5" y="13.5" width="4.5" height="7" rx="2" />
-                  <rect x="17" y="13.5" width="4.5" height="7" rx="2" />
-                  <path d="M19.2 20.5c0 1.4-1.6 2.5-3.6 2.5" />
-                </svg>
-              </span>
-              <span className={styles.consultCtaLabel}>상담요청</span>
-            </Link>
+            <ConsultCta variant="chip" attention className={styles.consult} />
           </div>
           <div className={styles.arrow}>↑</div>
           <div className={styles.camCaption}>직진 후 에스컬레이터에서 좌회전</div>

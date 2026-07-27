@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink } from '@/shared/ui';
 import { CaptureProgress, RecordingBadge, ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -24,56 +25,63 @@ export function CapturePortraitPage() {
   return (
     <PhoneFrame layout="flush" bodyClassName={styles.body} statusBarClassName={styles.statusBar}>
       <>
-        <svg viewBox="0 0 300 640" preserveAspectRatio="none" className={styles.scene} aria-hidden>
-          <path d="M0 640 L117 320 H183 L300 640 Z" fill="rgba(60,216,160,0.07)" />
-          <path
-            d="M0 640 L117 320 M300 640 L183 320 M117 320 H183"
-            stroke="rgba(127,239,195,0.24)"
-            strokeWidth="1.2"
-            fill="none"
-          />
-          <path
-            d="M117 320 V128 H183 V320"
-            stroke="rgba(127,239,195,0.16)"
-            strokeWidth="1.2"
-            fill="none"
-          />
-          <rect x="129" y="172.8" width="42" height="51.2" rx="3" fill="rgba(127,239,195,0.2)" />
-          <path
-            d="M0 512 H90 M210 512 H300"
-            stroke="rgba(127,239,195,0.12)"
-            strokeWidth="1"
-            fill="none"
-          />
-        </svg>
-
-        <div className={styles.band} aria-hidden />
-        <div className={styles.horizon} aria-hidden />
-        <div className={styles.cornerLeft} aria-hidden />
-        <div className={styles.cornerRight} aria-hidden />
-
         <div className={styles.topBar}>
           <ViewfinderBack to={USER_ROUTES.CAPTURE_GUIDE} />
           <RecordingBadge label="REC · 세로" />
-          <span className={styles.topBarSpacer} />
+          <ConsultCta variant="icon" />
         </div>
 
-        <div className={styles.hint}>
-          <span className={styles.hintText}>천천히 오른쪽으로</span>
+        <div className={styles.viewfinder}>
           <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#7FEFC3"
-            strokeWidth="2.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={styles.hintArrow}
+            viewBox="0 0 300 640"
+            preserveAspectRatio="none"
+            className={styles.scene}
             aria-hidden
           >
-            <path d="M5 12h13M13 6l6 6-6 6" />
+            <path d="M0 640 L117 320 H183 L300 640 Z" fill="rgba(60,216,160,0.07)" />
+            <path
+              d="M0 640 L117 320 M300 640 L183 320 M117 320 H183"
+              stroke="rgba(127,239,195,0.24)"
+              strokeWidth="1.2"
+              fill="none"
+            />
+            <path
+              d="M117 320 V128 H183 V320"
+              stroke="rgba(127,239,195,0.16)"
+              strokeWidth="1.2"
+              fill="none"
+            />
+            <rect x="129" y="172.8" width="42" height="51.2" rx="3" fill="rgba(127,239,195,0.2)" />
+            <path
+              d="M0 512 H90 M210 512 H300"
+              stroke="rgba(127,239,195,0.12)"
+              strokeWidth="1"
+              fill="none"
+            />
           </svg>
+
+          <div className={styles.band} aria-hidden />
+          <div className={styles.horizon} aria-hidden />
+          <div className={styles.cornerLeft} aria-hidden />
+          <div className={styles.cornerRight} aria-hidden />
+
+          <div className={styles.hint}>
+            <span className={styles.hintText}>천천히 오른쪽으로</span>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#7FEFC3"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={styles.hintArrow}
+              aria-hidden
+            >
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </div>
         </div>
 
         <Link to={USER_ROUTES.CAPTURE_LANDSCAPE} className={styles.rotateTip}>

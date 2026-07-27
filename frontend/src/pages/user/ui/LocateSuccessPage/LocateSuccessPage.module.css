@@ -3,8 +3,12 @@
 .topPill {
   position: absolute;
   top: 56px;
+  right: 20px;
   left: 20px;
   z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .topSpacer {
