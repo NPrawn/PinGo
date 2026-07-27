@@ -45,6 +45,7 @@ ai/pipeline_output/*
 !ai/pipeline_output/query_compatibility_report.json
 ai/pipeline_output.zip
 ai/runtime_maps/
+ai/model-cache/
 ai/visualization_models/
 ai/tests/*.mp4
 ai/tests/images.jpg
