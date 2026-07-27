@@ -8,5 +8,12 @@ export const en = {
       admin: 'Admin',
       notFound: 'Page not found',
     },
+    indoorMap: {
+      loading: 'Loading the map…',
+      error: 'Failed to load the map',
+      empty: 'No map is registered',
+      floorNotFound: 'No map for this floor',
+      imageAlt: '{{floorCode}} indoor map',
+    },
   },
 } as const;
