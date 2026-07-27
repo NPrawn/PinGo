@@ -1,0 +1,154 @@
+/* Ported from the prototype's 3D blob component system (`.blob3d`,
+   `.blob-hero`). Purely decorative — every usage is `aria-hidden`. */
+.blob {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: radial-gradient(
+    circle at 30% 25%,
+    var(--color-mint-highlight-soft) 0%,
+    var(--color-mint) 45%,
+    var(--color-mint-deep) 100%
+  );
+  border-radius: 50%;
+  box-shadow:
+    0 30px 60px -12px rgb(14 127 88 / 50%),
+    0 18px 30px -8px rgb(14 127 88 / 30%),
+    inset -18px -22px 40px rgb(0 50 30 / 28%),
+    inset 12px 14px 30px rgb(255 255 255 / 35%);
+  transform: translateZ(0);
+}
+
+/* Specular highlights. */
+.blob::before {
+  position: absolute;
+  top: 15%;
+  left: 22%;
+  width: 32%;
+  height: 22%;
+  content: '';
+  background: radial-gradient(ellipse at center, rgb(255 255 255 / 90%), transparent 70%);
+  border-radius: 50%;
+  filter: blur(2px);
+}
+
+.blob::after {
+  position: absolute;
+  right: 22%;
+  bottom: 18%;
+  width: 20%;
+  height: 14%;
+  content: '';
+  background: radial-gradient(ellipse at center, rgb(255 255 255 / 40%), transparent 65%);
+  border-radius: 50%;
+  filter: blur(3px);
+}
+
+.coral {
+  background: radial-gradient(circle at 30% 25%, #ffc6bc 0%, #ff8b7a 45%, #c24a3d 100%);
+  box-shadow:
+    0 20px 40px -10px rgb(194 74 61 / 45%),
+    inset -12px -14px 26px rgb(80 20 10 / 28%),
+    inset 8px 10px 22px rgb(255 255 255 / 35%);
+}
+
+.lilac {
+  background: radial-gradient(circle at 30% 25%, #e3dafc 0%, #c4b5fd 45%, #7358d4 100%);
+  box-shadow:
+    0 20px 40px -10px rgb(115 88 212 / 40%),
+    inset -12px -14px 26px rgb(40 20 100 / 25%),
+    inset 8px 10px 22px rgb(255 255 255 / 40%);
+}
+
+.sky {
+  background: radial-gradient(circle at 30% 25%, #dbeefc 0%, #a5d8ff 45%, #4a9cd6 100%);
+  box-shadow:
+    0 20px 40px -10px rgb(74 156 214 / 40%),
+    inset -12px -14px 26px rgb(15 50 90 / 22%),
+    inset 8px 10px 22px rgb(255 255 255 / 40%);
+}
+
+/* Cluster wrapper — `.blob-hero` in the prototype. */
+.hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 260px;
+  margin: 4px 0 20px;
+}
+
+.main {
+  width: 190px;
+  height: 190px;
+  animation: blob-float-b 7s ease-in-out infinite;
+}
+
+.satelliteA {
+  position: absolute;
+  top: 12%;
+  right: 18%;
+  width: 64px;
+  height: 64px;
+  animation: blob-float-a 5s ease-in-out infinite;
+}
+
+.satelliteB {
+  position: absolute;
+  bottom: 16%;
+  left: 16%;
+  width: 44px;
+  height: 44px;
+  animation: blob-float-b 4s ease-in-out infinite;
+}
+
+.satelliteC {
+  position: absolute;
+  top: 20%;
+  left: 10%;
+  width: 36px;
+  height: 36px;
+  animation: blob-float-a 6s ease-in-out infinite reverse;
+}
+
+/* Glass badge floated at the centre of a cluster. */
+.pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  background: rgb(255 255 255 / 95%);
+  backdrop-filter: blur(14px);
+  border-radius: 16px;
+  box-shadow:
+    0 10px 24px color-mix(in srgb, var(--color-mint-darker) 35%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 90%);
+  transform: translate(-50%, -50%);
+}
+
+@keyframes blob-float-a {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  50% {
+    transform: translateY(-8px) rotate(3deg);
+  }
+}
+
+@keyframes blob-float-b {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(6px);
+  }
+}
