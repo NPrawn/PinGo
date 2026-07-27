@@ -1,0 +1,99 @@
+/* Screen 29-1 — establishing the WebRTC session.
+   Ported from prototype `#c-connecting`. */
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: center;
+  justify-content: center;
+  height: 520px;
+  text-align: center;
+  background: #faf9fb;
+}
+
+.spinner {
+  width: 76px;
+  height: 76px;
+  border: 5px solid #e6e1f7;
+  border-top-color: var(--color-mint-mid);
+  border-radius: 50%;
+  animation: connecting-spin 1s linear infinite;
+}
+
+.heading {
+  margin: 26px 0 6px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.body {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-sub);
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+}
+
+.chipDone {
+  color: #0f5a3e;
+  background: #d9f0df;
+}
+
+.chipActive {
+  color: var(--color-mint-forest);
+  background: var(--color-mint-veil);
+}
+
+.chipDot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-mint-mid);
+  border-radius: 50%;
+  animation: connecting-pulse 1.2s infinite;
+}
+
+.cancel {
+  width: auto;
+  padding: 0 18px;
+  margin-top: 22px;
+}
+
+.failureLink {
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-sub);
+  text-decoration: none;
+}
+
+@keyframes connecting-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes connecting-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}

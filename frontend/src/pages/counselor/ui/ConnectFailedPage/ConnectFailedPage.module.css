@@ -1,0 +1,103 @@
+/* Screen 29-2 — connection failed. Ported from prototype `#c-failed`. */
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 520px;
+  padding: 0 40px;
+  text-align: center;
+  background: #faf9fb;
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 74px;
+  background: #fdede6;
+  border-radius: 24px;
+}
+
+.heading {
+  margin: 20px 0 6px;
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-sub);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 22px;
+}
+
+.chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+}
+
+.chipError {
+  color: #c24a3d;
+  background: #fdede6;
+}
+
+.chipMuted {
+  color: var(--color-sub);
+  background: #f1f3f7;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  padding: 16px 18px;
+  margin-top: 24px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--color-line-soft);
+  border-radius: 14px;
+}
+
+.cardLabel {
+  margin-bottom: 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--color-sub);
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.cardMeta {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--color-sub);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.action {
+  width: auto;
+  padding: 0 18px;
+}
