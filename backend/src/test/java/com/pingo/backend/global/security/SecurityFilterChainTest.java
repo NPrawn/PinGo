@@ -8,7 +8,6 @@ import com.pingo.backend.station.repository.StationRepository;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,6 +48,8 @@ class SecurityFilterChainTest {
     private Long adminAccountId;
     private Long stationId;
 
+    private Long counselorAccountId;
+
     @BeforeEach
     void setUp() {
         Account admin = Account.signUpAdmin("test-admin", "test-password-hash", "테스트 관리자");
@@ -62,6 +63,11 @@ class SecurityFilterChainTest {
                 new BigDecimal("127.0276")
         );
         stationId = stationRepository.save(station).getId();
+
+        Account counselor = Account.signUpCounselor("test-counselor", "test-password-hash", "테스트 상담자", stationId);
+        counselor.approve();
+        counselorAccountId = accountRepository.save(counselor).getAccountId();
+
     }
 
     // ---- 비로그인 사용자 ----
@@ -90,13 +96,36 @@ class SecurityFilterChainTest {
                 .andExpect(status().isOk());
     }
 
-    // ---- COUNSELOR ----
-    // ROLE_COUNSELOR 전용 엔드포인트가 아직 없어서(consultation 패키지 .gitkeep 상태) 보류.
+    @Test
+    void ADMIN_상담자API_403() throws Exception {
+        String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
 
-    @Disabled("ROLE_COUNSELOR 전용 엔드포인트 미구현 - ConsultationController 구현 후 활성화")
+        mockMvc.perform(get("/api/counselors/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    // ---- COUNSELOR ----
+
     @Test
     void COUNSELOR_상담자API_200() throws Exception {
+        String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
+
+        mockMvc.perform(get("/api/counselors/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
     }
+
+    @Test
+    void COUNSELOR_관리자API_403() throws Exception {
+        String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
+
+        mockMvc.perform(get("/api/admin/stations")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
 
     // ---- 토큰 이상 ----
 

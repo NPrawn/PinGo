@@ -44,24 +44,24 @@
 
 ### 2.3 공통 HTTP 상태 코드
 
-| 코드 | 의미 |
-| --- | --- |
-| 200 | 요청 성공 |
-| 201 | 생성 성공 |
-| 400 | 잘못된 요청 |
-| 401 | 인증 필요 |
-| 403 | 권한 없음 |
-| 404 | 리소스 없음 |
-| 409 | 상태 충돌 |
-| 500 | 서버 오류 |
+| 코드 | 의미        |
+| ---- | ----------- |
+| 200  | 요청 성공   |
+| 201  | 생성 성공   |
+| 400  | 잘못된 요청 |
+| 401  | 인증 필요   |
+| 403  | 권한 없음   |
+| 404  | 리소스 없음 |
+| 409  | 상태 충돌   |
+| 500  | 서버 오류   |
 
 ### 2.4 인증 정책
 
-| 사용자 유형 | 인증 방식 |
-| --- | --- |
-| 일반 사용자 | 비로그인, `userSessionId` 기반 |
-| 상담자 | 로그인 후 JWT Access Token 사용 |
-| 관리자 | 로그인 후 JWT Access Token 사용 |
+| 사용자 유형 | 인증 방식                       |
+| ----------- | ------------------------------- |
+| 일반 사용자 | 비로그인, `userSessionId` 기반  |
+| 상담자      | 로그인 후 JWT Access Token 사용 |
+| 관리자      | 로그인 후 JWT Access Token 사용 |
 
 MVP에서는 JWT Access Token을 HTTP Authorization Header로 전달한다.
 
@@ -71,42 +71,42 @@ Authorization: Bearer {accessToken}
 
 ### 2.5 확정 구현 선택
 
-| 항목 | 확정안 |
-| --- | --- |
-| 프론트엔드 | React + TypeScript + Vite |
-| UI 스타일링 | Tailwind CSS |
-| 아이콘 | lucide-react |
-| 백엔드 프레임워크 | Spring Boot 기준 |
-| DBMS | MySQL |
-| ORM/DB 접근 | Spring Data JPA |
-| 인증 방식 | JWT Access Token |
-| JWT 만료 시간 | 6시간 |
-| Refresh Token | MVP에서는 생략 |
-| 사용자 세션 만료 | 마지막 활동 기준 24시간 |
-| 상담 세션 ID | UUID 또는 ULID 기반 문자열 |
-| WebRTC signaling | WebSocket |
-| STUN/TURN | 무료 STUN 우선, 연결 불안정 시 TURN 추가 |
-| 지도 표현 방식 | 이미지 지도 + 좌표 오버레이 |
-| 지도 파일 관리 | 서버 정적 파일에 저장하고 DB에는 상대 URL(`/uploads/maps/...`) 저장 |
-| 경로 탐색 | 백엔드 Dijkstra |
-| 카메라 이미지 처리 | 위치 인식 처리 후 즉시 폐기 원칙 |
-| 외부 지도 연계 | 네이버지도 우선 |
-| 관리자 API | MVP에서 전체 구현 |
-| 배포 방식 | Nginx reverse proxy + HTTPS |
-| HTTPS 인증서 | Let's Encrypt 기준 |
-| 다국어 응답 | `nameKo`, `nameEn`을 함께 응답하고 프론트에서 선택 |
+| 항목               | 확정안                                                              |
+| ------------------ | ------------------------------------------------------------------- |
+| 프론트엔드         | React + TypeScript + Vite                                           |
+| UI 스타일링        | Tailwind CSS                                                        |
+| 아이콘             | lucide-react                                                        |
+| 백엔드 프레임워크  | Spring Boot 기준                                                    |
+| DBMS               | MySQL                                                               |
+| ORM/DB 접근        | Spring Data JPA                                                     |
+| 인증 방식          | JWT Access Token                                                    |
+| JWT 만료 시간      | 6시간                                                               |
+| Refresh Token      | MVP에서는 생략                                                      |
+| 사용자 세션 만료   | 마지막 활동 기준 24시간                                             |
+| 상담 세션 ID       | UUID 또는 ULID 기반 문자열                                          |
+| WebRTC signaling   | WebSocket                                                           |
+| STUN/TURN          | 무료 STUN 우선, 연결 불안정 시 TURN 추가                            |
+| 지도 표현 방식     | 이미지 지도 + 좌표 오버레이                                         |
+| 지도 파일 관리     | 서버 정적 파일에 저장하고 DB에는 상대 URL(`/uploads/maps/...`) 저장 |
+| 경로 탐색          | 백엔드 Dijkstra                                                     |
+| 카메라 이미지 처리 | 위치 인식 처리 후 즉시 폐기 원칙                                    |
+| 외부 지도 연계     | 네이버지도 우선                                                     |
+| 관리자 API         | MVP에서 전체 구현                                                   |
+| 배포 방식          | Nginx reverse proxy + HTTPS                                         |
+| HTTPS 인증서       | Let's Encrypt 기준                                                  |
+| 다국어 응답        | `nameKo`, `nameEn`을 함께 응답하고 프론트에서 선택                  |
 
 ### 2.6 API 책임 기준
 
 API 책임자는 `PinGo_역할분배_최종기획안_v4.md`를 따른다.
 
-| API 영역 | 최종 책임 |
-| --- | --- |
-| 역·지도·시설·목적지 검색·출구 추천·경로 | 신재령 |
-| 인증·상담·상담자·관리자 로그인·WebRTC signaling·DataChannel 계약 | 오서현 |
-| VPS 이미지 요청·AI Adapter·위치 인식 상태 판정·외부 지도·위치 공유·배포 네트워크 | 이정우 |
-| 카메라·IMU·실시간 방향 보정·화면 표시 | 김은지 |
-| 교통카드 추천 UX·정적 룰·문구 | 최주연 |
+| API 영역                                                                         | 최종 책임 |
+| -------------------------------------------------------------------------------- | --------- |
+| 역·지도·시설·목적지 검색·출구 추천·경로                                          | 신재령    |
+| 인증·상담·상담자·관리자 로그인·WebRTC signaling·DataChannel 계약                 | 오서현    |
+| VPS 이미지 요청·AI Adapter·위치 인식 상태 판정·외부 지도·위치 공유·배포 네트워크 | 이정우    |
+| 카메라·IMU·실시간 방향 보정·화면 표시                                            | 김은지    |
+| 교통카드 추천 UX·정적 룰·문구                                                    | 최주연    |
 
 VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeout, 상태 판정을 책임진다. 신재령은 검증된 위치 결과의 좌표 앵커링과 유효 노드 매핑을 책임진다. 실시간 IMU 기반 방향 보정은 프론트엔드 책임이며 백엔드 API는 지속적인 센서 스트림을 처리하지 않는다.
 
@@ -194,8 +194,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 }
 ```
 
-> 이전 초안에서는 `/counselors/login`, `/admins/login`을 별도로 정의했으나(11.1, 13.1 참고), account 테이블 통합(ERD_초안.md 5.6 참고)에 맞춰 `POST /auth/login` 하나로 합쳤다. 응답도 `counselor`/`admin` 중첩 객체가 아니라 평평한(flat) 구조이며, 관리자 세부 역할 구분 필드(`role`: admin/super_admin)는 아직 구현되지 않았다 — 필요해지면 추가 논의 필요.
-
+> 이전 초안에서는 `/counselors/login`, `/admins/login`을 별도로 정의했으나(11.1, 13.1 참고), account 테이블 통합(ERD\_초안.md 5.6 참고)에 맞춰 `POST /auth/login` 하나로 합쳤다. 응답도 `counselor`/`admin` 중첩 객체가 아니라 평평한(flat) 구조이며, 관리자 세부 역할 구분 필드(`role`: admin/super_admin)는 아직 구현되지 않았다 — 필요해지면 추가 논의 필요.
 
 ## 2.9 상담자(역무원) 회원가입
 
@@ -231,7 +230,6 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 > 생성된 계정은 `is_active = false` 상태다. 관리자 승인 전 로그인 시도는 `INACTIVE_ACCOUNT`로 거부된다. 이미 사용 중인 `loginId`로 요청하면 `DUPLICATE_LOGIN_ID`(409), 존재하지 않는 `stationId`면 `STATION_NOT_FOUND`(404)로 거부된다.
 
-
 ## 2.10 중복 아이디 체크
 
 ### GET `/auth/check-login-id`
@@ -240,9 +238,9 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| loginId | string | Y | 확인할 로그인 ID |
+| 이름    | 타입   | 필수 | 설명             |
+| ------- | ------ | ---- | ---------------- |
+| loginId | string | Y    | 확인할 로그인 ID |
 
 #### Response
 
@@ -338,10 +336,10 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| latitude | number | Y | 현재 위도 |
-| longitude | number | Y | 현재 경도 |
+| 이름      | 타입   | 필수 | 설명      |
+| --------- | ------ | ---- | --------- |
+| latitude  | number | Y    | 현재 위도 |
+| longitude | number | Y    | 현재 경도 |
 
 #### Response
 
@@ -371,10 +369,10 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| keyword | string | Y | 검색어 |
-| language | string | N | ko, en |
+| 이름     | 타입   | 필수 | 설명   |
+| -------- | ------ | ---- | ------ |
+| keyword  | string | Y    | 검색어 |
+| language | string | N    | ko, en |
 
 #### Response
 
@@ -466,11 +464,11 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| floorId | number | N | 특정 층 필터 |
-| facilityType | string | N | 시설 유형 필터 |
-| language | string | N | ko, en |
+| 이름         | 타입   | 필수 | 설명           |
+| ------------ | ------ | ---- | -------------- |
+| floorId      | number | N    | 특정 층 필터   |
+| facilityType | string | N    | 시설 유형 필터 |
+| language     | string | N    | ko, en         |
 
 #### Response
 
@@ -545,11 +543,11 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| stationId | number | Y | 역 ID |
-| keyword | string | Y | 검색어 (공백·누락 시 `INVALID_REQUEST`) |
-| language | string | N | ko, en |
+| 이름      | 타입   | 필수 | 설명                                    |
+| --------- | ------ | ---- | --------------------------------------- |
+| stationId | number | Y    | 역 ID                                   |
+| keyword   | string | Y    | 검색어 (공백·누락 시 `INVALID_REQUEST`) |
+| language  | string | N    | ko, en                                  |
 
 #### Response
 
@@ -586,10 +584,10 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| category | string | N | 장소 카테고리 |
-| language | string | N | ko, en |
+| 이름     | 타입   | 필수 | 설명          |
+| -------- | ------ | ---- | ------------- |
+| category | string | N    | 장소 카테고리 |
+| language | string | N    | ko, en        |
 
 #### Response
 
@@ -664,12 +662,12 @@ multipart/form-data
 
 #### Request
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| userSessionId | string | Y | 사용자 세션 ID |
-| stationId | number | Y | 현재 역 ID |
-| image | file | Y | 카메라 이미지 |
-| heading | number | N | 단말 방향 |
+| 이름          | 타입   | 필수 | 설명           |
+| ------------- | ------ | ---- | -------------- |
+| userSessionId | string | Y    | 사용자 세션 ID |
+| stationId     | number | Y    | 현재 역 ID     |
+| image         | file   | Y    | 카메라 이미지  |
+| heading       | number | N    | 단말 방향      |
 
 #### Response
 
@@ -723,9 +721,9 @@ multipart/form-data
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| floorId | number | N | 층 ID |
+| 이름    | 타입   | 필수 | 설명  |
+| ------- | ------ | ---- | ----- |
+| floorId | number | N    | 층 ID |
 
 #### Response
 
@@ -807,9 +805,9 @@ multipart/form-data
 
 #### routeType 기준
 
-| routeType | 화면 표시명 | 처리 기준 |
-| --- | --- | --- |
-| fastest | 빠른 경로 | 모든 active edge 허용 (가중치는 `distanceM`, 즉 최단 거리 기준) |
+| routeType     | 화면 표시명          | 처리 기준                                                                          |
+| ------------- | -------------------- | ---------------------------------------------------------------------------------- |
+| fastest       | 빠른 경로            | 모든 active edge 허용 (가중치는 `distanceM`, 즉 최단 거리 기준)                    |
 | elevator_only | 엘리베이터 이용 경로 | `moveType = stair`, `moveType = escalator` 제외 (일반 통로·엘리베이터·개찰구 허용) |
 
 `elevator_only`는 엘리베이터 간선만 사용하는 경로가 아니라, 계단·에스컬레이터 없이 도달 가능한 경로를 의미한다.
@@ -1090,9 +1088,9 @@ Authorization: Bearer {accessToken}
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| status | string | N | waiting, accepted 등 |
+| 이름   | 타입   | 필수 | 설명                 |
+| ------ | ------ | ---- | -------------------- |
+| status | string | N    | waiting, accepted 등 |
 
 #### Response
 
@@ -1194,6 +1192,103 @@ Authorization: Bearer {accessToken}
 
 ---
 
+## 11.6 상담자 본인 계정 조회
+
+### GET `/counselors/me`
+
+로그인한 상담자가 자신의 계정 정보를 조회한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "accountId": 7,
+    "loginId": "counselor01",
+    "name": "김상담",
+    "stationId": 1,
+    "isActive": true,
+    "status": "AVAILABLE",
+    "createdAt": "2026-07-20T09:00:00"
+  },
+  "message": null
+}
+```
+
+---
+
+## 11.7 상담자 본인 계정 수정
+
+### PATCH `/counselors/me`
+
+로그인한 상담자가 자신의 이름, 비밀번호, 상담 가능 상태를 수정한다. 담당 역 지정과 계정 활성화·비활성화는 이 API로 변경할 수 없으며, 관리자 전용 API(13.6 상담자 계정 관리 참고)에서만 처리한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+#### Request
+
+```json
+{
+  "name": "박상담",
+  "currentPassword": "oldPassword1!",
+  "newPassword": "newPassword1!",
+  "status": "BUSY"
+}
+```
+
+모든 필드는 선택이며, 보낸 필드만 변경된다. `newPassword`를 보낼 때는 `currentPassword`를 반드시 함께 보내야 한다.
+
+| 필드            | 타입   | 필수   | 설명                                   |
+| --------------- | ------ | ------ | -------------------------------------- |
+| name            | string | N      | 최대 100자                             |
+| currentPassword | string | 조건부 | `newPassword` 지정 시 필수             |
+| newPassword     | string | N      | 영문·숫자·특수문자 포함 8~20자         |
+| status          | string | N      | `AVAILABLE`, `BUSY`, `OFFLINE` 중 하나 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "accountId": 7,
+    "loginId": "counselor01",
+    "name": "박상담",
+    "stationId": 1,
+    "isActive": true,
+    "status": "BUSY",
+    "createdAt": "2026-07-20T09:00:00"
+  },
+  "message": null
+}
+```
+
+#### 실패 응답 예시 — 현재 비밀번호 불일치
+
+```json
+{
+  "success": false,
+  "code": "INVALID_CURRENT_PASSWORD",
+  "message": "현재 비밀번호가 올바르지 않습니다.",
+  "data": null
+}
+```
+
+> `currentPassword`가 없거나 틀리면 `newPassword`를 보냈어도 비밀번호는 변경되지 않고 `INVALID_CURRENT_PASSWORD`(400)를 반환한다. `name`/`status`만 보낸 경우에는 `currentPassword` 없이도 정상 처리된다.
+
+---
+
 ## 12. WebRTC Signaling API 초안
 
 WebRTC signaling은 WebSocket 기반으로 구현한다.
@@ -1204,14 +1299,14 @@ WebRTC signaling은 WebSocket 기반으로 구현한다.
 
 #### 메시지 타입
 
-| type | 설명 |
-| --- | --- |
-| offer | WebRTC offer |
-| answer | WebRTC answer |
+| type          | 설명          |
+| ------------- | ------------- |
+| offer         | WebRTC offer  |
+| answer        | WebRTC answer |
 | ice_candidate | ICE candidate |
-| join | 방 입장 |
-| leave | 방 퇴장 |
-| error | 오류 |
+| join          | 방 입장       |
+| leave         | 방 퇴장       |
+| error         | 오류          |
 
 #### 예시 메시지
 
@@ -1232,13 +1327,13 @@ WebRTC signaling은 WebSocket 기반으로 구현한다.
 
 WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
 
-| eventType | 설명 |
-| --- | --- |
-| draw_arrow | 사용자 화면에 화살표 표시 |
-| set_destination | 사용자 목적지 변경 |
-| update_location | 사용자 현재 위치 수정 |
-| send_message | 짧은 안내 메시지 표시 |
-| sync_status | 상담 상태 동기화 |
+| eventType       | 설명                      |
+| --------------- | ------------------------- |
+| draw_arrow      | 사용자 화면에 화살표 표시 |
+| set_destination | 사용자 목적지 변경        |
+| update_location | 사용자 현재 위치 수정     |
+| send_message    | 짧은 안내 메시지 표시     |
+| sync_status     | 상담 상태 동기화          |
 
 ### draw_arrow 예시
 
@@ -1281,13 +1376,13 @@ WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
 
 ## 13.2 역 관리
 
-| Method | Endpoint | 설명 |
-| --- | --- | --- |
-| POST | `/admin/stations` | 역 등록 |
-| GET | `/admin/stations` | 활성 역 목록 조회 |
-| GET | `/admin/stations/{stationId}` | 역과 층 상세 조회 |
-| PATCH | `/admin/stations/{stationId}` | 역 정보 수정 |
-| DELETE | `/admin/stations/{stationId}` | 역 비활성화 |
+| Method | Endpoint                      | 설명              |
+| ------ | ----------------------------- | ----------------- |
+| POST   | `/admin/stations`             | 역 등록           |
+| GET    | `/admin/stations`             | 활성 역 목록 조회 |
+| GET    | `/admin/stations/{stationId}` | 역과 층 상세 조회 |
+| PATCH  | `/admin/stations/{stationId}` | 역 정보 수정      |
+| DELETE | `/admin/stations/{stationId}` | 역 비활성화       |
 
 ### 역 등록·수정 Request
 
@@ -1319,12 +1414,12 @@ WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
 
 ## 13.3 층 관리
 
-| Method | Endpoint | 설명 |
-| --- | --- | --- |
-| POST | `/admin/stations/{stationId}/floors` | 해당 역에 층 등록 |
-| GET | `/admin/stations/{stationId}/floors` | 해당 역의 층 목록 조회 |
-| PATCH | `/admin/floors/{floorId}` | 층 정보 수정 |
-| DELETE | `/admin/floors/{floorId}` | 층 삭제 |
+| Method | Endpoint                             | 설명                   |
+| ------ | ------------------------------------ | ---------------------- |
+| POST   | `/admin/stations/{stationId}/floors` | 해당 역에 층 등록      |
+| GET    | `/admin/stations/{stationId}/floors` | 해당 역의 층 목록 조회 |
+| PATCH  | `/admin/floors/{floorId}`            | 층 정보 수정           |
+| DELETE | `/admin/floors/{floorId}`            | 층 삭제                |
 
 ### 층 등록·수정 Request
 
@@ -1368,13 +1463,13 @@ multipart/form-data
 
 #### Request
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| mapType | string | Y | image, svg |
-| mapFile | file | Y | 지도 파일 |
-| width | number | N | 지도 너비 |
-| height | number | N | 지도 높이 |
-| scaleMPerPx | number | N | 픽셀당 실제 거리 |
+| 이름        | 타입   | 필수 | 설명             |
+| ----------- | ------ | ---- | ---------------- |
+| mapType     | string | Y    | image, svg       |
+| mapFile     | file   | Y    | 지도 파일        |
+| width       | number | N    | 지도 너비        |
+| height      | number | N    | 지도 높이        |
+| scaleMPerPx | number | N    | 픽셀당 실제 거리 |
 
 #### Response
 
@@ -1420,15 +1515,15 @@ multipart/form-data
 
 ## 13.5 시설·출구 관리
 
-시설(출구·개찰구·승강장·엘리베이터 등)을 등록·조회·수정·삭제한다. `facilityType`은 ERD_초안.md 의 시설 유형(`exit`, `gate`, `platform`, `transfer_passage`, `stair`, `escalator`, `elevator`, `restroom`, `station_office`, `ticket_machine`, `card_charger`, `locker`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_FACILITY_TYPE`로 거부한다. `facilityType`이 `exit`이고 `exitDetail`이 있으면 출구 상세를 함께 저장한다. 삭제는 물리 삭제 대신 `is_active=false` 처리한다.
+시설(출구·개찰구·승강장·엘리베이터 등)을 등록·조회·수정·삭제한다. `facilityType`은 ERD\_초안.md 의 시설 유형(`exit`, `gate`, `platform`, `transfer_passage`, `stair`, `escalator`, `elevator`, `restroom`, `station_office`, `ticket_machine`, `card_charger`, `locker`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_FACILITY_TYPE`로 거부한다. `facilityType`이 `exit`이고 `exitDetail`이 있으면 출구 상세를 함께 저장한다. 삭제는 물리 삭제 대신 `is_active=false` 처리한다.
 
-| Method | Endpoint | 설명 |
-| --- | --- | --- |
-| POST | `/admin/facilities` | 시설 등록 |
-| GET | `/admin/facilities` | 시설 목록 조회 (`stationId` 필수, `floorId`·`facilityType` 선택 필터) |
-| GET | `/admin/facilities/{facilityId}` | 시설 상세 조회 (출구면 `exitDetail` 포함) |
-| PATCH | `/admin/facilities/{facilityId}` | 시설 수정 |
-| DELETE | `/admin/facilities/{facilityId}` | 시설 비활성화 |
+| Method | Endpoint                         | 설명                                                                  |
+| ------ | -------------------------------- | --------------------------------------------------------------------- |
+| POST   | `/admin/facilities`              | 시설 등록                                                             |
+| GET    | `/admin/facilities`              | 시설 목록 조회 (`stationId` 필수, `floorId`·`facilityType` 선택 필터) |
+| GET    | `/admin/facilities/{facilityId}` | 시설 상세 조회 (출구면 `exitDetail` 포함)                             |
+| PATCH  | `/admin/facilities/{facilityId}` | 시설 수정                                                             |
+| DELETE | `/admin/facilities/{facilityId}` | 시설 비활성화                                                         |
 
 ### POST `/admin/facilities`
 
@@ -1469,11 +1564,11 @@ multipart/form-data
 
 #### Query
 
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| stationId | number | Y | 역 ID |
-| floorId | number | N | 층 필터 |
-| facilityType | string | N | 시설 유형 필터 |
+| 이름         | 타입   | 필수 | 설명           |
+| ------------ | ------ | ---- | -------------- |
+| stationId    | number | Y    | 역 ID          |
+| floorId      | number | N    | 층 필터        |
+| facilityType | string | N    | 시설 유형 필터 |
 
 #### Response
 
@@ -1555,15 +1650,15 @@ multipart/form-data
 
 ## 13.6 경로 노드 관리
 
-경로 탐색용 노드를 등록·조회·수정·삭제한다. `nodeType`은 ERD_초안.md 의 노드 유형(`normal`, `junction`, `facility`, `floor_transition`, `exit`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_NODE_TYPE`로 거부한다. 노드는 물리 삭제하며, 간선·시설 등에서 참조 중이면 `ROUTE_NODE_IN_USE`로 삭제를 막는다.
+경로 탐색용 노드를 등록·조회·수정·삭제한다. `nodeType`은 ERD\_초안.md 의 노드 유형(`normal`, `junction`, `facility`, `floor_transition`, `exit`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_NODE_TYPE`로 거부한다. 노드는 물리 삭제하며, 간선·시설 등에서 참조 중이면 `ROUTE_NODE_IN_USE`로 삭제를 막는다.
 
-| Method | Endpoint | 설명 |
-| --- | --- | --- |
-| POST | `/admin/route-nodes` | 노드 등록 |
-| GET | `/admin/route-nodes` | 노드 목록 조회 (`stationId` 필수, `floorId` 선택 필터) |
-| GET | `/admin/route-nodes/{nodeId}` | 노드 상세 조회 |
-| PATCH | `/admin/route-nodes/{nodeId}` | 노드 수정 |
-| DELETE | `/admin/route-nodes/{nodeId}` | 노드 삭제 |
+| Method | Endpoint                      | 설명                                                   |
+| ------ | ----------------------------- | ------------------------------------------------------ |
+| POST   | `/admin/route-nodes`          | 노드 등록                                              |
+| GET    | `/admin/route-nodes`          | 노드 목록 조회 (`stationId` 필수, `floorId` 선택 필터) |
+| GET    | `/admin/route-nodes/{nodeId}` | 노드 상세 조회                                         |
+| PATCH  | `/admin/route-nodes/{nodeId}` | 노드 수정                                              |
+| DELETE | `/admin/route-nodes/{nodeId}` | 노드 삭제                                              |
 
 ### POST `/admin/route-nodes`
 
@@ -1618,15 +1713,15 @@ multipart/form-data
 
 ## 13.7 경로 간선 관리
 
-노드 간 이동 간선을 등록·조회·수정·삭제한다. `moveType`은 ERD_초안.md 의 이동 유형(`walkway`, `stair`, `escalator`, `elevator`, `gate`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_MOVE_TYPE`로 거부한다. `fromNodeId`와 `toNodeId`는 같은 역의 노드여야 하고 서로 달라야 한다. 삭제는 `is_active=false` 처리한다.
+노드 간 이동 간선을 등록·조회·수정·삭제한다. `moveType`은 ERD\_초안.md 의 이동 유형(`walkway`, `stair`, `escalator`, `elevator`, `gate`) 중 하나여야 하며, 그 외 값은 `UNSUPPORTED_MOVE_TYPE`로 거부한다. `fromNodeId`와 `toNodeId`는 같은 역의 노드여야 하고 서로 달라야 한다. 삭제는 `is_active=false` 처리한다.
 
-| Method | Endpoint | 설명 |
-| --- | --- | --- |
-| POST | `/admin/route-edges` | 간선 등록 |
-| GET | `/admin/route-edges` | 간선 목록 조회 (`stationId` 필수) |
-| GET | `/admin/route-edges/{edgeId}` | 간선 상세 조회 |
-| PATCH | `/admin/route-edges/{edgeId}` | 간선 수정 |
-| DELETE | `/admin/route-edges/{edgeId}` | 간선 비활성화 |
+| Method | Endpoint                      | 설명                              |
+| ------ | ----------------------------- | --------------------------------- |
+| POST   | `/admin/route-edges`          | 간선 등록                         |
+| GET    | `/admin/route-edges`          | 간선 목록 조회 (`stationId` 필수) |
+| GET    | `/admin/route-edges/{edgeId}` | 간선 상세 조회                    |
+| PATCH  | `/admin/route-edges/{edgeId}` | 간선 수정                         |
+| DELETE | `/admin/route-edges/{edgeId}` | 간선 비활성화                     |
 
 ### POST `/admin/route-edges`
 
@@ -1894,85 +1989,87 @@ multipart/form-data
 
 ## 16. 오류 코드 초안
 
-| 코드 | 설명 |
-| --- | --- |
-| INVALID_REQUEST | 요청 형식이 잘못됨 |
-| DUPLICATE_LOGIN_ID | 이미 사용 중인 로그인 ID |
-| STATION_NOT_FOUND | 역을 찾을 수 없음 |
-| FACILITY_NOT_FOUND | 시설을 찾을 수 없음 |
-| UNSUPPORTED_FACILITY_TYPE | 지원하지 않는 시설 유형 |
-| FLOOR_NOT_FOUND | 층을 찾을 수 없음 |
-| INVALID_MAP_FILE | 지도 파일이 비어 있거나 올바르지 않음 |
-| UNSUPPORTED_MAP_TYPE | 지원하지 않는 지도 유형 |
-| FILE_STORAGE_FAILED | 파일 저장 실패 |
-| PLACE_NOT_FOUND | 주변 장소를 찾을 수 없음 |
-| EXIT_RECOMMENDATION_NOT_FOUND | 장소-출구 추천을 찾을 수 없음 |
-| DUPLICATE_EXIT_RECOMMENDATION | 이미 등록된 장소-출구 추천 |
-| USER_SESSION_NOT_FOUND | 사용자 세션을 찾을 수 없음 |
-| LOCALIZATION_FAILED | 위치 인식 실패 |
-| ROUTE_NOT_FOUND | 경로를 찾을 수 없음 |
-| ROUTE_NODE_NOT_FOUND | 경로 노드를 찾을 수 없음 |
-| ROUTE_EDGE_NOT_FOUND | 경로 간선을 찾을 수 없음 |
-| ROUTE_NODE_IN_USE | 사용 중인 경로 노드는 삭제할 수 없음 |
-| UNSUPPORTED_NODE_TYPE | 지원하지 않는 노드 유형 |
-| UNSUPPORTED_MOVE_TYPE | 지원하지 않는 이동 유형 |
-| UNSUPPORTED_ROUTE_TYPE | 지원하지 않는 경로 옵션 유형 |
-| CONSULTATION_NOT_FOUND | 상담 세션을 찾을 수 없음 |
-| INVALID_CREDENTIALS | 로그인 ID 또는 비밀번호가 올바르지 않음 |
-| INACTIVE_ACCOUNT | 비활성화된 계정으로 로그인 시도 |
-| WEBRTC_SIGNALING_FAILED | WebRTC signaling 실패 |
-| EXTERNAL_MAP_LINK_FAILED | 외부 지도 링크 생성 실패 |
+| 코드                          | 설명                                    |
+| ----------------------------- | --------------------------------------- |
+| INVALID_REQUEST               | 요청 형식이 잘못됨                      |
+| DUPLICATE_LOGIN_ID            | 이미 사용 중인 로그인 ID                |
+| STATION_NOT_FOUND             | 역을 찾을 수 없음                       |
+| FACILITY_NOT_FOUND            | 시설을 찾을 수 없음                     |
+| UNSUPPORTED_FACILITY_TYPE     | 지원하지 않는 시설 유형                 |
+| FLOOR_NOT_FOUND               | 층을 찾을 수 없음                       |
+| INVALID_MAP_FILE              | 지도 파일이 비어 있거나 올바르지 않음   |
+| UNSUPPORTED_MAP_TYPE          | 지원하지 않는 지도 유형                 |
+| FILE_STORAGE_FAILED           | 파일 저장 실패                          |
+| PLACE_NOT_FOUND               | 주변 장소를 찾을 수 없음                |
+| EXIT_RECOMMENDATION_NOT_FOUND | 장소-출구 추천을 찾을 수 없음           |
+| DUPLICATE_EXIT_RECOMMENDATION | 이미 등록된 장소-출구 추천              |
+| USER_SESSION_NOT_FOUND        | 사용자 세션을 찾을 수 없음              |
+| LOCALIZATION_FAILED           | 위치 인식 실패                          |
+| ROUTE_NOT_FOUND               | 경로를 찾을 수 없음                     |
+| ROUTE_NODE_NOT_FOUND          | 경로 노드를 찾을 수 없음                |
+| ROUTE_EDGE_NOT_FOUND          | 경로 간선을 찾을 수 없음                |
+| ROUTE_NODE_IN_USE             | 사용 중인 경로 노드는 삭제할 수 없음    |
+| UNSUPPORTED_NODE_TYPE         | 지원하지 않는 노드 유형                 |
+| UNSUPPORTED_MOVE_TYPE         | 지원하지 않는 이동 유형                 |
+| UNSUPPORTED_ROUTE_TYPE        | 지원하지 않는 경로 옵션 유형            |
+| CONSULTATION_NOT_FOUND        | 상담 세션을 찾을 수 없음                |
+| INVALID_CREDENTIALS           | 로그인 ID 또는 비밀번호가 올바르지 않음 |
+| INVALID_CURRENT_PASSWORD      | 현재 비밀번호가 올바르지 않음           |
+| ACCOUNT_NOT_FOUND             | 계정을 찾을 수 없음                     |
+| INACTIVE_ACCOUNT              | 비활성화된 계정으로 로그인 시도         |
+| WEBRTC_SIGNALING_FAILED       | WebRTC signaling 실패                   |
+| EXTERNAL_MAP_LINK_FAILED      | 외부 지도 링크 생성 실패                |
 
 ---
 
 ## 17. MVP 필수 API 요약
 
-| 구분 | API |
-| --- | --- |
-| 사용자 세션 | POST /user-sessions |
-| 역 | GET /stations/nearby, GET /stations/search, GET /stations/{stationId} |
-| 지도/시설 | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities |
-| 목적지 | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits |
-| 위치 인식 | POST /vps/localize, POST /localization/manual |
-| 경로 | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate |
-| 외부 지도 | POST /external-maps/directions |
-| 위치 공유 | POST /location-shares, GET /location-shares/{shareId} |
-| 상담 | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId} |
-| 인증 | POST /auth/login, POST /auth/signup, GET /auth/check-login-id |
-| 상담자 | GET /counselor/consultations, POST /consultations/{id}/accept |
-| WebRTC | WS /ws/signaling |
-| 교통카드 | POST /transport-cards/recommend |
-| 관리자 | 관리자 데이터 등록 API 전체 구현 |
+| 구분        | API                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| 사용자 세션 | POST /user-sessions                                                                                     |
+| 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                   |
+| 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                    |
+| 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits     |
+| 위치 인식   | POST /vps/localize, POST /localization/manual                                                           |
+| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                       |
+| 외부 지도   | POST /external-maps/directions                                                                          |
+| 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                   |
+| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}        |
+| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                           |
+| 상담자      | GET /counselor/consultations, POST /consultations/{id}/accept, GET /counselors/me, PATCH /counselors/me |
+| WebRTC      | WS /ws/signaling                                                                                        |
+| 교통카드    | POST /transport-cards/recommend                                                                         |
+| 관리자      | 관리자 데이터 등록 API 전체 구현                                                                        |
 
 ---
 
 ## 18. 확정된 구현 사항
 
-| 항목 | 결정 |
-| --- | --- |
-| 프론트엔드 | React + TypeScript + Vite |
-| UI 스타일링 | Tailwind CSS |
-| 아이콘 | lucide-react |
-| 실제 백엔드 프레임워크 | Spring Boot |
-| DBMS | MySQL |
-| ORM/DB 접근 | Spring Data JPA |
-| 인증 방식 | JWT Access Token |
-| JWT 만료 시간 | 6시간 |
-| Refresh Token | MVP에서는 생략 |
-| 사용자 세션 만료 | 마지막 활동 기준 24시간 |
-| 상담 세션 ID | UUID 또는 ULID 기반 문자열 |
-| WebRTC signaling | WebSocket |
-| STUN/TURN | 무료 STUN 우선, 연결 불안정 시 TURN 추가 |
-| 지도 표현 방식 | 이미지 지도 + 좌표 오버레이 |
-| 지도 파일 업로드 방식 | 서버 정적 파일에 저장하고 DB에는 URL 저장 |
-| 경로 탐색 | 백엔드 Dijkstra |
-| 카메라 이미지 처리 | 서버 장기 저장 없이 처리 후 즉시 폐기 |
-| 이미지 폐기 로그 | 이미지 원본은 저장하지 않고 요청 ID, 처리 결과, 폐기 시각만 기록 |
-| 외부 지도 우선 연동 | 네이버지도 |
-| 관리자 API | MVP에서 전체 구현 |
-| 배포 방식 | Nginx reverse proxy + HTTPS |
-| HTTPS 인증서 | Let's Encrypt 기준 |
-| API 응답 다국어 처리 | `nameKo`, `nameEn` 함께 응답 |
+| 항목                   | 결정                                                             |
+| ---------------------- | ---------------------------------------------------------------- |
+| 프론트엔드             | React + TypeScript + Vite                                        |
+| UI 스타일링            | Tailwind CSS                                                     |
+| 아이콘                 | lucide-react                                                     |
+| 실제 백엔드 프레임워크 | Spring Boot                                                      |
+| DBMS                   | MySQL                                                            |
+| ORM/DB 접근            | Spring Data JPA                                                  |
+| 인증 방식              | JWT Access Token                                                 |
+| JWT 만료 시간          | 6시간                                                            |
+| Refresh Token          | MVP에서는 생략                                                   |
+| 사용자 세션 만료       | 마지막 활동 기준 24시간                                          |
+| 상담 세션 ID           | UUID 또는 ULID 기반 문자열                                       |
+| WebRTC signaling       | WebSocket                                                        |
+| STUN/TURN              | 무료 STUN 우선, 연결 불안정 시 TURN 추가                         |
+| 지도 표현 방식         | 이미지 지도 + 좌표 오버레이                                      |
+| 지도 파일 업로드 방식  | 서버 정적 파일에 저장하고 DB에는 URL 저장                        |
+| 경로 탐색              | 백엔드 Dijkstra                                                  |
+| 카메라 이미지 처리     | 서버 장기 저장 없이 처리 후 즉시 폐기                            |
+| 이미지 폐기 로그       | 이미지 원본은 저장하지 않고 요청 ID, 처리 결과, 폐기 시각만 기록 |
+| 외부 지도 우선 연동    | 네이버지도                                                       |
+| 관리자 API             | MVP에서 전체 구현                                                |
+| 배포 방식              | Nginx reverse proxy + HTTPS                                      |
+| HTTPS 인증서           | Let's Encrypt 기준                                               |
+| API 응답 다국어 처리   | `nameKo`, `nameEn` 함께 응답                                     |
 
 ## 19. 아직 의사결정이 필요한 사항
 
