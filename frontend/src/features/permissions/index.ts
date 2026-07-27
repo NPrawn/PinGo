@@ -3,14 +3,14 @@ export {
   requestMediaPermissions,
   requestRequiredPermissions,
   stopMediaStream,
-} from './permission.service';
+} from './model/permission.service';
 
 export {
   clearStoredRequiredPermissionState,
   getStoredRequiredPermissionState,
   saveRequiredPermissionState,
   toStoredRequiredPermissionState,
-} from './permission.storage';
+} from './model/permission.storage';
 
 export type {
   LocationPermissionResult,
@@ -20,8 +20,6 @@ export type {
   PermissionRequestResult,
   PermissionStatus,
   RequiredPermissionsResult,
-} from './permission.service';
+} from './model/permission.service';
 
-export type {
-  StoredRequiredPermissionState,
-} from './permission.storage';
+export type { StoredRequiredPermissionState } from './model/permission.storage';
