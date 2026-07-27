@@ -1,0 +1,19 @@
+/* Screen 04 (FR-U-003) — confirm current station. Prototype `#s-station`. */
+
+.topSpacer {
+  height: 8px;
+}
+
+.gpsDot {
+  background: #0ea36f;
+  box-shadow: 0 0 0 3px rgb(14 163 111 / 25%);
+}
+
+.title {
+  margin-top: 14px;
+}
+
+.cta {
+  flex: 0 0 56px;
+  min-height: 56px;
+}
