@@ -1,0 +1,79 @@
+/* Screen 19 (FR-U-014) — waiting for a counselor.
+   Ported from prototype `#s-consult-wait`. */
+
+.body {
+  align-items: center;
+  padding-top: 60px;
+  text-align: center;
+}
+
+.hero {
+  height: 220px;
+  margin: 8px 0 0;
+}
+
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 190px;
+  height: 190px;
+  border: 2px solid rgb(60 216 160 / 35%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: consult-ripple 2s ease-out infinite;
+}
+
+.rippleDelayed {
+  animation-delay: 0.8s;
+}
+
+.title {
+  margin-top: 12px;
+}
+
+.sub {
+  margin-top: 8px;
+}
+
+.tip {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 14px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--color-sub);
+  text-align: left;
+}
+
+.tipIcon {
+  display: flex;
+  color: #f0b36a;
+}
+
+.tip b {
+  color: var(--color-ink);
+}
+
+.primary {
+  width: 100%;
+}
+
+.cancel {
+  margin-top: 4px;
+  color: #c24a3d;
+}
+
+@keyframes consult-ripple {
+  0% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.7);
+  }
+}

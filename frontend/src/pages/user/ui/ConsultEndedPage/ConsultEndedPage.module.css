@@ -1,0 +1,145 @@
+/* Screen 26 — end-of-consultation rating modal.
+   Ported from prototype `#s-consult-end`. */
+
+.body {
+  position: relative;
+}
+
+.statusBar {
+  position: relative;
+  z-index: 1;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  filter: brightness(0.8);
+}
+
+.cam {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 250px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 20%, #2b2b30, #0e0e11);
+}
+
+.arrow {
+  font-size: 60px;
+  color: #fff;
+  text-shadow: 0 3px 12px rgb(0 0 0 / 50%);
+}
+
+.mapWrap {
+  flex: 1;
+  padding: 12px 14px;
+  background: var(--color-cream);
+}
+
+.map {
+  height: 100%;
+}
+
+.floorButtons {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  background: rgb(255 255 255 / 78%);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 12px;
+}
+
+.floorButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 27px;
+  font: 800 10.5px/1 var(--font-family-base);
+  color: #7c8c85;
+  border-radius: 9px;
+}
+
+.floorButtonOn {
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: rgb(10 10 12 / 55%);
+}
+
+.dialog {
+  position: relative;
+  width: 100%;
+  padding: 26px 22px 24px;
+  text-align: center;
+  background: var(--color-paper);
+  border-radius: 22px;
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto;
+  color: var(--color-mint-forest);
+  background: #d9f0df;
+  border-radius: 50%;
+}
+
+.heading {
+  margin: 16px 0 4px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.lede {
+  margin: 0;
+}
+
+.stars {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+  font-size: 34px;
+}
+
+.star {
+  padding: 0;
+  line-height: 1;
+  background: none;
+  border: 0;
+  transition: transform 0.1s;
+}
+
+.star:hover {
+  transform: scale(1.12);
+}
+
+.ratingLabel {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-mint-mid);
+}
