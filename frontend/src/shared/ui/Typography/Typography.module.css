@@ -1,25 +1,34 @@
-/* Ported from prototype `.title` / `.sub` / `.kick`. */
+/**
+ * Ported from prototype `.title` / `.sub` / `.kick`, using the refine-layer
+ * values that override the base rules.
+ *
+ * Colours read from custom properties so a dark device shell can retint them
+ * (see `PhoneFrame.module.css`), which is what `.phone.dark .title` did.
+ */
 .title {
   margin: 0;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 800;
-  line-height: 1.32;
-  letter-spacing: -0.02em;
+  line-height: 1.18;
+  letter-spacing: -0.038em;
+  color: var(--screen-title-color, var(--color-ink));
 }
 
 .sub {
   margin: 6px 0 0;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--color-sub);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--screen-sub-color, var(--color-sub));
 }
 
+/* Small mint eyebrow above a title. */
 .kick {
   margin: 0 0 4px;
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--color-sub);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--color-mint-dark);
+  text-transform: uppercase;
 }
 
 .center {
