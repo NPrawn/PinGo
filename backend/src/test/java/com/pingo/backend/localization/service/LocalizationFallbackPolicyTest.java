@@ -7,7 +7,7 @@ import com.pingo.backend.localization.dto.response.LocalizationResultStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class LocalizationFallbackPolicyTest {
+class LocalizationFallbackPolicyTest {
 
     private LocalizationFallbackPolicy policy;
 
@@ -17,7 +17,7 @@ public class LocalizationFallbackPolicyTest {
     }
 
     @Test
-    void successReturnNoFallbackOptions() {
+    void successReturnsNoFallbackOptions() {
         assertThat(policy.optionsFor(LocalizationResultStatus.SUCCESS)).isEmpty();
     }
 
@@ -44,7 +44,7 @@ public class LocalizationFallbackPolicyTest {
     }
 
     @Test
-    void timeoutReturnsRetryMapAdnConsultationOptions() {
+    void timeoutReturnsRetryMapAndConsultationOptions() {
         assertThat(policy.optionsFor(LocalizationResultStatus.TIMEOUT))
                 .containsExactly(
                         LocalizationFallbackOption.RETRY_CAPTURE,
