@@ -1,0 +1,338 @@
+/* Screen 15 (FR-U-010) — turn-by-turn guidance. Prototype `#s-nav`. */
+
+.cam {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 288px;
+  overflow: hidden;
+  color: #6f6f78;
+  background: radial-gradient(120% 90% at 50% 20%, #2b2b30, #0e0e11);
+}
+
+.camBar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 14px;
+  background: linear-gradient(180deg, rgb(6 19 16 / 92%), rgb(6 19 16 / 55%) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.camBarIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #3cd8a0, #0ea36f);
+  border-radius: 11px;
+  box-shadow: 0 4px 12px -4px rgb(6 94 66 / 60%);
+}
+
+.camBarBody {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.camBarTitle {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.camBarDistance {
+  color: #7fefc3;
+}
+
+.camBarMeta {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(223 246 230 / 72%);
+}
+
+/**
+ * The consult shortcut sits on the dark camera feed, where a translucent chip
+ * disappeared. It uses the gold accent the prototype gives the consult FAB, so
+ * it reads as the same action while standing out against the mint UI.
+ */
+.consultCta {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 13px;
+  text-decoration: none;
+  background: linear-gradient(135deg, #ffc59e 0%, var(--color-gold) 100%);
+  border: 1px solid rgb(255 255 255 / 45%);
+  border-radius: var(--radius-pill);
+  box-shadow:
+    0 6px 16px -4px rgb(240 179 106 / 55%),
+    inset 0 1px 0 rgb(255 255 255 / 55%);
+  animation: consult-attention 2.6s var(--ease-out) infinite;
+}
+
+.consultCta:hover {
+  filter: brightness(1.05);
+}
+
+.consultCtaIcon {
+  display: flex;
+  animation: consult-bounce 1.6s var(--ease-out) infinite;
+}
+
+.consultCtaLabel {
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: #5c3a0f;
+}
+
+/* Icon hop — the emphasis the label asked for. */
+@keyframes consult-bounce {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0);
+  }
+
+  15% {
+    transform: translateY(-3.5px) scale(1.08);
+  }
+
+  30% {
+    transform: translateY(0);
+  }
+
+  42% {
+    transform: translateY(-1.5px);
+  }
+}
+
+/* A slow halo pulse so the chip catches the eye without nagging. */
+@keyframes consult-attention {
+  0%,
+  100% {
+    box-shadow:
+      0 6px 16px -4px rgb(240 179 106 / 55%),
+      inset 0 1px 0 rgb(255 255 255 / 55%),
+      0 0 0 0 rgb(240 179 106 / 55%);
+  }
+
+  50% {
+    box-shadow:
+      0 6px 16px -4px rgb(240 179 106 / 55%),
+      inset 0 1px 0 rgb(255 255 255 / 55%),
+      0 0 0 7px rgb(240 179 106 / 0%);
+  }
+}
+
+.arrow {
+  font-size: 60px;
+  color: #fff;
+  text-shadow: 0 3px 12px rgb(0 0 0 / 50%);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-mint-mid) 70%, transparent));
+}
+
+.camCaption {
+  position: absolute;
+  right: 0;
+  bottom: 16px;
+  left: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 2px 8px #000;
+}
+
+/* Lower half: map, optional step list and controls. */
+.lower {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 12px 14px 14px;
+  overflow: hidden;
+  background: var(--color-cream);
+}
+
+.map {
+  position: relative;
+  flex: 1;
+  min-height: 80px;
+  background: #eef1f5;
+  border: 1px solid #dfe3e8;
+  transition: flex 0.2s;
+}
+
+.mapSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.floorButtons {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  background: rgb(255 255 255 / 78%);
+  backdrop-filter: blur(14px) saturate(1.3);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 12px;
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--color-ink) 30%, transparent);
+}
+
+.floorButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 27px;
+  font: 800 10.5px/1 var(--font-family-base);
+  letter-spacing: -0.01em;
+  color: #7c8c85;
+  background: transparent;
+  border: none;
+  border-radius: 9px;
+}
+
+.floorButton:hover {
+  color: var(--color-mint-forest);
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+
+.floorButtonOn,
+.floorButtonOn:hover {
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
+  box-shadow:
+    0 3px 8px -2px color-mix(in srgb, var(--color-mint-darker) 50%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 35%);
+}
+
+.destLabel {
+  position: absolute;
+  top: 22%;
+  left: 74%;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--color-red);
+  background: #fff;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  transform: translate(-50%, -150%);
+}
+
+.steps {
+  max-height: 220px;
+  padding: 2px 12px;
+  margin-top: 10px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}
+
+.step {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.stepLast {
+  border-bottom: none;
+}
+
+.stepIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  color: var(--color-mint-mid);
+  background: var(--color-mint-veil);
+  border-radius: 9px;
+}
+
+.stepIconGoal {
+  color: var(--color-mint-forest);
+  background: #d9f0df;
+}
+
+.stepTitle {
+  font-size: 13px;
+}
+
+.stepNote {
+  font-size: 11px;
+  color: var(--color-sub);
+}
+
+.stepSpring {
+  flex: 1;
+}
+
+.stepDistance {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-sub);
+}
+
+.shortcuts {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.shortcut {
+  display: flex;
+  flex: 1;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-sub);
+  text-decoration: none;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.action {
+  flex: 1;
+  gap: 6px;
+}

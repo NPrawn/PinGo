@@ -1,0 +1,227 @@
+/* Screen 14 (FR-U-009) — route option comparison. Prototype `#s-route`. */
+
+.body {
+  position: relative;
+}
+
+.map {
+  position: relative;
+  z-index: 0;
+}
+
+.elevatorPin {
+  position: absolute;
+  top: 68%;
+  left: 18%;
+  display: flex;
+  color: var(--color-ink);
+  transform: translate(-50%, -50%);
+}
+
+.panel {
+  position: relative;
+  z-index: 5;
+  flex: none;
+  padding: 14px 0 18px;
+  background: var(--color-paper);
+  border-top: 1px solid var(--color-line);
+}
+
+.caption {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 20px 10px;
+}
+
+.captionText {
+  flex: 1;
+  margin: 0;
+}
+
+.swipeHint {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 10px;
+  background: rgb(60 216 160 / 14%);
+  border: 1px solid rgb(14 163 111 / 28%);
+  border-radius: var(--radius-pill);
+}
+
+.swipeHintText {
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--color-mint-darker);
+}
+
+.nudge {
+  animation: route-nudge 1.3s ease-in-out infinite;
+}
+
+.carouselWrap {
+  position: relative;
+}
+
+.carousel {
+  display: flex;
+  gap: 12px;
+  padding: 0 20px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.option {
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  width: 290px;
+  min-width: 290px;
+  min-height: 72px;
+  padding: 13px 16px;
+  background: #fff;
+  border: 1.5px solid transparent;
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.option:hover {
+  background: #fff;
+  border-color: transparent;
+  transform: none;
+}
+
+.option[aria-pressed='true'] {
+  border: 2.5px solid var(--color-mint);
+  box-shadow:
+    -7px 8px 0 color-mix(in srgb, var(--color-mint) 16%, transparent),
+    0 8px 18px -12px color-mix(in srgb, var(--color-mint-darker) 32%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 90%);
+}
+
+.optionHead {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.optionIcon {
+  display: flex;
+  color: #0ea36f;
+}
+
+.optionName {
+  flex: 1;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.optionTime {
+  flex: none;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--color-mint-mid);
+}
+
+.optionMeta {
+  font-size: 11.5px;
+  white-space: nowrap;
+  color: var(--color-sub);
+}
+
+.fade {
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  width: 56px;
+  pointer-events: none;
+}
+
+.fadeRight {
+  right: 10px;
+  justify-content: flex-end;
+  padding-right: 8px;
+  background: linear-gradient(270deg, var(--color-paper) 30%, transparent);
+}
+
+.fadeLeft {
+  left: 10px;
+  justify-content: flex-start;
+  padding-left: 8px;
+  background: linear-gradient(90deg, var(--color-paper) 30%, transparent);
+}
+
+.fadeButton {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--color-mint-dark);
+  cursor: pointer;
+  pointer-events: auto;
+  background: #fff;
+  border: 1px solid rgb(15 44 34 / 12%);
+  border-radius: 50%;
+  box-shadow: 0 3px 10px -3px rgb(15 44 34 / 28%);
+}
+
+.fadeRight .fadeButton {
+  animation: route-nudge 1.3s ease-in-out infinite;
+}
+
+.fadeLeft .fadeButton {
+  animation: route-nudge-left 1.3s ease-in-out infinite;
+}
+
+.cta {
+  padding: 14px 20px 0;
+}
+
+@keyframes route-nudge {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateX(7px);
+  }
+}
+
+@keyframes route-nudge-left {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateX(-7px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nudge,
+  .fadeButton {
+    animation: none;
+  }
+}
