@@ -16,13 +16,24 @@ const toneClass: Record<Icon3dTone, string | undefined> = {
 type Icon3dProps = HTMLAttributes<HTMLSpanElement> & {
   name: IconName;
   tone?: Icon3dTone;
+  /** Chip size in px. The corner radius scales with it. */
+  size?: number;
   iconSize?: number;
 };
 
-export function Icon3d({ name, tone = 'mint', iconSize = 22, className, ...props }: Icon3dProps) {
+export function Icon3d({
+  name,
+  tone = 'mint',
+  size,
+  iconSize = 22,
+  className,
+  style,
+  ...props
+}: Icon3dProps) {
   return (
     <span
       className={[styles.chip, toneClass[tone], className].filter(Boolean).join(' ')}
+      style={size ? { width: size, height: size, borderRadius: size * 0.32, ...style } : style}
       {...props}
     >
       <Icon name={name} size={iconSize} />

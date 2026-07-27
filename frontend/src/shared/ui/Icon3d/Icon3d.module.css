@@ -1,60 +1,78 @@
 /* Ported from prototype `.icon3d` — the sculpted icon chip on permission and
-   menu cards. */
+   menu cards. Brightened from the original mid-tones and given the same
+   specular highlight as the 3D blobs so the two read as one material. */
 .chip {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
+  overflow: hidden;
   font-size: 20px;
   color: #fff;
   background: radial-gradient(
     circle at 30% 25%,
-    var(--color-mint-highlight-soft),
-    var(--color-mint) 60%,
-    var(--color-mint-deep)
+    #c9f9e4 0%,
+    #45e3ac 58%,
+    var(--color-mint-dark) 100%
   );
   border-radius: 14px;
   box-shadow:
-    0 8px 18px -4px color-mix(in srgb, var(--color-mint-darker) 40%, transparent),
-    inset 0 2px 0 rgb(255 255 255 / 40%),
-    inset 0 -3px 6px rgb(0 50 30 / 20%);
+    0 8px 18px -4px color-mix(in srgb, var(--color-mint-darker) 34%, transparent),
+    inset 0 2px 0 rgb(255 255 255 / 45%),
+    inset 0 -3px 6px rgb(0 50 30 / 14%);
+}
+
+/* Glossy catch-light. */
+.chip::before {
+  position: absolute;
+  top: 11%;
+  left: 17%;
+  width: 44%;
+  height: 30%;
+  content: '';
+  background: radial-gradient(ellipse at center, rgb(255 255 255 / 85%), transparent 70%);
+  border-radius: 50%;
+  filter: blur(1.5px);
 }
 
 .chip svg {
+  position: relative;
+  z-index: 1;
   color: #fff;
   fill: #fff;
 }
 
 .coral {
-  background: radial-gradient(circle at 30% 25%, #ffc6bc, #ff8b7a 60%, #c24a3d);
+  background: radial-gradient(circle at 30% 25%, #ffd9d1 0%, #ff9d8d 58%, #d2604f 100%);
   box-shadow:
-    0 8px 18px -4px rgb(194 74 61 / 40%),
-    inset 0 2px 0 rgb(255 255 255 / 40%),
-    inset 0 -3px 6px rgb(80 20 10 / 20%);
+    0 8px 18px -4px rgb(194 74 61 / 34%),
+    inset 0 2px 0 rgb(255 255 255 / 45%),
+    inset 0 -3px 6px rgb(80 20 10 / 14%);
 }
 
 .lilac {
-  background: radial-gradient(circle at 30% 25%, #e3dafc, #c4b5fd 60%, #7358d4);
+  background: radial-gradient(circle at 30% 25%, #ede6ff 0%, #c8b8ff 58%, #8368e0 100%);
   box-shadow:
-    0 8px 18px -4px rgb(115 88 212 / 40%),
-    inset 0 2px 0 rgb(255 255 255 / 40%),
-    inset 0 -3px 6px rgb(40 20 100 / 20%);
+    0 8px 18px -4px rgb(115 88 212 / 34%),
+    inset 0 2px 0 rgb(255 255 255 / 45%),
+    inset 0 -3px 6px rgb(40 20 100 / 14%);
 }
 
 .sky {
-  background: radial-gradient(circle at 30% 25%, #dbeefc, #a5d8ff 60%, #4a9cd6);
+  background: radial-gradient(circle at 30% 25%, #e8f5ff 0%, #b0dcff 58%, #59aae0 100%);
   box-shadow:
-    0 8px 18px -4px rgb(74 156 214 / 40%),
-    inset 0 2px 0 rgb(255 255 255 / 40%),
-    inset 0 -3px 6px rgb(15 50 90 / 20%);
+    0 8px 18px -4px rgb(74 156 214 / 34%),
+    inset 0 2px 0 rgb(255 255 255 / 45%),
+    inset 0 -3px 6px rgb(15 50 90 / 14%);
 }
 
 .gold {
-  background: radial-gradient(circle at 30% 25%, #ffe9b8, #f0b36a 60%, #a76a1f);
+  background: radial-gradient(circle at 30% 25%, #fff1d4 0%, #f8c47f 58%, #c07f2c 100%);
   box-shadow:
-    0 8px 18px -4px rgb(167 106 31 / 40%),
-    inset 0 2px 0 rgb(255 255 255 / 40%),
-    inset 0 -3px 6px rgb(80 40 10 / 20%);
+    0 8px 18px -4px rgb(167 106 31 / 34%),
+    inset 0 2px 0 rgb(255 255 255 / 45%),
+    inset 0 -3px 6px rgb(80 40 10 / 14%);
 }

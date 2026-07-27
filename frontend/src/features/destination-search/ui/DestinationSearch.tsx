@@ -3,18 +3,23 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
 import { searchDestinations } from '@/entities/poi';
 import { USER_ROUTES } from '@/shared/config';
-import { Blob, Field, Icon3d, Kicker, SelectRow } from '@/shared/ui';
-import type { BlobTone, Icon3dTone } from '@/shared/ui';
+import { Field, Icon3d, Kicker, SelectRow } from '@/shared/ui';
+import type { Icon3dTone, IconName } from '@/shared/ui';
 import styles from './DestinationSearch.module.css';
 
 const RESULT_TONES: readonly Icon3dTone[] = ['mint', 'sky', 'coral', 'lilac', 'gold'];
 
 /** Shortcuts shown before the user types anything. */
-const QUICK_TILES: readonly { title: string; meta: string; tone: BlobTone }[] = [
-  { title: '화장실', meta: 'Restroom · 4곳', tone: 'mint' },
-  { title: '승강장', meta: 'Platform · 1-14', tone: 'coral' },
-  { title: '편의점', meta: 'Store · 6곳', tone: 'lilac' },
-  { title: '출구', meta: 'Exit · 1-8', tone: 'sky' },
+const QUICK_TILES: readonly {
+  title: string;
+  meta: string;
+  tone: Icon3dTone;
+  icon: IconName;
+}[] = [
+  { title: '화장실', meta: 'Restroom · 4곳', tone: 'mint', icon: 'restroom' },
+  { title: '승강장', meta: 'Platform · 1-14', tone: 'coral', icon: 'train' },
+  { title: '편의점', meta: 'Store · 6곳', tone: 'lilac', icon: 'store' },
+  { title: '출구', meta: 'Exit · 1-8', tone: 'sky', icon: 'door' },
 ];
 
 /**
@@ -117,14 +122,22 @@ export function DestinationSearch() {
                 className={styles.tile}
                 onClick={() => setDestination(tile.title)}
               >
-                <Blob tone={tile.tone} className={styles.tileBlob} />
-                <div>
-                  <div className={styles.tileTitle}>{tile.title}</div>
-                  <div className={styles.tileMeta}>{tile.meta}</div>
+                <Icon3d
+                  name={tile.icon}
+                  tone={tile.tone}
+                  size={52}
+                  iconSize={26}
+                  className={styles.tileIcon}
+                />
+                <div className={styles.tileBody}>
+                  <div>
+                    <div className={styles.tileTitle}>{tile.title}</div>
+                    <div className={styles.tileMeta}>{tile.meta}</div>
+                  </div>
+                  <span className={styles.tileArrow} aria-hidden>
+                    ›
+                  </span>
                 </div>
-                <span className={styles.tileArrow} aria-hidden>
-                  ›
-                </span>
               </Link>
             ))}
           </div>
