@@ -1,0 +1,54 @@
+services:
+  ai-localization:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: pingo-ai-localization-cpu:${AI_IMAGE_TAG:-local}
+    container_name: pingo-ai-localization
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${AI_HOST_PORT:-8000}:8000"
+    environment:
+      AI_DEVICE: cpu
+      AI_MAP_SET_VERSION: ${AI_MAP_SET_VERSION:?AI_MAP_SET_VERSION is required}
+      AI_MAP_ROOT: /maps
+      AI_MAP_VERSIONS: ${AI_MAP_VERSIONS:?AI_MAP_VERSIONS is required}
+      AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:?AI_INTERNAL_TOKEN is required}
+      AI_MAX_CONCURRENT_INFERENCES: ${AI_MAX_CONCURRENT_INFERENCES:-1}
+      AI_MAX_QUEUE_SIZE: ${AI_MAX_QUEUE_SIZE:-2}
+      AI_DEFAULT_TOP_K: ${AI_DEFAULT_TOP_K:-5}
+      OMP_NUM_THREADS: ${AI_CPU_THREADS:-4}
+      MKL_NUM_THREADS: ${AI_CPU_THREADS:-4}
+      OPENBLAS_NUM_THREADS: ${AI_CPU_THREADS:-4}
+    volumes:
+      - ${AI_MAPS_HOST_PATH:-/opt/pingo/ai/maps}:/maps:ro
+      - ${AI_MODEL_CACHE_HOST_PATH:-/opt/pingo/ai/model-cache}:/opt/pingo/model-cache:ro
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      start_period: 10m
+      retries: 3
+
+  model-prepare:
+    profiles:
+      - tools
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: pingo-ai-localization-cpu:${AI_IMAGE_TAG:-local}
+    environment:
+      TORCH_HOME: /opt/pingo/model-cache
+    volumes:
+      - ${AI_MODEL_CACHE_HOST_PATH:-/opt/pingo/ai/model-cache}:/opt/pingo/model-cache
+    command:
+      - python
+      - tools/download_model_weights.py
+      - --device
+      - cpu
