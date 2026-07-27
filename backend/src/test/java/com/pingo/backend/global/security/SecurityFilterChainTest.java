@@ -3,6 +3,8 @@ package com.pingo.backend.global.security;
 import com.pingo.backend.auth.domain.Account;
 import com.pingo.backend.auth.domain.AccountType;
 import com.pingo.backend.auth.repository.AccountRepository;
+import com.pingo.backend.station.domain.Station;
+import com.pingo.backend.station.repository.StationRepository;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.crypto.SecretKey;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
@@ -37,24 +40,38 @@ class SecurityFilterChainTest {
     @Autowired
     private AccountRepository accountRepository;
 
+    @Autowired
+    private StationRepository stationRepository;
+
     @Value("${jwt.secret}")
     private String jwtSecret;
 
     private Long adminAccountId;
+    private Long stationId;
 
     @BeforeEach
     void setUp() {
         Account admin = Account.signUpAdmin("test-admin", "test-password-hash", "테스트 관리자");
         adminAccountId = accountRepository.save(admin).getAccountId();
+
+        Station station = Station.create(
+                "강남역",
+                "Gangnam Station",
+                "2호선",
+                new BigDecimal("37.4979"),
+                new BigDecimal("127.0276")
+        );
+        stationId = stationRepository.save(station).getId();
     }
 
     // ---- 비로그인 사용자 ----
 
     @Test
     void 비로그인_공개조회API_200() throws Exception {
-        mockMvc.perform(get("/api/stations/1"))
+        mockMvc.perform(get("/api/stations/" + stationId))
                 .andExpect(status().isOk());
     }
+
 
     @Test
     void 비로그인_관리자API_401() throws Exception {
