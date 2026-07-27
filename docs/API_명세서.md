@@ -90,7 +90,7 @@ Authorization: Bearer {accessToken}
 | 지도 파일 관리     | 서버 정적 파일에 저장하고 DB에는 상대 URL(`/uploads/maps/...`) 저장 |
 | 경로 탐색          | 백엔드 Dijkstra                                                     |
 | 카메라 이미지 처리 | 위치 인식 처리 후 즉시 폐기 원칙                                    |
-| 외부 지도 연계     | 네이버지도 우선                                                     |
+| 외부 지도 연계     | 카카오맵 우선                                                       |
 | 관리자 API         | MVP에서 전체 구현                                                   |
 | 배포 방식          | Nginx reverse proxy + HTTPS                                         |
 | HTTPS 인증서       | Let's Encrypt 기준                                                  |
@@ -941,17 +941,17 @@ multipart/form-data
 
 ## 9. 외부 지도 연계 API
 
-## 9.1 네이버지도 길찾기 링크 생성
+## 9.1 카카오맵 길찾기 링크 생성
 
 ### POST `/external-maps/directions`
 
-사용자의 실제 현재 GPS 위치를 출발지로 사용하여 네이버지도 길찾기 링크를 생성한다.
+사용자의 실제 현재 GPS 위치를 출발지로 사용하여 카카오맵 도보 길찾기 링크를 생성한다.
 
 #### Request
 
 ```json
 {
-  "provider": "naver",
+  "provider": "kakao",
   "origin": {
     "latitude": 37.4982,
     "longitude": 127.0281
@@ -973,9 +973,9 @@ multipart/form-data
 {
   "success": true,
   "data": {
-    "provider": "naver",
-    "url": "https://map.naver.com/p/directions/-/37.5118,127.0592,COEX%20Mall/-/walk",
-    "fallbackUrl": "https://map.naver.com"
+    "provider": "kakao",
+    "appUrl": "kakaomap://route?sp=37.4982,127.0281&ep=37.5118,127.0592&by=foot",
+    "webUrl": "https://map.kakao.com/link/by/walk/%ED%98%84%EC%9E%AC%20%EC%9C%84%EC%B9%98,37.4982,127.0281/COEX%20Mall,37.5118,127.0592"
   },
   "message": null
 }
@@ -2065,7 +2065,7 @@ multipart/form-data
 | 경로 탐색              | 백엔드 Dijkstra                                                  |
 | 카메라 이미지 처리     | 서버 장기 저장 없이 처리 후 즉시 폐기                            |
 | 이미지 폐기 로그       | 이미지 원본은 저장하지 않고 요청 ID, 처리 결과, 폐기 시각만 기록 |
-| 외부 지도 우선 연동    | 네이버지도                                                       |
+| 외부 지도 우선 연동    | 카카오맵                                                         |
 | 관리자 API             | MVP에서 전체 구현                                                |
 | 배포 방식              | Nginx reverse proxy + HTTPS                                      |
 | HTTPS 인증서           | Let's Encrypt 기준                                               |
@@ -2077,6 +2077,6 @@ multipart/form-data
 
 ## 20. 구현 중 검증할 사항
 
-1. 네이버지도 URL Scheme 또는 웹 링크의 최종 형식 검증
+1. 카카오맵 URL Scheme 또는 웹 링크의 최종 형식 검증
 2. 실제 배포 도메인 확정
 3. 카메라 이미지 즉시 폐기 로그 검증

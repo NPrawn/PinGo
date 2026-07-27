@@ -15,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.MediaType;
 
 import javax.crypto.SecretKey;
 import java.math.BigDecimal;
@@ -23,6 +24,7 @@ import java.util.Date;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -83,6 +85,32 @@ class SecurityFilterChainTest {
     void 비로그인_관리자API_401() throws Exception {
         mockMvc.perform(get("/api/admin/stations"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 비로그인_외부지도API_200() throws Exception {
+        String body = """
+            {
+              "provider": "kakao",
+              "origin": {
+                "latitude": 37.4982,
+                "longitude": 127.0281
+              },
+              "destination": {
+                "placeId": 3,
+                "name": "COEX Mall",
+                "latitude": 37.5118,
+                "longitude": 127.0592,
+                "address": "서울특별시 강남구 영동대로 513"
+              },
+              "mode": "walking"
+            }
+            """;
+
+        mockMvc.perform(post("/api/external-maps/directions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
     }
 
     // ---- ADMIN ----
