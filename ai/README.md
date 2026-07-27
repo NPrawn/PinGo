@@ -100,3 +100,9 @@ Query NetVLAD·ALIKED 특징을 한 번만 추출한 뒤 각 층에서 기하 �
 이 기본값은 파이프라인 연결을 확인하는 smoke test용이며, 실제 위치 정확도를
 평가할 때는 촬영 기기의 보정된 focal length를 전달해야 한다. 출력 좌표는 실내
 지도 좌표가 아니라 COLMAP world 좌표다.
+
+## 노트북 GPU 서버 실행
+
+RTX 노트북에서 CUDA 컨테이너로 서버를 실행하는 절차는
+[`deploy/laptop-gpu/README.md`](deploy/laptop-gpu/README.md)를 따른다.
+GPU당 Uvicorn worker와 동시 추론은 각각 1개로 유지한다.

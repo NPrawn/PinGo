@@ -1,0 +1,17 @@
+.cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+**/__pycache__/
+**/*.py[cod]
+
+.env
+.env.*
+benchmark_inputs/
+model-cache/
+pipeline_output/
+pipeline_output.zip
+runtime_maps/
+tests/
+visualization_models/
