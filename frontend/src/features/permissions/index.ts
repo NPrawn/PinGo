@@ -12,6 +12,8 @@ export {
   toStoredRequiredPermissionState,
 } from './model/permission.storage';
 
+export { usePermissionRequest } from './model/permission.hook';
+
 export type {
   LocationPermissionResult,
   MediaPermissionsResult,
@@ -23,3 +25,8 @@ export type {
 } from './model/permission.service';
 
 export type { StoredRequiredPermissionState } from './model/permission.storage';
+
+export type {
+  PermissionRequestPhase,
+  UsePermissionRequestValue,
+} from './model/permission.hook';
