@@ -20,7 +20,6 @@ public class Account {
     @Column(nullable = false, length = 20)
     private AccountType accountType;
 
-
     private Long stationId;
 
     @Column(nullable = false, unique = true)
@@ -68,6 +67,18 @@ public class Account {
         return account;
     }
 
+    public static Account signUpAdmin(String loginId, String passwordHash, String name) {
+        Account account = new Account();
+        account.accountType = AccountType.ADMIN;
+        account.loginId = loginId;
+        account.passwordHash = passwordHash;
+        account.name = name;
+        account.stationId = null;
+        account.status = null;
+        account.isActive = true;
+        return account;
+    }
+
     public void approve(){
         this.isActive = true;
     }
@@ -78,5 +89,15 @@ public class Account {
 
     public void changeStation(Long stationId){
         this.stationId = stationId;
+    }
+
+    public void changeName(String name){ this.name = name; }
+
+    public void changePassword(String passwordHash){
+        this.passwordHash = passwordHash;
+    }
+
+    public void changeStatus(CounselorStatus status){
+        this.status = status;
     }
 }

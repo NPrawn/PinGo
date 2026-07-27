@@ -1,0 +1,47 @@
+FROM python:3.12-slim
+
+ARG TORCH_VERSION=2.4.1
+ARG TORCHVISION_VERSION=0.19.1
+ARG PYTORCH_CUDA_INDEX_URL=https://download.pytorch.org/whl/cu124
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TORCH_HOME=/opt/pingo/model-cache
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git libglib2.0-0 libgl1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /srv/pingo-ai
+
+RUN python -m pip install \
+      --index-url "${PYTORCH_CUDA_INDEX_URL}" \
+      "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}"
+
+COPY requirements.txt requirements.vcs.txt ./
+
+RUN python -m pip install -r requirements.txt
+
+# HLOC가 별도 LightGlue direct URL을 요구하므로 두 Git 패키지는 의존성 해석 없이
+# 검증된 commit으로 설치하고, 나머지 의존성은 requirements.txt에서 관리한다.
+RUN python -m pip install --no-deps -r requirements.vcs.txt
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+COPY tools ./tools
+
+RUN python -m pip install --no-deps .
+
+RUN useradd --system --create-home --uid 10001 pingo \
+    && mkdir -p /opt/pingo/model-cache /maps \
+    && chown -R pingo:pingo /srv/pingo-ai /opt/pingo/model-cache
+
+USER pingo
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10m --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"
+
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
