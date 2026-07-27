@@ -53,7 +53,8 @@ class AuthServiceTest {
         SignupRequest request = new SignupRequest("newuser", "password123", "홍길동", 1L);
 
         given(accountRepository.existsByLoginId("newuser")).willReturn(false);
-        given(stationRepository.findById(1L)).willReturn(Optional.of(mock(Station.class)));
+        given(stationRepository.findByIdAndActiveTrue(1L))
+                .willReturn(Optional.of(mock(Station.class)));
         given(passwordEncoder.encode("password123")).willReturn("encodedPassword");
         given(accountRepository.save(any(Account.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
@@ -90,13 +91,28 @@ class AuthServiceTest {
         SignupRequest request = new SignupRequest("newuser", "password123", "홍길동", 999L);
 
         given(accountRepository.existsByLoginId("newuser")).willReturn(false);
-        given(stationRepository.findById(999L)).willReturn(Optional.empty());
+        given(stationRepository.findByIdAndActiveTrue(999L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.signup(request))
                 .isInstanceOf(BusinessException.class)
-                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.STATION_NOT_FOUND);
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATION_NOT_FOUND);
 
         verify(accountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("비활성 역으로 회원가입하면 STATION_NOT_FOUND")
+    void signupFailsWhenStationInactive() {
+        SignupRequest request = new SignupRequest("counselor01", "password123", "김상담", 1L);
+        given(accountRepository.existsByLoginId("counselor01")).willReturn(false);
+        // 비활성 역은 findByIdAndActiveTrue에서 애초에 조회되지 않음
+        given(stationRepository.findByIdAndActiveTrue(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.signup(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATION_NOT_FOUND);
     }
 
     @Test
