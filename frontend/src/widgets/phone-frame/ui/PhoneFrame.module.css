@@ -1,0 +1,150 @@
+/* Ported from the prototype `.scr` stage plus the `pingo-runtime` overrides
+   that centred a single screen in the viewport. */
+.stage {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+/* Ambient blobs the prototype drew with `.scr::before` / `.scr::after`. */
+.stage::before,
+.stage::after {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  content: '';
+  border-radius: 50%;
+}
+
+.stage::before {
+  top: 20px;
+  left: calc(50% - var(--phone-width) / 2 - 42px);
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(
+    circle at 30% 30%,
+    var(--color-mint-highlight),
+    var(--color-mint-dark)
+  );
+  filter: blur(38px);
+  opacity: 0.45;
+}
+
+.stage::after {
+  right: calc(50% - var(--phone-width) / 2 - 28px);
+  bottom: 20px;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle at 30% 30%, #ffc6bc, #ff8b7a);
+  filter: blur(42px);
+  opacity: 0.38;
+}
+
+/* Prototype `.phone` — base rules merged with the refine-layer override. */
+.phone {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 342px;
+  height: max(726px, calc(100vh - 24px));
+  margin: 24px 24px 0;
+  overflow: hidden;
+  background:
+    radial-gradient(220px 220px at 82% 10%, rgb(255 139 122 / 28%) 0%, transparent 60%),
+    radial-gradient(260px 260px at 12% 22%, rgb(165 216 255 / 30%) 0%, transparent 60%),
+    radial-gradient(300px 300px at 92% 92%, rgb(196 181 253 / 28%) 0%, transparent 62%),
+    radial-gradient(
+      340px 340px at 10% 90%,
+      color-mix(in srgb, var(--color-mint) 32%, transparent) 0%,
+      transparent 62%
+    ),
+    linear-gradient(180deg, #f6fbf8 0%, #e4efe7 100%);
+  border: 1.5px solid rgb(255 255 255 / 95%);
+  border-radius: 40px;
+  box-shadow:
+    0 40px 80px -24px color-mix(in srgb, var(--color-ink) 28%, transparent),
+    0 16px 32px -12px color-mix(in srgb, var(--color-ink) 14%, transparent),
+    inset 0 1.5px 0 rgb(255 255 255 / 100%),
+    inset 0 -1px 0 color-mix(in srgb, var(--color-ink) 5%, transparent);
+}
+
+/* Prototype `.phone.dark` — camera, navigation and call screens. */
+.dark {
+  color: #fff;
+  background:
+    radial-gradient(
+      260px 260px at 82% 10%,
+      color-mix(in srgb, var(--color-mint) 22%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(300px 300px at 12% 88%, rgb(196 181 253 / 18%) 0%, transparent 60%),
+    radial-gradient(240px 240px at 88% 88%, rgb(255 139 122 / 14%) 0%, transparent 60%),
+    linear-gradient(175deg, #12241c 0%, #08160f 100%);
+  border: 1.5px solid rgb(255 255 255 / 7%);
+  box-shadow:
+    0 40px 80px -24px rgb(0 0 0 / 60%),
+    0 16px 32px -12px rgb(0 0 0 / 40%),
+    inset 0 1.5px 0 rgb(255 255 255 / 8%);
+}
+
+/* Prototype `.sb` — the notch/status bar. */
+.statusBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 46px;
+  padding: 0 22px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+}
+
+.dark .statusBar {
+  color: var(--color-paper);
+}
+
+.statusBarRight {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* Prototype `.body` — the scroll area under the status bar. */
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 6px 20px 22px;
+  overflow: hidden auto;
+}
+
+/* Prototype `.body.p0` — full-bleed screens (camera, map, call). */
+.flush {
+  padding: 0;
+}
+
+/* Prototype `.body-hero` — the roomier intro/success layout. */
+.hero {
+  padding: 44px 24px 24px;
+}
+
+@media (width <= 600px) {
+  .phone {
+    min-height: 100vh;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .stage::before,
+  .stage::after {
+    display: none;
+  }
+}

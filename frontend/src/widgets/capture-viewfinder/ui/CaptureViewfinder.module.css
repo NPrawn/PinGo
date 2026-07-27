@@ -1,0 +1,126 @@
+/* Shared chrome for the portrait and landscape capture screens
+   (prototype `#s-cam-port` / `#s-cam-land`). */
+
+.recBadge {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 11px;
+  background: rgb(6 19 16 / 72%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(127 239 195 / 25%);
+  border-radius: var(--radius-pill);
+}
+
+.recDot {
+  width: 6px;
+  height: 6px;
+  background: #ff4e4e;
+  border-radius: 50%;
+  animation: capture-pulse 1.4s infinite;
+}
+
+.recLabel {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #dff6e6;
+}
+
+.backButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: rgb(6 19 16 / 60%);
+  border: 1px solid rgb(127 239 195 / 25%);
+  border-radius: 50%;
+}
+
+/* Four-direction capture progress. */
+.progress {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+}
+
+.bar {
+  width: 100%;
+  min-width: 34px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+}
+
+.barDone {
+  background: linear-gradient(135deg, #3cd8a0, #0ea36f);
+}
+
+.barCurrent {
+  background: rgb(127 239 195 / 22%);
+  border: 1.5px solid #7fefc3;
+  animation: capture-glow 1.5s ease-in-out infinite;
+}
+
+.barTodo {
+  background: rgb(255 255 255 / 14%);
+}
+
+.stepLabel {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #dff6e6;
+}
+
+.stepLabelTodo {
+  color: rgb(223 246 230 / 45%);
+}
+
+.progressHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+
+.progressTitle {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: rgb(223 246 230 / 70%);
+}
+
+.progressCount {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #7fefc3;
+}
+
+@keyframes capture-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes capture-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 0.95;
+  }
+}

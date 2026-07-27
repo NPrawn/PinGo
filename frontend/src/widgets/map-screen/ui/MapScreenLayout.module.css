@@ -1,0 +1,89 @@
+/* Layout shared by the destination, exit and reroute map screens: a fixed
+   header, a full-bleed map and a bottom panel. */
+
+.header {
+  position: relative;
+  z-index: 6;
+  flex: none;
+  padding: 10px 16px 12px;
+  background: var(--color-paper);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.headerText {
+  padding: 0 4px;
+  margin-top: 10px;
+}
+
+.title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  color: var(--color-ink);
+}
+
+.lede {
+  margin: 5px 0 0;
+  font-size: 12.5px;
+  color: var(--color-sub);
+}
+
+.map {
+  flex: 1;
+  min-height: 0;
+  background: #eef1f5;
+  border: none;
+  border-radius: 0;
+}
+
+.mapSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.panel {
+  flex: none;
+  padding: 16px 20px 20px;
+  background: var(--color-paper);
+  border-top: 1px solid var(--color-line);
+}
+
+.panelScroll {
+  overflow-y: auto;
+}
+
+/* Callout attached to a map marker. */
+.callout {
+  position: absolute;
+  white-space: nowrap;
+  transform: translate(-50%, -190%);
+}
+
+.calloutChip {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-ink);
+  border-radius: var(--radius-pill);
+}
+
+.calloutDanger {
+  background: var(--color-red);
+}
+
+.meLabel {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--color-mint-mid);
+  transform: translate(-50%, -150%);
+}
