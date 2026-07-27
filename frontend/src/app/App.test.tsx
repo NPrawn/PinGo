@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNavigationStore } from '@/entities/navigation';
@@ -38,6 +38,18 @@ describe('App', () => {
   it('renders the not found route', () => {
     renderAt('/missing');
     expect(screen.getByRole('heading', { name: '페이지를 찾을 수 없습니다' })).toBeInTheDocument();
+  });
+
+  it('signs into a console from the landing page', async () => {
+    renderAt('/');
+    fireEvent.click(screen.getByRole('button', { name: /관리자/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('아이디'), { target: { value: 'admin' } });
+    fireEvent.change(within(dialog).getByLabelText('비밀번호'), { target: { value: '1234' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('heading', { name: '시설 · 출구 관리' })).toBeInTheDocument();
   });
 
   it('switches language', async () => {
@@ -140,13 +152,26 @@ describe('counselor routes', () => {
 });
 
 describe('admin routes', () => {
-  it('redirects /admin to the facility tab', async () => {
+  it('redirects /admin to the console sign-in', async () => {
     await renderSection('/admin');
+    expect(await screen.findByRole('heading', { name: 'PinGo 콘솔 로그인' })).toBeInTheDocument();
+  });
+
+  it('redirects the console root to the facility tab', async () => {
+    await renderSection('/admin/console');
     expect(await screen.findByRole('heading', { name: '시설 · 출구 관리' })).toBeInTheDocument();
   });
 
   it('renders the requested console tab', async () => {
     await renderSection('/admin/console/station');
     expect(await screen.findByRole('heading', { name: '역 관리' })).toBeInTheDocument();
+  });
+
+  it('signs an admin into the console', async () => {
+    await renderSection('/admin/login');
+    fireEvent.change(await screen.findByLabelText('아이디'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: '로그인' }));
+    expect(await screen.findByRole('heading', { name: '시설 · 출구 관리' })).toBeInTheDocument();
   });
 });
