@@ -1,11 +1,6 @@
-import { useTranslation } from 'react-i18next';
+import { PrototypeFrame } from '@/shared/ui';
 
 // TODO: Apply the agreed authentication and authorization contract before protecting this route.
 export function AdminPage() {
-  const { t } = useTranslation();
-  return (
-    <main>
-      <h1>{t('page.admin')}</h1>
-    </main>
-  );
+  return <PrototypeFrame role="admin" title="PinGo 관리자 프로토타입" />;
 }

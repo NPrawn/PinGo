@@ -22,7 +22,12 @@ describe('App', () => {
 
   it('renders a basic route', async () => {
     renderAt('/user');
-    expect(await screen.findByRole('heading', { name: '사용자' })).toBeInTheDocument();
+    expect(
+      await screen.findByTitle('PinGo 사용자 프로토타입'),
+    ).toHaveAttribute(
+      'src',
+      '/pingo-user.html#s-splash',
+    );
   });
 
   it('renders the not found route', () => {

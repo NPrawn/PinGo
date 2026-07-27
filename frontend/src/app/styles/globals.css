@@ -18,6 +18,10 @@ main {
   padding: var(--space-3);
 }
 
+#root {
+  min-height: 100vh;
+}
+
 nav {
   display: flex;
   flex-wrap: wrap;

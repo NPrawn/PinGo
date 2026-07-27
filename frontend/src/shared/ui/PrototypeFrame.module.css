@@ -1,0 +1,7 @@
+.frame {
+  display: block;
+  width: 100%;
+  min-height: 100dvh;
+  border: 0;
+  background: var(--color-background);
+}

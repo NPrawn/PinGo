@@ -1,0 +1,1 @@
+export { PrototypeFrame } from './PrototypeFrame';

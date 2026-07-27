@@ -1,10 +1,5 @@
-import { useTranslation } from 'react-i18next';
+import { PrototypeFrame } from '@/shared/ui';
 
 export function UserPage() {
-  const { t } = useTranslation();
-  return (
-    <main>
-      <h1>{t('page.user')}</h1>
-    </main>
-  );
+  return <PrototypeFrame role="user" title="PinGo 사용자 프로토타입" />;
 }

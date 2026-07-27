@@ -1,10 +1,5 @@
-import { useTranslation } from 'react-i18next';
+import { PrototypeFrame } from '@/shared/ui';
 
 export function CounselorPage() {
-  const { t } = useTranslation();
-  return (
-    <main>
-      <h1>{t('page.counselor')}</h1>
-    </main>
-  );
+  return <PrototypeFrame role="counselor" title="PinGo 상담원 프로토타입" />;
 }
