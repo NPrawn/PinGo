@@ -71,6 +71,10 @@ test('centers the landscape camera screen vertically', async ({ page }) => {
   const landscapeScreen = page.locator('#s-cam-land.pingo-active');
   await expect(landscapeScreen).toBeVisible();
   await expect(landscapeScreen).toHaveCSS('align-items', 'center');
+  const landscapeFrame = landscapeScreen.locator('.landscape-frame');
+  await expect(landscapeFrame).toHaveCSS('width', '726px');
+  await expect(landscapeFrame).toHaveCSS('height', '342px');
+  await expect(landscapeFrame).toHaveCSS('border-radius', '40px');
 
   const verticalOffset = await landscapeScreen
     .locator('> div:not(.lab)')
@@ -116,7 +120,7 @@ test('moves the reroute modal content down without moving the dismiss action', a
   const modal = page.locator('#s-reroute.pingo-active .reroute-modal');
   await expect(modal.getByRole('heading', { name: '경로를 이탈했어요' })).toHaveCSS(
     'transform',
-    'matrix(1, 0, 0, 1, 0, 24)',
+    'matrix(1, 0, 0, 1, 0, 40)',
   );
   await expect(modal.locator('.reroute-dismiss')).toHaveCSS('transform', 'none');
 });
@@ -151,8 +155,8 @@ test('opens the satisfaction modal automatically after arriving', async ({ page 
   await expect(page).toHaveURL(/#s-consult-end$/, { timeout: 4000 });
   await expect(page.locator('#s-consult-end.pingo-active')).toBeVisible();
   await page.locator('#s-consult-end.pingo-active [data-n="5"]').click();
-  await expect(page).toHaveURL(/#s-dest$/, { timeout: 2000 });
-  await expect(page.locator('#s-dest.pingo-active')).toBeVisible();
+  await expect(page).toHaveURL(/#s-nav$/, { timeout: 2000 });
+  await expect(page.locator('#s-nav.pingo-active')).toBeVisible();
   await expect(page.locator('#s-dest.pingo-active').getByText('전체 보기')).toHaveCount(
     0,
   );
