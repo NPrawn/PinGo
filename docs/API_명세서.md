@@ -694,6 +694,59 @@ multipart/form-data
 
 #### 실패 또는 낮은 신뢰도 Response
 
+위치 인식 요청 자체는 처리되었지만 현재 위치를 확정할 수 없는 경우에도 HTTP 200과 `success: true`를 반환한다.
+프론트엔드는 `resultStatus`와 `fallbackOptions`를 기준으로 실패 화면(U-05) 또는 지도 수동 선택 화면(U-06)으로 분기한다.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| resultStatus | string | 위치 인식 처리 결과 |
+| candidates | array | 표시 가능한 위치 후보. 후보가 없으면 빈 배열 |
+| fallbackOptions | string[] | 사용자에게 제공할 대체 행동 목록 |
+
+##### resultStatus
+
+| 값 | 의미 | 기본 fallbackOptions |
+| --- | --- | --- |
+| success | 위치 후보를 정상 반환함 | - |
+| low_confidence | 후보는 있으나 신뢰도가 낮아 사용자 확인 또는 대체 선택이 필요함 | `retry_capture`, `select_landmark`, `select_on_map`, `request_consultation` |
+| no_match | 이미지와 매칭되는 위치 후보를 찾지 못함 | `retry_capture`, `select_landmark`, `select_on_map`, `request_consultation` |
+| timeout | AI 서버 또는 위치 인식 처리가 제한 시간 내 완료되지 않음 | `retry_capture`, `select_on_map`, `request_consultation` |
+| ai_server_unavailable | AI 서버 호출이 불가능함 | `select_on_map`, `request_consultation` |
+| overloaded | 위치 인식 요청이 몰려 현재 처리할 수 없음 | `retry_capture`, `select_on_map`, `request_consultation` |
+| invalid_image | 이미지가 비어 있거나 분석 가능한 품질이 아님 | `retry_capture`, `select_on_map` |
+| invalid_intrinsics | 카메라 초점거리 등 위치 추정에 필요한 메타데이터가 올바르지 않음 | `retry_capture`, `select_on_map` |
+| map_not_ready | 해당 역 또는 층의 VPS 맵이 준비되지 않음 | `select_on_map`, `request_consultation` |
+| internal_error | 서버 내부 오류로 위치 인식에 실패함 | `retry_capture`, `select_on_map`, `request_consultation` |
+
+##### AI 위치 인식 상태 매핑
+
+AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한다. 백엔드는 이를 프론트엔드용 `resultStatus`로 정규화해 응답한다.
+
+| AI status / failureReason | 백엔드 resultStatus | 설명 |
+| --- | --- | --- |
+| `LOCALIZED` | `success` | 위치 인식 성공 |
+| `INVALID_IMAGE` | `invalid_image` | 이미지 없음, 크기 초과, 지원하지 않는 이미지 형식 또는 분석 불가 이미지 |
+| `INVALID_INTRINSICS` | `invalid_intrinsics` | 초점거리 등 위치 추정 메타데이터 부족 또는 오류 |
+| `MAP_NOT_LOADED` | `map_not_ready` | 요청한 맵 또는 맵 세트가 로드되지 않음 |
+| `NO_RETRIEVAL_CANDIDATE` | `no_match` | 검색 후보 이미지 없음 |
+| `INSUFFICIENT_MATCHES` | `no_match` | 매칭 수 부족 |
+| `POSE_ESTIMATION_FAILED` | `no_match` | 포즈 추정 실패 |
+| `LOW_GEOMETRIC_QUALITY` | `low_confidence` | 위치 후보는 있으나 기하 품질이 낮아 확정 불가 |
+| `OVERLOADED` | `overloaded` | 동시 처리 제한으로 요청 거절 |
+| `INTERNAL_ERROR` + `ENGINE_NOT_READY` | `ai_server_unavailable` | AI 엔진 준비 실패 |
+| `INTERNAL_ERROR` | `internal_error` | 그 외 AI 내부 오류 |
+
+##### fallbackOptions
+
+| 값 | 의미 |
+| --- | --- |
+| retry_capture | 다시 촬영 |
+| select_landmark | 랜드마크 선택 |
+| select_on_map | 지도에서 현재 위치 수동 선택 |
+| request_consultation | 상담 요청 |
+
+##### 낮은 신뢰도 예시
+
 ```json
 {
   "success": true,
@@ -708,6 +761,42 @@ multipart/form-data
     ]
   },
   "message": "위치를 정확히 찾지 못했습니다."
+}
+```
+
+##### 매칭 실패 예시
+
+```json
+{
+  "success": true,
+  "data": {
+    "resultStatus": "no_match",
+    "candidates": [],
+    "fallbackOptions": [
+      "retry_capture",
+      "select_landmark",
+      "select_on_map",
+      "request_consultation"
+    ]
+  },
+  "message": "현재 위치와 일치하는 후보를 찾지 못했습니다."
+}
+```
+
+##### AI 서버 장애 예시
+
+```json
+{
+  "success": true,
+  "data": {
+    "resultStatus": "ai_server_unavailable",
+    "candidates": [],
+    "fallbackOptions": [
+      "select_on_map",
+      "request_consultation"
+    ]
+  },
+  "message": "위치 인식 서버에 연결할 수 없습니다."
 }
 ```
 
