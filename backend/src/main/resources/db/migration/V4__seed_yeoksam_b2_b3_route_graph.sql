@@ -3,6 +3,12 @@
 -- COLMAP 커버 구간(B2: EVB~3번출구 브랜치, B3: 서쪽끝~계단)만 간선으로 연결. 나머지 시설 노드는 참고용(간선 없음).
 -- z(map_z)는 명목값(B2=0, B3=-5m). 실제 층고/COLMAP sim3 정합(277) 후 갱신.
 -- name = 안정 식별 코드(ASCII). 노드 의미 매핑·좌표계 프레임 규칙 상세는 docs/역삼역_route_node_naming.md 참고.
+-- 이전 마이그레이션에 역 seed가 없어, fresh DB(CI·신규)에서 FK 실패하지 않도록 역삼역(station_id=1)을 idempotent 보장한다.
+
+-- 0) 역삼역 station 보장 (없을 때만 생성, station_id=1 고정)
+INSERT INTO station (station_id, name_ko, name_en, line_info, latitude, longitude, is_active, created_at, updated_at)
+SELECT 1, '역삼역', 'Yeoksam Station', '2호선', 37.5007000, 127.0365000, 1, NOW(6), NOW(6)
+WHERE NOT EXISTS (SELECT 1 FROM station WHERE station_id = 1);
 
 -- 1) 층: 지하 2층 / 지하 3층
 INSERT INTO station_floor (station_id, floor_code, floor_name, floor_order, created_at, updated_at) VALUES
