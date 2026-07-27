@@ -1,0 +1,444 @@
+/* Screen 05b (FR-U-004) — landscape capture with the device turned 90°.
+   Ported from prototype `#s-cam-land`, which rotated the whole phone shell. */
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+/* Prototype `.landscape-frame`. */
+.rotatedArea {
+  position: relative;
+  flex: none;
+  width: 726px;
+  height: 342px;
+  margin: 24px;
+  overflow: hidden;
+  border-radius: 40px;
+}
+
+/* The phone shell, rotated 90°. */
+.phone {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 338px;
+  height: 722px;
+  padding: 0;
+  color: #fff;
+  background:
+    radial-gradient(
+      260px 260px at 82% 10%,
+      color-mix(in srgb, var(--color-mint) 22%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(300px 300px at 12% 88%, rgb(196 181 253 / 18%) 0%, transparent 60%),
+    radial-gradient(240px 240px at 88% 88%, rgb(255 139 122 / 14%) 0%, transparent 60%),
+    linear-gradient(175deg, #12241c 0%, #08160f 100%);
+  border: 1.5px solid rgb(255 255 255 / 7%);
+  border-radius: 40px !important;
+  box-shadow:
+    0 40px 80px -24px rgb(0 0 0 / 60%),
+    0 16px 32px -12px rgb(0 0 0 / 40%),
+    inset 0 1.5px 0 rgb(255 255 255 / 8%);
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+/* Counter-rotated viewport so the UI reads upright — prototype
+   `.landscape-canvas`. */
+.viewport {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 726px;
+  height: 342px;
+  overflow: hidden;
+  background: #061310;
+  border-radius: 40px;
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.55;
+}
+
+.band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 88px;
+  background: linear-gradient(90deg, transparent, rgb(127 239 195 / 22%), transparent);
+  animation: pano-band 3.2s linear infinite;
+}
+
+.horizon {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(127 239 195 / 50%), transparent);
+}
+
+.frameGuides {
+  position: absolute;
+  top: 12px;
+  right: 132px;
+  bottom: 12px;
+  left: 46px;
+  pointer-events: none;
+}
+
+.cornerTl,
+.cornerTr,
+.cornerBl,
+.cornerBr {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+}
+
+.cornerTl {
+  top: 0;
+  left: 0;
+  border-top: 2px solid rgb(127 239 195 / 70%);
+  border-left: 2px solid rgb(127 239 195 / 70%);
+  border-radius: 8px 0 0;
+}
+
+.cornerTr {
+  top: 0;
+  right: 0;
+  border-top: 2px solid rgb(127 239 195 / 70%);
+  border-right: 2px solid rgb(127 239 195 / 70%);
+  border-radius: 0 8px 0 0;
+}
+
+.cornerBl {
+  bottom: 0;
+  left: 0;
+  border-bottom: 2px solid rgb(127 239 195 / 70%);
+  border-left: 2px solid rgb(127 239 195 / 70%);
+  border-radius: 0 0 0 8px;
+}
+
+.cornerBr {
+  right: 0;
+  bottom: 0;
+  border-right: 2px solid rgb(127 239 195 / 70%);
+  border-bottom: 2px solid rgb(127 239 195 / 70%);
+  border-radius: 0 0 8px;
+}
+
+.statusBar {
+  position: absolute;
+  top: 10px;
+  right: 26px;
+  left: 46px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 700 12px/1 var(--font-family-base);
+  color: #f4fbf5;
+}
+
+.statusRight {
+  letter-spacing: 0.06em;
+}
+
+.topBar {
+  position: absolute;
+  top: 38px;
+  left: 46px;
+  z-index: 3;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: rgb(6 19 16 / 70%);
+  border: 1px solid rgb(127 239 195 / 25%);
+  border-radius: 50%;
+}
+
+.rec {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 12px;
+  background: rgb(6 19 16 / 72%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(127 239 195 / 25%);
+  border-radius: var(--radius-pill);
+}
+
+.recDot {
+  width: 6px;
+  height: 6px;
+  background: #ff4e4e;
+  border-radius: 50%;
+  animation: land-pulse 1.4s infinite;
+}
+
+.recLabel {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #dff6e6;
+}
+
+.modeBadge {
+  padding: 7px 11px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #04231a;
+  background: rgb(60 216 160 / 92%);
+  border-radius: var(--radius-pill);
+}
+
+.hint {
+  position: absolute;
+  top: 50%;
+  left: calc(50% - 43px);
+  z-index: 3;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  transform: translate(-50%, -50%);
+}
+
+.hintText {
+  font-size: 15px;
+  font-weight: 800;
+  color: #dff6e6;
+  text-shadow: 0 2px 12px rgb(0 0 0 / 65%);
+}
+
+.hintArrow {
+  animation: nudge-x 1.4s ease-in-out infinite;
+}
+
+.dock {
+  position: absolute;
+  right: 136px;
+  bottom: 16px;
+  left: 46px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.tip {
+  display: flex;
+  gap: 9px;
+  align-self: flex-start;
+  align-items: center;
+  padding: 9px 13px;
+  background: rgb(6 19 16 / 75%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgb(127 239 195 / 22%);
+  border-radius: 13px;
+}
+
+.tipText {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #dff6e6;
+}
+
+.tipText b {
+  color: #7fefc3;
+}
+
+.steps {
+  display: flex;
+  gap: 9px;
+}
+
+.step {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+}
+
+.bar {
+  width: 100%;
+  height: 5px;
+  border-radius: var(--radius-pill);
+}
+
+.barDone {
+  background: linear-gradient(135deg, #3cd8a0, #0ea36f);
+}
+
+.barCurrent {
+  background: rgb(127 239 195 / 22%);
+  border: 1.5px solid #7fefc3;
+  animation: pano-glow 1.5s ease-in-out infinite;
+}
+
+.barTodo {
+  background: rgb(255 255 255 / 14%);
+}
+
+.stepLabel {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #dff6e6;
+}
+
+.stepLabelTodo {
+  color: rgb(223 246 230 / 45%);
+}
+
+/* Right-hand action rail. */
+.rail {
+  position: absolute;
+  top: 0;
+  right: 26px;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  align-items: center;
+  justify-content: center;
+  width: 110px;
+  padding: 0 12px;
+  background: linear-gradient(270deg, rgb(6 19 16 / 94%), rgb(6 19 16 / 0%));
+}
+
+.gauge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+}
+
+.gaugeSvg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.gaugeValue {
+  display: flex;
+  align-items: baseline;
+  line-height: 1;
+}
+
+.gaugeNumber {
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.gaugeUnit {
+  margin-left: 1px;
+  font-size: 9px;
+  font-weight: 700;
+  color: rgb(223 246 230 / 60%);
+}
+
+.finish {
+  height: 44px;
+  font-size: 13px;
+  border-radius: 12px;
+}
+
+.switchLink {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgb(223 246 230 / 62%);
+  text-decoration: none;
+}
+
+/* Notch and home indicator, drawn on the unrotated shell. */
+.notch {
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  z-index: 6;
+  width: 98px;
+  height: 9px;
+  background: #000;
+  border-radius: var(--radius-pill);
+  transform: translateX(-50%);
+}
+
+.homeBar {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  z-index: 6;
+  width: 120px;
+  height: 4px;
+  background: rgb(244 251 245 / 85%);
+  border-radius: var(--radius-pill);
+  transform: translateX(-50%);
+}
+
+@keyframes pano-band {
+  0% {
+    transform: translateX(-140%);
+  }
+
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+@keyframes pano-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes nudge-x {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateX(7px);
+  }
+}
+
+@keyframes land-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}

@@ -1,0 +1,177 @@
+/* Screen 05 (FR-U-004) — capture onboarding. Prototype `#s-cam`. */
+
+.topSpacer {
+  height: 6px;
+}
+
+.title {
+  margin-top: 14px;
+}
+
+/* Radar-style illustration of turning on the spot. */
+.radar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 186px;
+  margin-top: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #14332a 0%, #0a1e17 60%, #061310 100%);
+  border-radius: 22px;
+  box-shadow:
+    0 20px 38px -16px rgb(6 94 66 / 55%),
+    inset 0 1px 0 rgb(255 255 255 / 12%);
+}
+
+.ringOuter,
+.ringInner,
+.sweep,
+.mask {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.ringOuter {
+  width: 150px;
+  height: 150px;
+  border: 1px solid rgb(127 239 195 / 18%);
+}
+
+.ringInner {
+  width: 104px;
+  height: 104px;
+  border: 1px solid rgb(127 239 195 / 14%);
+}
+
+.sweep {
+  width: 150px;
+  height: 150px;
+  background: conic-gradient(
+    from 0deg,
+    rgb(127 239 195 / 42%),
+    rgb(127 239 195 / 0%) 78deg,
+    rgb(127 239 195 / 0%)
+  );
+  animation: radar-sweep 3.4s linear infinite;
+}
+
+.mask {
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, rgb(6 19 16 / 90%) 34%, transparent 36%);
+}
+
+.deviceWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+}
+
+.device {
+  animation: radar-tilt 3.4s ease-in-out infinite;
+}
+
+.compass {
+  position: absolute;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: rgb(223 246 230 / 60%);
+}
+
+.compassTop {
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compassBottom {
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compassLeft {
+  top: 50%;
+  left: 16px;
+  transform: translateY(-50%);
+}
+
+.compassRight {
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+}
+
+/* Numbered tips. */
+.tips {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 14px 15px;
+  margin-top: 14px;
+}
+
+.tip {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+}
+
+.tipNumber {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 23px;
+  height: 23px;
+  margin-top: 1px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border-radius: 8px;
+}
+
+.tipTitle {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--color-ink);
+}
+
+.tipBody {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-sub);
+}
+
+.altLink {
+  display: block;
+  margin-top: 9px;
+  color: var(--color-sub);
+  text-align: center;
+}
+
+@keyframes radar-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes radar-tilt {
+  0%,
+  44% {
+    transform: rotate(0deg);
+  }
+
+  56%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
