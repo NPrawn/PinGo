@@ -42,8 +42,10 @@ describe('App', () => {
 
   it('switches language', async () => {
     renderAt('/');
-    fireEvent.click(screen.getByRole('button', { name: 'English' }));
-    expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
+    expect(screen.getByText('지하철 실내 내비게이션')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /English/ }));
+    expect(await screen.findByText('Indoor navigation for the subway')).toBeInTheDocument();
   });
 });
 
