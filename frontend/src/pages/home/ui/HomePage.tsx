@@ -1,16 +1,19 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { ConsoleLoginModal } from '@/features/console-auth';
 import { ROUTES } from '@/shared/config';
 import { Blob, BlobHero, BlobPin, Icon, Icon3d, PillButton } from '@/shared/ui';
 import type { Icon3dTone, IconName } from '@/shared/ui';
 import styles from './HomePage.module.css';
 
 type Role = {
-  to: string;
   nameKey: string;
   descKey: string;
   icon: IconName;
   tone: Icon3dTone;
+  /** User goes straight in; the two consoles sign in first. */
+  to?: string;
 };
 
 const ROLES: readonly Role[] = [
@@ -22,14 +25,12 @@ const ROLES: readonly Role[] = [
     tone: 'mint',
   },
   {
-    to: ROUTES.COUNSELOR,
     nameKey: 'page.counselor',
     descKey: 'home.role.counselor',
     icon: 'headset',
     tone: 'coral',
   },
   {
-    to: ROUTES.ADMIN,
     nameKey: 'page.admin',
     descKey: 'home.role.admin',
     icon: 'gear',
@@ -47,6 +48,8 @@ const FEATURES: readonly { key: string; icon: IconName }[] = [
 export function HomePage() {
   const { t, i18n } = useTranslation();
   const isKorean = i18n.language === 'ko';
+  /** Name of the console whose sign-in dialog is open, if any. */
+  const [signingInTo, setSigningInTo] = useState<string | null>(null);
 
   return (
     <main className={styles.page}>
@@ -68,13 +71,11 @@ export function HomePage() {
       <section className={styles.hero}>
         <BlobHero className={styles.heroBlobs}>
           <Blob slot="main" style={{ width: 168, height: 168 }} />
-          <Blob tone="coral" slot="a" style={{ top: '8%', right: '18%', width: 50, height: 50 }} />
-          <Blob
-            tone="lilac"
-            slot="b"
-            style={{ bottom: '10%', left: '18%', width: 40, height: 40 }}
-          />
-          <Blob tone="sky" slot="c" style={{ top: '20%', left: '10%', width: 32, height: 32 }} />
+          {/* The lilac and sky blobs orbit at a distance; the coral one straddles
+              the main sphere's top-right edge for depth. */}
+          <Blob tone="coral" slot="a" style={{ top: 78, right: 40, width: 54, height: 54 }} />
+          <Blob tone="lilac" slot="b" style={{ bottom: 6, left: 10, width: 44, height: 44 }} />
+          <Blob tone="sky" slot="c" style={{ top: '30%', left: 0, width: 34, height: 34 }} />
           <BlobPin>
             <Icon name="pin" size={26} className={styles.heroPinIcon} />
           </BlobPin>
@@ -96,17 +97,34 @@ export function HomePage() {
           {t('home.enterTitle')}
         </h3>
         <nav className={styles.roles} aria-label={t('home.enterTitle')}>
-          {ROLES.map((role) => (
-            <Link key={role.to} to={role.to} className={styles.role}>
-              <Icon3d name={role.icon} tone={role.tone} />
-              <span className={styles.roleName}>{t(role.nameKey)}</span>
-              <span className={styles.roleDesc}>{t(role.descKey)}</span>
-              <span className={styles.roleGo}>
-                {t('home.enter')}
-                <Icon name="arrow-right" size={13} />
-              </span>
-            </Link>
-          ))}
+          {ROLES.map((role) => {
+            const body = (
+              <>
+                <Icon3d name={role.icon} tone={role.tone} />
+                <span className={styles.roleName}>{t(role.nameKey)}</span>
+                <span className={styles.roleDesc}>{t(role.descKey)}</span>
+                <span className={styles.roleGo}>
+                  {t('home.enter')}
+                  <Icon name="arrow-right" size={13} />
+                </span>
+              </>
+            );
+
+            return role.to ? (
+              <Link key={role.nameKey} to={role.to} className={styles.role}>
+                {body}
+              </Link>
+            ) : (
+              <button
+                key={role.nameKey}
+                type="button"
+                className={styles.role}
+                onClick={() => setSigningInTo(t(role.nameKey))}
+              >
+                {body}
+              </button>
+            );
+          })}
         </nav>
       </section>
 
@@ -123,6 +141,13 @@ export function HomePage() {
           </div>
         ))}
       </section>
+
+      {signingInTo && (
+        <ConsoleLoginModal
+          label={`${signingInTo} ${t('home.enter')}`}
+          onClose={() => setSigningInTo(null)}
+        />
+      )}
     </main>
   );
 }

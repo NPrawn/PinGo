@@ -10,7 +10,7 @@ export const ko = {
     },
     home: {
       eyebrow: '지하철 실내 내비게이션',
-      headline: '복잡한 역 안에서도\n출구까지 안내해요',
+      headline: '복잡한 역 안에서도 출구까지 안내해요',
       lede: 'GPS가 닿지 않는 지하에서 카메라로 현재 위치를 찾고,\n목적지까지 한 걸음씩 안내합니다.',
       enterTitle: '어떤 화면으로 들어갈까요?',
       enter: '들어가기',
