@@ -1,0 +1,109 @@
+/* Screen 27-2 — awaiting approval. Ported from prototype `#c-pending`. */
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 440px;
+  padding: 36px 0;
+  background: var(--color-cream);
+}
+
+.card {
+  width: 380px;
+  max-width: 100%;
+  padding: 32px;
+  text-align: center;
+  background: #fff;
+  border: 1px solid var(--color-line-soft);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 6%);
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto;
+  background: #fbf0db;
+  border-radius: 20px;
+}
+
+.heading {
+  margin: 16px 0 6px;
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-sub);
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px;
+  margin-top: 20px;
+  text-align: left;
+  background: var(--color-cream);
+  border: 1px solid var(--color-line-soft);
+  border-radius: 12px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+}
+
+.rowLabel {
+  font-weight: 700;
+  color: var(--color-sub);
+}
+
+.rowValue {
+  font-weight: 700;
+}
+
+.eta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.etaDot {
+  width: 7px;
+  height: 7px;
+  background: #f0b36a;
+  border-radius: 50%;
+  animation: pending-pulse 1.4s infinite;
+}
+
+.etaText {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8a6412;
+}
+
+.action {
+  margin-top: 20px;
+}
+
+@keyframes pending-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
