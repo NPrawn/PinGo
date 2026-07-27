@@ -20,6 +20,7 @@ public class Account {
     @Column(nullable = false, length = 20)
     private AccountType accountType;
 
+
     private Long stationId;
 
     @Column(nullable = false, unique = true)
@@ -31,7 +32,9 @@ public class Account {
     @Column(nullable = false)
     private String name;
 
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(length =  20)
+    private CounselorStatus status;
 
     @Column(nullable = false)
     private boolean isActive;
@@ -53,4 +56,27 @@ public class Account {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public static Account signUpCounselor(String loginId, String passwordHash, String name, Long stationId){
+        Account account = new Account();
+        account.accountType = AccountType.COUNSELOR;
+        account.loginId = loginId;
+        account.passwordHash = passwordHash;
+        account.name = name;
+        account.stationId = stationId;
+        account.status = null;
+        account.isActive = false;
+        return account;
+    }
+
+    public void approve(){
+        this.isActive = true;
+    }
+
+    public void deactivate(){
+        this.isActive = false;
+    }
+
+    public void changeStation(Long stationId){
+        this.stationId = stationId;
+    }
 }
