@@ -36,7 +36,7 @@ export function AppRouter() {
         <Route path={ROUTES.COUNSELOR} element={<Navigate to={COUNSELOR_ROUTES.LOGIN} replace />} />
         <Route path={`${ROUTES.COUNSELOR}/*`} element={<CounselorPage />} />
 
-        <Route path={ROUTES.ADMIN} element={<Navigate to={ADMIN_ROUTES.CONSOLE} replace />} />
+        <Route path={ROUTES.ADMIN} element={<Navigate to={ADMIN_ROUTES.LOGIN} replace />} />
         <Route path={`${ROUTES.ADMIN}/*`} element={<AdminPage />} />
 
         <Route path="*" element={<NotFoundPage />} />

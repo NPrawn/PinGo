@@ -61,6 +61,8 @@ export const COUNSELOR_ROUTES = {
 
 /** Admin console. Prototype id `a-console`, one screen with six tabs. */
 export const ADMIN_ROUTES = {
+  /** Same console sign-in as the counselor section; credentials pick the target. */
+  LOGIN: `${ADMIN}/login`, // c-login
   CONSOLE: `${ADMIN}/console`, // a-console
 } as const;
 

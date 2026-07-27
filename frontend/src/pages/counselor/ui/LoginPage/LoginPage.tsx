@@ -1,14 +1,6 @@
-import { LoginForm } from '@/features/console-auth';
-import { DesktopWindow } from '@/shared/ui';
-import styles from './LoginPage.module.css';
+import { ConsoleLoginScreen } from '@/features/console-auth';
 
-/** Screen 27 — combined counselor/admin sign-in. */
+/** Screen 27 — console sign-in, reached from `/counselor`. */
 export function LoginPage() {
-  return (
-    <DesktopWindow url="console.pingo.kr" secure width={560}>
-      <div className={styles.stage}>
-        <LoginForm />
-      </div>
-    </DesktopWindow>
-  );
+  return <ConsoleLoginScreen />;
 }
