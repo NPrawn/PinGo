@@ -84,6 +84,28 @@ class ExternalMapControllerTest {
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
 
+    @Test
+    void createDirectionReturnsBadRequestForMissingDestinationCoordinate() throws Exception {
+        ExternalDirectionRequest request = new ExternalDirectionRequest(
+                "kakao",
+                new GeoPointRequest(new BigDecimal("37.4982"), new BigDecimal("127.0281")),
+                new ExternalDestinationRequest(
+                        3L,
+                        "COEX Mall",
+                        null,
+                        new BigDecimal("127.0592"),
+                        "서울특별시 강남구 영동대로 513"
+                ),
+                "walking"
+        );
+
+        mockMvc.perform(post("/api/external-maps/directions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
     private ExternalDirectionRequest createRequest() {
         return new ExternalDirectionRequest(
                 "kakao",
