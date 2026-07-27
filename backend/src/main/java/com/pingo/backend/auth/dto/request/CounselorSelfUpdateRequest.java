@@ -5,7 +5,9 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record CounselorSelfUpdateRequest (
-    @Size(max = 100) String name,
+    @Size(max = 100)
+    @Pattern(regexp = "^\\S+$", message = "이름은 공백을 포함할 수 없습니다.")
+    String name,
     String currentPassword,
     @Pattern(
             regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?]).{8,20}$",
