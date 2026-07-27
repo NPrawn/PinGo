@@ -96,7 +96,6 @@ export function SettingsPage() {
           </div>
         ))}
       </Card>
-
     </PhoneFrame>
   );
 }
