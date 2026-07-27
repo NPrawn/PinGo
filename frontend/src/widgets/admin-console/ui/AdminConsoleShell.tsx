@@ -17,15 +17,7 @@ type AdminConsoleShellProps = {
  */
 export function AdminConsoleShell({ activeTab, children }: AdminConsoleShellProps) {
   return (
-    <DesktopWindow
-      url="admin.pingo.kr"
-      width={1180}
-      barExtra={
-        <Link to={COUNSELOR_ROUTES.LOGIN} className={styles.logout}>
-          로그아웃
-        </Link>
-      }
-    >
+    <DesktopWindow url="admin.pingo.kr" width={1180}>
       <div className={styles.layout}>
         <div className={styles.aside}>
           <div className={styles.brand}>
@@ -49,6 +41,28 @@ export function AdminConsoleShell({ activeTab, children }: AdminConsoleShellProp
               </Link>
             ))}
           </nav>
+
+          {/* Pinned to the bottom of the rail, away from the navigation. */}
+          <Link to={COUNSELOR_ROUTES.LOGIN} className={styles.logout}>
+            <span className={styles.logoutIcon}>
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.1"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M9.5 20H6a2 2 0 01-2-2V6a2 2 0 012-2h3.5" />
+                <path d="M15 16l4-4-4-4" />
+                <path d="M19 12H9.5" />
+              </svg>
+            </span>
+            로그아웃
+          </Link>
         </div>
         <div className={styles.content}>{children}</div>
       </div>
