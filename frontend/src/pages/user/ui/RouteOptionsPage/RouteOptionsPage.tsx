@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { findRouteOption, useNavigationStore } from '@/entities/navigation';
+import { useNavigationStore } from '@/entities/navigation';
 import type { RouteOptionId } from '@/entities/navigation';
 import { USER_ROUTES } from '@/shared/config';
-import { ButtonLink, Icon, SelectRow, Sub } from '@/shared/ui';
+import { ButtonLink, Icon, SelectRow } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
 import {
   MapCallout,
@@ -166,7 +166,6 @@ export function RouteOptionsPage() {
 
         <div className={styles.panel}>
           <div className={styles.caption}>
-            <Sub className={styles.captionText}>{findRouteOption(route).caption}</Sub>
             <span className={styles.swipeHint}>
               <span className={styles.swipeHintText}>옵션 2개 · 옆으로 넘기기</span>
               <svg
