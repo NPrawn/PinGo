@@ -1,6 +1,6 @@
 .searchWrap {
   position: relative;
-  margin-top: 14px;
+  margin-top: 28px;
 }
 
 .searchIcon {
@@ -25,7 +25,7 @@
 }
 
 .resultsKicker {
-  margin: 18px 0 8px;
+  margin: 28px 0 8px;
 }
 
 .results {
@@ -76,7 +76,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin: 18px 0 10px;
+  margin: 28px 0 10px;
 }
 
 .quickKicker {

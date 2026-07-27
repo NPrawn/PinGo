@@ -73,11 +73,7 @@ export function ConsultPermissionPage() {
         <Icon3d name="headset" tone="lilac" iconSize={24} className={styles.headerIcon} />
         <div>
           <Kicker className={styles.kicker}>상담 연결 준비</Kicker>
-          <Title className={styles.title}>
-            화면·음성 공유가
-            <br />
-            필요해요
-          </Title>
+          <Title className={styles.title}>화면·음성을 공유해요</Title>
         </div>
       </div>
       <Sub className={styles.lede}>

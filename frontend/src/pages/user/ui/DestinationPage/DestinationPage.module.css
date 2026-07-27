@@ -26,6 +26,7 @@
 }
 
 .settingsLink {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
@@ -34,9 +35,28 @@
   height: 38px;
   margin-top: 4px;
   text-decoration: none;
-  background: #fff;
-  border: 1px solid rgb(15 44 34 / 10%);
-  border-radius: 12px;
+}
+
+.settingsEmoji {
+  display: block;
+  font-size: 29px;
+  line-height: 1;
+  filter: drop-shadow(0 5px 5px rgb(34 91 69 / 24%)) drop-shadow(0 -1px 0 rgb(255 255 255 / 90%));
+  transform: translateZ(0);
+  transition:
+    filter 180ms ease,
+    transform 180ms ease;
+}
+
+.settingsLink:hover .settingsEmoji {
+  filter: drop-shadow(0 7px 6px rgb(34 91 69 / 30%)) drop-shadow(0 -1px 0 rgb(255 255 255 / 100%));
+  transform: translateY(-1px) rotate(8deg);
+}
+
+.settingsLink:focus-visible {
+  outline: 3px solid rgb(60 216 160 / 30%);
+  outline-offset: 3px;
+  border-radius: 50%;
 }
 
 /* Origin card with a decorative blob bleeding off the corner. */
