@@ -1,0 +1,24 @@
+.toast {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  z-index: 24;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: #0f2c22;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 12px 28px -10px rgb(15 44 34 / 60%);
+  transform: translateX(-50%);
+}
+
+.toastDot {
+  width: 7px;
+  height: 7px;
+  background: #3cd8a0;
+  border-radius: 50%;
+}
