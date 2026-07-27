@@ -24,7 +24,7 @@ public class ExternalMapService {
         String origin = formatPoint(request.origin().latitude().toPlainString(),
                 request.origin().longitude().toPlainString());
         String destination = formatPoint(request.destination().latitude().toPlainString(),
-                request.origin().latitude().toPlainString());
+                request.destination().longitude().toPlainString());
         String destinationName = encode(request.destination().name());
 
         String appUrl = "kakaomap://route"
