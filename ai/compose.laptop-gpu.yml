@@ -16,11 +16,7 @@ services:
       AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:?AI_INTERNAL_TOKEN is required}
       AI_MAX_CONCURRENT_INFERENCES: ${AI_MAX_CONCURRENT_INFERENCES:-1}
       AI_MAX_QUEUE_SIZE: ${AI_MAX_QUEUE_SIZE:-2}
-      AI_QUERY_RESIZE_MAX: ${AI_QUERY_RESIZE_MAX:-1280}
-      AI_PORTRAIT_INITIAL_TOP_K: ${AI_PORTRAIT_INITIAL_TOP_K:-5}
-      AI_PORTRAIT_RETRY_TOP_K: ${AI_PORTRAIT_RETRY_TOP_K:-20}
-      AI_LANDSCAPE_TOP_K: ${AI_LANDSCAPE_TOP_K:-5}
-      AI_MAX_TOP_K: ${AI_MAX_TOP_K:-50}
+      AI_DEFAULT_TOP_K: ${AI_DEFAULT_TOP_K:-5}
     volumes:
       - ${AI_MAPS_HOST_PATH:-./runtime_maps}:/maps:ro
       - ${AI_MODEL_CACHE_HOST_PATH:-./model-cache}:/opt/pingo/model-cache:ro
@@ -69,4 +65,3 @@ services:
       - tools/download_model_weights.py
       - --device
       - cuda
-
