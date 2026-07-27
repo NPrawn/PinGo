@@ -5,4 +5,6 @@ export const ROUTES = {
   INDOOR_MAP: '/user/map',
   COUNSELOR: '/counselor',
   ADMIN: '/admin',
+  // 권한 요청 실기기 검증용 테스트 페이지 (FR-U-002)
+  PERMISSION_TEST: '/permission-test',
 } as const;
