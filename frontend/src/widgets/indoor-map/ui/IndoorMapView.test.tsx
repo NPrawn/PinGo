@@ -57,5 +57,8 @@ describe('IndoorMapView', () => {
     render(<IndoorMapView stationId={1} />);
     const image = screen.getByRole('img', { name: 'B1 실내 지도' });
     expect(image).toHaveAttribute('src', 'http://localhost:8080/uploads/maps/3f2a1b.png');
+    // 원본 width/height를 고유 비율로 유지한다. (CSS로 뷰포트에 맞춰 축소되어도 비율 보존)
+    expect(image).toHaveAttribute('width', '1200');
+    expect(image).toHaveAttribute('height', '800');
   });
 });

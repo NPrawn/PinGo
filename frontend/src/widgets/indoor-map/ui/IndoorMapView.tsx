@@ -15,9 +15,10 @@ function selectFloorMap(maps: FloorMap[], floorId?: number): FloorMap | undefine
 }
 
 /**
- * 특정 역·층의 실내 지도 이미지를 좌표계가 유지되는 stage 위에 렌더링한다.
- * 시설·출구 마커(281)와 현재 위치·경로 오버레이(282)는 stage 위에
- * 퍼센트 좌표로 얹혀 지도 확대/축소와 무관하게 정렬된다.
+ * 특정 역·층의 실내 지도 이미지를 렌더링한다.
+ * 이미지는 원본 width/height를 고유 비율로 삼아, 뷰포트 크기와 무관하게
+ * 비율을 유지한 채 화면 안에 맞춰진다.
+ * 시설·출구 마커(281)와 현재 위치·경로 오버레이(282)는 stage 위에 얹힌다.
  */
 export function IndoorMapView({ stationId, floorId }: IndoorMapViewProps) {
   const { t } = useTranslation();
@@ -44,10 +45,7 @@ export function IndoorMapView({ stationId, floorId }: IndoorMapViewProps) {
 
   return (
     <div className={styles.viewport}>
-      <div
-        className={styles.stage}
-        style={{ aspectRatio: `${floorMap.width} / ${floorMap.height}` }}
-      >
+      <div className={styles.stage}>
         <img
           className={styles.image}
           src={resolveAssetUrl(floorMap.mapUrl)}
