@@ -1,4 +1,5 @@
 import { useNavigationStore } from '@/entities/navigation';
+import { ALL_DESTINATIONS } from '@/entities/poi';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink, Icon, Kicker, Sub, Title } from '@/shared/ui';
 import {
@@ -15,6 +16,7 @@ import styles from './DestinationMapPage.module.css';
 /** Screen 13 — confirm the destination pin before routing. */
 export function DestinationMapPage() {
   const destination = useNavigationStore((state) => state.destination) ?? '스타벅스 역삼점';
+  const destinationIcon = ALL_DESTINATIONS.find((poi) => poi.name === destination)?.icon ?? 'pin';
 
   return (
     <PhoneFrame layout="flush">
@@ -90,17 +92,14 @@ export function DestinationMapPage() {
           </MapScreenSvg>
 
           <MapCallout left="58%" top="44%">
-            <Icon name="coffee" size={12} />
+            <Icon name={destinationIcon} size={12} />
             {destination}
           </MapCallout>
           <MeLabel left="30%" top="66%" />
         </MapScreenMap>
 
         <MapScreenPanel>
-          <Kicker className={styles.kicker}>
-            <Icon name="coffee" size={13} />
-            카페 · 목적지
-          </Kicker>
+          <Kicker className={styles.kicker}>목적지</Kicker>
           <Title className={styles.title}>{destination}</Title>
           <Sub className={styles.sub}>3번 출구 방면 · 현재 위치에서 도보 약 4분</Sub>
           <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS} className={styles.cta}>
