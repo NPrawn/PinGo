@@ -55,18 +55,6 @@ export interface UsePermissionRequestValue {
   reset: () => void;
 }
 
-/**
- * 아직 요청하지 않은 상태를 나타내는 기본 결과.
- *
- * 요청이 이미 진행 중일 때 중복 호출이 들어오면 이 값을 반환한다.
- */
-const idleRequiredPermissionsResult: RequiredPermissionsResult = {
-  canUseService: false,
-  location: { kind: 'location', status: 'idle' },
-  camera: { kind: 'camera', status: 'idle' },
-  microphone: { kind: 'microphone', status: 'idle' },
-};
-
 const idleStatuses: RequiredPermissionStatuses = {
   location: 'idle',
   camera: 'idle',
@@ -133,11 +121,14 @@ export function usePermissionRequest(): UsePermissionRequestValue {
   const isMountedRef = useRef(true);
 
   /**
-   * 요청 중복 실행을 막기 위한 진행 여부 참조.
+   * 진행 중인 요청.
    *
    * phase 상태만으로는 같은 tick 안의 연속 호출을 막지 못하므로 ref를 함께 사용한다.
+   * 중복 호출에는 새 요청을 시작하지 않고 진행 중인 Promise를 그대로 공유한다.
+   * 지난 요청 결과를 대신 반환하면 호출한 화면이 낡은 결과로 상태를 덮거나
+   * 화면을 옮길 수 있다.
    */
-  const isRequestingRef = useRef(false);
+  const inFlightRef = useRef<Promise<RequiredPermissionsResult> | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -147,16 +138,10 @@ export function usePermissionRequest(): UsePermissionRequestValue {
     };
   }, []);
 
-  const requestPermissions = useCallback(async (): Promise<RequiredPermissionsResult> => {
-    /**
-     * 이미 요청이 진행 중이면 새 요청을 시작하지 않는다.
-     * 진행 중일 때는 마지막 결과(없으면 idle 결과)를 그대로 반환한다.
-     */
-    if (isRequestingRef.current) {
-      return result ?? idleRequiredPermissionsResult;
+  const requestPermissions = useCallback((): Promise<RequiredPermissionsResult> => {
+    if (inFlightRef.current) {
+      return inFlightRef.current;
     }
-
-    isRequestingRef.current = true;
 
     if (isMountedRef.current) {
       setPhase('requesting');
@@ -187,30 +172,38 @@ export function usePermissionRequest(): UsePermissionRequestValue {
       return settledResult;
     };
 
-    try {
-      return settle(
-        await requestRequiredPermissions({
-          onProgress: (progress) => {
-            Object.assign(confirmed, progress);
+    const run = async (): Promise<RequiredPermissionsResult> => {
+      try {
+        return settle(
+          await requestRequiredPermissions({
+            onProgress: (progress) => {
+              Object.assign(confirmed, progress);
 
-            if (isMountedRef.current) {
-              setStatuses((previous) => ({ ...previous, ...progress }));
-            }
-          },
-        }),
-      );
-    } catch {
-      /**
-       * 브라우저 API가 예외를 던진 경우.
-       *
-       * 여기서 다시 throw하면 호출한 화면이 요청 중 상태에 갇히므로,
-       * 진입 불가 결과로 정리해서 반환한다.
-       */
-      return settle(toFailedResult(confirmed));
-    } finally {
-      isRequestingRef.current = false;
-    }
-  }, [result]);
+              if (isMountedRef.current) {
+                setStatuses((previous) => ({ ...previous, ...progress }));
+              }
+            },
+          }),
+        );
+      } catch {
+        /**
+         * 브라우저 API가 예외를 던진 경우.
+         *
+         * 여기서 다시 throw하면 호출한 화면이 요청 중 상태에 갇히므로,
+         * 진입 불가 결과로 정리해서 반환한다.
+         */
+        return settle(toFailedResult(confirmed));
+      }
+    };
+
+    const pending = run().finally(() => {
+      inFlightRef.current = null;
+    });
+
+    inFlightRef.current = pending;
+
+    return pending;
+  }, []);
 
   const reset = useCallback(() => {
     clearStoredRequiredPermissionState();

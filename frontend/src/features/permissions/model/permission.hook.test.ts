@@ -114,6 +114,27 @@ describe('usePermissionRequest', () => {
     });
   });
 
+  it('요청이 진행 중이면 새 요청을 시작하지 않고 같은 결과를 공유한다', async () => {
+    stubGrantedEnvironment();
+
+    const { result } = renderHook(() => usePermissionRequest());
+
+    let first: RequiredPermissionsResult | undefined;
+    let second: RequiredPermissionsResult | undefined;
+
+    await act(async () => {
+      const pending = result.current.requestPermissions();
+      const duplicate = result.current.requestPermissions();
+
+      [first, second] = await Promise.all([pending, duplicate]);
+    });
+
+    // 지난 결과가 아니라 진행 중이던 이번 요청의 결과를 받아야 한다.
+    expect(second).toBe(first);
+    expect(first?.canUseService).toBe(true);
+    expect(vi.mocked(navigator.geolocation.getCurrentPosition)).toHaveBeenCalledTimes(1);
+  });
+
   it('브라우저 API가 예외를 던져도 진입 불가 결과로 정리한다', async () => {
     Object.defineProperty(window, 'isSecureContext', {
       configurable: true,
