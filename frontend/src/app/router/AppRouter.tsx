@@ -16,6 +16,11 @@ const CounselorPage = lazy(() =>
 const AdminPage = lazy(() =>
   import('@/pages/admin').then((module) => ({ default: module.AdminPage })),
 );
+const PermissionTestPage = lazy(() =>
+  import('@/pages/permission-test').then((module) => ({
+    default: module.PermissionTestPage,
+  })),
+);
 
 /**
  * Entry redirects live here rather than inside each lazy chunk, so landing on
@@ -30,18 +35,19 @@ export function AppRouter() {
         </p>
       }
     >
-        <Routes>
-          <Route path={ROUTES.HOME} element={<HomePage />} />
+      <Routes>
+        <Route path={ROUTES.HOME} element={<HomePage />} />
 
-          <Route path={ROUTES.USER} element={<Navigate to={USER_ROUTES.SPLASH} replace />} />
-          <Route path={ROUTES.INDOOR_MAP} element={<IndoorMapPage />} />
-          <Route path={`${ROUTES.USER}/*`} element={<UserPage />} />
+        <Route path={ROUTES.USER} element={<Navigate to={USER_ROUTES.SPLASH} replace />} />
+        <Route path={ROUTES.INDOOR_MAP} element={<IndoorMapPage />} />
+        <Route path={`${ROUTES.USER}/*`} element={<UserPage />} />
 
         <Route path={ROUTES.COUNSELOR} element={<Navigate to={COUNSELOR_ROUTES.LOGIN} replace />} />
         <Route path={`${ROUTES.COUNSELOR}/*`} element={<CounselorPage />} />
 
         <Route path={ROUTES.ADMIN} element={<Navigate to={ADMIN_ROUTES.LOGIN} replace />} />
         <Route path={`${ROUTES.ADMIN}/*`} element={<AdminPage />} />
+        <Route path={ROUTES.PERMISSION_TEST} element={<PermissionTestPage />} />
 
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
