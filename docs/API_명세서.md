@@ -82,7 +82,7 @@ Authorization: Bearer {accessToken}
 | 인증 방식          | JWT Access Token                                                    |
 | JWT 만료 시간      | 6시간                                                               |
 | Refresh Token      | MVP에서는 생략                                                      |
-| 사용자 세션 만료   | 마지막 활동 기준 24시간                                             |
+| 사용자 세션 만료   | 마지막 활동 기준 1시간                                              |
 | 상담 세션 ID       | UUID 또는 ULID 기반 문자열                                          |
 | WebRTC signaling   | WebSocket                                                           |
 | STUN/TURN          | 무료 STUN 우선, 연결 불안정 시 TURN 추가                            |
@@ -171,7 +171,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
     "accountId": 7,
     "name": "역무원",
     "stationId": 1,
-    "status": "available"
+    "status": "AVAILABLE"
   },
   "message": null
 }
@@ -288,7 +288,41 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 ---
 
-## 3.2 사용자 세션 갱신
+## 3.2 사용자 세션 조회
+
+### GET `/user-sessions/{userSessionId}`
+
+저장해 둔 세션 ID로 현재 세션 상태를 조회한다. 새로고침·앱 재실행 등으로 클라이언트가 들고 있던 상태가 사라졌을 때 복구 용도로 사용한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "userSessionId": "usr_9f3a2b",
+    "language": "en",
+    "selectedStationId": 1,
+    "currentNodeId": 15,
+    "destinationType": "place",
+    "destinationId": 3,
+    "expiresAt": "2026-07-16T13:00:00Z"
+  },
+  "message": null
+}
+```
+
+응답 필드 구성은 3.3 사용자 세션 갱신과 동일하며, 아직 설정되지 않은 항목은 `null`로 내려간다.
+
+조회는 활동 시각을 갱신하지 않는다. `last_active_at`과 `expires_at`은 `PATCH /user-sessions/{userSessionId}` 호출 시에만 연장되므로, 이 API를 반복 호출해도 세션 만료를 늦출 수 없다.
+
+만료·종료된 세션이거나 존재하지 않는 ID이면 `USER_SESSION_NOT_FOUND`를 반환한다. 클라이언트는 이 응답을 받으면 세션을 새로 생성하고 `language`를 다시 전송해 흐름을 이어간다.
+
+역·목적지의 표시 이름이 필요하면 `GET /stations/{stationId}`(4.3), `GET /facilities/{facilityId}`(5.3)로 별도 조회한다. 세션 응답은 ID만 반환한다.
+
+---
+
+## 3.3 사용자 세션 갱신
 
 ### PATCH `/user-sessions/{userSessionId}`
 
@@ -332,7 +366,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
     "currentNodeId": 15,
     "destinationType": "place",
     "destinationId": 3,
-    "expiresAt": "2026-07-28T05:20:00Z"
+    "expiresAt": "2026-07-16T13:00:00Z"
   },
   "message": null
 }
@@ -344,11 +378,14 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 `destinationType`과 `destinationId`는 항상 함께 전달해야 한다. 둘 중 하나만 전달하면 `INVALID_DESTINATION`을 반환한다. 만료·종료된 세션 ID로 요청하면 `USER_SESSION_NOT_FOUND`를 반환한다.
 
-## 3.3 사용자 세션 종료
+---
+
+## 3.4 사용자 세션 종료
 
 ### DELETE `/user-sessions/{userSessionId}`
 
-경로 안내가 정상적으로 끝났을 때 세션을 즉시 종료한다. 앱 종료·네트워크 끊김처럼 종료 요청이 도달하지 않는 경우는 세션 만료 정책(§18)으로 처리한다.
+경로 안내가 정상적으로 끝났을 때 세션을 즉시 종료한다. 앱 종료·네트워크 끊김처럼 종료 요청이 도달하지 않는 경우는 세션 만료 정책(18. 확정된 구현 사항 참고)으로 처리한다.
+
 #### Response
 
 ```json
@@ -375,6 +412,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 진행 중인 상담(`WAITING`, `ACCEPTED`, `CONNECTING`, `IN_PROGRESS`)이 연결된 세션은 종료할 수 없으며 `USER_SESSION_IN_CONSULTATION`을 반환한다. 존재하지 않는 세션 ID는 `USER_SESSION_NOT_FOUND`를 반환한다.
 
 종료·만료된 세션 ID로 다시 요청이 오면 클라이언트는 새 세션을 생성하고 `language`를 다시 전송해 흐름을 이어간다.
+
 ---
 
 ## 4. 역 API
@@ -1137,7 +1175,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "userSessionId": "usr_9f3a2b",
   "stationId": 1,
-  "problemType": "cannot_find_exit",
+  "problemType": "CANNOT_FIND_EXIT",
   "currentNodeId": 15,
   "destinationType": "place",
   "destinationId": 3,
@@ -1241,8 +1279,8 @@ Authorization: Bearer {accessToken}
     {
       "consultationId": "cs_abc123",
       "stationId": 1,
-      "problemType": "cannot_find_exit",
-      "status": "waiting",
+      "problemType": "CANNOT_FIND_EXIT",
+      "status": "WAITING",
       "currentLocationLabel": "B2 개찰구 앞",
       "destinationLabel": "COEX Mall",
       "requestedAt": "2026-07-16T03:00:00Z"
@@ -1273,7 +1311,7 @@ Authorization: Bearer {accessToken}
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "accepted",
+    "status": "ACCEPTED",
     "signalingRoomId": "room_cs_abc123"
   },
   "message": null
@@ -2169,7 +2207,7 @@ multipart/form-data
 
 | 구분        | API                                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------------------- |
-| 사용자 세션 | POST /user-sessions,  PATCH /user-sessions/{userSessonId}, DELETE /user-sessions/{userSessonId}                                                                                     |
+| 사용자 세션 | POST /user-sessions, GET /user-sessions/{userSessionId}, PATCH /user-sessions/{userSessionId}, DELETE /user-sessions/{userSessionId} |
 | 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                   |
 | 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                    |
 | 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits     |
