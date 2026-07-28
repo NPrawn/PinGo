@@ -1,6 +1,5 @@
 package com.pingo.backend.localization.client;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.pingo.backend.localization.client.dto.AiLocalizationRequestMetadata;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
 import java.io.IOException;
