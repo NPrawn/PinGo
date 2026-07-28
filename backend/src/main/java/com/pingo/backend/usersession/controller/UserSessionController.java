@@ -43,9 +43,8 @@ public class UserSessionController {
     public ApiResponse<Boolean> deleteUserSession(
             @PathVariable String userSessionId
     ){
-        boolean ended = userSessionService.end(userSessionId);
-        String message = ended ? "세션이 종료되었습니다." : "이미 종료된 세션입니다.";
-        return ApiResponse.success(ended, message);
+        userSessionService.end(userSessionId);
+        return ApiResponse.success(true, "세션이 종료되었습니다.");
     }
 
 }

@@ -72,7 +72,7 @@ public class UserSessionService {
                 .orElseThrow(()-> new BusinessException(ErrorCode.USER_SESSION_NOT_FOUND));
 
         if(session.isExpired()){
-            return false; // 이미 종료,만료된 세션
+            throw new BusinessException(ErrorCode.USER_SESSION_ALREADY_ENDED);
         }
 
         // [TODO] OO 진행 중 상담 상태 확인 후 USER_SESSION_IN_CONSULTATION 처리

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.domain.Persistable;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -14,7 +15,7 @@ import java.util.UUID;
 @Getter
 @Table(name = "user_session")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class UserSession {
+public class UserSession implements Persistable<String> {
 
     @Id
     @Column(name = "user_session_id")
@@ -102,5 +103,16 @@ public class UserSession {
 
     public void expireNow() {
         this.expiresAt = LocalDateTime.now();
+    }
+
+    @Override
+    public String getId() {
+        return userSessionId;
+    }
+
+    @Override
+    @Transient
+    public boolean isNew() {
+        return createdAt == null;
     }
 }

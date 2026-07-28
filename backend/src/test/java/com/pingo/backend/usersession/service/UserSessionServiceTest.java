@@ -230,11 +230,14 @@ public class UserSessionServiceTest {
     }
 
     @Test
-    void 이미_종료된_세션을_다시_종료하면_false를_반환한다() {
+    void 이미_종료된_세션을_다시_종료하면_예외가_발생한다() {
         String userSessionId = createSession();
         userSessionService.end(userSessionId);
 
-        assertFalse(userSessionService.end(userSessionId));
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> userSessionService.end(userSessionId));
+
+        assertEquals(ErrorCode.USER_SESSION_ALREADY_ENDED, ex.getErrorCode());
     }
 
     @Test

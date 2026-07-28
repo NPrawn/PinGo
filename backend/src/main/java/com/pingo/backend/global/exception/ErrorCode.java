@@ -20,6 +20,7 @@ public enum ErrorCode {
     USER_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_SESSION_NOT_FOUND", "사용자 세션을 찾을 수 없습니다."),
     USER_SESSION_IN_CONSULTATION(HttpStatus.CONFLICT, "USER_SESSION_IN_CONSULTATION", "진행 중인 상담이 있어 세션을 종료할 수 없습니다."),
     INVALID_DESTINATION(HttpStatus.BAD_REQUEST, "INVALID_DESTINATION", "목적지 양식이 올바르지 않습니다."),
+    USER_SESSION_ALREADY_ENDED(HttpStatus.CONFLICT, "USER_SESSION_ALREADY_ENDED", "이미 종료된 세션입니다."),
 
     // 역,층,시설
     STATION_NOT_FOUND(HttpStatus.NOT_FOUND, "STATION_NOT_FOUND", "역을 찾을 수 없습니다."),

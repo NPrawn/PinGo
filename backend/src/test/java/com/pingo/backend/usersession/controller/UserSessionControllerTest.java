@@ -1,6 +1,7 @@
 package com.pingo.backend.usersession.controller;
 
 
+import com.pingo.backend.global.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -10,6 +11,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
@@ -51,13 +54,13 @@ class UserSessionControllerTest {
     }
 
     @Test
-    void 이미_종료된_세션을_다시_종료하면_data가_false로_반환된다() throws Exception {
+    void 이미_종료된_세션을_다시_종료하면_클라이언트_에러가_반환된다() throws Exception {
         String userSessionId = createSession("ko");
         mockMvc.perform(delete("/api/user-sessions/{userSessionId}", userSessionId));
 
         mockMvc.perform(delete("/api/user-sessions/{userSessionId}", userSessionId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").value(false));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test
