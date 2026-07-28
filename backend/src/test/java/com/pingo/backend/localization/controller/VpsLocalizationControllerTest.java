@@ -77,6 +77,44 @@ class VpsLocalizationControllerTest {
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
 
+    @Test
+    void localizeReturnsBadRequestForUnsupportedImageType() throws Exception {
+        MockMultipartFile textFile = new MockMultipartFile(
+                "image",
+                "query.txt",
+                "text/plain",
+                "image".getBytes(StandardCharsets.UTF_8)
+        );
+
+        mockMvc.perform(multipart("/api/vps/localize")
+                        .file(textFile)
+                        .file(metadata()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void localizeReturnsBadRequestForInvalidMetadata() throws Exception {
+        MockMultipartFile invalidMetadata = new MockMultipartFile(
+                "metadata",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                """
+                {
+                  "userSessionId": "",
+                  "stationId": 1,
+                  "mapVersion": "YS-2026-07-23.1"
+                }
+                """.getBytes(StandardCharsets.UTF_8)
+        );
+
+        mockMvc.perform(multipart("/api/vps/localize")
+                        .file(image())
+                        .file(invalidMetadata))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
     private MockMultipartFile image() {
         return new MockMultipartFile(
                 "image",

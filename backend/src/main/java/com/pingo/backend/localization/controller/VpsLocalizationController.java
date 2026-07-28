@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,6 +25,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "위치추정 API", description = "비로그인 사용자의 카메라 이미지 기반 실내 위치추정 API")
 public class VpsLocalizationController {
 
+    private static final Set<String> SUPPORTED_IMAGE_CONTENT_TYPES = Set.of("image/jpeg", "image/png");
+
     private final LocalizationService localizationService;
 
     @PostMapping("/localize")
@@ -36,7 +39,7 @@ public class VpsLocalizationController {
             @RequestPart("image") MultipartFile image,
             @Valid @RequestPart("metadata") LocalizationRequestMetadata metadata
     ) {
-        if (image.isEmpty()) {
+        if (image.isEmpty() || !SUPPORTED_IMAGE_CONTENT_TYPES.contains(image.getContentType())) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 

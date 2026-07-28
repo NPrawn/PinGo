@@ -17,7 +17,7 @@ public record CameraMetadataRequest(
         @Min(1)
         Integer height,
 
-        @Schema(description = "카메라 내부 파라미터", example = "1050.2, 1048.8, 640.0, 360.0]")
+        @Schema(description = "카메라 내부 파라미터", example = "[1050.2, 1048.8, 640.0, 360.0]")
         @Size(min = 4, max = 4)
         List<Double> params,
 
