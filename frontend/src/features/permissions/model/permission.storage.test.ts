@@ -89,12 +89,23 @@ describe('saveRequiredPermissionState / getStoredRequiredPermissionState', () =>
   });
 
   it('sessionStorage를 사용할 수 없으면 저장은 null을 반환한다', () => {
-    // jsdom의 Storage 메서드는 프로토타입에 있으므로 프로토타입을 spy한다.
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('storage unavailable');
+    const originalSessionStorage = window.sessionStorage;
+
+    Object.defineProperty(window, 'sessionStorage', {
+      configurable: true,
+      get: () => {
+        throw new Error('storage unavailable');
+      },
     });
 
-    expect(saveRequiredPermissionState(createGrantedResult())).toBeNull();
+    try {
+      expect(saveRequiredPermissionState(createGrantedResult())).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'sessionStorage', {
+        configurable: true,
+        value: originalSessionStorage,
+      });
+    }
   });
 });
 
