@@ -160,6 +160,43 @@ describe('user routes', () => {
     expect(screen.getByRole('heading', { name: /이용에 필요한 권한을/ })).toBeInTheDocument();
   });
 
+  it('switches a permission back off in the store when the browser later refuses it', async () => {
+    stubPermissionEnvironment({ location: 'granted', media: 'granted' });
+    await renderSection('/user/permission');
+    fireEvent.click(await screen.findByRole('button', { name: '권한 허용하고 시작하기' }));
+    await screen.findByRole('heading', { name: /현재 역을/ });
+    expect(usePermissionStore.getState().granted).toEqual({ loc: true, cam: true, mic: true });
+
+    cleanup();
+
+    // The user revoked camera and microphone in the browser settings and came
+    // back. The store must not keep claiming access it no longer has.
+    stubPermissionEnvironment({ location: 'granted', media: 'denied' });
+    await renderSection('/user/permission');
+    fireEvent.click(await screen.findByRole('button', { name: '권한 허용하고 시작하기' }));
+
+    await screen.findByRole('dialog', { name: '모든 권한이 필요해요' });
+    expect(usePermissionStore.getState().granted).toEqual({ loc: true, cam: false, mic: false });
+  });
+
+  it('recovers instead of locking the button when the permission API throws', async () => {
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn(() => {
+          throw new Error('geolocation blew up');
+        }),
+      },
+    });
+    await renderSection('/user/permission');
+
+    fireEvent.click(await screen.findByRole('button', { name: '권한 허용하고 시작하기' }));
+
+    expect(await screen.findByRole('dialog', { name: '모든 권한이 필요해요' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '권한 허용하고 시작하기' })).toBeEnabled();
+  });
+
   it('marks location refused and leaves camera and microphone unasked', async () => {
     // A refused location short-circuits the flow, so the other two prompts
     // never open and their rows stay empty.

@@ -3,6 +3,7 @@ import {
   requestRequiredPermissions,
   type PermissionKind,
   type PermissionStatus,
+  type RequiredPermissionsProgress,
   type RequiredPermissionsResult,
 } from './permission.service';
 import {
@@ -91,6 +92,21 @@ function toStatuses(stored: StoredRequiredPermissionState | null): RequiredPermi
 }
 
 /**
+ * 권한 요청이 예상치 못한 예외로 끝난 경우의 결과.
+ *
+ * 이미 확정된 권한은 그대로 두고, 확인하지 못한 권한만 error로 표시한다.
+ * 어느 단계에서 실패했는지와 무관하게 서비스 진입은 막는다.
+ */
+function toFailedResult(confirmed: RequiredPermissionsProgress): RequiredPermissionsResult {
+  return {
+    canUseService: false,
+    location: { kind: 'location', status: confirmed.location ?? 'error' },
+    camera: { kind: 'camera', status: confirmed.camera ?? 'error' },
+    microphone: { kind: 'microphone', status: confirmed.microphone ?? 'error' },
+  };
+}
+
+/**
  * 위치, 카메라, 마이크 권한 요청 로직을 React 화면에서 쓸 수 있게 감싼 훅.
  *
  * - 마운트 시 sessionStorage에 저장된 이전 권한 상태를 불러온다.
@@ -148,23 +164,49 @@ export function usePermissionRequest(): UsePermissionRequestValue {
       setStatuses(idleStatuses);
     }
 
-    try {
-      const requestResult = await requestRequiredPermissions({
-        onProgress: (progress) => {
-          if (isMountedRef.current) {
-            setStatuses((previous) => ({ ...previous, ...progress }));
-          }
-        },
-      });
-      const savedState = saveRequiredPermissionState(requestResult);
+    /**
+     * 예외로 중단된 경우에도 어디까지 확인했는지 알아야 하므로,
+     * onProgress로 들어온 확정 상태를 따로 모아 둔다.
+     */
+    const confirmed: RequiredPermissionsProgress = {};
+
+    const settle = (settledResult: RequiredPermissionsResult): RequiredPermissionsResult => {
+      const savedState = saveRequiredPermissionState(settledResult);
 
       if (isMountedRef.current) {
-        setResult(requestResult);
+        setResult(settledResult);
         setStored(savedState);
+        setStatuses({
+          location: settledResult.location.status,
+          camera: settledResult.camera.status,
+          microphone: settledResult.microphone.status,
+        });
         setPhase('completed');
       }
 
-      return requestResult;
+      return settledResult;
+    };
+
+    try {
+      return settle(
+        await requestRequiredPermissions({
+          onProgress: (progress) => {
+            Object.assign(confirmed, progress);
+
+            if (isMountedRef.current) {
+              setStatuses((previous) => ({ ...previous, ...progress }));
+            }
+          },
+        }),
+      );
+    } catch {
+      /**
+       * 브라우저 API가 예외를 던진 경우.
+       *
+       * 여기서 다시 throw하면 호출한 화면이 요청 중 상태에 갇히므로,
+       * 진입 불가 결과로 정리해서 반환한다.
+       */
+      return settle(toFailedResult(confirmed));
     } finally {
       isRequestingRef.current = false;
     }

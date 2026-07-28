@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { usePermissionRequest } from './permission.hook';
+import type { RequiredPermissionsResult } from './permission.service';
 import type { StoredRequiredPermissionState } from './permission.storage';
 
 type GeoSuccess = (position: GeolocationPosition) => void;
@@ -89,6 +90,65 @@ describe('usePermissionRequest', () => {
     expect(result.current.canUseService).toBe(true);
     expect(result.current.stored?.canUseService).toBe(true);
     expect(window.sessionStorage.getItem(STORAGE_KEY)).not.toBeNull();
+  });
+
+  it('요청 결과를 권한별 상태로 노출한다', async () => {
+    stubGrantedEnvironment();
+
+    const { result } = renderHook(() => usePermissionRequest());
+
+    expect(result.current.statuses).toEqual({
+      location: 'idle',
+      camera: 'idle',
+      microphone: 'idle',
+    });
+
+    await act(async () => {
+      await result.current.requestPermissions();
+    });
+
+    expect(result.current.statuses).toEqual({
+      location: 'granted',
+      camera: 'granted',
+      microphone: 'granted',
+    });
+  });
+
+  it('브라우저 API가 예외를 던져도 진입 불가 결과로 정리한다', async () => {
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: true,
+    });
+
+    // getCurrentPosition이 동기 throw하면 위치 요청 Promise가 reject된다.
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn(() => {
+          throw new Error('geolocation failed');
+        }),
+      },
+    });
+
+    const { result } = renderHook(() => usePermissionRequest());
+
+    let requestResult: RequiredPermissionsResult | undefined;
+
+    await act(async () => {
+      requestResult = await result.current.requestPermissions();
+    });
+
+    expect(requestResult?.canUseService).toBe(false);
+    expect(requestResult?.location.status).toBe('error');
+
+    // 요청 중 상태에 갇히지 않고 다시 시도할 수 있어야 한다.
+    expect(result.current.phase).toBe('completed');
+    expect(result.current.isRequesting).toBe(false);
+    expect(result.current.statuses).toEqual({
+      location: 'error',
+      camera: 'error',
+      microphone: 'error',
+    });
   });
 
   it('reset 호출 시 상태와 저장소를 초기화한다', async () => {

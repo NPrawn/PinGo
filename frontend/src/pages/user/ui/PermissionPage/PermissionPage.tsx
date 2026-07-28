@@ -1,6 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePermissionStore, type PermissionKey } from '@/entities/permission';
+import {
+  usePermissionStore,
+  type PermissionKey,
+  type PermissionState,
+} from '@/entities/permission';
 import {
   PermissionList,
   PermissionReminder,
@@ -40,23 +44,42 @@ function toRowStates(
   };
 }
 
-/** The permissions the browser actually granted, in the store's key format. */
-function grantedKeys(statuses: RequiredPermissionStatuses): PermissionKey[] {
-  const byKey: [PermissionKey, PermissionStatus][] = [
-    ['loc', statuses.location],
-    ['cam', statuses.camera],
-    ['mic', statuses.microphone],
-  ];
-
-  return byKey.filter(([, status]) => status === 'granted').map(([key]) => key);
+/**
+ * The browser's verdict in the shared store's format.
+ *
+ * Everything short of `granted` counts as false, including a permission that
+ * was never asked because an earlier one was refused. That way a permission the
+ * user revoked since the last request cannot stay switched on, and the store
+ * never claims more access than this request confirmed.
+ */
+function toPermissionState(statuses: RequiredPermissionStatuses): PermissionState {
+  return {
+    loc: statuses.location === 'granted',
+    cam: statuses.camera === 'granted',
+    mic: statuses.microphone === 'granted',
+  };
 }
 
 /** Screen 03 (FR-U-002) — permission request. */
 export function PermissionPage() {
   const navigate = useNavigate();
-  const grant = usePermissionStore((state) => state.grant);
+  const syncPermissions = usePermissionStore((state) => state.sync);
   const { requestPermissions, isRequesting, statuses } = usePermissionRequest();
   const [modal, setModal] = useState<Modal>('none');
+
+  /**
+   * Answering the browser prompts takes as long as the user needs, and they can
+   * leave the screen in the meantime.
+   */
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   /**
    * Runs the real browser prompts, location first and camera + microphone
@@ -69,16 +92,22 @@ export function PermissionPage() {
     setModal('none');
 
     const result = await requestPermissions();
-    const granted = grantedKeys({
-      location: result.location.status,
-      camera: result.camera.status,
-      microphone: result.microphone.status,
-    });
 
     // Keep the shared UI state in step with what the browser decided, so the
-    // consult and settings screens do not contradict this one.
-    if (granted.length > 0) {
-      grant(...granted);
+    // consult and settings screens do not contradict this one. This is global
+    // state, so it is worth recording even if the screen is gone.
+    syncPermissions(
+      toPermissionState({
+        location: result.location.status,
+        camera: result.camera.status,
+        microphone: result.microphone.status,
+      }),
+    );
+
+    // Navigating or opening a dialog only makes sense while the user is still
+    // on this screen — they may have gone back while a prompt was open.
+    if (!isMountedRef.current) {
+      return;
     }
 
     if (result.canUseService) {

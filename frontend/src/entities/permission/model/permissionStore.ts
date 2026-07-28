@@ -9,6 +9,14 @@ type PermissionStore = {
   granted: PermissionState;
   toggle: (key: PermissionKey) => void;
   grant: (...keys: PermissionKey[]) => void;
+  /**
+   * Replaces every permission at once.
+   *
+   * `grant` only ever turns permissions on, so it cannot express a permission
+   * the user revoked between two requests. The onboarding screen reports the
+   * browser's answer for all three at once and uses this instead.
+   */
+  sync: (next: PermissionState) => void;
   hasAll: (...keys: PermissionKey[]) => boolean;
 };
 
@@ -18,9 +26,12 @@ type PermissionStore = {
  * Crosses pages: the onboarding permission screen sets it, the consult flow
  * reads it to decide whether it can start a call.
  *
- * TODO: This mirrors the prototype's opt-in checkboxes. Replace with the real
- * Permissions API / getUserMedia results once the browser support matrix and
- * fallback behaviour are agreed.
+ * The onboarding screen (U-02) feeds this from the real browser permission
+ * results through `sync`.
+ *
+ * TODO: The consult and settings screens still toggle these by hand, mirroring
+ * the prototype's opt-in checkboxes. Point them at the browser results too once
+ * their fallback behaviour is agreed.
  */
 export const usePermissionStore = create<PermissionStore>((set, get) => ({
   granted: { loc: false, cam: false, mic: false },
@@ -29,5 +40,6 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
     set((state) => ({
       granted: keys.reduce((acc, key) => ({ ...acc, [key]: true }), state.granted),
     })),
+  sync: (next) => set({ granted: { ...next } }),
   hasAll: (...keys) => keys.every((key) => get().granted[key]),
 }));
