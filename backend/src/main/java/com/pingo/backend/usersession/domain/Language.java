@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum Language {
     KO, EN, JA, ZH;
 
-    public static final Language DEFAULT = KO;
+    public static final Language DEFAULT = EN;
 
     @JsonCreator
     public static Language from(String value){

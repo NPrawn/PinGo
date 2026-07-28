@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -46,6 +47,8 @@ public class UserSession {
 
     private LocalDateTime expiresAt;
 
+    private static final Duration SESSION_TTL = Duration.ofHours(1);
+
     public static UserSession create(Language language){
         UserSession session = new UserSession();
         session.userSessionId = generateId();
@@ -62,7 +65,7 @@ public class UserSession {
         LocalDateTime now = LocalDateTime.now();
         this.createdAt = now;
         this.lastActiveAt = now;
-        this.expiresAt = now.plusHours(24);
+        this.expiresAt = now.plus(SESSION_TTL);
     }
 
     public void changeLanguage(Language language){
@@ -90,14 +93,14 @@ public class UserSession {
     public void renewActivity(){
         LocalDateTime now = LocalDateTime.now();
         this.lastActiveAt = now;
-        this.expiresAt = now.plusHours(24);
+        this.expiresAt = now.plus(SESSION_TTL);
     }
 
-    public void changeDestinationType(String destinationType) {
-        this.destinationType = destinationType;
+    public boolean isExpired() {
+        return expiresAt != null && !expiresAt.isAfter(LocalDateTime.now());
     }
 
-    public void changeDestinationId(Long destinationId) {
-        this.destinationId = destinationId;
+    public void expireNow() {
+        this.expiresAt = LocalDateTime.now();
     }
 }
