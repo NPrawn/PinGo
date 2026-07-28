@@ -120,6 +120,48 @@ class LocalizationServiceTest {
         );
     }
 
+    @Test
+    void localizeReturnsInternalErrorFallbackWhenAiResponseIsNull() {
+        MockMultipartFile image = image();
+        LocalizationRequestMetadata metadata = metadata();
+
+        when(aiLocalizationClient.localize(eq("loc-1"), eq("YS-2026-07-23.1"), eq(image), any()))
+                .thenReturn(null);
+
+        var response = localizationService.localize("loc-1", image, metadata);
+
+        assertThat(response.requestId()).isEqualTo("loc-1");
+        assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.INTERNAL_ERROR);
+        assertThat(response.mapVersion()).isEqualTo("YS-2026-07-23.1");
+        assertThat(response.processingTimeMs()).isNull();
+        assertThat(response.fallbackOptions()).containsExactly(
+                LocalizationFallbackOption.RETRY_CAPTURE,
+                LocalizationFallbackOption.SELECT_ON_MAP,
+                LocalizationFallbackOption.REQUEST_CONSULTATION
+        );
+    }
+
+    @Test
+    void localizeReturnsInternalErrorFallbackWhenAiStatusIsNull() {
+        MockMultipartFile image = image();
+        LocalizationRequestMetadata metadata = metadata();
+
+        when(aiLocalizationClient.localize(eq("loc-1"), eq("YS-2026-07-23.1"), eq(image), any()))
+                .thenReturn(aiResponse(null, null));
+
+        var response = localizationService.localize("loc-1", image, metadata);
+
+        assertThat(response.requestId()).isEqualTo("loc-1");
+        assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.INTERNAL_ERROR);
+        assertThat(response.mapVersion()).isEqualTo("YS-2026-07-23.1");
+        assertThat(response.processingTimeMs()).isEqualTo(1234);
+        assertThat(response.fallbackOptions()).containsExactly(
+                LocalizationFallbackOption.RETRY_CAPTURE,
+                LocalizationFallbackOption.SELECT_ON_MAP,
+                LocalizationFallbackOption.REQUEST_CONSULTATION
+        );
+    }
+
     private AiLocalizationResponse aiResponse(AiLocalizationStatus status, String failureReason) {
         return new AiLocalizationResponse(
                 "loc-1",

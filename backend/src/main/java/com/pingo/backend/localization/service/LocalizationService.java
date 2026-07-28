@@ -43,6 +43,15 @@ public class LocalizationService {
                     image,
                     requestMapper.toAiMetadata(metadata)
             );
+            if (aiResponse == null || aiResponse.status() == null) {
+                return responseFor(
+                        requestId,
+                        metadata.mapVersion(),
+                        processingTimeMs(aiResponse),
+                        LocalizationResultStatus.INTERNAL_ERROR
+                );
+            }
+
             LocalizationResultStatus resultStatus = statusMapper.map(
                     aiResponse.status().name(),
                     aiResponse.failureReason()
@@ -50,7 +59,7 @@ public class LocalizationService {
 
             return responseFor(
                     requestId,
-                    aiResponse.mapVersion(),
+                    responseMapVersion(aiResponse, metadata),
                     processingTimeMs(aiResponse),
                     resultStatus
             );
@@ -81,11 +90,23 @@ public class LocalizationService {
     }
 
     private Integer processingTimeMs(AiLocalizationResponse aiResponse) {
+        if (aiResponse == null) {
+            return null;
+        }
+
         if (aiResponse.timingMs() == null) {
             return null;
         }
 
         return aiResponse.timingMs().total();
+    }
+
+    private String responseMapVersion(AiLocalizationResponse aiResponse, LocalizationRequestMetadata metadata) {
+        if (aiResponse.mapVersion() == null || aiResponse.mapVersion().isBlank()) {
+            return metadata.mapVersion();
+        }
+
+        return aiResponse.mapVersion();
     }
 
     private LocalizationResultStatus mapClientError(AiLocalizationClientErrorType errorType) {
