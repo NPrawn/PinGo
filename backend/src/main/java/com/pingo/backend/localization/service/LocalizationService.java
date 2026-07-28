@@ -3,8 +3,8 @@ package com.pingo.backend.localization.service;
 import com.pingo.backend.localization.client.AiLocalizationClient;
 import com.pingo.backend.localization.client.AiLocalizationClientErrorType;
 import com.pingo.backend.localization.client.AiLocalizationClientException;
-import com.pingo.backend.localization.client.dto.AiLocalizationRequestMetadata;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
+import com.pingo.backend.localization.dto.request.LocalizationRequestMetadata;
 import com.pingo.backend.localization.dto.response.LocalizationResponse;
 import com.pingo.backend.localization.dto.response.LocalizationResultStatus;
 import java.util.List;
@@ -17,25 +17,32 @@ public class LocalizationService {
     private final AiLocalizationClient aiLocalizationClient;
     private final AiLocalizationStatusMapper statusMapper;
     private final LocalizationFallbackPolicy fallbackPolicy;
+    private final AiLocalizationRequestMapper requestMapper;
 
     public LocalizationService(
             AiLocalizationClient aiLocalizationClient,
             AiLocalizationStatusMapper statusMapper,
-            LocalizationFallbackPolicy fallbackPolicy
+            LocalizationFallbackPolicy fallbackPolicy,
+            AiLocalizationRequestMapper requestMapper
     ) {
         this.aiLocalizationClient = aiLocalizationClient;
         this.statusMapper = statusMapper;
         this.fallbackPolicy = fallbackPolicy;
+        this.requestMapper = requestMapper;
     }
 
     public LocalizationResponse localize(
             String requestId,
-            String mapVersion,
             MultipartFile image,
-            AiLocalizationRequestMetadata metadata
+            LocalizationRequestMetadata metadata
     ) {
         try {
-            AiLocalizationResponse aiResponse = aiLocalizationClient.localize(requestId, mapVersion, image, metadata);
+            AiLocalizationResponse aiResponse = aiLocalizationClient.localize(
+                    requestId,
+                    metadata.mapVersion(),
+                    image,
+                    requestMapper.toAiMetadata(metadata)
+            );
             LocalizationResultStatus resultStatus = statusMapper.map(
                     aiResponse.status().name(),
                     aiResponse.failureReason()
