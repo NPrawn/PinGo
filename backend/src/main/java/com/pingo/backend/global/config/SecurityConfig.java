@@ -47,7 +47,8 @@ public class SecurityConfig {
                                 "/api/destinations/**",
                                 "/api/places/**",
                                 "/api/routes/**",
-                                "/api/external-maps/**"
+                                "/api/external-maps/**",
+                                "/api/vps/**"
                         ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/counselors/**").hasRole("COUNSELOR")
