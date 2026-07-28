@@ -113,6 +113,16 @@ class SecurityFilterChainTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void 비로그인_userSession_생성_200() throws Exception {
+        mockMvc.perform(post("/api/user-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"language":"ko"}
+                            """))
+                .andExpect(status().isOk());
+    }
+
     // ---- ADMIN ----
 
     @Test
