@@ -10,6 +10,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -28,6 +30,44 @@ class UserSessionControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Test
+    void 생성된_세션을_조회하면_현재_상태가_반환된다() throws Exception {
+        String userSessionId = createSession("en");
+
+        mockMvc.perform(get("/api/user-sessions/{userSessionId}", userSessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userSessionId").value(userSessionId))
+                .andExpect(jsonPath("$.data.language").value("en"))
+                .andExpect(jsonPath("$.data.expiresAt").exists());
+    }
+
+    @Test
+    void 세션을_종료하면_data가_true로_반환된다() throws Exception {
+        String userSessionId = createSession("ko");
+
+        mockMvc.perform(delete("/api/user-sessions/{userSessionId}", userSessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(true));
+    }
+
+    @Test
+    void 이미_종료된_세션을_다시_종료하면_data가_false로_반환된다() throws Exception {
+        String userSessionId = createSession("ko");
+        mockMvc.perform(delete("/api/user-sessions/{userSessionId}", userSessionId));
+
+        mockMvc.perform(delete("/api/user-sessions/{userSessionId}", userSessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(false));
+    }
+
+    @Test
+    void 종료된_세션을_조회하면_클라이언트_에러가_반환된다() throws Exception {
+        String userSessionId = createSession("ko");
+        mockMvc.perform(delete("/api/user-sessions/{userSessionId}", userSessionId));
+
+        mockMvc.perform(get("/api/user-sessions/{userSessionId}", userSessionId))
+                .andExpect(status().is4xxClientError());
+    }
 
     @Test
     void language를_지정해서_생성하면_200과_생성된_정보가_반환된다() throws Exception {
@@ -43,12 +83,12 @@ class UserSessionControllerTest {
     }
 
     @Test
-    void language를_생략하면_기본값_ko로_생성된다() throws Exception {
+    void language를_생략하면_기본값_en로_생성된다() throws Exception {
         mockMvc.perform(post("/api/user-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.language").value("ko"));
+                .andExpect(jsonPath("$.data.language").value("en"));
     }
 
     @Test
