@@ -294,6 +294,18 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 사용자의 선택 언어, 현재 역, 현재 위치, 목적지 등을 갱신한다.
 
+#### 호출 시점
+
+| 갱신 항목 | 호출 시점 |
+| --- | --- |
+| language | 언어 변경 시 |
+| selectedStationId | 역 선택 시 |
+| destinationType, destinationId | 목적지 선택 시 |
+| currentNodeId | 위치 확정 시 (VPS 인식 확정, 수동 위치 확정, 상담자 위치 수정) |
+| lastGpsLatitude, lastGpsLongitude | 경로 안내 화면에서만 전송한다. 직전 전송 위치 대비 10m 이상 이동했고 마지막 전송 후 5초가 지난 경우 전송하며, 위치 변화가 없어도 15초마다 1회 전송한다. |
+
+경로 안내 화면을 벗어나면 GPS 전송을 중단한다.
+
 #### Request
 
 ```json
@@ -315,15 +327,54 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
   "success": true,
   "data": {
     "userSessionId": "usr_9f3a2b",
+    "language": "en",
     "selectedStationId": 1,
     "currentNodeId": 15,
     "destinationType": "place",
-    "destinationId": 3
+    "destinationId": 3,
+    "expiresAt": "2026-07-28T05:20:00Z"
   },
   "message": null
 }
 ```
 
+부분 갱신 API이므로 요청에 포함된 필드만 반영하고, 응답은 갱신 후 세션의 현재 상태 전체를 반환한다. 아직 설정되지 않은 항목은 `null`로 내려가며 응답 필드 구성은 요청 내용과 무관하게 항상 동일하다.
+
+호출할 때마다 `last_active_at`이 갱신되고 `expires_at`이 연장되므로, 클라이언트는 응답의 `expiresAt`으로 다음 호출 시점을 판단한다. 요청 본문이 비어 있어도(`{}`) 활동 시각 갱신 용도로 사용할 수 있다.
+
+`destinationType`과 `destinationId`는 항상 함께 전달해야 한다. 둘 중 하나만 전달하면 `INVALID_DESTINATION`을 반환한다. 만료·종료된 세션 ID로 요청하면 `USER_SESSION_NOT_FOUND`를 반환한다.
+
+## 3.3 사용자 세션 종료
+
+### DELETE `/user-sessions/{userSessionId}`
+
+경로 안내가 정상적으로 끝났을 때 세션을 즉시 종료한다. 앱 종료·네트워크 끊김처럼 종료 요청이 도달하지 않는 경우는 세션 만료 정책(§18)으로 처리한다.
+#### Response
+
+```json
+{
+  "success": true,
+  "data": true,
+  "message": "세션이 종료되었습니다."
+}
+```
+
+이미 종료·만료된 세션이면 `data`가 `false`로 내려간다.
+
+```json
+{
+  "success": false,
+  "data": false,
+  "message": "이미 종료된 세션입니다.",
+  "errorCode": "USER_SESSION_ALREADY_ENDED"
+}
+```
+
+세션 종료는 행 삭제가 아니라 `expires_at`을 현재 시각으로 설정하는 만료 처리다. `consultation_session`, `location_share`, `localization_log`가 `user_session`을 FK로 참조하므로 행을 삭제하지 않으며, 상담·위치 인식 이력은 그대로 보존된다.
+
+진행 중인 상담(`WAITING`, `ACCEPTED`, `CONNECTING`, `IN_PROGRESS`)이 연결된 세션은 종료할 수 없으며 `USER_SESSION_IN_CONSULTATION`을 반환한다. 존재하지 않는 세션 ID는 `USER_SESSION_NOT_FOUND`를 반환한다.
+
+종료·만료된 세션 ID로 다시 요청이 오면 클라이언트는 새 세션을 생성하고 `language`를 다시 전송해 흐름을 이어간다.
 ---
 
 ## 4. 역 API
@@ -1102,7 +1153,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "waiting",
+    "status": "WAITING",
     "requestedAt": "2026-07-16T03:00:00Z"
   },
   "message": null
@@ -1124,7 +1175,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "accepted",
+    "status": "ACCEPTED",
     "counselorId": 7,
     "signalingRoomId": "room_cs_abc123"
   },
@@ -1147,7 +1198,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "canceled"
+    "status": "CANCELED"
   },
   "message": null
 }
@@ -1179,7 +1230,7 @@ Authorization: Bearer {accessToken}
 
 | 이름   | 타입   | 필수 | 설명                 |
 | ------ | ------ | ---- | -------------------- |
-| status | string | N    | waiting, accepted 등 |
+| status | string | N    | WAITING, ACCEPTED 등 |
 
 #### Response
 
@@ -1244,7 +1295,7 @@ Authorization: Bearer {accessToken}
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "rejected"
+    "status": "REJECTED"
   },
   "message": null
 }
@@ -1273,7 +1324,7 @@ Authorization: Bearer {accessToken}
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "ended"
+    "status": "ENDED"
   },
   "message": null
 }
@@ -2093,6 +2144,9 @@ multipart/form-data
 | EXIT_RECOMMENDATION_NOT_FOUND | 장소-출구 추천을 찾을 수 없음           |
 | DUPLICATE_EXIT_RECOMMENDATION | 이미 등록된 장소-출구 추천              |
 | USER_SESSION_NOT_FOUND        | 사용자 세션을 찾을 수 없음              |
+| INVALID_DESTINATION           | 목적지 유형과 ID 중 하나만 전달됨       |
+| USER_SESSION_ALREADY_ENDED    | 이미 종료·만료된 세션                   |
+| USER_SESSION_IN_CONSULTATION  | 진행 중인 상담이 있어 세션을 종료할 수 없음 |
 | LOCALIZATION_FAILED           | 위치 인식 실패                          |
 | ROUTE_NOT_FOUND               | 경로를 찾을 수 없음                     |
 | ROUTE_NODE_NOT_FOUND          | 경로 노드를 찾을 수 없음                |
@@ -2115,7 +2169,7 @@ multipart/form-data
 
 | 구분        | API                                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------------------- |
-| 사용자 세션 | POST /user-sessions                                                                                     |
+| 사용자 세션 | POST /user-sessions,  PATCH /user-sessions/{userSessonId}, DELETE /user-sessions/{userSessonId}                                                                                     |
 | 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                   |
 | 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                    |
 | 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits     |
@@ -2145,7 +2199,8 @@ multipart/form-data
 | 인증 방식              | JWT Access Token                                                 |
 | JWT 만료 시간          | 6시간                                                            |
 | Refresh Token          | MVP에서는 생략                                                   |
-| 사용자 세션 만료       | 마지막 활동 기준 24시간                                          |
+| 사용자 세션 만료       | 마지막 활동 기준 1시간                                          |
+| 사용자 세션 종료 | 경로 안내 정상 종료 시 즉시 만료 처리. 진행 중 상담(WAITING·ACCEPTED·CONNECTING·IN_PROGRESS)이 있으면 만료하지 않는다 | 
 | 상담 세션 ID           | UUID 또는 ULID 기반 문자열                                       |
 | WebRTC signaling       | WebSocket                                                        |
 | STUN/TURN              | 무료 STUN 우선, 연결 불안정 시 TURN 추가                         |
