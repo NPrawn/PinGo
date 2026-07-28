@@ -2,7 +2,75 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNavigationStore } from '@/entities/navigation';
+import { usePermissionStore } from '@/entities/permission';
 import { App } from './App';
+
+type GeoSuccess = (position: GeolocationPosition) => void;
+type GeoFailure = (error: GeolocationPositionError) => void;
+
+const fakePosition = {
+  coords: { latitude: 37.5, longitude: 127.0, accuracy: 10 },
+  timestamp: 0,
+} as unknown as GeolocationPosition;
+
+/** Geolocation reports a refusal through an error code, not a rejection. */
+const deniedPositionError = {
+  code: 1,
+  PERMISSION_DENIED: 1,
+  POSITION_UNAVAILABLE: 2,
+  TIMEOUT: 3,
+  message: 'User denied geolocation',
+} as unknown as GeolocationPositionError;
+
+/** `getUserMedia` refusals surface as a `NotAllowedError`. */
+const deniedMediaError = Object.assign(new Error('Permission denied'), {
+  name: 'NotAllowedError',
+});
+
+/**
+ * Puts the browser globals the permission screen reads into a known state.
+ *
+ * jsdom ships no geolocation or mediaDevices, and `isSecureContext` is not
+ * writable, so each case defines exactly what the prompts answer.
+ */
+function stubPermissionEnvironment({
+  location,
+  media,
+}: {
+  location: 'granted' | 'denied';
+  media: 'granted' | 'denied';
+}) {
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+
+  Object.defineProperty(navigator, 'geolocation', {
+    configurable: true,
+    value: {
+      getCurrentPosition: vi.fn((success: GeoSuccess, failure: GeoFailure) =>
+        location === 'granted' ? success(fakePosition) : failure(deniedPositionError),
+      ),
+    },
+  });
+
+  const track = { stop: vi.fn() } as unknown as MediaStreamTrack;
+  const stream = { getTracks: () => [track] } as unknown as MediaStream;
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia:
+        media === 'granted'
+          ? vi.fn().mockResolvedValue(stream)
+          : vi.fn().mockRejectedValue(deniedMediaError),
+    },
+  });
+}
+
+afterEach(() => {
+  Reflect.deleteProperty(navigator, 'geolocation');
+  Reflect.deleteProperty(navigator, 'mediaDevices');
+  Reflect.deleteProperty(window, 'isSecureContext');
+  window.sessionStorage.clear();
+  usePermissionStore.setState({ granted: { loc: false, cam: false, mic: false } });
+});
 
 function renderAt(path: string) {
   const queryClient = new QueryClient();
@@ -72,10 +140,39 @@ describe('user routes', () => {
     expect(await screen.findByRole('heading', { name: /사용할 언어를/ })).toBeInTheDocument();
   });
 
-  it('blocks the permission screen until every permission is granted', async () => {
+  it('continues to the station screen once the browser grants every permission', async () => {
+    stubPermissionEnvironment({ location: 'granted', media: 'granted' });
     await renderSection('/user/permission');
+
     fireEvent.click(await screen.findByRole('button', { name: '권한 허용하고 시작하기' }));
+
+    expect(await screen.findByRole('heading', { name: /현재 역을/ })).toBeInTheDocument();
+    expect(usePermissionStore.getState().granted).toEqual({ loc: true, cam: true, mic: true });
+  });
+
+  it('blocks the permission screen when the browser refuses a permission', async () => {
+    stubPermissionEnvironment({ location: 'granted', media: 'denied' });
+    await renderSection('/user/permission');
+
+    fireEvent.click(await screen.findByRole('button', { name: '권한 허용하고 시작하기' }));
+
     expect(await screen.findByRole('dialog', { name: '모든 권한이 필요해요' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /이용에 필요한 권한을/ })).toBeInTheDocument();
+  });
+
+  it('marks location refused and leaves camera and microphone unasked', async () => {
+    // A refused location short-circuits the flow, so the other two prompts
+    // never open and their rows stay empty.
+    stubPermissionEnvironment({ location: 'denied', media: 'granted' });
+    await renderSection('/user/permission');
+
+    fireEvent.click(await screen.findByRole('button', { name: '권한 허용하고 시작하기' }));
+
+    await screen.findByRole('dialog', { name: '모든 권한이 필요해요' });
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[0]).getByText('거부됨')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('미요청')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('미요청')).toBeInTheDocument();
   });
 
   it('moves between route option cards with directional controls', async () => {

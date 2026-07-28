@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { requestRequiredPermissions, type RequiredPermissionsResult } from './permission.service';
+import {
+  requestRequiredPermissions,
+  type PermissionKind,
+  type PermissionStatus,
+  type RequiredPermissionsResult,
+} from './permission.service';
 import {
   clearStoredRequiredPermissionState,
   getStoredRequiredPermissionState,
@@ -17,6 +22,14 @@ import {
 export type PermissionRequestPhase = 'idle' | 'requesting' | 'completed';
 
 /**
+ * 세 권한의 현재 상태.
+ *
+ * 요청이 진행되는 동안 단계별로 갱신되므로, 화면은 위치 팝업에 답한 시점에
+ * 카메라·마이크를 아직 묻기 전이어도 위치 결과를 먼저 반영할 수 있다.
+ */
+export type RequiredPermissionStatuses = Record<PermissionKind, PermissionStatus>;
+
+/**
  * usePermissionRequest 훅이 화면에 제공하는 값.
  *
  * 이 훅은 권한 요청 실행과 상태 저장까지의 "로직"만 담당한다.
@@ -31,6 +44,8 @@ export interface UsePermissionRequestValue {
   result: RequiredPermissionsResult | null;
   /** sessionStorage에 마지막으로 저장된 권한 상태. 저장된 값이 없으면 null. */
   stored: StoredRequiredPermissionState | null;
+  /** 권한별 현재 상태. 요청이 진행되는 동안 단계별로 갱신된다. */
+  statuses: RequiredPermissionStatuses;
   /** 세 권한이 모두 허용되어 서비스 전체 기능을 사용할 수 있는지 여부. */
   canUseService: boolean;
   /** 위치, 카메라, 마이크 권한을 요청하고 결과를 저장한다. */
@@ -51,6 +66,30 @@ const idleRequiredPermissionsResult: RequiredPermissionsResult = {
   microphone: { kind: 'microphone', status: 'idle' },
 };
 
+const idleStatuses: RequiredPermissionStatuses = {
+  location: 'idle',
+  camera: 'idle',
+  microphone: 'idle',
+};
+
+/**
+ * 이전에 저장된 상태를 화면 표시용 상태로 되돌린다.
+ *
+ * 사용자가 권한 화면으로 되돌아왔을 때 이미 확인된 권한을 다시 미요청으로
+ * 보여주지 않기 위한 것이다.
+ */
+function toStatuses(stored: StoredRequiredPermissionState | null): RequiredPermissionStatuses {
+  if (!stored) {
+    return idleStatuses;
+  }
+
+  return {
+    location: stored.location,
+    camera: stored.camera,
+    microphone: stored.microphone,
+  };
+}
+
 /**
  * 위치, 카메라, 마이크 권한 요청 로직을 React 화면에서 쓸 수 있게 감싼 훅.
  *
@@ -67,6 +106,9 @@ export function usePermissionRequest(): UsePermissionRequestValue {
   const [result, setResult] = useState<RequiredPermissionsResult | null>(null);
   const [stored, setStored] = useState<StoredRequiredPermissionState | null>(() =>
     getStoredRequiredPermissionState(),
+  );
+  const [statuses, setStatuses] = useState<RequiredPermissionStatuses>(() =>
+    toStatuses(getStoredRequiredPermissionState()),
   );
 
   /**
@@ -102,10 +144,18 @@ export function usePermissionRequest(): UsePermissionRequestValue {
 
     if (isMountedRef.current) {
       setPhase('requesting');
+      // 이전 결과가 남아 있으면 새 요청의 진행 상황과 섞이므로 먼저 비운다.
+      setStatuses(idleStatuses);
     }
 
     try {
-      const requestResult = await requestRequiredPermissions();
+      const requestResult = await requestRequiredPermissions({
+        onProgress: (progress) => {
+          if (isMountedRef.current) {
+            setStatuses((previous) => ({ ...previous, ...progress }));
+          }
+        },
+      });
       const savedState = saveRequiredPermissionState(requestResult);
 
       if (isMountedRef.current) {
@@ -127,6 +177,7 @@ export function usePermissionRequest(): UsePermissionRequestValue {
       setPhase('idle');
       setResult(null);
       setStored(null);
+      setStatuses(idleStatuses);
     }
   }, []);
 
@@ -137,6 +188,7 @@ export function usePermissionRequest(): UsePermissionRequestValue {
     isRequesting: phase === 'requesting',
     result,
     stored,
+    statuses,
     canUseService,
     requestPermissions,
     reset,
