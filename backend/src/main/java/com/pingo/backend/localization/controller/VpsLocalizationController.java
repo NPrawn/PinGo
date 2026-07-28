@@ -39,7 +39,8 @@ public class VpsLocalizationController {
             @RequestPart("image") MultipartFile image,
             @Valid @RequestPart("metadata") LocalizationRequestMetadata metadata
     ) {
-        if (image.isEmpty() || !SUPPORTED_IMAGE_CONTENT_TYPES.contains(image.getContentType())) {
+        String contentType = image.getContentType();
+        if (image.isEmpty() || contentType == null || !SUPPORTED_IMAGE_CONTENT_TYPES.contains(contentType)) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 

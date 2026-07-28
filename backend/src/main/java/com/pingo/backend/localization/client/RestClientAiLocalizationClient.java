@@ -2,9 +2,8 @@ package com.pingo.backend.localization.client;
 
 import com.pingo.backend.localization.client.dto.AiLocalizationRequestMetadata;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
-import java.io.IOException;
 import java.net.SocketTimeoutException;
-import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
@@ -52,31 +51,29 @@ public class RestClientAiLocalizationClient implements AiLocalizationClient {
                     .header(REQUEST_ID_HEADER, requestId)
                     .headers(headers -> addInternalToken(headers, properties.internalToken()))
                     .body(body)
-                    .exchange((request, response) -> readResponse(response.getStatusCode(),
-                            response.bodyTo(AiLocalizationResponse.class)));
+                    .exchange((request, response) -> {
+                        HttpStatusCode statusCode = response.getStatusCode();
+                        if (!statusCode.is2xxSuccessful()) {
+                            throw new AiLocalizationClientException(
+                                    resolveStatusErrorType(statusCode),
+                                    "AI 위치추정 서버가 실패 응답을 반환했습니다."
+                            );
+                        }
+
+                        return readResponse(response.bodyTo(AiLocalizationResponse.class));
+                    });
         } catch (ResourceAccessException e) {
             throw new AiLocalizationClientException(resolveAccessErrorType(e), "AI 위치추정 서버 호출에 실패했습니다", e);
         } catch (RestClientException e) {
             throw new AiLocalizationClientException(AiLocalizationClientErrorType.INTERNAL_ERROR,
                     "AI 위치추정 서버 응답 처리에 실패했습니다", e);
-        } catch (IOException e) {
-            throw new AiLocalizationClientException(AiLocalizationClientErrorType.INTERNAL_ERROR,
-                    "AI 위치추정 요청 생성에 실패했습니다", e);
         }
     }
 
-    private HttpEntity<ByteArrayResource> imagePart(MultipartFile image) throws IOException {
+    private HttpEntity<Resource> imagePart(MultipartFile image) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(resolveImageContentType(image));
-
-        ByteArrayResource resource = new ByteArrayResource(image.getBytes()) {
-            @Override
-            public String getFilename() {
-                return image.getOriginalFilename();
-            }
-        };
-
-        return new HttpEntity<>(resource, headers);
+        return new HttpEntity<>(image.getResource(), headers);
     }
 
     private HttpEntity<AiLocalizationRequestMetadata> metadataPart(AiLocalizationRequestMetadata metadata) {
@@ -99,16 +96,21 @@ public class RestClientAiLocalizationClient implements AiLocalizationClient {
         }
     }
 
-    private AiLocalizationResponse readResponse(HttpStatusCode statusCode, AiLocalizationResponse response) {
+    private AiLocalizationResponse readResponse(AiLocalizationResponse response) {
         if (response != null) {
             return response;
         }
 
-        AiLocalizationClientErrorType errorType = statusCode.is5xxServerError()
+        throw new AiLocalizationClientException(
+                AiLocalizationClientErrorType.INTERNAL_ERROR,
+                "AI 위치추정 서버 응답 본문이 비어 있습니다."
+        );
+    }
+
+    private AiLocalizationClientErrorType resolveStatusErrorType(HttpStatusCode statusCode) {
+        return statusCode.is5xxServerError()
                 ? AiLocalizationClientErrorType.UNAVAILABLE
                 : AiLocalizationClientErrorType.BAD_REQUEST;
-
-        throw new AiLocalizationClientException(errorType, "AI 위치추정 서버 응답 본문이 비어 있습니다.");
     }
 
     private AiLocalizationClientErrorType resolveAccessErrorType(ResourceAccessException e) {

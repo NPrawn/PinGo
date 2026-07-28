@@ -100,6 +100,22 @@ class VpsLocalizationControllerTest {
     }
 
     @Test
+    void localizeReturnsBadRequestForMissingImageContentType() throws Exception {
+        MockMultipartFile imageWithoutContentType = new MockMultipartFile(
+                "image",
+                "query.jpg",
+                null,
+                "image".getBytes(StandardCharsets.UTF_8)
+        );
+
+        mockMvc.perform(multipart("/api/vps/localize")
+                        .file(imageWithoutContentType)
+                        .file(metadata()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
     void localizeReturnsBadRequestForInvalidMetadata() throws Exception {
         MockMultipartFile invalidMetadata = new MockMultipartFile(
                 "metadata",

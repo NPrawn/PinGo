@@ -6,6 +6,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -82,6 +83,32 @@ class RestClientAiLocalizationClientTest {
                 .isInstanceOfSatisfying(AiLocalizationClientException.class, exception ->
                         assertThat(exception.getErrorType()).isEqualTo(AiLocalizationClientErrorType.UNAVAILABLE)
         );
+        server.verify();
+    }
+
+    @Test
+    void localizeThrowsBadRequestWhenServerReturnsErrorBody() {
+        server.expect(requestTo("http://ai.test/internal/v1/maps/YS-2026-07-23.1/localize"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withBadRequest()
+                        .body("""
+                                {
+                                  "requestId": "loc-1",
+                                  "status": "INVALID_IMAGE",
+                                  "mapVersion": "YS-2026-07-23.1",
+                                  "mapResults": [],
+                                  "timingMs": {
+                                    "total": 12
+                                  },
+                                  "failureReason": "INVALID_IMAGE"
+                                }
+                                """)
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.localize("loc-1", "YS-2026-07-23.1", image(), metadata()))
+                .isInstanceOfSatisfying(AiLocalizationClientException.class, exception ->
+                        assertThat(exception.getErrorType()).isEqualTo(AiLocalizationClientErrorType.BAD_REQUEST)
+                );
         server.verify();
     }
 
