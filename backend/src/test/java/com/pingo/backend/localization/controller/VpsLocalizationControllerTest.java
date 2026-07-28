@@ -39,9 +39,12 @@ class VpsLocalizationControllerTest {
     void localizeReturnsFallbackResponse() throws Exception {
         when(localizationService.localize(startsWith("loc_"), any(), any()))
                 .thenReturn(new LocalizationResponse(
+                        "loc_01JABC",
                         LocalizationResultStatus.LOW_CONFIDENCE,
+                        "YS-2026-07-23.1",
                         List.of(),
-                        List.of(LocalizationFallbackOption.RETRY_CAPTURE)
+                        List.of(LocalizationFallbackOption.RETRY_CAPTURE),
+                        1234
                 ));
 
         mockMvc.perform(multipart("/api/vps/localize")
@@ -49,8 +52,11 @@ class VpsLocalizationControllerTest {
                         .file(metadata()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.requestId").value("loc_01JABC"))
                 .andExpect(jsonPath("$.data.resultStatus").value("low_confidence"))
-                .andExpect(jsonPath("$.data.fallbackOptions[0]").value("retry_capture"));
+                .andExpect(jsonPath("$.data.mapVersion").value("YS-2026-07-23.1"))
+                .andExpect(jsonPath("$.data.fallbackOptions[0]").value("retry_capture"))
+                .andExpect(jsonPath("$.data.processingTimeMs").value(1234));
     }
 
     @Test

@@ -11,6 +11,7 @@ import com.pingo.backend.localization.client.AiLocalizationClientErrorType;
 import com.pingo.backend.localization.client.AiLocalizationClientException;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
 import com.pingo.backend.localization.client.dto.AiLocalizationStatus;
+import com.pingo.backend.localization.client.dto.AiTimingResponse;
 import com.pingo.backend.localization.dto.request.LocalizationRequestMetadata;
 import com.pingo.backend.localization.dto.response.LocalizationFallbackOption;
 import com.pingo.backend.localization.dto.response.LocalizationResultStatus;
@@ -45,8 +46,11 @@ class LocalizationServiceTest {
 
         var response = localizationService.localize("loc-1", image, metadata);
 
+        assertThat(response.requestId()).isEqualTo("loc-1");
         assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.SUCCESS);
+        assertThat(response.mapVersion()).isEqualTo("YS-2026-07-23.1");
         assertThat(response.fallbackOptions()).isEmpty();
+        assertThat(response.processingTimeMs()).isEqualTo(1234);
     }
 
     @Test
@@ -59,7 +63,9 @@ class LocalizationServiceTest {
 
         var response = localizationService.localize("loc-1", image, metadata);
 
+        assertThat(response.requestId()).isEqualTo("loc-1");
         assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.LOW_CONFIDENCE);
+        assertThat(response.mapVersion()).isEqualTo("YS-2026-07-23.1");
         assertThat(response.fallbackOptions()).containsExactly(
                 LocalizationFallbackOption.RETRY_CAPTURE,
                 LocalizationFallbackOption.SELECT_LANDMARK,
@@ -81,7 +87,10 @@ class LocalizationServiceTest {
 
         var response = localizationService.localize("loc-1", image, metadata);
 
+        assertThat(response.requestId()).isEqualTo("loc-1");
         assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.TIMEOUT);
+        assertThat(response.mapVersion()).isEqualTo("YS-2026-07-23.1");
+        assertThat(response.processingTimeMs()).isNull();
         assertThat(response.fallbackOptions()).containsExactly(
                 LocalizationFallbackOption.RETRY_CAPTURE,
                 LocalizationFallbackOption.SELECT_ON_MAP,
@@ -102,7 +111,9 @@ class LocalizationServiceTest {
 
         var response = localizationService.localize("loc-1", image, metadata);
 
+        assertThat(response.requestId()).isEqualTo("loc-1");
         assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.AI_SERVER_UNAVAILABLE);
+        assertThat(response.mapVersion()).isEqualTo("YS-2026-07-23.1");
         assertThat(response.fallbackOptions()).containsExactly(
                 LocalizationFallbackOption.SELECT_ON_MAP,
                 LocalizationFallbackOption.REQUEST_CONSULTATION
@@ -119,7 +130,7 @@ class LocalizationServiceTest {
                 null,
                 null,
                 List.of(),
-                null,
+                new AiTimingResponse(1234, null, null, null),
                 failureReason
         );
     }

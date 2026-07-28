@@ -48,18 +48,44 @@ public class LocalizationService {
                     aiResponse.failureReason()
             );
 
-            return responseFor(resultStatus);
+            return responseFor(
+                    requestId,
+                    aiResponse.mapVersion(),
+                    processingTimeMs(aiResponse),
+                    resultStatus
+            );
         } catch (AiLocalizationClientException e) {
-            return responseFor(mapClientError(e.getErrorType()));
+            return responseFor(
+                    requestId,
+                    metadata.mapVersion(),
+                    null,
+                    mapClientError(e.getErrorType())
+            );
         }
     }
 
-    private LocalizationResponse responseFor(LocalizationResultStatus resultStatus) {
+    private LocalizationResponse responseFor(
+            String requestId,
+            String mapVersion,
+            Integer processingTimeMs,
+            LocalizationResultStatus resultStatus
+    ) {
         return new LocalizationResponse(
+                requestId,
                 resultStatus,
+                mapVersion,
                 List.of(),
-                fallbackPolicy.optionsFor(resultStatus)
+                fallbackPolicy.optionsFor(resultStatus),
+                processingTimeMs
         );
+    }
+
+    private Integer processingTimeMs(AiLocalizationResponse aiResponse) {
+        if (aiResponse.timingMs() == null) {
+            return null;
+        }
+
+        return aiResponse.timingMs().total();
     }
 
     private LocalizationResultStatus mapClientError(AiLocalizationClientErrorType errorType) {
