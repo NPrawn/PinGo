@@ -81,6 +81,19 @@ class RestClientAiLocalizationClientTest {
         assertThatThrownBy(() -> client.localize("loc-1", "YS-2026-07-23.1", image(), metadata()))
                 .isInstanceOfSatisfying(AiLocalizationClientException.class, exception ->
                         assertThat(exception.getErrorType()).isEqualTo(AiLocalizationClientErrorType.UNAVAILABLE)
+        );
+        server.verify();
+    }
+
+    @Test
+    void localizeThrowsInternalErrorWhenResponseBodyIsMalformed() {
+        server.expect(requestTo("http://ai.test/internal/v1/maps/YS-2026-07-23.1/localize"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.localize("loc-1", "YS-2026-07-23.1", image(), metadata()))
+                .isInstanceOfSatisfying(AiLocalizationClientException.class, exception ->
+                        assertThat(exception.getErrorType()).isEqualTo(AiLocalizationClientErrorType.INTERNAL_ERROR)
                 );
         server.verify();
     }

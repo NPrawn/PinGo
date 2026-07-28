@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.multipart.MultipartFile;
 
 @Component
@@ -55,6 +56,9 @@ public class RestClientAiLocalizationClient implements AiLocalizationClient {
                             response.bodyTo(AiLocalizationResponse.class)));
         } catch (ResourceAccessException e) {
             throw new AiLocalizationClientException(resolveAccessErrorType(e), "AI 위치추정 서버 호출에 실패했습니다", e);
+        } catch (RestClientException e) {
+            throw new AiLocalizationClientException(AiLocalizationClientErrorType.INTERNAL_ERROR,
+                    "AI 위치추정 서버 응답 처리에 실패했습니다", e);
         } catch (IOException e) {
             throw new AiLocalizationClientException(AiLocalizationClientErrorType.INTERNAL_ERROR,
                     "AI 위치추정 요청 생성에 실패했습니다", e);
