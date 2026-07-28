@@ -25,5 +25,12 @@ export const ko = {
         consult: { title: '실시간 상담', desc: '화면을 공유하고 번역과 함께 안내받아요' },
       },
     },
+    indoorMap: {
+      loading: '지도를 불러오는 중입니다',
+      error: '지도를 불러오지 못했습니다',
+      empty: '등록된 지도가 없습니다',
+      floorNotFound: '해당 층의 지도가 없습니다',
+      imageAlt: '{{floorCode}} 실내 지도',
+    },
   },
 } as const;

@@ -21,7 +21,8 @@ public enum FacilityType {
     STATION_OFFICE("station_office"),
     TICKET_MACHINE("ticket_machine"),
     CARD_CHARGER("card_charger"),
-    LOCKER("locker");
+    LOCKER("locker"),
+    INFO("info");
 
     private final String code;
 

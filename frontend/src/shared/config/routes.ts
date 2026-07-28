@@ -13,6 +13,8 @@ const ADMIN = '/admin';
 export const ROUTES = {
   HOME: '/',
   USER,
+  /** Indoor map. Receives stationId and floorId through query parameters. */
+  INDOOR_MAP: `${USER}/map`,
   COUNSELOR,
   ADMIN,
 } as const;

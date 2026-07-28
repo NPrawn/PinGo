@@ -193,6 +193,7 @@ MVP 필수 API는 다음 영역으로 나뉩니다.
 | [API 명세서](docs/API_명세서.md) | REST API, WebSocket signaling, 공통 응답, 인증 정책 |
 | [ERD 초안](docs/ERD_초안.md) | 주요 엔티티, 관계, MVP 필수 테이블, 인덱스 제안 |
 | [기술 의사결정 정리](docs/기술_의사결정_정리.md) | 확정 기술 스택, 구현 기준, 미정 항목 |
+| [HLOC-COLMAP-Spring 파이프라인 설계서](docs/HLOC_COLMAP_SPRING_파이프라인_설계서.md) | HLOC/COLMAP 맵 구축, FastAPI 위치추정 및 Spring 연동 절차 |
 | [Git Coding Convention](docs/Git_Coding_Convention.md) | 브랜치 전략, 커밋 메시지, PR, 리뷰, 환경변수 관리 규칙 |
 
 ## 미정 항목

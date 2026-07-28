@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -31,7 +32,8 @@ public class SecurityConfig {
     private final ObjectMapper objectMapper;
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource)
+            throws Exception {
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf.disable())
@@ -39,10 +41,17 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/signup", "/api/auth/check-login-id").permitAll()
-                        // [TODO] OO 임시 개방
-                        .requestMatchers("/api/**").permitAll()
+                        .requestMatchers(
+                                "/api/stations/**",
+                                "/api/facilities/**",
+                                "/api/destinations/**",
+                                "/api/places/**",
+                                "/api/routes/**",
+                                "/api/external-maps/**"
+                        ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/swagger-ui/**","/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/counselors/**").hasRole("COUNSELOR")
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .anyRequest().authenticated()
                 )
@@ -61,7 +70,7 @@ public class SecurityConfig {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         response.getWriter().write(
-                objectMapper.writeValueAsString(ApiResponse.fail(errorCode.getCodeName(),errorCode.getMessage()))
+                objectMapper.writeValueAsString(ApiResponse.fail(errorCode.getCodeName(), errorCode.getMessage()))
         );
     }
 
@@ -85,7 +94,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder(){
+    public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 }
