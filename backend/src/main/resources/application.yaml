@@ -16,4 +16,4 @@ ai:
     base-url: ${AI_LOCALIZATION_BASE_URL:http://localhost:8000}
     internal-token: ${AI_LOCALIZATION_INTERNAL_TOKEN:}
     connect-timeout-ms: ${AI_LOCALIZATION_CONNECT_TIMEOUT_MS:300}
-    read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6
+    read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}

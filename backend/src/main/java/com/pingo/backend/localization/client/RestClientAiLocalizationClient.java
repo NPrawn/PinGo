@@ -1,7 +1,6 @@
 package com.pingo.backend.localization.client;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pingo.backend.localization.client.dto.AiLocalizationRequestMetadata;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
 import java.io.IOException;
@@ -24,16 +23,13 @@ public class RestClientAiLocalizationClient implements AiLocalizationClient {
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
 
     private final RestClient restClient;
-    private final ObjectMapper objectMapper;
     private final AiLocalizationProperties properties;
 
     public RestClientAiLocalizationClient(
             RestClient ailocalizationRestClient,
-            ObjectMapper objectMapper,
             AiLocalizationProperties properties
     ) {
         this.restClient = ailocalizationRestClient;
-        this.objectMapper = objectMapper;
         this.properties = properties;
     }
 
@@ -80,10 +76,10 @@ public class RestClientAiLocalizationClient implements AiLocalizationClient {
         return new HttpEntity<>(resource, headers);
     }
 
-    private HttpEntity<String> metadataPart(AiLocalizationRequestMetadata metadata) throws JsonProcessingException {
+    private HttpEntity<AiLocalizationRequestMetadata> metadataPart(AiLocalizationRequestMetadata metadata) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        return new HttpEntity<>(objectMapper.writeValueAsString(metadata), headers);
+        return new HttpEntity<>(metadata, headers);
     }
 
     private MediaType resolveImageContentType(MultipartFile image) {
