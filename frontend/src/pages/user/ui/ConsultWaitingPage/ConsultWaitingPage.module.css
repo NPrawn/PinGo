@@ -1,0 +1,113 @@
+/* Screen 19 (FR-U-014) — waiting for a counselor.
+   Ported from prototype `#s-consult-wait`. */
+
+.body {
+  align-items: center;
+  padding-top: 60px;
+  text-align: center;
+}
+
+.hero {
+  height: 220px;
+  margin: 8px 0 0;
+}
+
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 190px;
+  height: 190px;
+  border: 2px solid rgb(60 216 160 / 35%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: consult-ripple 2s ease-out infinite;
+}
+
+.rippleDelayed {
+  animation-delay: 0.8s;
+}
+
+.title {
+  margin-top: 12px;
+}
+
+.sub {
+  margin-top: 8px;
+}
+
+.tip {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 16px;
+  margin-top: 18px;
+  color: var(--color-ink);
+  text-align: left;
+  background: rgb(229 248 238 / 78%);
+  border: 1px solid rgb(74 173 128 / 18%);
+  border-radius: 14px;
+  box-shadow: 0 8px 20px -18px rgb(31 112 82 / 45%);
+}
+
+.tipIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #32835f;
+  background: rgb(255 255 255 / 72%);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 90%);
+}
+
+.tipCopy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tipTitle {
+  margin-bottom: 7px;
+  font-size: 13.5px;
+  font-weight: 800;
+  line-height: 1.35;
+  color: #256b50;
+}
+
+.tipLine {
+  display: block;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-sub);
+}
+
+.tip b {
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.primary {
+  width: 100%;
+}
+
+.cancel {
+  margin-top: 4px;
+  color: #c24a3d;
+}
+
+@keyframes consult-ripple {
+  0% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.7);
+  }
+}

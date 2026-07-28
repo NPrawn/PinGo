@@ -1,0 +1,42 @@
+/* Screen 21 (FR-U-011) — arrival confirmation. Prototype `#s-arrive`. */
+
+.body {
+  text-align: center;
+}
+
+.pill {
+  margin: 0 auto;
+}
+
+.hero {
+  height: 230px;
+  margin-top: 8px;
+}
+
+.check {
+  font-size: 34px;
+  font-weight: 900;
+  color: #0ea36f;
+}
+
+.title {
+  margin-top: 6px;
+  font-size: 30px;
+}
+
+.sub {
+  margin-top: 10px;
+}
+
+.cta {
+  gap: 7px;
+}
+
+.consult {
+  flex: none;
+  margin-top: 10px;
+}
+
+.secondary {
+  margin-top: 6px;
+}

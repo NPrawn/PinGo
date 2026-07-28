@@ -1,0 +1,72 @@
+/* Console sign-in as an overlay on the landing page. The same `LoginForm` also
+   backs the standalone `/counselor/login` and `/admin/login` screens. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgb(10 24 18 / 46%);
+  backdrop-filter: blur(6px);
+  animation: scrim-in var(--duration-base) var(--ease-out);
+}
+
+.panel {
+  position: relative;
+  outline: none;
+  animation: panel-in 260ms var(--ease-out);
+}
+
+.close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: var(--color-sub);
+  background: #fff;
+  border: 1px solid rgb(15 44 34 / 10%);
+  border-radius: 50%;
+  box-shadow: 0 6px 16px -6px rgb(15 44 34 / 35%);
+}
+
+.close:hover {
+  color: var(--color-ink);
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .panel {
+    animation: none;
+  }
+}

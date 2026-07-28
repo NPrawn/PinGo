@@ -1,0 +1,10 @@
+/* Screen 27 — combined console login. Ported from prototype `#c-login`. */
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 440px;
+  padding: 36px 0;
+  background: var(--color-cream);
+}

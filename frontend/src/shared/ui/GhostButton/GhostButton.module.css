@@ -1,0 +1,15 @@
+/* Ported from prototype `.gh` — the quiet tertiary action. */
+.ghost {
+  padding: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--color-sub);
+  text-align: center;
+  text-decoration: none;
+  background: none;
+  border: none;
+}
+
+.ghost:hover {
+  color: var(--color-ink);
+}

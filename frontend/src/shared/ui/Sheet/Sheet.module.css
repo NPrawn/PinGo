@@ -1,0 +1,31 @@
+/* Ported from prototype `.ov` (scrim) and `.sheet` (bottom sheet).
+   Both are absolutely positioned inside the phone frame, not the viewport. */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: flex-end;
+  background: rgb(10 10 12 / 55%);
+}
+
+.centered {
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.sheet {
+  width: 100%;
+  padding: 22px 20px 26px;
+  background: var(--color-paper);
+  border-radius: 22px 22px 0 0;
+}
+
+.dialog {
+  width: 100%;
+  padding: 22px 20px;
+  background: var(--color-paper);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+}

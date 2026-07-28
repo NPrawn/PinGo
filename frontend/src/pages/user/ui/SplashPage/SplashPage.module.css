@@ -1,0 +1,436 @@
+/* Screen 01 — intro animation. Ported from prototype `#s-splash`. */
+
+/* Logo that scales in, then settles under the status bar. */
+.logo {
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  animation: logo-intro 4.4s ease-in-out forwards;
+}
+
+.logoMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  background: radial-gradient(circle at 30% 25%, #b8f5da, #3cd8a0 55%, #0b7f58);
+  border-radius: 20px;
+  box-shadow:
+    0 18px 40px -8px rgb(11 127 88 / 60%),
+    inset -8px -10px 22px rgb(0 50 30 / 28%),
+    inset 6px 8px 16px rgb(255 255 255 / 40%);
+}
+
+.logoText {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+@keyframes logo-intro {
+  0% {
+    top: 44%;
+    opacity: 0;
+    transform: translateY(-50%) scale(0.4);
+  }
+
+  14% {
+    top: 44%;
+    opacity: 1;
+    transform: translateY(-50%) scale(1.25);
+  }
+
+  26% {
+    top: 44%;
+    opacity: 1;
+    transform: translateY(-50%) scale(1.25);
+  }
+
+  42%,
+  100% {
+    top: 64px;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* The three rotating scenes. */
+.scenes {
+  position: absolute;
+  top: 180px;
+  right: 16px;
+  bottom: 150px;
+  left: 16px;
+  animation: intro-reveal 4.4s ease-out both;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 30px;
+  text-align: center;
+  opacity: 0;
+  animation: intro-scene 12s infinite;
+}
+
+.sceneTitle {
+  margin-top: 24px;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.sceneBody {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #9a9aa4;
+}
+
+@keyframes intro-scene {
+  0%,
+  2% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+
+  6%,
+  30% {
+    opacity: 1;
+    transform: none;
+  }
+
+  36%,
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.99);
+  }
+}
+
+@keyframes intro-reveal {
+  0%,
+  32% {
+    opacity: 0;
+  }
+
+  40%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Scene 1 — a traveller lost in a station map. */
+.mapCard {
+  position: relative;
+  width: 230px;
+  height: 180px;
+  overflow: hidden;
+  background: #1c1c22;
+  border: 1px solid #2e2e36;
+  border-radius: 18px;
+}
+
+.mapSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.mapDest {
+  position: absolute;
+  top: 44px;
+  left: 150px;
+  width: 20px;
+  height: 20px;
+  background: var(--color-red);
+  border: 3px solid #1c1c22;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.walker {
+  position: absolute;
+  bottom: 24px;
+  display: flex;
+  animation: intro-walk 3s ease-in-out infinite alternate;
+}
+
+.mapQuestion {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+  color: rgb(255 255 255 / 85%);
+  animation: intro-float 1.6s ease-in-out infinite;
+}
+
+@keyframes intro-walk {
+  0% {
+    left: 8%;
+  }
+
+  100% {
+    left: 70%;
+  }
+}
+
+@keyframes intro-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+/* Scene 2 — camera AR guidance. */
+.phoneMock {
+  position: relative;
+  width: 150px;
+  height: 180px;
+  overflow: hidden;
+  background: #0e0e11;
+  border: 3px solid #2e2e36;
+  border-radius: 22px;
+  animation: intro-float 2.4s ease-in-out infinite;
+}
+
+.phoneMockLens {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 20%, #2b2b30, #0e0e11);
+}
+
+.phoneMockArrow {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  font-size: 56px;
+  color: var(--color-mint-mid);
+  filter: drop-shadow(0 0 8px rgb(62 180 137 / 70%));
+  transform: translateX(-50%);
+  animation: intro-arrow 1.3s ease-in-out infinite;
+}
+
+.phoneMockCaption {
+  position: absolute;
+  right: 10px;
+  bottom: 14px;
+  left: 10px;
+  padding: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: rgb(62 180 137 / 90%);
+  border-radius: 8px;
+}
+
+@keyframes intro-arrow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateY(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(-8px);
+  }
+}
+
+/* Scene 3 — translated consultation. */
+.chat {
+  position: relative;
+  display: flex;
+  gap: 0;
+  align-items: center;
+  justify-content: center;
+  width: 230px;
+  height: 180px;
+}
+
+.chatInner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0 20px;
+}
+
+.chatRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  animation: intro-pop 0.5s both;
+}
+
+.chatRowAgent {
+  align-self: flex-end;
+  animation-delay: 0.3s;
+}
+
+.chatAvatar {
+  display: flex;
+  color: var(--color-mint-veil);
+}
+
+.chatBubbleUser {
+  padding: 9px 13px;
+  font-size: 12px;
+  color: #fff;
+  background: #26262e;
+  border-radius: 14px 14px 14px 3px;
+}
+
+.chatBubbleAgent {
+  padding: 9px 13px;
+  font-size: 12px;
+  color: #fff;
+  background: var(--color-mint-mid);
+  border-radius: 14px 14px 3px 14px;
+}
+
+.chatStatus {
+  display: flex;
+  gap: 6px;
+  align-self: center;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-mint-mid);
+}
+
+.chatSpinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-mint-mid);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: intro-spin 1s linear infinite;
+}
+
+@keyframes intro-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+
+  60% {
+    transform: scale(1.12);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes intro-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Scene indicator dots. */
+.dots {
+  position: absolute;
+  right: 0;
+  bottom: 96px;
+  left: 0;
+  display: flex;
+  gap: 7px;
+  justify-content: center;
+  animation: intro-reveal 4.4s ease-out both;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  background: #4a4a52;
+  border-radius: 50%;
+  transition: all 0.3s;
+}
+
+.dot:nth-child(1) {
+  animation: intro-dot-a 12s infinite;
+}
+
+.dot:nth-child(2) {
+  animation: intro-dot-b 12s infinite;
+}
+
+.dot:nth-child(3) {
+  animation: intro-dot-c 12s infinite;
+}
+
+@keyframes intro-dot-a {
+  0%,
+  30% {
+    width: 22px;
+    background: var(--color-mint-mid);
+    border-radius: 4px;
+  }
+
+  34%,
+  100% {
+    width: 7px;
+    background: #4a4a52;
+    border-radius: 50%;
+  }
+}
+
+@keyframes intro-dot-b {
+  0%,
+  30%,
+  68%,
+  100% {
+    width: 7px;
+    background: #4a4a52;
+    border-radius: 50%;
+  }
+
+  34%,
+  64% {
+    width: 22px;
+    background: var(--color-mint-mid);
+    border-radius: 4px;
+  }
+}
+
+@keyframes intro-dot-c {
+  0%,
+  64% {
+    width: 7px;
+    background: #4a4a52;
+    border-radius: 50%;
+  }
+
+  68%,
+  100% {
+    width: 22px;
+    background: var(--color-mint-mid);
+    border-radius: 4px;
+  }
+}
+
+.action {
+  position: absolute;
+  right: 20px;
+  bottom: 28px;
+  left: 20px;
+}

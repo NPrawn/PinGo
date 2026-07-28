@@ -1,1 +1,1 @@
-export { CounselorPage } from './ui/CounselorPage';
+export { CounselorRoutes as CounselorPage } from './ui/CounselorRoutes';

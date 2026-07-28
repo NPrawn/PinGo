@@ -1,0 +1,162 @@
+/* Prototype's `aIsMap` branch inside `#a-console`. */
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--color-sub);
+}
+
+.upload {
+  width: auto;
+  padding: 0 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.card {
+  padding: 0;
+  overflow: hidden;
+  background: rgb(255 255 255 / 75%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 14px;
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+.preview {
+  position: relative;
+  height: 132px;
+  background: #eef1f5;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.previewSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.floorTag {
+  position: absolute;
+  top: 9px;
+  left: 10px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: #0f2c22;
+  border-radius: 6px;
+}
+
+.statusTag {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  border-radius: 6px;
+}
+
+.cardBody {
+  padding: 13px 14px;
+}
+
+.cardTitle {
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.cardMeta {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--color-sub);
+}
+
+.cardActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.cardAction {
+  flex: 1;
+  padding: 7px 0;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.cardActionPrimary {
+  color: var(--color-mint-mid);
+}
+
+.cardActionSecondary {
+  color: var(--color-sub);
+}
+
+.notice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 18px;
+  margin-top: 14px;
+  background: rgb(255 255 255 / 75%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 14px;
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+.noticeMark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: #fbf0db;
+  border-radius: 11px;
+}
+
+.noticeBody {
+  flex: 1;
+}
+
+.noticeTitle {
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.noticeDesc {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--color-sub);
+}
+
+.noticeAction {
+  width: auto;
+  padding: 0 16px;
+}
