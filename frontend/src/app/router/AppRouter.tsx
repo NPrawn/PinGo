@@ -16,6 +16,11 @@ const CounselorPage = lazy(() =>
 const AdminPage = lazy(() =>
   import('@/pages/admin').then((module) => ({ default: module.AdminPage })),
 );
+const PermissionTestPage = lazy(() =>
+  import('@/pages/permission-test').then((module) => ({
+    default: module.PermissionTestPage,
+  })),
+);
 
 export function AppRouter() {
   return (
@@ -26,6 +31,7 @@ export function AppRouter() {
         <Route path={`${ROUTES.USER}/*`} element={<UserPage />} />
         <Route path={`${ROUTES.COUNSELOR}/*`} element={<CounselorPage />} />
         <Route path={`${ROUTES.ADMIN}/*`} element={<AdminPage />} />
+        <Route path={ROUTES.PERMISSION_TEST} element={<PermissionTestPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
