@@ -186,61 +186,52 @@ frontend/
 │  ├─ extensions.json
 │  └─ settings.json
 ├─ public/
-│  ├─ favicon.svg
-│  └─ icons.svg
+│  └─ favicon.svg
 ├─ scripts/
+│  ├─ compare-prototype.mjs
 │  └─ test-e2e.mjs
 ├─ src/
 │  ├─ app/
-│  │  ├─ providers/
-│  │  │  ├─ AppProvider.tsx
-│  │  │  ├─ QueryProvider.tsx
-│  │  │  └─ index.ts
-│  │  ├─ router/
-│  │  │  ├─ AppRouter.tsx
-│  │  │  └─ index.ts
-│  │  ├─ styles/
-│  │  │  ├─ globals.css
-│  │  │  ├─ reset.css
-│  │  │  └─ variables.css
+│  │  ├─ providers/          AppProvider, QueryProvider
+│  │  ├─ router/             AppRouter (섹션별 lazy 로딩)
+│  │  ├─ styles/             globals.css, reset.css, variables.css
 │  │  ├─ App.test.tsx
 │  │  └─ App.tsx
 │  ├─ pages/
-│  │  ├─ admin/
-│  │  │  ├─ ui/AdminPage.tsx
-│  │  │  └─ index.ts
-│  │  ├─ counselor/
-│  │  │  ├─ ui/CounselorPage.tsx
-│  │  │  └─ index.ts
+│  │  ├─ admin/              ui/AdminRoutes.tsx, ui/ConsolePage.tsx
+│  │  ├─ counselor/          ui/CounselorRoutes.tsx + 화면 9개
 │  │  ├─ home/
-│  │  │  ├─ ui/HomePage.tsx
-│  │  │  └─ index.ts
 │  │  ├─ not-found/
-│  │  │  ├─ ui/NotFoundPage.tsx
-│  │  │  └─ index.ts
-│  │  └─ user/
-│  │     ├─ ui/UserPage.tsx
-│  │     └─ index.ts
+│  │  └─ user/               ui/UserRoutes.tsx + 화면 25개
+│  ├─ widgets/
+│  │  ├─ admin-console/      관리자 사이드바 · 실내지도 패널
+│  │  ├─ capture-viewfinder/ 촬영 뷰파인더 공통 요소
+│  │  ├─ counselor-console/  상담자 창 + 탭 스트립
+│  │  ├─ map-screen/         헤더 + 전체 지도 + 하단 패널 레이아웃
+│  │  └─ phone-frame/        모바일 기기 셸
+│  ├─ features/
+│  │  ├─ admin-record-crud/  관리자 표 · 편집 드로어 · 삭제 확인
+│  │  ├─ console-auth/       상담자·관리자 로그인
+│  │  ├─ destination-search/ 목적지 검색 · 빠른 목적지
+│  │  ├─ language-select/    언어 선택 (i18next 연동)
+│  │  ├─ permission-request/ 권한 목록 · 권한 안내 모달
+│  │  ├─ shared-screen-draw/ 화면 공유 위 주석 그리기
+│  │  └─ station-search/     주변 역 목록 · 역 검색
+│  ├─ entities/
+│  │  ├─ accessibility/      음성·큰 글씨·계단 없는 경로 설정
+│  │  ├─ consult/            상담 요청·이력·통계·만족도
+│  │  ├─ navigation/         경로 옵션 · 교통카드 추천 · 안내 상태
+│  │  ├─ permission/         위치·카메라·마이크 허용 상태
+│  │  ├─ poi/                시설 · 주변 장소 · 층별 핀
+│  │  └─ station/            역 목록 · 선택한 역과 층
 │  ├─ shared/
-│  │  ├─ api/
-│  │  │  ├─ client.ts
-│  │  │  ├─ endpoints.ts
-│  │  │  ├─ queryKeys.ts
-│  │  │  └─ index.ts
-│  │  ├─ config/
-│  │  │  ├─ env.ts
-│  │  │  ├─ routes.ts
-│  │  │  └─ index.ts
-│  │  └─ i18n/
-│  │     ├─ locales/
-│  │     │  ├─ en/translation.ts
-│  │     │  └─ ko/translation.ts
-│  │     ├─ config.ts
-│  │     └─ index.ts
+│  │  ├─ api/                client.ts, endpoints.ts, queryKeys.ts
+│  │  ├─ config/             env.ts, routes.ts
+│  │  ├─ i18n/               config.ts, locales/{ko,en}
+│  │  ├─ types/              계층 간 공용 타입 (FloorId 등)
+│  │  └─ ui/                 공통 UI 컴포넌트 23종 + 아이콘 스프라이트
 │  ├─ test/
-│  │  ├─ mocks/
-│  │  │  ├─ handlers.ts
-│  │  │  └─ server.ts
+│  │  ├─ mocks/              handlers.ts, server.ts
 │  │  └─ setup.ts
 │  ├─ main.tsx
 │  └─ vite-env.d.ts
@@ -260,7 +251,7 @@ frontend/
 └─ vite.config.ts
 ```
 
-`widgets`, `features`, `entities`, `shared/ui`, `shared/hooks`, `shared/lib`, `shared/types`는 실제 코드가 필요해질 때 생성합니다. 구조를 보여주기 위한 빈 폴더나 샘플 파일은 미리 만들지 않습니다.
+`shared/hooks`, `shared/lib`는 실제 코드가 필요해질 때 생성합니다. 구조를 보여주기 위한 빈 폴더나 샘플 파일은 미리 만들지 않습니다.
 
 ## 7. 최상위 파일과 폴더의 역할
 

@@ -1,0 +1,14 @@
+/* Screen 03 — permission request. Ported from prototype `#s-perm`. */
+
+.topSpacer {
+  height: 8px;
+}
+
+.kicker {
+  margin-top: 18px;
+  color: var(--color-mint-mid);
+}
+
+.strong {
+  color: var(--color-ink);
+}

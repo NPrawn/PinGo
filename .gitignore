@@ -37,6 +37,10 @@ infra/.env
 infra/.env.*
 infra/coturn/turnserver.conf
 
+# Local verification output
+frontend/.tmp/
+frontend/test-results/
+frontend/playwright-report/
 # AI local/generated artifacts
 ai/AGENTS.md
 ai/pipeline_output/*

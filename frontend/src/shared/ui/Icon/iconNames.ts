@@ -1,0 +1,54 @@
+/**
+ * Names of the symbols defined by `IconSprite`.
+ *
+ * Kept apart from the component so the sprite module only exports components.
+ */
+
+export const ICON_NAMES = [
+  'arrow-right',
+  'bolt',
+  'bottle',
+  'building',
+  'bulb',
+  'bus',
+  'camera',
+  'card',
+  'chart',
+  'chat',
+  'check',
+  'clock',
+  'coffee',
+  'compass',
+  'cosmetics',
+  'door',
+  'elevator',
+  'eraser',
+  'flag',
+  'gear',
+  'globe',
+  'gov',
+  'headset',
+  'info',
+  'list',
+  'lock',
+  'luggage',
+  'map',
+  'mic',
+  'note',
+  'pencil',
+  'person',
+  'pin',
+  'question',
+  'refresh',
+  'restroom',
+  'search',
+  'sparkle',
+  'stairs',
+  'store',
+  'swap',
+  'target',
+  'train',
+  'warning',
+] as const;
+
+export type IconName = (typeof ICON_NAMES)[number];

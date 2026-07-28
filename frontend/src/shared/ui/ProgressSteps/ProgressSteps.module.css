@@ -1,0 +1,49 @@
+/* Ported from prototype `.prog` / `.pstep` / `.pline`. */
+.progress {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin: 2px 0 10px;
+}
+
+.step {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #a8bfb0;
+}
+
+.dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  font-size: 10px;
+  color: var(--color-mute);
+  background: var(--color-line);
+  border-radius: 50%;
+}
+
+.current {
+  color: var(--color-mint-mid);
+}
+
+.current .dot {
+  color: #fff;
+  background: var(--color-mint-mid);
+}
+
+.done .dot {
+  color: #fff;
+  background: var(--color-mint-forest);
+}
+
+.line {
+  flex: 1;
+  height: 2px;
+  background: var(--color-line);
+  border-radius: 2px;
+}

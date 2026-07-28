@@ -1,0 +1,65 @@
+/* Ported from prototype `.sel` / `.ring` / `.ck` (base + refine layer). */
+.row {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 16px;
+  font-family: inherit;
+  color: var(--color-ink);
+  text-align: left;
+  background: rgb(255 255 255 / 82%);
+  backdrop-filter: blur(18px) saturate(1.2);
+  border: 1.5px solid rgb(255 255 255 / 90%);
+  border-radius: 18px;
+  box-shadow:
+    0 4px 12px -6px color-mix(in srgb, var(--color-ink) 8%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 85%);
+  transition: all 180ms ease;
+}
+
+.row:hover {
+  background: rgb(255 255 255 / 96%);
+  border-color: color-mix(in srgb, var(--color-mint) 60%, transparent);
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 24px -10px color-mix(in srgb, var(--color-mint-darker) 20%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 95%);
+}
+
+/* Accent ring drawn over a selected row. */
+.ring {
+  position: absolute;
+  inset: -1.5px;
+  pointer-events: none;
+  border: 2.5px solid var(--color-mint);
+  border-radius: 18px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-mint) 20%, transparent);
+}
+
+/* Round check badge shown on the selected row. */
+.check {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-mint) 0%, var(--color-mint-darker) 100%);
+  border-radius: 50%;
+  box-shadow:
+    0 4px 10px color-mix(in srgb, var(--color-mint-darker) 35%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 35%);
+}
+
+/* Empty radio shown on unselected rows. */
+.unchecked {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--color-line);
+  border-radius: 50%;
+}

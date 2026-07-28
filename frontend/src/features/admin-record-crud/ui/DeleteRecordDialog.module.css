@@ -1,0 +1,46 @@
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(15 25 20 / 40%);
+}
+
+.dialog {
+  width: 320px;
+  padding: 22px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 50px -18px rgb(15 44 34 / 50%);
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.body {
+  margin: 8px 0 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-sub);
+}
+
+.body b {
+  color: var(--color-ink);
+}
+
+.actions {
+  display: flex;
+  gap: 9px;
+}
+
+.actions > * {
+  flex: 1;
+}
+
+.destructive {
+  background: var(--color-red);
+}
