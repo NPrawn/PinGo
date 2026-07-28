@@ -39,7 +39,13 @@ export interface PermissionRequestResult {
 /**
  * 위치 권한 요청 결과.
  *
- * 위치 권한이 허용되면 브라우저가 반환한 GeolocationPosition을 함께 가진다.
+ * status는 "위치 권한 상태"만 나타낸다. GPS 좌표 획득 여부와는 별개다.
+ * - granted: 위치 권한 허용됨. 단, GPS 좌표를 얻었는지는 position 유무로 판단한다.
+ *   (실내 등에서 좌표를 못 얻어도 권한이 허용됐으면 granted다. 이때 error에 좌표 실패 사유가 담긴다.)
+ * - denied: 사용자가 위치 권한을 거부함.
+ *
+ * 실내 위치추적은 카메라(WebXR/VPS)와 IMU로 하고, GPS는 현재 역 확인·외부 지도 연계
+ * 보조 용도이므로, 좌표를 못 얻는 것 자체는 서비스 진입을 막지 않는다.
  */
 export interface LocationPermissionResult extends PermissionRequestResult {
   kind: 'location';
@@ -193,13 +199,18 @@ export function requestLocationPermission(): Promise<LocationPermissionResult> {
 
       /**
        * 위치 권한 거부, 위치 확인 실패, timeout 등.
+       *
+       * PERMISSION_DENIED(사용자가 권한 거부)만 denied로 처리해 서비스 진입을 막는다.
+       * POSITION_UNAVAILABLE / TIMEOUT은 권한은 허용됐으나 좌표만 못 얻은 경우이므로
+       * granted로 간주하고(좌표는 없음), error에 실패 사유를 참고용으로 담는다.
        */
       (error) => {
         const permissionError = toGeolocationError(error);
+        const denied = error.code === error.PERMISSION_DENIED;
 
         resolve({
           kind: 'location',
-          status: isPermissionDenied(permissionError) ? 'denied' : 'error',
+          status: denied ? 'denied' : 'granted',
           error: permissionError,
         });
       },

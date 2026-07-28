@@ -124,7 +124,7 @@ describe('requestLocationPermission', () => {
     expect(result.status).toBe('denied');
   });
 
-  it('timeout 등 거부가 아닌 실패면 error를 반환한다', async () => {
+  it('GPS 좌표 실패(TIMEOUT)면 권한은 granted로 보고 좌표는 없다', async () => {
     const getCurrentPosition = vi.fn((_success: GeoSuccess, error: GeoError) =>
       error(createGeolocationError(3)),
     );
@@ -132,7 +132,19 @@ describe('requestLocationPermission', () => {
 
     const result = await requestLocationPermission();
 
-    expect(result.status).toBe('error');
+    expect(result.status).toBe('granted');
+    expect(result.position).toBeUndefined();
+  });
+
+  it('GPS 좌표 실패(POSITION_UNAVAILABLE)면 권한은 granted로 본다', async () => {
+    const getCurrentPosition = vi.fn((_success: GeoSuccess, error: GeoError) =>
+      error(createGeolocationError(2)),
+    );
+    setGeolocation({ getCurrentPosition });
+
+    const result = await requestLocationPermission();
+
+    expect(result.status).toBe('granted');
   });
 });
 
@@ -269,6 +281,24 @@ describe('requestRequiredPermissions', () => {
     expect(result.camera.status).toBe('idle');
     expect(result.microphone.status).toBe('idle');
     expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it('위치 권한은 허용됐지만 GPS 좌표를 못 얻어도 미디어를 요청하고 canUseService가 true다', async () => {
+    const getCurrentPosition = vi.fn((_success: GeoSuccess, error: GeoError) =>
+      error(createGeolocationError(3)),
+    );
+    setGeolocation({ getCurrentPosition });
+
+    const { stream } = createFakeStream();
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    setMediaDevices({ getUserMedia });
+
+    const result = await requestRequiredPermissions();
+
+    expect(result.location.status).toBe('granted');
+    expect(result.location.position).toBeUndefined();
+    expect(getUserMedia).toHaveBeenCalled();
+    expect(result.canUseService).toBe(true);
   });
 });
 
