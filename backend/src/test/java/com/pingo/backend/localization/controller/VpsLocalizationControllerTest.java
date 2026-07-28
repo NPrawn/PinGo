@@ -121,6 +121,22 @@ class VpsLocalizationControllerTest {
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
 
+    @Test
+    void localizeReturnsBadRequestForMalformedMetadataJson() throws Exception {
+        MockMultipartFile malformedMetadata = new MockMultipartFile(
+                "metadata",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                "{".getBytes(StandardCharsets.UTF_8)
+        );
+
+        mockMvc.perform(multipart("/api/vps/localize")
+                        .file(image())
+                        .file(malformedMetadata))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
     private MockMultipartFile image() {
         return new MockMultipartFile(
                 "image",
