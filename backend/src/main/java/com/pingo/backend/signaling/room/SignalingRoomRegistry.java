@@ -2,6 +2,7 @@ package com.pingo.backend.signaling.room;
 
 import com.pingo.backend.signaling.dto.SignalingSenderType;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
@@ -70,14 +71,11 @@ public class SignalingRoomRegistry {
     }
 
     public boolean isRegistered(String signalingSessionId, SignalingSenderType senderType, WebSocketSession webSocketSession) {
-        validateParticipant(senderType);
+        Object registeredSessionId = webSocketSession.getAttributes().get(SIGNALING_SESSION_ID_ATTRIBUTE);
+        Object registeredSenderType = webSocketSession.getAttributes().get(SENDER_TYPE_ATTRIBUTE);
 
-        Map<SignalingSenderType, WebSocketSession> room = rooms.get(signalingSessionId);
-        if (room == null) {
-            return false;
-        }
-
-        return isSameSession(room.get(senderType), webSocketSession);
+        return Objects.equals(registeredSessionId, signalingSessionId)
+                && registeredSenderType == senderType;
     }
 
     boolean containsRoom(String signalingSessionId) {

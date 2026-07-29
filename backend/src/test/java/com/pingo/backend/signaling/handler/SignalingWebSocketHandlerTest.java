@@ -258,6 +258,31 @@ class SignalingWebSocketHandlerTest {
     }
 
     @Test
+    void handleJoinReturnsInternalErrorWhenValidatorThrowsException() throws Exception {
+        when(signalingSessionValidator.validateJoin("consultation-1", SignalingSenderType.USER))
+                .thenThrow(new IllegalStateException("validator failed"));
+
+        WebSocketSession webSocketSession = webSocketSession("ws-user");
+
+        handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(webSocketSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.sessionId()).isEqualTo("consultation-1");
+        assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
+        assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("SIGNALING_INTERNAL_ERROR");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isTrue();
+    }
+
+    @Test
     void handleRelayMessageReturnsErrorWhenSessionIsNotJoined() throws Exception {
         WebSocketSession userSession = webSocketSession("ws-user");
         when(signalingRoomRegistry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))

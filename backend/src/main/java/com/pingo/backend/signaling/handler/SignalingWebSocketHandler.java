@@ -41,8 +41,11 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
+        String signalingSessionId = null;
+
         try {
             SignalingMessage signalingMessage = objectMapper.readValue(message.getPayload(), SignalingMessage.class);
+            signalingSessionId = signalingMessage.sessionId();
             Set<ConstraintViolation<SignalingMessage>> violations = validator.validate(signalingMessage);
 
             if (!violations.isEmpty()) {
@@ -75,6 +78,18 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                     SignalingErrorCode.INVALID_SIGNALING_MESSAGE,
                     "Invalid signaling message format.",
                     false
+            );
+        } catch (RuntimeException exception) {
+            log.error("Failed to handle signaling message. websocketSessionId={}, sessionId={}",
+                    session.getId(),
+                    signalingSessionId,
+                    exception);
+            sendError(
+                    session,
+                    signalingSessionId,
+                    SignalingErrorCode.SIGNALING_INTERNAL_ERROR,
+                    "Internal signaling error.",
+                    true
             );
         }
     }

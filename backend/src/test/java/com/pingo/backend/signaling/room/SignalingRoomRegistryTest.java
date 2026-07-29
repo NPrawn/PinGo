@@ -137,6 +137,14 @@ class SignalingRoomRegistryTest {
                 .isFalse();
     }
 
+    @Test
+    void isRegisteredReturnsFalseForSystemSenderType() {
+        WebSocketSession systemSession = webSocketSession("system-session");
+
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.SYSTEM, systemSession))
+                .isFalse();
+    }
+
     private WebSocketSession webSocketSession(String id) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);
