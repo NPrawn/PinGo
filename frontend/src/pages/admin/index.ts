@@ -1,1 +1,1 @@
-export { AdminPage } from './ui/AdminPage';
+export { AdminRoutes as AdminPage } from './ui/AdminRoutes';

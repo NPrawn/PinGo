@@ -1,0 +1,161 @@
+/* Screen 07 (FR-U-005) — location recognition failed. Prototype `#s-fail`. */
+
+.topSpacer {
+  height: 6px;
+}
+
+.failPill {
+  color: #c24a3d;
+  border-color: rgb(255 139 122 / 50%);
+}
+
+.failDot {
+  background: #ff8b7a;
+  box-shadow: 0 0 0 3px rgb(255 139 122 / 25%);
+}
+
+.title {
+  margin-top: 14px;
+}
+
+.card {
+  align-self: center;
+  width: calc(100% + 16px);
+  padding: 14px 15px;
+  margin-top: 24px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.cardKicker {
+  margin: 0;
+}
+
+.blurCount {
+  font-size: 11px;
+  font-weight: 800;
+  color: #c24a3d;
+}
+
+.shots {
+  display: flex;
+  gap: 7px;
+}
+
+.shot {
+  position: relative;
+  flex: 1;
+  height: 64px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #14332a, #081611);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 10%);
+}
+
+.shotScene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.55;
+}
+
+.shotSceneBlurred {
+  opacity: 0.3;
+  filter: blur(1.6px);
+}
+
+.shotLabel {
+  position: absolute;
+  bottom: 5px;
+  left: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #dff6e6;
+}
+
+.shotBadge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  padding: 2px 6px;
+  font-size: 8.5px;
+  font-weight: 800;
+  border-radius: var(--radius-pill);
+}
+
+.shotBadgeBlurred {
+  color: #3a0f09;
+  background: rgb(255 139 122 / 92%);
+}
+
+.shotBadgeOk {
+  color: #04231a;
+  background: rgb(60 216 160 / 90%);
+}
+
+.divider {
+  height: 1px;
+  margin: 14px 0 12px;
+  background: rgb(15 44 34 / 8%);
+}
+
+.tipsKicker {
+  margin: 0 0 10px;
+}
+
+.tips {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.tip {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.tipNumber {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border-radius: 50%;
+}
+
+.tipText {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-ink);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.actionRow {
+  display: flex;
+  gap: 9px;
+}
+
+.actionHalf {
+  flex: 1;
+  height: 46px;
+  font-size: 13.5px;
+}

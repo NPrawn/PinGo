@@ -1,1 +1,1 @@
-export { UserPage } from './ui/UserPage';
+export { UserRoutes as UserPage } from './ui/UserRoutes';

@@ -1,0 +1,50 @@
+/* Screen 27-1 — account request. Ported from prototype `#c-signup`. */
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 440px;
+  padding: 36px 0;
+  background: var(--color-cream);
+}
+
+.card {
+  width: 360px;
+  max-width: 100%;
+  padding: 32px;
+  background: #fff;
+  border: 1px solid var(--color-line-soft);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 6%);
+}
+
+.back {
+  margin-bottom: 6px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.lede {
+  margin: 6px 0 20px;
+  font-size: 13px;
+  color: var(--color-sub);
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-sub);
+}
+
+.field {
+  margin: 6px 0 12px;
+}
+
+.submit {
+  margin-top: 18px;
+}

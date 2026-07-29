@@ -1,0 +1,73 @@
+.searchWrap {
+  position: relative;
+  margin-top: 16px;
+}
+
+.searchIcon {
+  position: absolute;
+  top: 18px;
+  left: 16px;
+  display: flex;
+  color: var(--color-sub);
+}
+
+.searchSubmit {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #3cd8a0, #065e42);
+  border: 0;
+  border-radius: 12px;
+}
+
+.sectionLabel {
+  margin: 18px 0 10px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.row {
+  padding: 13px 14px;
+}
+
+.rowBody {
+  flex: 1;
+}
+
+.name {
+  font-size: 14.5px;
+}
+
+.line {
+  font-size: 11px;
+  color: var(--color-sub);
+}
+
+.dist {
+  font-size: 11.5px;
+  color: var(--color-sub);
+}
+
+.hereBadge {
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #0ea36f;
+  background: linear-gradient(135deg, #d1f5e4, #b8ecd4);
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 60%);
+}
+
+.empty {
+  padding: 8px 2px;
+  font-size: 12.5px;
+  color: var(--color-sub);
+}

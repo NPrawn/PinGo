@@ -1,0 +1,122 @@
+import { Link } from 'react-router-dom';
+import { USER_ROUTES } from '@/shared/config';
+import { HeadingMarker, Icon, MapPreview } from '@/shared/ui';
+import { PhoneFrame } from '@/widgets/phone-frame';
+import styles from './ConsultSessionPage.module.css';
+
+/**
+ * Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side.
+ *
+ * TODO: Replace the mocked camera panel and translation caption with the real
+ * WebRTC media stream and STT/translation data channel.
+ */
+export function ConsultSessionPage() {
+  return (
+    <PhoneFrame dark layout="flush">
+      <>
+        <div className={styles.bar}>
+          <span className={styles.liveChip}>
+            <span className={styles.liveDotWrap}>
+              <span className={styles.liveDot} />
+              <span className={styles.liveRing} />
+            </span>
+            상담 연결됨 · 화면 공유 중
+            <span className={styles.liveShine} />
+          </span>
+          <Link to={USER_ROUTES.CONSULT_ENDED} className={styles.endCall}>
+            상담 종료
+          </Link>
+        </div>
+
+        <div className={styles.cam}>
+          <div className={styles.camPill}>
+            <b>To 3번 출구</b> · 상담원 안내 중
+          </div>
+          <div className={styles.translation}>
+            <div className={styles.translationLabel}>
+              <Icon name="globe" size={13} />
+              실시간 음성 번역 · 상담원
+            </div>
+            <div className={styles.translationPrimary}>
+              12번 기둥 기준으로 왼쪽 엘리베이터로 이동하세요.
+            </div>
+            <div className={styles.translationSecondary}>
+              Go to the elevator on your left, using pillar 12 as a reference.
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.lower}>
+          <MapPreview className={styles.map} dest={{ left: '68%', top: '26%' }}>
+            <svg
+              viewBox="0 0 300 240"
+              preserveAspectRatio="xMidYMid slice"
+              className={styles.mapSvg}
+              aria-hidden
+            >
+              <rect x="0" y="0" width="300" height="240" fill="#eef1f5" />
+              <rect
+                x="22"
+                y="20"
+                width="256"
+                height="200"
+                rx="9"
+                fill="#f8fafc"
+                stroke="#cdd5df"
+                strokeWidth="2"
+              />
+              <path
+                d="M132 168 V96 H204 V64"
+                fill="none"
+                stroke="#e3e9f1"
+                strokeWidth="24"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              <rect
+                x="36"
+                y="34"
+                width="48"
+                height="40"
+                rx="4"
+                fill="#eef6f0"
+                stroke="#c4dfca"
+                strokeWidth="1.5"
+              />
+              <rect
+                x="214"
+                y="166"
+                width="46"
+                height="38"
+                rx="4"
+                fill="#f7eef2"
+                stroke="#e2c7d3"
+                strokeWidth="1.5"
+              />
+              <rect x="158" y="126" width="8" height="8" rx="2" fill="#B08640" />
+              <polyline
+                points="132,168 132,96 204,96 204,68"
+                fill="none"
+                stroke="#3EB489"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray="1 11"
+              />
+            </svg>
+
+            <div className={styles.destLabel}>3번 출구</div>
+            <HeadingMarker style={{ left: '44%', top: '58%' }} />
+          </MapPreview>
+
+          <div className={styles.syncNote}>
+            <span className={styles.syncDot} aria-hidden />
+            <p className={styles.syncText}>
+              상담원이 <b>같은 지도</b>를 보며 안내 중이에요
+            </p>
+          </div>
+        </div>
+      </>
+    </PhoneFrame>
+  );
+}

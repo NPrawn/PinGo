@@ -376,11 +376,24 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | last_gps_longitude | decimal | 마지막 GPS 경도 | nullable |
 | created_at | datetime | 생성 시각 | not null |
 | last_active_at | datetime | 마지막 활동 시각 | not null |
-| expires_at | datetime | 세션 만료 시각 | nullable |
+| expires_at | datetime | 세션 만료 시각 | 마지막 활동 기준 1시간, nullable |
 
 #### 설계 이유
 
 일반 사용자는 로그인하지 않지만 상담, 위치 인식, 경로 안내 흐름을 이어가기 위해 임시 세션이 필요하다.
+
+#### 만료 정책
+
+| 구분 | 정책 |
+| --- | --- |
+| 일반 만료 | `last_active_at` 기준 1시간이 지나면 만료한다 |
+| 정상 종료 | 경로 안내가 정상적으로 끝나면 `DELETE /user-sessions/{userSessionId}`로 즉시 만료 처리한다 |
+| 만료 예외 | 진행 중인 상담(`WAITING`, `ACCEPTED`, `CONNECTING`, `IN_PROGRESS`)이 연결된 세션은 만료시키지 않는다 |
+| 만료 처리 방식 | 행을 삭제하지 않고 `expires_at`을 현재 시각으로 설정한다 |
+
+만료를 행 삭제가 아니라 상태 처리로 정의한 이유는 `consultation_session.user_session_id`, `location_share.owner_session_id`, `localization_log.user_session_id`가 모두 `user_session`을 참조하는 not null 외래키이기 때문이다. 만료된 세션을 삭제하면 상담·위치 인식 이력이 함께 사라지거나 외래키 제약을 위반한다.
+
+만료·종료된 세션 ID로 요청이 오면 `USER_SESSION_NOT_FOUND`를 반환하고, 클라이언트는 새 세션을 생성한 뒤 `language`를 다시 전송해 흐름을 이어간다. 이는 FR-U-001의 "선택한 언어가 이용 중 유지되어야 한다"는 완료 기준을 만족시키기 위한 것이다.
 
 ---
 
@@ -400,7 +413,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | login_id | varchar | 로그인 ID | unique, not null |
 | password_hash | varchar | 비밀번호 해시 | not null |
 | name | varchar | 계정 이름 | not null |
-| status | varchar | 상담 상태 (상담자만 사용) | available, busy, offline, nullable |
+| status | varchar | 상담 상태 (상담자만 사용) | AVAILABLE, BUSY, OFFLINE, nullable |
 | is_active | boolean | 계정 활성 여부 | default true |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |
@@ -429,7 +442,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | station_id | bigint | 상담 대상 역 | FK station.station_id |
 | counselor_id | bigint | 상담자 ID | FK account.account_id (account_type=COUNSELOR), nullable |
 | problem_type | varchar | 문제 유형 | not null |
-| status | varchar | 상담 상태 | waiting, accepted, ended 등 |
+| status | varchar | 상담 상태 | WAITING, ACCEPTED, ENDED 등 |
 | current_node_id | bigint | 요청 시 현재 위치 | FK route_node.node_id, nullable |
 | destination_type | varchar | 목적지 유형 | nullable |
 | destination_id | bigint | 목적지 ID | nullable |
@@ -445,25 +458,25 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 
 | 값 | 설명 |
 | --- | --- |
-| cannot_find_location | 현재 위치를 찾을 수 없음 |
-| wrong_direction | 이동 방향을 모르겠음 |
-| cannot_find_exit | 출구를 찾을 수 없음 |
-| gate_problem | 개찰구 문제 |
-| elevator_needed | 엘리베이터 위치 필요 |
-| card_problem | 교통카드 문제 |
-| other | 기타 |
+| CANNOT_FIND_LOCATION | 현재 위치를 찾을 수 없음 |
+| WRONG_DIRECTION | 이동 방향을 모르겠음 |
+| CANNOT_FIND_EXIT | 출구를 찾을 수 없음 |
+| GATE_PROBLEM | 개찰구 문제 |
+| ELEVATOR_NEEDED | 엘리베이터 위치 필요 |
+| CARD_PROBLEM | 교통카드 문제 |
+| OTHER | 기타 |
 
 #### status 예시
 
 | 값 | 설명 |
 | --- | --- |
-| waiting | 상담 대기 |
-| accepted | 상담 수락 |
-| in_progress | 상담 중 |
-| ended | 상담 종료 |
-| canceled | 사용자 취소 |
-| rejected | 상담자 거절 |
-| failed | 연결 실패 |
+| WAITING | 상담 대기 |
+| ACCEPTED | 상담 수락 |
+| IN_PROGRESS | 상담 중 |
+| ENDED | 상담 종료 |
+| CANCELED | 사용자 취소 |
+| REJECTED | 상담자 거절 |
+| FAILED | 연결 실패 |
 
 ---
 
@@ -770,7 +783,7 @@ MVP 구현에 필요한 최소 테이블은 다음과 같다.
 | station, station_floor, floor_map | 신재령 |
 | facility, exit_detail, nearby_place, place_exit_recommendation | 신재령 |
 | route_node, route_edge | 신재령 |
-| user_session | 이정우 |
+| user_session | 오서현 |
 | consultation_session, consultation_event | 오서현 |
 | account (counselor+admin 통합) | 오서현 |
 | vps_map, vps_reference_image | 강민수 |
@@ -801,7 +814,7 @@ AI 모델·VPS 구축 데이터는 강민수가 책임지고, AI 서버 호출·
 | 지도 좌표계 | 이미지 좌상단 `(0, 0)` 기준 `map_x`, `map_y` |
 | 지도 이미지 저장 | 서버 정적 파일 저장 + DB URL 관리 |
 | 경로 거리 | `route_edge.distance_m` 우선 |
-| 사용자 세션 만료 | 마지막 활동 기준 24시간 |
+| 사용자 세션 만료 | 마지막 활동 기준 1시간 (정상 종료 시 즉시 만료, 진행 중 상담이 있으면 만료 안 함) |
 | 상담 세션 ID | UUID 또는 ULID 기반 문자열 |
 | VPS 이미지 저장 | 기본 저장하지 않음, 처리 후 즉시 폐기 |
 | Audit log | 후순위 |

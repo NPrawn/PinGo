@@ -1,0 +1,1 @@
+export { PagerDots } from './PagerDots';

@@ -1,0 +1,38 @@
+/* Ported from prototype `.pill` (base + refine-layer segment styling). */
+.pill {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-ink);
+  background: rgb(255 255 255 / 70%);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid rgb(207 226 213 / 80%);
+  border-radius: var(--radius-pill);
+  transition: all var(--duration-fast) ease;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.on {
+  color: var(--color-mint-forest);
+  background: linear-gradient(
+    135deg,
+    rgb(127 224 168 / 35%),
+    color-mix(in srgb, var(--color-mint-mid) 25%, transparent)
+  );
+  border-color: var(--color-mint-mid);
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--color-mint-mid) 35%, transparent);
+}
+
+/* Prototype `.pill.gh` — borderless variant. */
+.ghost {
+  color: var(--color-sub);
+  background: transparent;
+  border-color: transparent;
+}

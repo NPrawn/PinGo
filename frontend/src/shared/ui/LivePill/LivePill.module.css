@@ -1,0 +1,45 @@
+/* Ported from prototype `.live-pill` — the "live location" chip on hero screens. */
+.pill {
+  display: inline-flex;
+  flex: none;
+  gap: 7px;
+  align-self: flex-start;
+  align-items: center;
+  width: fit-content;
+  padding: 8px 14px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--color-ink);
+  background: rgb(255 255 255 / 90%);
+  backdrop-filter: blur(16px);
+  border: 1.5px solid rgb(255 255 255 / 95%);
+  border-radius: var(--radius-pill);
+  box-shadow:
+    0 6px 14px color-mix(in srgb, var(--color-ink) 10%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 100%);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  background: #ff4e4e;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(255 78 78 / 25%);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.dotGps {
+  background: #0ea36f;
+  box-shadow: 0 0 0 3px rgb(14 163 111 / 25%);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}

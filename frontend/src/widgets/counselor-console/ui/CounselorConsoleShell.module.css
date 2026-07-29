@@ -1,0 +1,19 @@
+/* Ported from the prototype's `.wtabs` strip on the counselor screens. */
+
+.logout {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 14px;
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-sub);
+  text-decoration: none;
+}
+
+/* Live-call status in the window chrome — prototype `#c-rtc` winbar. */
+.connected {
+  margin-left: auto;
+  font-size: 12px;
+  color: #8be09b;
+}

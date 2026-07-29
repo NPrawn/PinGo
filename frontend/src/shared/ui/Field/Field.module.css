@@ -1,0 +1,67 @@
+/* Ported from prototype `.field` (base + refine-layer glass input). */
+.field {
+  width: 100%;
+  height: 50px;
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-ink);
+  background: rgb(255 255 255 / 75%);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid rgb(207 226 213 / 90%);
+  border-radius: 14px;
+  outline: none;
+  transition:
+    border-color var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease,
+    background var(--duration-fast) ease;
+}
+
+.field::placeholder {
+  color: var(--color-mute);
+}
+
+.field:focus {
+  background: #fff;
+  border-color: var(--color-mint-mid);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-mint-mid) 15%, transparent);
+}
+
+.field:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Prototype `.field-big` — the destination search hero input. The extra left
+   padding leaves room for the search icon the caller overlays. */
+.big {
+  height: 56px;
+  padding: 0 18px 0 44px;
+  font-size: 14.5px;
+  font-weight: 600;
+  background: rgb(255 255 255 / 90%);
+  backdrop-filter: blur(16px);
+  border: 1.5px solid rgb(255 255 255 / 90%);
+  border-radius: 18px;
+  box-shadow:
+    0 8px 18px -8px color-mix(in srgb, var(--color-ink) 12%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 95%);
+}
+
+.big::placeholder {
+  font-weight: 500;
+  color: color-mix(in srgb, var(--color-ink) 40%, transparent);
+}
+
+.big:focus {
+  border-color: var(--color-mint);
+  box-shadow:
+    0 8px 18px -8px color-mix(in srgb, var(--color-mint-darker) 20%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--color-mint) 18%, transparent);
+}
+
+.invalid,
+.invalid:focus {
+  border-color: var(--color-red);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-red) 18%, transparent);
+}

@@ -1,0 +1,28 @@
+/* Screen 02 — language selection. Ported from prototype `#s-lang`. */
+
+.hero {
+  height: 200px;
+  margin-top: 6px;
+}
+
+.wordmark {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: -0.035em;
+  text-shadow: 0 6px 18px rgb(6 94 66 / 45%);
+}
+
+.wordmarkWrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, calc(-50% + 5px));
+}
