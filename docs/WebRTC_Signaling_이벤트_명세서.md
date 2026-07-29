@@ -31,10 +31,10 @@ wss://{service-domain}/ws/signaling
 | 구분 | 책임 |
 | --- | --- |
 | Frontend | WebRTC PeerConnection 생성, 사용자 화면 공유 track 생성, offer/answer 생성, ICE candidate 수집, signaling message 송수신, DataChannel 생성, 음성 입력 수집 및 번역 자막 표시 |
-| Backend | WebSocket 연결 수락, signaling room 등록/정리, 사용자와 상담자 간 signaling message relay, 비정상 메시지 오류 응답 |
+| Backend | WebSocket 연결 수락, signaling session 검증, signaling room 등록/정리, 사용자와 상담자 간 signaling message relay, 비정상 메시지 오류 응답 |
 | Infra | HTTPS/WSS reverse proxy, STUN/TURN 서버, 외부망 NAT 연결 검증 |
 
-Backend는 SDP와 ICE candidate 내용을 해석하거나 수정하지 않는다. Backend는 `sessionId`와 `senderType` 기준으로 같은 room의 상대방에게 signaling message를 relay한다.
+Backend는 SDP와 ICE candidate 내용을 해석하거나 수정하지 않는다. Backend는 `sessionId`와 `senderType` 기준으로 같은 room의 상대방에게 signaling message를 relay한다. 단, `JOIN` 시 signaling session 검증을 통과해야 room에 등록되며, `OFFER`, `ANSWER`, `ICE_CANDIDATE`는 해당 `sessionId`와 `senderType`으로 `JOIN`된 WebSocket session에서 보낸 경우에만 relay한다.
 
 상담 중 사용자의 화면은 WebRTC media track으로 상담자에게 공유한다. 단, 사용자와 상담자의 원본 음성은 서로에게 직접 전달하지 않는다. 음성 입력은 STT 및 번역 처리 후 상대방 화면에 자막으로 표시하는 것을 기본 정책으로 한다.
 
@@ -93,6 +93,8 @@ Backend는 SDP와 ICE candidate 내용을 해석하거나 수정하지 않는다
 
 room에 입장할 때 전송한다.
 
+Backend는 `JOIN` 요청을 받은 뒤 signaling session 검증을 먼저 수행한다. 검증에 실패하면 room에 등록하지 않고 `ERROR` 메시지를 응답한다.
+
 ```json
 {
   "sessionId": "room_cs_abc123",
@@ -141,6 +143,8 @@ room에 입장할 때 전송한다.
 
 WebRTC SDP offer를 상대방에게 전달한다.
 
+`OFFER`는 동일한 `sessionId`와 `senderType`으로 `JOIN`이 완료된 WebSocket session에서 보낸 경우에만 relay된다. `JOIN`하지 않은 session이 전송하면 Backend는 `SIGNALING_SESSION_NOT_JOINED` 오류를 응답한다.
+
 ```json
 {
   "sessionId": "room_cs_abc123",
@@ -163,6 +167,8 @@ WebRTC SDP offer를 상대방에게 전달한다.
 
 WebRTC SDP answer를 상대방에게 전달한다.
 
+`ANSWER`는 동일한 `sessionId`와 `senderType`으로 `JOIN`이 완료된 WebSocket session에서 보낸 경우에만 relay된다. `JOIN`하지 않은 session이 전송하면 Backend는 `SIGNALING_SESSION_NOT_JOINED` 오류를 응답한다.
+
 ```json
 {
   "sessionId": "room_cs_abc123",
@@ -184,6 +190,8 @@ WebRTC SDP answer를 상대방에게 전달한다.
 ### 7.5 ICE_CANDIDATE
 
 ICE candidate를 상대방에게 전달한다.
+
+`ICE_CANDIDATE`는 동일한 `sessionId`와 `senderType`으로 `JOIN`이 완료된 WebSocket session에서 보낸 경우에만 relay된다. `JOIN`하지 않은 session이 전송하면 Backend는 `SIGNALING_SESSION_NOT_JOINED` 오류를 응답한다.
 
 ```json
 {
@@ -236,6 +244,8 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 | 코드 | 설명 | retryable | 현재 구현 |
 | --- | --- | --- | --- |
 | `INVALID_SIGNALING_MESSAGE` | JSON 형식, 필수 필드, enum 값이 잘못됨 | false | Y |
+| `INVALID_SIGNALING_SESSION` | signaling session 검증에 실패함 | false | Y |
+| `SIGNALING_SESSION_NOT_JOINED` | `JOIN`하지 않은 WebSocket session이 relay 메시지를 보냄 | false | Y |
 | `SIGNALING_PEER_NOT_CONNECTED` | 상대방이 아직 연결되지 않음 | true | Y |
 | `SIGNALING_SESSION_NOT_FOUND` | 존재하지 않는 sessionId | false | N |
 | `SIGNALING_SESSION_CLOSED` | 이미 종료된 session | false | N |
@@ -247,11 +257,13 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 ## 9. Session 규칙
 
 - `sessionId`는 상담 요청이 수락되거나 상담 room이 생성될 때 서버가 발급한다.
+- `JOIN`은 signaling session 검증을 통과한 경우에만 room 등록으로 이어진다.
 - 하나의 `sessionId`에는 기본적으로 `USER` 1명과 `COUNSELOR` 1명만 입장할 수 있다.
 - 동일 `sessionId`에서 같은 `senderType`이 다시 `JOIN`하면 현재 WebSocket session으로 교체된다.
+- `OFFER`, `ANSWER`, `ICE_CANDIDATE`는 동일한 `sessionId`와 `senderType`으로 `JOIN`된 WebSocket session에서 보낸 경우에만 relay된다.
 - `LEAVE` 또는 비정상 연결 종료 시 Backend는 room cleanup을 수행한다.
 - 현재 구현은 인메모리 room registry 기준이다. 서버 재시작 시 room 정보는 유지되지 않는다.
-- 상담 session 존재 여부와 종료 session 검증은 상담 상태 도메인 연동 시 추가한다.
+- 현재 signaling session validator 기본 구현은 모든 session을 허용한다. 상담 session 존재 여부, 수락 상태, 종료 session, 참여자 권한 검증은 상담 상태 도메인 연동 시 구체 구현으로 교체한다.
 
 ---
 

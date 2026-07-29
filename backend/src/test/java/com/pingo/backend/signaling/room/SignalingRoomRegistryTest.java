@@ -116,6 +116,35 @@ class SignalingRoomRegistryTest {
         ).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void isRegisteredReturnsTrueForRegisteredSession() {
+        WebSocketSession userSession = webSocketSession("user-session");
+
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))
+                .isTrue();
+    }
+
+    @Test
+    void isRegisteredReturnsFalseForDifferentSession() {
+        WebSocketSession registeredSession = webSocketSession("registered-session");
+        WebSocketSession otherSession = webSocketSession("other-session");
+
+        registry.register("consultation-1", SignalingSenderType.USER, registeredSession);
+
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.USER, otherSession))
+                .isFalse();
+    }
+
+    @Test
+    void isRegisteredReturnsFalseForSystemSenderType() {
+        WebSocketSession systemSession = webSocketSession("system-session");
+
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.SYSTEM, systemSession))
+                .isFalse();
+    }
+
     private WebSocketSession webSocketSession(String id) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);
