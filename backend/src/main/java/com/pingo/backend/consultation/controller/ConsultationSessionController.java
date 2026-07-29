@@ -28,15 +28,17 @@ public class ConsultationSessionController {
 
     @GetMapping("/{consultationSessionId}")
     public ApiResponse<ConsultationResponse> getConsultation(
-            @PathVariable String consultationSessionId
+            @PathVariable String consultationSessionId,
+            @RequestParam String userSessionId
     ){
-        return ApiResponse.success(consultationSessionService.get(consultationSessionId));
+        return ApiResponse.success(consultationSessionService.get(consultationSessionId, userSessionId));
     }
 
     @DeleteMapping("/{consultationSessionId}")
     public ApiResponse<ConsultationCancelResponse> cancelConsultation(
-            @PathVariable String consultationSessionId
+            @PathVariable String consultationSessionId,
+            @RequestParam String userSessionId
     ){
-        return ApiResponse.success(consultationSessionService.cancel(consultationSessionId));
+        return ApiResponse.success(consultationSessionService.cancel(consultationSessionId, userSessionId));
     }
 }

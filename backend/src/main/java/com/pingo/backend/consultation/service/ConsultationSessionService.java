@@ -16,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class ConsultationSessionService {
@@ -23,6 +25,8 @@ public class ConsultationSessionService {
     private final ConsultationSessionRepository consultationSessionRepository;
     private final UserSessionRepository userSessionRepository;
     private final StationRepository stationRepository;
+    private static final List<ConsultationStatus> ACTIVE_STATUSES =
+            List.of(ConsultationStatus.WAITING, ConsultationStatus.ACCEPTED, ConsultationStatus.IN_PROGRESS);
 
     @Transactional
     public ConsultationCreateResponse create(ConsultationCreateRequest request){
@@ -33,6 +37,11 @@ public class ConsultationSessionService {
 
         if(userSession.isExpired()){
             throw new BusinessException(ErrorCode.USER_SESSION_ALREADY_ENDED);
+        }
+
+        if(consultationSessionRepository.existsByUserSessionIdAndStatusIn(
+                request.userSessionId(), ACTIVE_STATUSES)){
+            throw new BusinessException(ErrorCode.CONSULTATION_ALREADY_IN_PROGRESS);
         }
 
         stationRepository.findById(request.stationId())
@@ -53,20 +62,21 @@ public class ConsultationSessionService {
     }
 
     @Transactional(readOnly = true)
-    public ConsultationResponse get(String consultationSessionId){
+    public ConsultationResponse get(String consultationSessionId, String userSessionId){
         ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        validateOwner(session, userSessionId);
         return ConsultationResponse.from(session);
     }
 
     @Transactional
-    public ConsultationCancelResponse cancel(String consultationSessionId){
+    public ConsultationCancelResponse cancel(String consultationSessionId, String userSessionId){
         ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(()-> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        validateOwner(session, userSessionId);
         if(session.getStatus() != ConsultationStatus.WAITING){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_CANCELABLE);
         }
-
         session.cancel();
         return ConsultationCancelResponse.from(session);
     }
@@ -76,6 +86,12 @@ public class ConsultationSessionService {
         boolean hasId = destinationId != null;
         if(hasType != hasId){
             throw new BusinessException(ErrorCode.INVALID_DESTINATION);
+        }
+    }
+
+    private void validateOwner(ConsultationSession session, String userSessionId) {
+        if (!session.getUserSessionId().equals(userSessionId)) {
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND);
         }
     }
 }

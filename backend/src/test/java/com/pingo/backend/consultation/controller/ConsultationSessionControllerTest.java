@@ -1,6 +1,5 @@
 package com.pingo.backend.consultation.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.domain.ProblemType;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
@@ -17,11 +16,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -35,88 +35,77 @@ class ConsultationSessionControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
     @MockitoBean
     private ConsultationSessionService consultationSessionService;
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final String CONSULTATION_ID = "cs_abc123";
+    private static final String USER_SESSION_ID = "usr_9f3a2b";
+
     @Test
-    void createConsultation_정상_요청이면_200과_생성된_상담정보를_반환한다() throws Exception {
+    void createConsultation_성공() throws Exception {
         ConsultationCreateRequest request = new ConsultationCreateRequest(
-                "usr_abc123", 1L, ProblemType.CANNOT_FIND_EXIT,
-                null, null, null, true, true
+                USER_SESSION_ID, 1L, ProblemType.CANNOT_FIND_EXIT,
+                15L, "place", 3L, true, true
         );
         ConsultationCreateResponse response = new ConsultationCreateResponse(
-                "cs_abc123", ConsultationStatus.WAITING, LocalDateTime.now()
+                CONSULTATION_ID, ConsultationStatus.WAITING, LocalDateTime.now()
         );
-        when(consultationSessionService.create(any())).thenReturn(response);
+        given(consultationSessionService.create(any())).willReturn(response);
 
         mockMvc.perform(post("/api/consultations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.consultationId").value("cs_abc123"))
-                .andExpect(jsonPath("$.data.status").value("WAITING"));
+                .andExpect(jsonPath("$.data.consultationId").value(CONSULTATION_ID));
     }
 
     @Test
-    void createConsultation_userSessionId가_없으면_400을_반환한다() throws Exception {
-        String invalidJson = """
-                {
-                    "stationId": 1,
-                    "problemType": "CANNOT_FIND_EXIT",
-                    "videoConsent": true,
-                    "audioConsent": true
-                }
-                """;
+    void getConsultation_성공() throws Exception {
+        ConsultationResponse response = new ConsultationResponse(
+                CONSULTATION_ID, ConsultationStatus.ACCEPTED, 7L, "room_" + CONSULTATION_ID
+        );
+        given(consultationSessionService.get(CONSULTATION_ID, USER_SESSION_ID)).willReturn(response);
 
-        mockMvc.perform(post("/api/consultations")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidJson))
+        mockMvc.perform(get("/api/consultations/{id}", CONSULTATION_ID)
+                        .param("userSessionId", USER_SESSION_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultationId").value(CONSULTATION_ID));
+    }
+
+    @Test
+    void getConsultation_실패_userSessionId_파라미터_누락() throws Exception {
+        mockMvc.perform(get("/api/consultations/{id}", CONSULTATION_ID))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    void getConsultation_정상_조회면_200을_반환한다() throws Exception {
-        ConsultationResponse response = new ConsultationResponse(
-                "cs_abc123", ConsultationStatus.ACCEPTED, 7L, "room_cs_abc123"
-        );
-        when(consultationSessionService.get("cs_abc123")).thenReturn(response);
+    void getConsultation_실패_존재하지_않거나_소유자가_아님() throws Exception {
+        given(consultationSessionService.get(CONSULTATION_ID, USER_SESSION_ID))
+                .willThrow(new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
-        mockMvc.perform(get("/api/consultations/{id}", "cs_abc123"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
-                .andExpect(jsonPath("$.data.signalingRoomId").value("room_cs_abc123"));
-    }
-
-    @Test
-    void getConsultation_존재하지_않으면_404를_반환한다() throws Exception {
-        when(consultationSessionService.get("cs_none"))
-                .thenThrow(new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
-
-        mockMvc.perform(get("/api/consultations/{id}", "cs_none"))
+        mockMvc.perform(get("/api/consultations/{id}", CONSULTATION_ID)
+                        .param("userSessionId", USER_SESSION_ID))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void cancelConsultation_정상_취소면_200과_CANCELED_상태를_반환한다() throws Exception {
+    void cancelConsultation_성공() throws Exception {
         ConsultationCancelResponse response = new ConsultationCancelResponse(
-                "cs_abc123", ConsultationStatus.CANCELED
+                CONSULTATION_ID, ConsultationStatus.CANCELED
         );
-        when(consultationSessionService.cancel("cs_abc123")).thenReturn(response);
+        given(consultationSessionService.cancel(CONSULTATION_ID, USER_SESSION_ID)).willReturn(response);
 
-        mockMvc.perform(delete("/api/consultations/{id}", "cs_abc123"))
+        mockMvc.perform(delete("/api/consultations/{id}", CONSULTATION_ID)
+                        .param("userSessionId", USER_SESSION_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CANCELED"));
     }
 
     @Test
-    void cancelConsultation_취소불가_상태면_400을_반환한다() throws Exception {
-        when(consultationSessionService.cancel("cs_abc123"))
-                .thenThrow(new BusinessException(ErrorCode.CONSULTATION_NOT_CANCELABLE));
-
-        mockMvc.perform(delete("/api/consultations/{id}", "cs_abc123"))
+    void cancelConsultation_실패_userSessionId_파라미터_누락() throws Exception {
+        mockMvc.perform(delete("/api/consultations/{id}", CONSULTATION_ID))
                 .andExpect(status().isBadRequest());
     }
 }

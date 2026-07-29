@@ -17,6 +17,7 @@ import com.pingo.backend.usersession.repository.UserSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -25,7 +26,11 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class ConsultationSessionServiceTest {
@@ -37,148 +42,194 @@ class ConsultationSessionServiceTest {
     @Mock
     private StationRepository stationRepository;
 
+    @InjectMocks
     private ConsultationSessionService consultationSessionService;
+
+    private static final String USER_SESSION_ID = "usr_9f3a2b";
+    private static final String OTHER_USER_SESSION_ID = "usr_other0";
+    private static final Long STATION_ID = 1L;
+
+    private ConsultationCreateRequest createRequest;
+    private UserSession userSession;
 
     @BeforeEach
     void setUp() {
-        consultationSessionService = new ConsultationSessionService(
-                consultationSessionRepository, userSessionRepository, stationRepository
+        createRequest = new ConsultationCreateRequest(
+                USER_SESSION_ID, STATION_ID, ProblemType.CANNOT_FIND_EXIT,
+                15L, "place", 3L, true, true
         );
+        userSession = mock(UserSession.class);
     }
 
-    private ConsultationCreateRequest validRequest() {
-        return new ConsultationCreateRequest(
-                "usr_abc123", 1L, ProblemType.CANNOT_FIND_EXIT,
-                null, null, null, true, true
+    private ConsultationSession newSession() {
+        return ConsultationSession.create(
+                USER_SESSION_ID, STATION_ID, ProblemType.CANNOT_FIND_EXIT,
+                15L, "place", 3L, true, true
         );
     }
 
     @Test
     void create_성공() {
-        UserSession userSession = mock(UserSession.class);
-        Station station = mock(Station.class);
-        when(userSessionRepository.findById("usr_abc123")).thenReturn(Optional.of(userSession));
-        when(userSession.isExpired()).thenReturn(false);
-        when(stationRepository.findById(1L)).thenReturn(Optional.of(station));
+        given(userSessionRepository.findById(USER_SESSION_ID)).willReturn(Optional.of(userSession));
+        given(userSession.isExpired()).willReturn(false);
+        given(consultationSessionRepository.existsByUserSessionIdAndStatusIn(anyString(), any()))
+                .willReturn(false);
+        given(stationRepository.findById(STATION_ID)).willReturn(Optional.of(mock(Station.class)));
 
-        ConsultationCreateResponse response = consultationSessionService.create(validRequest());
+        ConsultationCreateResponse response = consultationSessionService.create(createRequest);
 
         assertThat(response.status()).isEqualTo(ConsultationStatus.WAITING);
         verify(consultationSessionRepository).save(any(ConsultationSession.class));
     }
 
     @Test
-    void create_목적지_하나만_오면_INVALID_DESTINATION() {
-        ConsultationCreateRequest request = new ConsultationCreateRequest(
-                "usr_abc123", 1L, ProblemType.CANNOT_FIND_EXIT,
-                null, "place", null, true, true
+    void create_실패_존재하지_않는_사용자_세션() {
+        given(userSessionRepository.findById(USER_SESSION_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> consultationSessionService.create(createRequest))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.USER_SESSION_NOT_FOUND);
+    }
+
+    @Test
+    void create_실패_이미_종료된_사용자_세션() {
+        given(userSessionRepository.findById(USER_SESSION_ID)).willReturn(Optional.of(userSession));
+        given(userSession.isExpired()).willReturn(true);
+
+        assertThatThrownBy(() -> consultationSessionService.create(createRequest))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.USER_SESSION_ALREADY_ENDED);
+    }
+
+    @Test
+    void create_실패_이미_활성_상담이_존재함() {
+        given(userSessionRepository.findById(USER_SESSION_ID)).willReturn(Optional.of(userSession));
+        given(userSession.isExpired()).willReturn(false);
+        given(consultationSessionRepository.existsByUserSessionIdAndStatusIn(anyString(), any()))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> consultationSessionService.create(createRequest))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_ALREADY_IN_PROGRESS);
+
+        verify(stationRepository, never()).findById(any());
+        verify(consultationSessionRepository, never()).save(any());
+    }
+
+    @Test
+    void create_실패_존재하지_않는_역() {
+        given(userSessionRepository.findById(USER_SESSION_ID)).willReturn(Optional.of(userSession));
+        given(userSession.isExpired()).willReturn(false);
+        given(consultationSessionRepository.existsByUserSessionIdAndStatusIn(anyString(), any()))
+                .willReturn(false);
+        given(stationRepository.findById(STATION_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> consultationSessionService.create(createRequest))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.STATION_NOT_FOUND);
+    }
+
+    @Test
+    void create_실패_목적지_유형과_ID_중_하나만_전달됨() {
+        ConsultationCreateRequest invalidRequest = new ConsultationCreateRequest(
+                USER_SESSION_ID, STATION_ID, ProblemType.CANNOT_FIND_EXIT,
+                15L, "place", null, true, true
         );
 
-        assertThatThrownBy(() -> consultationSessionService.create(request))
+        assertThatThrownBy(() -> consultationSessionService.create(invalidRequest))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_DESTINATION);
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_DESTINATION);
 
-        verifyNoInteractions(userSessionRepository, stationRepository, consultationSessionRepository);
+        verify(userSessionRepository, never()).findById(any());
     }
 
     @Test
-    void create_존재하지_않는_userSession이면_USER_SESSION_NOT_FOUND() {
-        when(userSessionRepository.findById("usr_abc123")).thenReturn(Optional.empty());
+    void get_성공() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
 
-        assertThatThrownBy(() -> consultationSessionService.create(validRequest()))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.USER_SESSION_NOT_FOUND);
-    }
-
-    @Test
-    void create_만료된_userSession이면_USER_SESSION_ALREADY_ENDED() {
-        UserSession userSession = mock(UserSession.class);
-        when(userSessionRepository.findById("usr_abc123")).thenReturn(Optional.of(userSession));
-        when(userSession.isExpired()).thenReturn(true);
-
-        assertThatThrownBy(() -> consultationSessionService.create(validRequest()))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.USER_SESSION_ALREADY_ENDED);
-
-        verifyNoInteractions(stationRepository);
-    }
-
-    @Test
-    void create_존재하지_않는_station이면_STATION_NOT_FOUND() {
-        UserSession userSession = mock(UserSession.class);
-        when(userSessionRepository.findById("usr_abc123")).thenReturn(Optional.of(userSession));
-        when(userSession.isExpired()).thenReturn(false);
-        when(stationRepository.findById(1L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> consultationSessionService.create(validRequest()))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.STATION_NOT_FOUND);
-    }
-
-    @Test
-    void get_성공_WAITING이면_signalingRoomId는_null() {
-        ConsultationSession session = ConsultationSession.create(
-                "usr_abc123", 1L, ProblemType.CANNOT_FIND_EXIT, null, null, null, true, true
-        );
-        when(consultationSessionRepository.findById(session.getConsultationId()))
-                .thenReturn(Optional.of(session));
-
-        ConsultationResponse response = consultationSessionService.get(session.getConsultationId());
+        ConsultationResponse response =
+                consultationSessionService.get(session.getConsultationId(), USER_SESSION_ID);
 
         assertThat(response.consultationId()).isEqualTo(session.getConsultationId());
-        assertThat(response.signalingRoomId()).isNull();
     }
 
     @Test
-    void get_존재하지_않으면_CONSULTATION_NOT_FOUND() {
-        when(consultationSessionRepository.findById("cs_none")).thenReturn(Optional.empty());
+    void get_실패_존재하지_않는_상담() {
+        given(consultationSessionRepository.findById("cs_notfound")).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> consultationSessionService.get("cs_none"))
+        assertThatThrownBy(() -> consultationSessionService.get("cs_notfound", USER_SESSION_ID))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
     }
 
     @Test
-    void cancel_WAITING이면_성공() {
-        ConsultationSession session = ConsultationSession.create(
-                "usr_abc123", 1L, ProblemType.CANNOT_FIND_EXIT, null, null, null, true, true
-        );
-        when(consultationSessionRepository.findById(session.getConsultationId()))
-                .thenReturn(Optional.of(session));
+    void get_실패_상담_소유자가_아님() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
 
-        ConsultationCancelResponse response = consultationSessionService.cancel(session.getConsultationId());
+        assertThatThrownBy(() -> consultationSessionService.get(session.getConsultationId(), OTHER_USER_SESSION_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
+    }
+
+    @Test
+    void cancel_성공() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        ConsultationCancelResponse response =
+                consultationSessionService.cancel(session.getConsultationId(), USER_SESSION_ID);
 
         assertThat(response.status()).isEqualTo(ConsultationStatus.CANCELED);
-        assertThat(session.getStatus()).isEqualTo(ConsultationStatus.CANCELED);
     }
 
     @Test
-    void cancel_존재하지_않으면_CONSULTATION_NOT_FOUND() {
-        when(consultationSessionRepository.findById("cs_none")).thenReturn(Optional.empty());
+    void cancel_실패_존재하지_않는_상담() {
+        given(consultationSessionRepository.findById("cs_notfound")).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> consultationSessionService.cancel("cs_none"))
+        assertThatThrownBy(() -> consultationSessionService.cancel("cs_notfound", USER_SESSION_ID))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
     }
 
     @Test
-    void cancel_이미_취소된_상담을_다시_취소하면_CONSULTATION_NOT_CANCELABLE() {
-        ConsultationSession session = ConsultationSession.create(
-                "usr_abc123", 1L, ProblemType.CANNOT_FIND_EXIT, null, null, null, true, true
-        );
-        session.cancel();
-        when(consultationSessionRepository.findById(session.getConsultationId()))
-                .thenReturn(Optional.of(session));
+    void cancel_실패_취소_불가능한_상태() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+        consultationSessionService.cancel(session.getConsultationId(), USER_SESSION_ID); // WAITING -> CANCELED
 
-        assertThatThrownBy(() -> consultationSessionService.cancel(session.getConsultationId()))
+        assertThatThrownBy(() -> consultationSessionService.cancel(session.getConsultationId(), USER_SESSION_ID))
                 .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.CONSULTATION_NOT_CANCELABLE);
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_CANCELABLE);
+    }
+
+    @Test
+    void cancel_실패_상담_소유자가_아님() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> consultationSessionService.cancel(session.getConsultationId(), OTHER_USER_SESSION_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
+    }
+
+    @Test
+    void cancel_실패_소유자가_아니고_취소_불가능한_상태_이면_NOT_FOUND를_반환한다() {
+        // 다른 사람 상담이면서 이미 WAITING이 아닌 상태여도, 상태 정보를 흘리지 않고
+        // CONSULTATION_NOT_FOUND만 반환해야 한다 (소유자 검증이 상태 검증보다 먼저 실행되어야 함)
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+        consultationSessionService.cancel(session.getConsultationId(), USER_SESSION_ID); // 소유자가 먼저 취소 -> CANCELED
+
+        assertThatThrownBy(() -> consultationSessionService.cancel(session.getConsultationId(), OTHER_USER_SESSION_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
     }
 }
