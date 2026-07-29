@@ -6,6 +6,7 @@ import com.pingo.backend.usersession.dto.request.UserSessionUpdateRequest;
 import com.pingo.backend.usersession.dto.response.UserSessionCreateResponse;
 import com.pingo.backend.usersession.dto.response.UserSessionResponse;
 import com.pingo.backend.usersession.service.UserSessionService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/user-sessions")
 @RequiredArgsConstructor
+@Tag(name = "사용자 세션 API", description = "비로그인 사용자가 언어·현재 위치·목적지 등 이용 상태를 유지·관리하는 API")
 public class UserSessionController {
 
     private final UserSessionService userSessionService;
