@@ -1,230 +1,345 @@
-/* Screen 14 (FR-U-009) — route option comparison. Prototype `#s-route`. */
-
 .body {
   position: relative;
+  overflow: hidden;
+  background: #071712;
 }
 
-.map {
+.camera {
   position: relative;
-  z-index: 0;
+  flex: 0 1 45%;
+  min-height: 275px;
+  overflow: hidden;
+  background: radial-gradient(120% 100% at 50% 20%, #2b3833, #08120e);
 }
 
-.elevatorPin {
-  position: absolute;
-  top: 68%;
-  left: 18%;
+.topBar {
+  position: relative;
+  z-index: 4;
   display: flex;
-  color: var(--color-ink);
-  transform: translate(-50%, -50%);
+  align-items: center;
+  justify-content: space-between;
+  height: 54px;
+  padding: 8px 16px 0;
+  background: linear-gradient(180deg, rgb(6 19 16 / 94%), transparent);
+}
+
+.routeHeader {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr);
+  gap: 6px;
+  align-items: stretch;
+  margin: 6px 10px 0;
+}
+
+.routePoint {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  min-width: 0;
+  min-height: 78px;
+  padding: 10px 12px;
+  background: rgb(6 19 16 / 82%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 15px;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 16%);
+}
+
+.routeLabel {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.routePoint small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routePoint small {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgb(223 246 230 / 72%);
+}
+
+.routePoint strong {
+  margin-top: 4px;
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: #fff;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.pointDot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: var(--color-mint);
+  border: 2px solid #dff6e6;
+  border-radius: 50%;
+}
+
+.pointDotDestination {
+  background: var(--color-coral);
+}
+
+.routeArrow {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--color-mint-highlight);
+  background: rgb(6 19 16 / 82%);
+  border: 1px solid rgb(127 239 195 / 22%);
+  border-radius: 50%;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 16%);
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.62;
+}
+
+.cameraHint {
+  position: absolute;
+  right: 0;
+  bottom: 18px;
+  left: 0;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: #dff6e6;
+  text-shadow: 0 2px 8px #000;
 }
 
 .panel {
   position: relative;
   z-index: 5;
-  flex: none;
-  padding: 14px 0 18px;
-  background: var(--color-paper);
-  border-top: 1px solid var(--color-line);
-}
-
-.caption {
   display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: flex-end;
-  margin: 0 20px 10px;
+  flex: 1 1 55%;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  padding: 13px 0 24px;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border-radius: 24px 24px 0 0;
 }
 
-.captionText {
-  flex: 1;
-  margin: 0;
-}
-
-.swipeHint {
-  display: inline-flex;
-  flex: none;
-  gap: 6px;
-  align-items: center;
-  padding: 5px 10px;
-  background: rgb(60 216 160 / 14%);
-  border: 1px solid rgb(14 163 111 / 28%);
-  border-radius: var(--radius-pill);
-}
-
-.swipeHintText {
-  font-size: 10.5px;
-  font-weight: 800;
-  white-space: nowrap;
-  color: var(--color-mint-darker);
-}
-
-.nudge {
-  animation: route-nudge 1.3s ease-in-out infinite;
-}
-
-.carouselWrap {
-  position: relative;
-}
-
-.carousel {
+.panelHead {
   display: flex;
   gap: 12px;
-  padding: 0 20px 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px 9px;
 }
 
-.carousel::-webkit-scrollbar {
-  display: none;
+.eyebrow {
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  color: var(--color-mint-dark);
+}
+
+.panelHead h1 {
+  margin: 3px 0 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.optionList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 20px;
 }
 
 .option {
-  flex: none;
-  flex-direction: column;
-  gap: 6px;
-  align-items: stretch;
-  width: 290px;
-  min-width: 290px;
-  min-height: 72px;
-  padding: 13px 16px;
+  gap: 11px;
+  min-height: 88px;
+  padding: 10px 12px;
   background: #fff;
-  border: 1.5px solid transparent;
-  border-radius: 18px;
+  border: 1.5px solid var(--color-line-soft);
+  border-radius: 16px;
   box-shadow: none;
 }
 
 .option:hover {
   background: #fff;
-  border-color: transparent;
   transform: none;
 }
 
 .option[aria-pressed='true'] {
-  border: 2.5px solid var(--color-mint);
+  border: 1.5px solid color-mix(in srgb, var(--color-mint) 72%, white);
   box-shadow:
-    -7px 8px 0 color-mix(in srgb, var(--color-mint) 16%, transparent),
-    0 8px 18px -12px color-mix(in srgb, var(--color-mint-darker) 32%, transparent),
-    inset 0 1px 0 rgb(255 255 255 / 90%);
-}
-
-.optionHead {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+    0 0 0 3px color-mix(in srgb, var(--color-mint) 10%, transparent),
+    0 8px 20px rgb(36 102 77 / 8%);
 }
 
 .optionIcon {
   display: flex;
-  color: #0ea36f;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--color-mint-dark);
+  background: var(--color-mint-tint);
+  border-radius: 11px;
+}
+
+.optionBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.optionHead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .optionName {
-  flex: 1;
   font-size: 15px;
-  white-space: nowrap;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
-.optionTime {
+.optionMetrics {
+  display: inline-flex;
   flex: none;
-  font-size: 13px;
-  font-weight: 800;
-  white-space: nowrap;
+  gap: 4px;
+  align-items: center;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border: 1px solid color-mix(in srgb, var(--color-mint) 28%, transparent);
+  border-radius: var(--radius-pill);
+}
+
+.optionMetrics strong {
+  font-weight: 650;
+}
+
+.optionMetrics span {
   color: var(--color-mint-mid);
 }
 
-.optionMeta {
+.optionRoute {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  margin-top: 6px;
+}
+
+.optionExit {
+  flex: none;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--color-ink);
+}
+
+.optionArrow {
+  flex: none;
+  color: var(--color-mint-dark);
+}
+
+.optionDestination {
+  min-width: 0;
+  overflow: hidden;
   font-size: 11.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionMeta {
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-sub);
 }
 
-.fade {
+.selectionToast {
   position: absolute;
-  top: 0;
-  bottom: 4px;
-  display: flex;
-  align-items: center;
-  width: 56px;
+  top: 54%;
+  left: 50%;
+  z-index: 10;
+  width: max-content;
+  max-width: calc(100% - 40px);
+  padding: 8px 13px;
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(223 246 230 / 92%);
   pointer-events: none;
+  background: rgb(6 19 16 / 82%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(127 239 195 / 30%);
+  border-radius: 11px;
+  box-shadow:
+    0 7px 18px rgb(0 0 0 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 7%);
+  animation: selectionToast 1.4s ease forwards;
 }
 
-.fadeRight {
-  right: 10px;
-  justify-content: flex-end;
-  padding-right: 8px;
-  background: linear-gradient(270deg, var(--color-paper) 30%, transparent);
-}
+@keyframes selectionToast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.98);
+  }
 
-.fadeLeft {
-  left: 10px;
-  justify-content: flex-start;
-  padding-left: 8px;
-  background: linear-gradient(90deg, var(--color-paper) 30%, transparent);
-}
+  14%,
+  76% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
 
-.fadeButton {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: var(--color-mint-dark);
-  cursor: pointer;
-  pointer-events: auto;
-  background: #fff;
-  border: 1px solid rgb(15 44 34 / 12%);
-  border-radius: 50%;
-  box-shadow: 0 3px 10px -3px rgb(15 44 34 / 28%);
-}
-
-.fadeRight .fadeButton {
-  animation: route-nudge 1.3s ease-in-out infinite;
-}
-
-.fadeLeft .fadeButton {
-  animation: route-nudge-left 1.3s ease-in-out infinite;
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -5px) scale(0.99);
+  }
 }
 
 .cta {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 20px 0;
-}
-
-@keyframes route-nudge {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: translateX(0);
-  }
-
-  50% {
-    opacity: 1;
-    transform: translateX(7px);
-  }
-}
-
-@keyframes route-nudge-left {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: translateX(0);
-  }
-
-  50% {
-    opacity: 1;
-    transform: translateX(-7px);
-  }
+  margin-top: 0;
+  padding: 9px 20px 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nudge,
-  .fadeButton {
+  .selectionToast {
     animation: none;
+    transform: translateX(-50%);
   }
 }
