@@ -53,8 +53,8 @@ export function IndoorMapView({
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
-  // 목업 모드에서는 조회하지 않는다. (훅이 stationId > 0 일 때만 요청한다)
-  const query = useStationFloorMaps(useMockData ? 0 : stationId);
+  // 목업 모드에서는 목업 지도를 쓰므로 조회하지 않는다.
+  const query = useStationFloorMaps(stationId, { enabled: !useMockData });
 
   if (!useMockData) {
     if (query.isPending) {

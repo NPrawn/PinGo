@@ -123,7 +123,8 @@ describe('IndoorMapView 목업 모드', () => {
     mockedHook.mockReturnValue(hookState({ isPending: true, isError: false }));
     render(<IndoorMapView stationId={1} useMockData />);
 
-    expect(mockedHook).toHaveBeenCalledWith(0);
+    // stationId를 조작하는 대신 enabled로 조회를 명시적으로 끈다.
+    expect(mockedHook).toHaveBeenCalledWith(1, { enabled: false });
     expect(screen.getByRole('img', { name: 'B2 실내 지도' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '목적지' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '이동 경로' })).toBeInTheDocument();
