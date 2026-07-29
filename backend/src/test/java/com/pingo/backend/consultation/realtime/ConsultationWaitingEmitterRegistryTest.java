@@ -2,6 +2,7 @@ package com.pingo.backend.consultation.realtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -47,6 +48,19 @@ public class ConsultationWaitingEmitterRegistryTest {
     }
 
     @Test
+    void registerRemovesEmitterWhenInitEventSendFails() throws IOException {
+        IllegalStateException exception = new IllegalStateException("emitter already completed");
+        SseEmitter emitter = mock(SseEmitter.class);
+        doThrow(exception).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        registry = new ConsultationWaitingEmitterRegistry(timeoutMillis -> emitter);
+
+        registry.register("consultation-1");
+
+        assertThat(registry.contains("consultation-1")).isFalse();
+        verify(emitter).completeWithError(exception);
+    }
+
+    @Test
     void publishDoesNothingWhenEmitterDoesNotExist() {
         ConsultationWaitingEventResponse event = new ConsultationWaitingEventResponse(
                 "consultation-1",
@@ -59,5 +73,24 @@ public class ConsultationWaitingEmitterRegistryTest {
         registry.publish(event);
 
         assertThat(registry.contains("consultation-1")).isFalse();
+    }
+
+    @Test
+    void publishRemovesEmitterWhenSendFails() throws IOException {
+        IllegalStateException exception = new IllegalStateException("emitter already completed");
+        SseEmitter emitter = registry.register("consultation-1");
+        doThrow(exception).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        ConsultationWaitingEventResponse event = new ConsultationWaitingEventResponse(
+                "consultation-1",
+                ConsultationWaitingEventType.WAITING,
+                null,
+                "상담자를 기다리는 중입니다",
+                Instant.parse("2026-07-29T00:00:00Z")
+        );
+
+        registry.publish(event);
+
+        assertThat(registry.contains("consultation-1")).isFalse();
+        verify(emitter).completeWithError(exception);
     }
 }

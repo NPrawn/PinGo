@@ -40,7 +40,7 @@ public class ConsultationWaitingEmitterRegistry {
             emitter.send(SseEmitter.event()
                     .name(INIT_EVENT_NAME)
                     .data(INIT_EVENT_DATA));
-        } catch (IOException exception) {
+        } catch (IOException | IllegalStateException exception) {
             emitters.remove(consultationRequestId, emitter);
             emitter.completeWithError(exception);
         }
@@ -58,8 +58,9 @@ public class ConsultationWaitingEmitterRegistry {
             emitter.send(SseEmitter.event()
                     .name(event.type().name())
                     .data(event));
-        } catch (IOException exception) {
+        } catch (IOException | IllegalStateException exception) {
             emitters.remove(event.consultationRequestId(), emitter);
+            emitter.completeWithError(exception);
         }
     }
 
