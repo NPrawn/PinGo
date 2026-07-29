@@ -35,8 +35,12 @@ function renderOverlay(props: {
   );
 }
 
-function routeLine(): SVGPolylineElement {
-  return screen.getByRole('img', { name: '이동 경로' }) as unknown as SVGPolylineElement;
+/** 경로 구간별 points 문자열. 구간이 나뉘면 원소가 여러 개다. */
+function routeSegments(): string[] {
+  const group = screen.getByRole('img', { name: '이동 경로' });
+  return Array.from(group.querySelectorAll('polyline')).map(
+    (line) => line.getAttribute('points') ?? '',
+  );
 }
 
 describe('IndoorMapOverlay', () => {
@@ -59,7 +63,7 @@ describe('IndoorMapOverlay', () => {
       ],
     });
 
-    expect(routeLine()).toHaveAttribute('points', '10,20 30,40 50,60');
+    expect(routeSegments()).toEqual(['10,20 30,40 50,60']);
   });
 
   it('원본 이미지 크기를 viewBox로 삼는다', () => {
@@ -91,7 +95,51 @@ describe('IndoorMapOverlay', () => {
       ];
 
       renderOverlay({ floorId: FLOOR_B2, pathNodes });
-      expect(routeLine()).toHaveAttribute('points', '30,30 40,40');
+      expect(routeSegments()).toEqual(['30,30 40,40']);
+    });
+
+    it('다른 층을 거쳐 돌아오면 구간을 끊어 그린다', () => {
+      // B2에서 출발해 B3를 경유하고 B2로 돌아오는 경로. 두 B2 구간은 이 층에서
+      // 이어져 있지 않으므로 한 선으로 이으면 벽을 통과하는 것처럼 보인다.
+      const pathNodes: RoutePathNode[] = [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 10, mapY: 10 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 20, mapY: 20 },
+        { nodeId: 3, floorId: FLOOR_B3, mapX: 30, mapY: 30 },
+        { nodeId: 4, floorId: FLOOR_B3, mapX: 40, mapY: 40 },
+        { nodeId: 5, floorId: FLOOR_B2, mapX: 50, mapY: 50 },
+        { nodeId: 6, floorId: FLOOR_B2, mapX: 60, mapY: 60 },
+      ];
+
+      renderOverlay({ floorId: FLOOR_B2, pathNodes });
+      expect(routeSegments()).toEqual(['10,10 20,20', '50,50 60,60']);
+    });
+
+    it('돌아온 구간에 노드가 하나뿐이면 그 구간은 그리지 않는다', () => {
+      const pathNodes: RoutePathNode[] = [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 10, mapY: 10 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 20, mapY: 20 },
+        { nodeId: 3, floorId: FLOOR_B3, mapX: 30, mapY: 30 },
+        { nodeId: 4, floorId: FLOOR_B2, mapX: 50, mapY: 50 },
+      ];
+
+      renderOverlay({ floorId: FLOOR_B2, pathNodes });
+      expect(routeSegments()).toEqual(['10,10 20,20']);
+    });
+
+    it('층을 여러 번 오가면 구간도 그만큼 나뉜다', () => {
+      const pathNodes: RoutePathNode[] = [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 1, mapY: 1 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 2, mapY: 2 },
+        { nodeId: 3, floorId: FLOOR_B3, mapX: 3, mapY: 3 },
+        { nodeId: 4, floorId: FLOOR_B2, mapX: 4, mapY: 4 },
+        { nodeId: 5, floorId: FLOOR_B2, mapX: 5, mapY: 5 },
+        { nodeId: 6, floorId: FLOOR_B3, mapX: 6, mapY: 6 },
+        { nodeId: 7, floorId: FLOOR_B2, mapX: 7, mapY: 7 },
+        { nodeId: 8, floorId: FLOOR_B2, mapX: 8, mapY: 8 },
+      ];
+
+      renderOverlay({ floorId: FLOOR_B2, pathNodes });
+      expect(routeSegments()).toEqual(['1,1 2,2', '4,4 5,5', '7,7 8,8']);
     });
   });
 
@@ -138,7 +186,9 @@ describe('IndoorMapOverlay', () => {
       expect(screen.getByRole('img', { name: '목적지' })).toBeInTheDocument();
     });
 
-    it('잘못된 좌표의 노드만 경로에서 빼고 나머지는 잇는다', () => {
+    it('잘못된 좌표는 구간을 끊지 않고 건너뛴다', () => {
+      // 좌표를 모르는 것과 이 층에서 이어져 있지 않은 것은 다르다.
+      // 앞뒤 노드는 여전히 그 지점을 지나 연결돼 있으므로 한 구간으로 남긴다.
       renderOverlay({
         pathNodes: [
           { nodeId: 1, floorId: FLOOR_B2, mapX: 10, mapY: 20 },
@@ -147,7 +197,7 @@ describe('IndoorMapOverlay', () => {
         ],
       });
 
-      expect(routeLine()).toHaveAttribute('points', '10,20 50,60');
+      expect(routeSegments()).toEqual(['10,20 50,60']);
     });
 
     it('null·undefined 좌표가 섞여 들어와도 터지지 않는다', () => {
@@ -176,7 +226,7 @@ describe('IndoorMapOverlay', () => {
         { nodeId: 2, floorId: FLOOR_B2, mapX: 30, mapY: 40 },
       ],
     });
-    expect(routeLine()).toHaveAttribute('points', '10,20 30,40');
+    expect(routeSegments()).toEqual(['10,20 30,40']);
 
     rerender(
       <IndoorMapOverlay
@@ -190,6 +240,6 @@ describe('IndoorMapOverlay', () => {
         ]}
       />,
     );
-    expect(routeLine()).toHaveAttribute('points', '70,80 90,100');
+    expect(routeSegments()).toEqual(['70,80 90,100']);
   });
 });
