@@ -5,26 +5,23 @@
   background: var(--color-background);
 }
 
-/* 뷰포트를 가득 채우고 지도 이미지를 가운데 정렬하는 좌표 컨테이너.
+/* 지도 이미지와 오버레이가 공유하는 좌표 컨테이너.
    시설·출구 마커(281)와 경로·현재 위치(282) 오버레이가 이 위에 얹힌다. */
 .stage {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 100%;
   height: 100%;
 }
 
-/* 치환 요소인 img의 고유 비율을 항상 보존한다.
-   width/height를 auto로 두고 가로·세로 모두 max로 제한하면,
-   뷰포트가 가로로 넓든 세로로 길든 원본 비율 그대로 화면 안에 맞춰진다. */
+/* stage를 채우되 object-fit: contain으로 원본 비율을 유지한다.
+   오버레이 SVG는 같은 박스에서 preserveAspectRatio 기본값(xMidYMid meet)으로 그려지는데,
+   이는 contain과 같은 방식으로 여백을 만든다. 따라서 뷰포트가 가로로 넓든 세로로 길든
+   이미지와 오버레이 좌표가 서로 어긋나지 않는다. */
 .image {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .status {

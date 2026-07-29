@@ -31,6 +31,11 @@ export const ko = {
       empty: '등록된 지도가 없습니다',
       floorNotFound: '해당 층의 지도가 없습니다',
       imageAlt: '{{floorCode}} 실내 지도',
+      overlay: {
+        currentLocation: '현재 위치',
+        destination: '목적지',
+        route: '이동 경로',
+      },
     },
   },
 } as const;
