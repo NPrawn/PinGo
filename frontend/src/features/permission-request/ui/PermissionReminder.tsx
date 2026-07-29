@@ -10,7 +10,11 @@ type PermissionReminderProps = {
    */
   variant: 'incomplete' | 'blocked';
   onDismiss: () => void;
-  /** Runs after the user grants everything from inside the dialog. */
+  /**
+   * Runs when the user asks for the permissions from inside the dialog. The
+   * caller re-runs the browser prompts — the dialog cannot grant anything
+   * itself.
+   */
   onAllowAll: () => void;
 };
 
@@ -20,12 +24,6 @@ const PENDING_CHIP = { bg: '#fff', fg: '#8b857a' };
 /** Prototype's two permission modals on `#s-perm`. */
 export function PermissionReminder({ variant, onDismiss, onAllowAll }: PermissionReminderProps) {
   const granted = usePermissionStore((state) => state.granted);
-  const grant = usePermissionStore((state) => state.grant);
-
-  const allowAll = () => {
-    grant('loc', 'cam', 'mic');
-    onAllowAll();
-  };
 
   const incomplete = variant === 'incomplete';
 
@@ -73,7 +71,7 @@ export function PermissionReminder({ variant, onDismiss, onAllowAll }: Permissio
           </div>
         )}
 
-        <Button className={styles.primary} onClick={allowAll}>
+        <Button className={styles.primary} onClick={onAllowAll}>
           {incomplete ? '모두 허용하기' : '권한 허용하기'}
         </Button>
         <GhostButton className={styles.secondary} onClick={onDismiss}>
