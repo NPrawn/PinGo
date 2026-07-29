@@ -1,39 +1,75 @@
 import { useTranslation } from 'react-i18next';
-import { useStationFloorMaps, type FloorMap } from '@/entities/floor-map';
+import {
+  findCoordinateFrame,
+  meterToPixel,
+  MOCK_FLOOR_MAPS,
+  useStationFloorMaps,
+  type FloorMap,
+} from '@/entities/floor-map';
+import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
 import { resolveAssetUrl } from '@/shared/config';
+import { MOCK_CURRENT_LOCATION, MOCK_DESTINATION, MOCK_PATH_NODES } from '../model/fixtures';
+import { IndoorMapOverlay } from './IndoorMapOverlay';
 import styles from './IndoorMapView.module.css';
 
 interface IndoorMapViewProps {
   stationId: number;
   // 표시할 층. 지정하지 않으면 첫 번째 지도를 표시한다. (층 전환 UI는 태스크 280)
   floorId?: number;
+  /** 현재 위치. 위치 인식(FR-U-004) 결과를 그대로 받는다. */
+  currentLocation?: IndoorPoint | null;
+  /** 목적지. 경로 응답의 마지막 노드와 같아도 무방하다. */
+  destination?: IndoorPoint | null;
+  /** 경로가 지나는 노드. 경로 응답의 pathNodes를 그대로 받는다. */
+  pathNodes?: readonly RoutePathNode[];
+  /**
+   * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
+   * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
+   *
+   * TODO: floor_map seed(FR-A-002)와 경로·위치 API가 연결되면
+   * 이 prop과 목업 모듈(entities/floor-map/model/fixtures, ../model/fixtures)을 함께 제거한다.
+   */
+  useMockData?: boolean;
 }
 
-function selectFloorMap(maps: FloorMap[], floorId?: number): FloorMap | undefined {
+function selectFloorMap(maps: readonly FloorMap[], floorId?: number): FloorMap | undefined {
   if (floorId === undefined) return maps[0];
   return maps.find((map) => map.floorId === floorId);
 }
 
 /**
- * 특정 역·층의 실내 지도 이미지를 렌더링한다.
- * 이미지는 원본 width/height를 고유 비율로 삼아, 뷰포트 크기와 무관하게
- * 비율을 유지한 채 화면 안에 맞춰진다.
- * 시설·출구 마커(281)와 현재 위치·경로 오버레이(282)는 stage 위에 얹힌다.
+ * 특정 역·층의 실내 지도 이미지를 렌더링하고, 그 위에 현재 위치·목적지·경로를 겹쳐 그린다.
+ *
+ * 지도 이미지는 stage를 채우되 `object-fit: contain`으로 원본 비율을 유지한다.
+ * 오버레이 SVG가 같은 박스에 같은 방식으로 여백을 만들기 때문에, 뷰포트 크기와 무관하게
+ * 좌표가 도면과 일치한다. 시설·출구 마커(281)도 같은 stage 위에 얹힌다.
  */
-export function IndoorMapView({ stationId, floorId }: IndoorMapViewProps) {
+export function IndoorMapView({
+  stationId,
+  floorId,
+  currentLocation,
+  destination,
+  pathNodes,
+  useMockData = false,
+}: IndoorMapViewProps) {
   const { t } = useTranslation();
-  const { data: maps, isPending, isError } = useStationFloorMaps(stationId);
+  // 목업 모드에서는 조회하지 않는다. (훅이 stationId > 0 일 때만 요청한다)
+  const query = useStationFloorMaps(useMockData ? 0 : stationId);
 
-  if (isPending) {
-    return <p className={styles.status}>{t('indoorMap.loading')}</p>;
+  if (!useMockData) {
+    if (query.isPending) {
+      return <p className={styles.status}>{t('indoorMap.loading')}</p>;
+    }
+    if (query.isError) {
+      return (
+        <p className={styles.status} role="alert">
+          {t('indoorMap.error')}
+        </p>
+      );
+    }
   }
-  if (isError) {
-    return (
-      <p className={styles.status} role="alert">
-        {t('indoorMap.error')}
-      </p>
-    );
-  }
+
+  const maps = useMockData ? MOCK_FLOOR_MAPS : (query.data ?? []);
   if (maps.length === 0) {
     return <p className={styles.status}>{t('indoorMap.empty')}</p>;
   }
@@ -53,8 +89,46 @@ export function IndoorMapView({ stationId, floorId }: IndoorMapViewProps) {
           width={floorMap.width}
           height={floorMap.height}
         />
-        {/* 마커(281) / 경로·현재 위치(282) 오버레이가 이 stage 위에 추가된다. */}
+        <MapOverlay
+          floorMap={floorMap}
+          currentLocation={currentLocation ?? (useMockData ? MOCK_CURRENT_LOCATION : null)}
+          destination={destination ?? (useMockData ? MOCK_DESTINATION : null)}
+          pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
+        />
+        {/* 시설·출구 마커(281)가 이 stage 위에 추가된다. */}
       </div>
     </div>
+  );
+}
+
+/**
+ * 표시 중인 층의 좌표 프레임을 찾아 오버레이에 변환 함수를 넘긴다.
+ * 프레임이 없는 층은 좌표를 이미지 위 어디에 놓아야 할지 알 수 없으므로 오버레이를 생략한다.
+ */
+function MapOverlay({
+  floorMap,
+  currentLocation,
+  destination,
+  pathNodes,
+}: {
+  floorMap: FloorMap;
+  currentLocation: IndoorPoint | null;
+  destination: IndoorPoint | null;
+  pathNodes?: readonly RoutePathNode[];
+}) {
+  // TODO: 프레임이 층별 지도 응답에 포함되면 FloorMap에서 바로 읽는다. (현재 API 미노출)
+  const frame = findCoordinateFrame(floorMap.floorCode);
+  if (!frame) return null;
+
+  return (
+    <IndoorMapOverlay
+      floorId={floorMap.floorId}
+      imageWidth={floorMap.width}
+      imageHeight={floorMap.height}
+      project={(mapX, mapY) => meterToPixel(mapX, mapY, frame)}
+      currentLocation={currentLocation}
+      destination={destination}
+      pathNodes={pathNodes}
+    />
   );
 }
