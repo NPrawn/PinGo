@@ -75,7 +75,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 status.getReason());
     }
 
-    private void handleValidMessage(WebSocketSession session, SignalingMessage signalingMessage) {
+    private void handleValidMessage(WebSocketSession session, SignalingMessage signalingMessage) throws IOException {
         switch (signalingMessage.type()) {
             case JOIN -> signalingRoomRegistry.register(
                     signalingMessage.sessionId(),
@@ -83,10 +83,25 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                     session
             );
             case LEAVE -> signalingRoomRegistry.remove(session);
-            case OFFER, ANSWER, ICE_CANDIDATE, ERROR -> {
-                // Relay handling is added in the next commit.
-            }
+            case OFFER, ANSWER, ICE_CANDIDATE -> relayToPeer(session, signalingMessage);
+            case ERROR -> log.warn("Client sent signaling ERROR message. websocketSessionId={}, sessionId={}",
+                    session.getId(),
+                    signalingMessage.sessionId());
         }
+    }
+
+    private void relayToPeer(WebSocketSession session, SignalingMessage signalingMessage) throws IOException {
+        WebSocketSession peerSession = signalingRoomRegistry
+                .findPeer(signalingMessage.sessionId(), signalingMessage.senderType())
+                .filter(WebSocketSession::isOpen)
+                .orElse(null);
+
+        if (peerSession == null) {
+            sendError(session, signalingMessage.sessionId(), "Signaling peer is not connected.");
+            return;
+        }
+
+        peerSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(signalingMessage)));
     }
 
     private void sendError(WebSocketSession session, String signalingSessionId, String message) throws IOException {
