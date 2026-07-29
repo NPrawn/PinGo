@@ -1,6 +1,7 @@
 package com.pingo.backend.signaling.room;
 
 import com.pingo.backend.signaling.dto.SignalingSenderType;
+import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.socket.WebSocketSession;
@@ -72,6 +73,31 @@ class SignalingRoomRegistryTest {
     }
 
     @Test
+    void registerMovesExistingSessionToNewRoom() {
+        WebSocketSession userSession = webSocketSession("user-session");
+
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        registry.register("consultation-2", SignalingSenderType.USER, userSession);
+
+        assertThat(registry.containsRoom("consultation-1")).isFalse();
+        assertThat(registry.containsRoom("consultation-2")).isTrue();
+    }
+
+    @Test
+    void removeDoesNothingWhenSessionIsNotRegistered() {
+        WebSocketSession userSession = webSocketSession("user-session");
+        WebSocketSession counselorSession = webSocketSession("counselor-session");
+
+        registry.register("consultation-1", SignalingSenderType.COUNSELOR, counselorSession);
+
+        registry.remove(userSession);
+
+        assertThat(registry.containsRoom("consultation-1")).isTrue();
+        assertThat(registry.findPeer("consultation-1", SignalingSenderType.USER))
+                .contains(counselorSession);
+    }
+
+    @Test
     void registerThrowsForSystemSenderType() {
         WebSocketSession systemSession = webSocketSession("system-session");
 
@@ -83,6 +109,7 @@ class SignalingRoomRegistryTest {
     private WebSocketSession webSocketSession(String id) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);
+        when(session.getAttributes()).thenReturn(new ConcurrentHashMap<>());
         return session;
     }
 }
