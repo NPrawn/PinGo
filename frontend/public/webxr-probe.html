@@ -3,13 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
     <title>PinGo WebXR 검증 (S15P11A206-294)</title>
     <!--
       WebXR 지원 환경과 실기기 pose 추적을 검증하는 최소 PoC.
 
       - 앱 번들과 무관한 단독 페이지다. FSD 계층과 프로덕션 코드에 영향을 주지 않는다.
-      - 파일명이 `pingo-`로 시작하므로 vite.config.ts의 excludePrototypeFromBuild가
-        프로덕션 빌드 산출물에서 제외한다.
+      - 실기기 검증을 배포된 HTTPS 주소로 진행하기 위해 프로덕션 빌드에 포함한다.
+        파일명이 `pingo-`로 시작하면 vite.config.ts의 excludePrototypeFromBuild가
+        dist에서 삭제하므로 접두사를 붙이지 않는다.
+      - 검증이 끝나면 이 페이지는 삭제하거나 `pingo-` 접두사를 붙여 배포에서 제외한다.
       - 확정 기준은 docs/기술_의사결정_정리.md 11장,
         좌표 정렬 제안은 docs/역삼역_FE_좌표연동_스펙.md 8장을 따른다.
       - 이 페이지는 pose 수집까지만 한다. 3D 렌더링과 지도 좌표 변환은 범위 밖이다.

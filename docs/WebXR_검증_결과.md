@@ -11,10 +11,12 @@ FR-U-010 상대 위치 추적의 구현 가능 범위와 fallback 기준을 실�
 
 | 항목 | 내용 |
 | --- | --- |
-| 검증 페이지 | `frontend/public/pingo-webxr-probe.html` |
-| 접속 경로 | `/pingo-webxr-probe.html` |
+| 검증 페이지 | `frontend/public/webxr-probe.html` |
+| 접속 경로 | `/webxr-probe.html` |
 | 앱 영향 | 없음. 단독 HTML이며 FSD 계층·앱 번들과 무관하다 |
-| 프로덕션 배포 | 제외됨. 파일명이 `pingo-`로 시작해 `vite.config.ts`의 `excludePrototypeFromBuild`가 `dist`에서 삭제한다 (확인 완료) |
+| 프로덕션 배포 | **포함됨.** 배포된 HTTPS 주소로 실기기 검증을 진행하기 위한 것이다. `pingo-` 접두사를 붙이면 `vite.config.ts`의 `excludePrototypeFromBuild`가 `dist`에서 삭제하므로 접두사를 쓰지 않는다 |
+| 검색 노출 | `noindex, nofollow` 지정 |
+| 검증 후 처리 | 페이지를 삭제하거나 `pingo-` 접두사를 붙여 배포에서 제외한다 |
 
 페이지가 수집하는 값은 실행 환경, `navigator.xr` 존재, `immersive-ar`·`inline` 지원 여부, 세션 시작·종료, reference space 종류, `XRFrame` pose(위치·yaw), 앵커 대비 이동·회전량, `기술_의사결정_정리.md` 11.4 기준의 위치 확정 횟수, 그리고 각 단계의 실패 `name`·`message`다.
 
@@ -56,18 +58,27 @@ WebXR 기기가 없는 환경에서 확인 가능한 항목만 실행했다.
 
 ### 3.2 접속 방법
 
-secure context가 필요하므로 다음 중 하나를 사용한다. LAN IP + http로는 `navigator.xr`이 노출되지 않는다.
+secure context가 필요하다. LAN IP + http로는 `navigator.xr`이 노출되지 않는다.
 
-```bash
-# 권장 — USB 연결 후 폰에서 http://localhost:5173 접속
-cd frontend && npm run dev
-adb reverse tcp:5173 tcp:5173
+**권장 — 배포된 HTTPS 주소 (Wi-Fi·adb 불필요)**
+
+`develop`에 merge하면 Jenkins가 자동으로 빌드·배포한다. Webhook은 모든 브랜치에서 발생하지만 Pipeline은 `develop`을 checkout하므로(`Jenkins_CI_설정.md` 37행) feature 브랜치 코드가 운영에 올라가지 않는다.
+
+```text
+https://jenkins.example.invalid/webxr-probe.html
 ```
 
+폰에서 LTE로 접속하면 되고, PC와 같은 네트워크에 있을 필요가 없다.
+
+**대안 — USB 터널 (배포 없이 로컬에서)**
+
+`adb reverse`는 USB 위로 터널을 만들기 때문에 네트워크가 필요 없다. dev 서버는 IPv4에도 바인딩해야 한다. Vite 기본값(`host: localhost`)은 Windows에서 `::1`만 열려 `adb`가 연결하는 `127.0.0.1`에 아무것도 없게 된다.
+
 ```bash
-# 대안 — 무선. 폰 Chrome에서 chrome://flags#unsafely-treat-insecure-origin-as-secure에
-#        http://<PC IP>:5173 등록 후 접속. 검증 후 플래그를 원복한다.
 cd frontend && npm run dev:host
+adb devices
+adb reverse tcp:5173 tcp:5173
+# 폰에서 http://localhost:5173/webxr-probe.html
 ```
 
 ### 3.3 체크리스트
