@@ -136,6 +136,83 @@ class SignalingWebSocketHandlerTest {
         assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
     }
 
+    @Test
+    void handleInvalidJsonReturnsError() throws Exception {
+        WebSocketSession userSession = webSocketSession("ws-user");
+
+        handler.handleTextMessage(userSession, new TextMessage("{invalid-json"));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(userSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+        verify(signalingRoomRegistry, never()).findPeer(any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.sessionId()).isEqualTo("ws-user");
+        assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
+        assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_MESSAGE");
+    }
+
+    @Test
+    void handleMissingRequiredFieldReturnsError() throws Exception {
+        WebSocketSession userSession = webSocketSession("ws-user");
+        String payload = """
+                {
+                  "sessionId": "consultation-1",
+                  "senderType": "USER",
+                  "payload": {},
+                  "timestamp": "2026-07-29T00:00:00Z"
+                }
+                """;
+
+        handler.handleTextMessage(userSession, new TextMessage(payload));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(userSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+        verify(signalingRoomRegistry, never()).findPeer(any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.sessionId()).isEqualTo("consultation-1");
+        assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
+        assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_MESSAGE");
+    }
+
+    @Test
+    void handleClosedPeerReturnsErrorToSender() throws Exception {
+        WebSocketSession userSession = webSocketSession("ws-user");
+        WebSocketSession counselorSession = webSocketSession("ws-counselor");
+        when(counselorSession.isOpen()).thenReturn(false);
+        when(signalingRoomRegistry.findPeer("consultation-1", SignalingSenderType.USER))
+                .thenReturn(Optional.of(counselorSession));
+
+        handler.handleTextMessage(userSession, textMessage(SignalingMessageType.ANSWER, SignalingSenderType.USER));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(userSession).sendMessage(messageCaptor.capture());
+        verify(counselorSession, never()).sendMessage(any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.sessionId()).isEqualTo("consultation-1");
+        assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
+        assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Signaling peer is not connected.");
+    }
+
     private TextMessage textMessage(SignalingMessageType type, SignalingSenderType senderType) throws Exception {
         SignalingMessage message = new SignalingMessage(
                 "consultation-1",
