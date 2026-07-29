@@ -1,9 +1,7 @@
 package com.pingo.backend.signaling.validation;
 
 import com.pingo.backend.signaling.dto.SignalingSenderType;
-import org.springframework.stereotype.Component;
 
-@Component
 public class NoopSignalingSessionValidator implements SignalingSessionValidator {
 
     @Override
@@ -13,5 +11,4 @@ public class NoopSignalingSessionValidator implements SignalingSessionValidator 
     ) {
         return SignalingSessionValidationResult.VALID;
     }
-
 }

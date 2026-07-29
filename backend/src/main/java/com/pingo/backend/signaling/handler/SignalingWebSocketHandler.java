@@ -90,6 +90,17 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handleValidMessage(WebSocketSession session, SignalingMessage signalingMessage) throws IOException {
+        if (signalingMessage.senderType() == SignalingSenderType.SYSTEM) {
+            sendError(
+                    session,
+                    signalingMessage.sessionId(),
+                    SignalingErrorCode.INVALID_SIGNALING_MESSAGE,
+                    "SYSTEM senderType cannot be sent by client.",
+                    false
+            );
+            return;
+        }
+
         switch (signalingMessage.type()) {
             case JOIN -> handleJoin(session, signalingMessage);
             case LEAVE -> signalingRoomRegistry.remove(session);
@@ -109,10 +120,10 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             sendError(
                     session,
                     signalingMessage.sessionId(),
-                SignalingErrorCode.SIGNALING_SESSION_NOT_JOINED,
-                "Signaling session is not joined.",
-                false
-        );
+                    SignalingErrorCode.SIGNALING_SESSION_NOT_JOINED,
+                    "Signaling session is not joined.",
+                    false
+            );
             return;
         }
         WebSocketSession peerSession = signalingRoomRegistry
@@ -167,7 +178,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                     session,
                     signalingMessage.sessionId(),
                     SignalingErrorCode.INVALID_SIGNALING_SESSION,
-                    "Invalid signaling session",
+                    "Invalid signaling session.",
                     false
             );
             return;

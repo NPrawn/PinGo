@@ -51,7 +51,7 @@ class SignalingWebSocketHandlerTest {
 
         handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
 
-        verify(signalingRoomRegistry).register("consultation-1", SignalingSenderType.USER, webSocketSession);
+        verify(signalingSessionValidator).validateJoin("consultation-1", SignalingSenderType.USER);
         verify(signalingRoomRegistry).register("consultation-1", SignalingSenderType.USER, webSocketSession);
     }
 
@@ -278,6 +278,29 @@ class SignalingWebSocketHandlerTest {
         assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
         assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
         assertThat(errorMessage.payload().get("code").asText()).isEqualTo("SIGNALING_SESSION_NOT_JOINED");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isFalse();
+    }
+
+    @Test
+    void handleSystemSenderTypeReturnsError() throws Exception {
+        WebSocketSession webSocketSession = webSocketSession("ws-system");
+
+        handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.SYSTEM));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(webSocketSession).sendMessage(messageCaptor.capture());
+        verify(signalingSessionValidator, never()).validateJoin(any(), any());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.sessionId()).isEqualTo("consultation-1");
+        assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
+        assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_MESSAGE");
         assertThat(errorMessage.payload().get("retryable").asBoolean()).isFalse();
     }
 
