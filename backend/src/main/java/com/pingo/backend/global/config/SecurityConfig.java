@@ -42,13 +42,16 @@ public class SecurityConfig {
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/signup", "/api/auth/check-login-id").permitAll()
                         .requestMatchers("/api/user-sessions","/api/user-sessions/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/consultations/*/accept", "/api/consultations/*/reject")
+                        .hasRole("COUNSELOR")
                         .requestMatchers(
                                 "/api/stations/**",
                                 "/api/facilities/**",
                                 "/api/destinations/**",
                                 "/api/places/**",
                                 "/api/routes/**",
-                                "/api/external-maps/**"
+                                "/api/external-maps/**",
+                                "/api/consultations/**"
                         ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/counselors/**").hasRole("COUNSELOR")
