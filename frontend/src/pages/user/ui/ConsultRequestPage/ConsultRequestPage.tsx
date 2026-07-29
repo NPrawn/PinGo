@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { CONSULT_ISSUES, useConsultStore } from '@/entities/consult';
 import { USER_ROUTES } from '@/shared/config';
 import {
@@ -20,6 +20,7 @@ import styles from './ConsultRequestPage.module.css';
 /** Screen 17 (FR-U-013) — choose what kind of help is needed. */
 export function ConsultRequestPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const issue = useConsultStore((state) => state.issue);
   const selectIssue = useConsultStore((state) => state.selectIssue);
   const [reminderOpen, setReminderOpen] = useState(false);
@@ -32,10 +33,19 @@ export function ConsultRequestPage() {
     void navigate(USER_ROUTES.CONSULT_PERMISSION);
   };
 
+  const goBack = () => {
+    if (location.key === 'default') {
+      void navigate(USER_ROUTES.STATION, { replace: true });
+      return;
+    }
+
+    void navigate(-1);
+  };
+
   return (
     <PhoneFrame>
       <div className={styles.topSpacer} />
-      <BackLink to={USER_ROUTES.NAVIGATION}>안내 화면으로</BackLink>
+      <BackLink onClick={goBack}>돌아가기</BackLink>
 
       <div className={styles.header}>
         <Icon3d name="headset" tone="lilac" iconSize={24} className={styles.headerIcon} />

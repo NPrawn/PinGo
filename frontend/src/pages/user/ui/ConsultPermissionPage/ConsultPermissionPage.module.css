@@ -2,13 +2,14 @@
    Ported from prototype `#s-consult-perm`. */
 
 .topSpacer {
-  height: 8px;
+  height: 18px;
 }
 
 .header {
   display: flex;
   gap: 12px;
   align-items: center;
+  margin-top: 16px;
 }
 
 .headerIcon {
@@ -28,14 +29,14 @@
 }
 
 .lede {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .options {
   display: flex;
   flex-direction: column;
   gap: 11px;
-  margin-top: 38px;
+  margin-top: 32px;
 }
 
 .labels {
@@ -103,11 +104,6 @@
 
 .primary {
   margin-top: 18px;
-}
-
-.secondary {
-  width: 100%;
-  margin-top: 4px;
 }
 
 @keyframes warningUrgent {

@@ -3,7 +3,8 @@
 
 .body {
   align-items: center;
-  padding-top: 60px;
+  padding-top: 72px;
+  padding-bottom: 24px;
   text-align: center;
 }
 
@@ -29,7 +30,7 @@
 }
 
 .title {
-  margin-top: 12px;
+  margin-top: 18px;
 }
 
 .sub {
@@ -42,7 +43,7 @@
   align-items: flex-start;
   width: 100%;
   padding: 16px;
-  margin-top: 18px;
+  margin-top: 24px;
   color: var(--color-ink);
   text-align: left;
   background: rgb(229 248 238 / 78%);
