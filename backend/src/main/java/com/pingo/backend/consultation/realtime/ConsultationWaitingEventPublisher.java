@@ -44,11 +44,11 @@ public class ConsultationWaitingEventPublisher {
                 consultationRequestId,
                 ConsultationWaitingEventType.CANCELED,
                 null,
-                "상담자가 요청이 취소되었습니다.."
+                "상담 요청이 취소되었습니다."
         );
     }
 
-    public void publishAccepted(String consultationRequestId) {
+    public void publishNoCounselor(String consultationRequestId) {
         publish(
                 consultationRequestId,
                 ConsultationWaitingEventType.NO_COUNSELOR,

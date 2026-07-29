@@ -1,7 +1,12 @@
 package com.pingo.backend.consultation.realtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
+import java.io.IOException;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,7 +18,7 @@ public class ConsultationWaitingEmitterRegistryTest {
 
     @BeforeEach
     void setUp() {
-        registry = new ConsultationWaitingEmitterRegistry();
+        registry = new ConsultationWaitingEmitterRegistry(timeoutMillis -> mock(SseEmitter.class));
     }
 
     @Test
@@ -21,6 +26,23 @@ public class ConsultationWaitingEmitterRegistryTest {
         SseEmitter emitter = registry.register("consultation-1");
 
         assertThat(emitter).isNotNull();
+        assertThat(registry.contains("consultation-1")).isTrue();
+    }
+
+    @Test
+    void registerSendsInitEvent() throws IOException {
+        SseEmitter emitter = registry.register("consultation-1");
+
+        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    void registerCompletesPreviousEmitterWhenSameConsultationRequestSubscribesAgain() {
+        SseEmitter previousEmitter = registry.register("consultation-1");
+        SseEmitter currentEmitter = registry.register("consultation-1");
+
+        verify(previousEmitter).complete();
+        verify(currentEmitter, never()).complete();
         assertThat(registry.contains("consultation-1")).isTrue();
     }
 

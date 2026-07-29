@@ -52,4 +52,20 @@ public class ConsultationWaitingEventPublisherTest {
         assertThat(event.signalingRoomId()).isNull();
         assertThat(event.timestamp()).isEqualTo(Instant.parse("2026-07-29T00:00:00Z"));
     }
+
+    @Test
+    void publishNoCounselorSendsNoCounselorEvent() {
+        publisher.publishNoCounselor("consultation-1");
+
+        ArgumentCaptor<ConsultationWaitingEventResponse> captor =
+                ArgumentCaptor.forClass(ConsultationWaitingEventResponse.class);
+        verify(emitterRegistry).publish(captor.capture());
+
+        ConsultationWaitingEventResponse event = captor.getValue();
+        assertThat(event.consultationRequestId()).isEqualTo("consultation-1");
+        assertThat(event.type()).isEqualTo(ConsultationWaitingEventType.NO_COUNSELOR);
+        assertThat(event.signalingRoomId()).isNull();
+        assertThat(event.message()).isEqualTo("상담 가능한 상담자가 없습니다.");
+        assertThat(event.timestamp()).isEqualTo(Instant.parse("2026-07-29T00:00:00Z"));
+    }
 }

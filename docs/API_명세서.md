@@ -1303,6 +1303,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 | 이벤트 | 설명 |
 | --- | --- |
+| `INIT` | SSE 연결 완료 확인 |
 | `WAITING` | 상담자를 기다리는 중 |
 | `ACCEPTED` | 상담자가 요청을 수락함 |
 | `REJECTED` | 상담자가 요청을 거절함 |
@@ -1332,6 +1333,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 #### 비고
 
 - 클라이언트는 상담 대기 화면 진입 시 이 SSE endpoint를 구독한다.
+- 서버는 구독 직후 연결 확인을 위해 `INIT` 이벤트와 `connected` 데이터를 전송한다.
 - `ACCEPTED` 이벤트를 받으면 `signalingRoomId`를 사용해 `/ws/signaling` WebSocket signaling에 참여한다.
 - 연결이 끊기면 클라이언트는 동일한 `consultationRequestId`로 재구독할 수 있다.
 
