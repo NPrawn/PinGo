@@ -6,6 +6,7 @@ import com.pingo.backend.signaling.dto.SignalingErrorPayload;
 import com.pingo.backend.signaling.dto.SignalingMessage;
 import com.pingo.backend.signaling.dto.SignalingMessageType;
 import com.pingo.backend.signaling.dto.SignalingSenderType;
+import com.pingo.backend.signaling.room.SignalingRoomRegistry;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     private static final String INVALID_SIGNALING_MESSAGE = "INVALID_SIGNALING_MESSAGE";
 
+    private final SignalingRoomRegistry signalingRoomRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final Validator validator;
 
@@ -52,6 +54,8 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                     signalingMessage.sessionId(),
                     signalingMessage.senderType(),
                     signalingMessage.type());
+
+            handleValidMessage(session, signalingMessage);
         } catch (JsonProcessingException exception) {
             log.warn("Failed to parse signaling message. websocketSessionId={}, payload={}",
                     session.getId(),
@@ -63,10 +67,26 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        signalingRoomRegistry.remove(session);
+
         log.info("WebSocket disconnected. sessionId={}, code={}, reason={}",
                 session.getId(),
                 status.getCode(),
                 status.getReason());
+    }
+
+    private void handleValidMessage(WebSocketSession session, SignalingMessage signalingMessage) {
+        switch (signalingMessage.type()) {
+            case JOIN -> signalingRoomRegistry.register(
+                    signalingMessage.sessionId(),
+                    signalingMessage.senderType(),
+                    session
+            );
+            case LEAVE -> signalingRoomRegistry.remove(session);
+            case OFFER, ANSWER, ICE_CANDIDATE, ERROR -> {
+                // Relay handling is added in the next commit.
+            }
+        }
     }
 
     private void sendError(WebSocketSession session, String signalingSessionId, String message) throws IOException {
