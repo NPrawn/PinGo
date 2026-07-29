@@ -1279,6 +1279,64 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ---
 
+## 10.4 상담 대기 상태 SSE 구독
+
+### GET `/api/consultations/{consultationRequestId}/waiting-events`
+
+상담 요청 ID 기준으로 상담 대기 상태 변경 이벤트를 Server-Sent Events로 구독한다.
+
+#### 인증
+
+비로그인 접근 허용
+
+#### Path Variables
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `consultationRequestId` | string | Y | 상담 요청 ID |
+
+#### Response
+
+`text/event-stream`
+
+#### Event Name
+
+| 이벤트 | 설명 |
+| --- | --- |
+| `WAITING` | 상담자를 기다리는 중 |
+| `ACCEPTED` | 상담자가 요청을 수락함 |
+| `REJECTED` | 상담자가 요청을 거절함 |
+| `CANCELED` | 사용자가 상담 요청을 취소함 |
+| `NO_COUNSELOR` | 상담 가능한 상담자가 없음 |
+
+#### Event Data
+
+```json
+{
+  "consultationRequestId": "consultation-1",
+  "type": "ACCEPTED",
+  "signalingRoomId": "room-1",
+  "message": "상담자가 요청을 수락했습니다.",
+  "timestamp": "2026-07-29T00:00:00Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `consultationRequestId` | string | Y | 상담 요청 ID |
+| `type` | string | Y | 상담 대기 이벤트 타입 |
+| `signalingRoomId` | string | N | WebRTC signaling room ID. `ACCEPTED` 이벤트에서만 전달 |
+| `message` | string | Y | 사용자 표시 메시지 |
+| `timestamp` | string | Y | 이벤트 생성 시각 |
+
+#### 비고
+
+- 클라이언트는 상담 대기 화면 진입 시 이 SSE endpoint를 구독한다.
+- `ACCEPTED` 이벤트를 받으면 `signalingRoomId`를 사용해 `/ws/signaling` WebSocket signaling에 참여한다.
+- 연결이 끊기면 클라이언트는 동일한 `consultationRequestId`로 재구독할 수 있다.
+
+---
+
 ## 11. 상담자 API
 
 ## 11.1 상담자 로그인
