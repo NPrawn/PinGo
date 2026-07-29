@@ -8,6 +8,8 @@ import com.pingo.backend.signaling.dto.SignalingMessage;
 import com.pingo.backend.signaling.dto.SignalingMessageType;
 import com.pingo.backend.signaling.dto.SignalingSenderType;
 import com.pingo.backend.signaling.room.SignalingRoomRegistry;
+import com.pingo.backend.signaling.validation.SignalingSessionValidationResult;
+import com.pingo.backend.signaling.validation.SignalingSessionValidator;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     private final SignalingRoomRegistry signalingRoomRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final Validator validator;
+    private final SignalingSessionValidator signalingSessionValidator;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -88,11 +91,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     private void handleValidMessage(WebSocketSession session, SignalingMessage signalingMessage) throws IOException {
         switch (signalingMessage.type()) {
-            case JOIN -> signalingRoomRegistry.register(
-                    signalingMessage.sessionId(),
-                    signalingMessage.senderType(),
-                    session
-            );
+            case JOIN -> handleJoin(session, signalingMessage);
             case LEAVE -> signalingRoomRegistry.remove(session);
             case OFFER, ANSWER, ICE_CANDIDATE -> relayToPeer(session, signalingMessage);
             case ERROR -> log.warn("Client sent signaling ERROR message. websocketSessionId={}, sessionId={}",
@@ -141,5 +140,29 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         );
 
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorMessage)));
+    }
+
+    private void handleJoin(WebSocketSession session, SignalingMessage signalingMessage) throws IOException {
+        SignalingSessionValidationResult validationResult = signalingSessionValidator.validateJoin(
+                signalingMessage.sessionId(),
+                signalingMessage.senderType()
+        );
+
+        if (validationResult != SignalingSessionValidationResult.VALID) {
+            sendError(
+                    session,
+                    signalingMessage.sessionId(),
+                    SignalingErrorCode.INVALID_SIGNALING_SESSION,
+                    "Invalid signaling session",
+                    false
+            );
+            return;
+        }
+
+        signalingRoomRegistry.register(
+                signalingMessage.sessionId(),
+                signalingMessage.senderType(),
+                session
+        );
     }
 }

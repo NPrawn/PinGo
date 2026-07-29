@@ -5,6 +5,8 @@ import com.pingo.backend.signaling.dto.SignalingMessage;
 import com.pingo.backend.signaling.dto.SignalingMessageType;
 import com.pingo.backend.signaling.dto.SignalingSenderType;
 import com.pingo.backend.signaling.room.SignalingRoomRegistry;
+import com.pingo.backend.signaling.validation.SignalingSessionValidationResult;
+import com.pingo.backend.signaling.validation.SignalingSessionValidator;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import java.util.Optional;
@@ -30,12 +32,17 @@ class SignalingWebSocketHandlerTest {
 
     private SignalingRoomRegistry signalingRoomRegistry;
     private SignalingWebSocketHandler handler;
+    private SignalingSessionValidator signalingSessionValidator;
 
     @BeforeEach
     void setUp() {
         Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
         signalingRoomRegistry = mock(SignalingRoomRegistry.class);
-        handler = new SignalingWebSocketHandler(signalingRoomRegistry, validator);
+        signalingSessionValidator = mock(SignalingSessionValidator.class);
+        when(signalingSessionValidator.validateJoin(any(), any()))
+                .thenReturn(SignalingSessionValidationResult.VALID);
+
+        handler = new SignalingWebSocketHandler(signalingRoomRegistry, validator, signalingSessionValidator);
     }
 
     @Test
@@ -44,6 +51,7 @@ class SignalingWebSocketHandlerTest {
 
         handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
 
+        verify(signalingRoomRegistry).register("consultation-1", SignalingSenderType.USER, webSocketSession);
         verify(signalingRoomRegistry).register("consultation-1", SignalingSenderType.USER, webSocketSession);
     }
 
@@ -215,6 +223,30 @@ class SignalingWebSocketHandlerTest {
         assertThat(errorMessage.payload().get("code").asText()).isEqualTo("SIGNALING_PEER_NOT_CONNECTED");
         assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Signaling peer is not connected.");
         assertThat(errorMessage.payload().get("retryable").asBoolean()).isTrue();
+    }
+
+    @Test
+    void handleJoinReturnsErrorWhenSignalingSessionIsInvalid() throws Exception {
+        when(signalingSessionValidator.validateJoin("consultation-1", SignalingSenderType.USER))
+                .thenReturn(SignalingSessionValidationResult.SESSION_NOT_FOUND);
+
+        WebSocketSession webSocketSession = webSocketSession("ws-user");
+
+        handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(webSocketSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.sessionId()).isEqualTo("consultation-1");
+        assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
+        assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_SESSION");
     }
 
     private TextMessage textMessage(SignalingMessageType type, SignalingSenderType senderType) throws Exception {
