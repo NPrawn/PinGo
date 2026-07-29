@@ -134,6 +134,8 @@ class SignalingWebSocketHandlerTest {
         assertThat(errorMessage.sessionId()).isEqualTo("consultation-1");
         assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
         assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("SIGNALING_PEER_NOT_CONNECTED");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isTrue();
     }
 
     @Test
@@ -210,7 +212,9 @@ class SignalingWebSocketHandlerTest {
         assertThat(errorMessage.sessionId()).isEqualTo("consultation-1");
         assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
         assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("SIGNALING_PEER_NOT_CONNECTED");
         assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Signaling peer is not connected.");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isTrue();
     }
 
     private TextMessage textMessage(SignalingMessageType type, SignalingSenderType senderType) throws Exception {

@@ -2,6 +2,7 @@ package com.pingo.backend.signaling.handler;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pingo.backend.signaling.dto.SignalingErrorCode;
 import com.pingo.backend.signaling.dto.SignalingErrorPayload;
 import com.pingo.backend.signaling.dto.SignalingMessage;
 import com.pingo.backend.signaling.dto.SignalingMessageType;
@@ -26,8 +27,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
-    private static final String INVALID_SIGNALING_MESSAGE = "INVALID_SIGNALING_MESSAGE";
-
     private final SignalingRoomRegistry signalingRoomRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final Validator validator;
@@ -45,7 +44,13 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
             if (!violations.isEmpty()) {
                 log.warn("Invalid signaling message. websocketSessionId={}, violations={}", session.getId(), violations);
-                sendError(session, signalingMessage.sessionId(), "Required signaling fields are missing or invalid.");
+                sendError(
+                        session,
+                        signalingMessage.sessionId(),
+                        SignalingErrorCode.INVALID_SIGNALING_MESSAGE,
+                        "Required signaling fields are missing or invalid.",
+                        false
+                );
                 return;
             }
 
@@ -61,7 +66,13 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                     session.getId(),
                     message.getPayload(),
                     exception);
-            sendError(session, null, "Invalid signaling message format.");
+            sendError(
+                    session,
+                    null,
+                    SignalingErrorCode.INVALID_SIGNALING_MESSAGE,
+                    "Invalid signaling message format.",
+                    false
+            );
         }
     }
 
@@ -97,22 +108,34 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 .orElse(null);
 
         if (peerSession == null) {
-            sendError(session, signalingMessage.sessionId(), "Signaling peer is not connected.");
+            sendError(
+                    session,
+                    signalingMessage.sessionId(),
+                    SignalingErrorCode.SIGNALING_PEER_NOT_CONNECTED,
+                    "Signaling peer is not connected.",
+                    true
+            );
             return;
         }
 
         peerSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(signalingMessage)));
     }
 
-    private void sendError(WebSocketSession session, String signalingSessionId, String message) throws IOException {
+    private void sendError(
+            WebSocketSession session,
+            String signalingSessionId,
+            SignalingErrorCode errorCode,
+            String message,
+            boolean retryable
+    ) throws IOException {
         SignalingMessage errorMessage = new SignalingMessage(
                 signalingSessionId == null ? session.getId() : signalingSessionId,
                 SignalingSenderType.SYSTEM,
                 SignalingMessageType.ERROR,
                 objectMapper.valueToTree(new SignalingErrorPayload(
-                        INVALID_SIGNALING_MESSAGE,
+                        errorCode.name(),
                         message,
-                        false
+                        retryable
                 )),
                 Instant.now()
         );
