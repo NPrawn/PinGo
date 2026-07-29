@@ -153,6 +153,12 @@ class SecurityFilterChainTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void 비로그인_상담생성SSE_200() throws Exception {
+        mockMvc.perform(get("/api/consultations/consultation-1/waiting-events"))
+                .andExpect(status().isOk());
+    }
+
     // ---- ADMIN ----
 
     @Test
