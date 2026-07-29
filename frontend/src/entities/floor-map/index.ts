@@ -1,8 +1,8 @@
 export { getStationFloorMaps } from './api/getStationFloorMaps';
 export { useStationFloorMaps } from './api/useStationFloorMaps';
 export type { CoordinateFrame, FloorMap } from './model/types';
-export { isRenderableCoordinate, meterToPixel, pixelToPercent } from './lib/coordinates';
-export type { PercentPoint, PixelPoint } from './lib/coordinates';
+export { isRenderableCoordinate, meterToPixel } from './lib/coordinates';
+export type { PixelPoint } from './lib/coordinates';
 export {
   findCoordinateFrame,
   MOCK_COORDINATE_FRAMES,

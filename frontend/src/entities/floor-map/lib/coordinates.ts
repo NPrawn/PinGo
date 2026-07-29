@@ -6,12 +6,6 @@ export interface PixelPoint {
   py: number;
 }
 
-// 이미지 박스 대비 백분율 위치. 렌더 크기와 무관하게 같은 지점을 가리킨다.
-export interface PercentPoint {
-  left: number;
-  top: number;
-}
-
 /**
  * 좌표가 렌더 가능한 유한 실수인지 판별한다.
  *
@@ -41,25 +35,5 @@ export function meterToPixel(x: number, y: number, frame: CoordinateFrame): Pixe
   return {
     px: originX + (cos * x - sin * y) / frame.mpp,
     py: originY + (sin * x + cos * y) / frame.mpp,
-  };
-}
-
-/**
- * 원본 이미지 픽셀 좌표를 이미지 박스 대비 백분율로 바꾼다.
- *
- * 오버레이는 이미지와 같은 크기의 박스 위에 얹히므로, 백분율로 두면
- * 뷰포트에 맞춰 이미지가 축소돼도 표시 배율을 따로 계산할 필요가 없다.
- */
-export function pixelToPercent(
-  point: PixelPoint,
-  imageWidth: number,
-  imageHeight: number,
-): PercentPoint | null {
-  if (!isRenderableCoordinate(imageWidth) || imageWidth <= 0) return null;
-  if (!isRenderableCoordinate(imageHeight) || imageHeight <= 0) return null;
-
-  return {
-    left: (point.px / imageWidth) * 100,
-    top: (point.py / imageHeight) * 100,
   };
 }

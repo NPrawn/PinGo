@@ -1,5 +1,5 @@
 import type { CoordinateFrame } from '../model/types';
-import { isRenderableCoordinate, meterToPixel, pixelToPercent } from './coordinates';
+import { isRenderableCoordinate, meterToPixel } from './coordinates';
 
 // docs/역삼역_FE_좌표연동_스펙.md §2의 B2 프레임.
 const b2Frame: CoordinateFrame = {
@@ -50,17 +50,5 @@ describe('meterToPixel', () => {
 
   it('mpp가 0이면 0으로 나누지 않고 null을 반환한다', () => {
     expect(meterToPixel(1, 1, { ...b2Frame, mpp: 0 })).toBeNull();
-  });
-});
-
-describe('pixelToPercent', () => {
-  it('이미지 크기 대비 백분율로 바꾼다', () => {
-    expect(pixelToPercent({ px: 812, py: 484.5 }, 1624, 969)).toEqual({ left: 50, top: 50 });
-  });
-
-  it('이미지 크기가 유효하지 않으면 null을 반환한다', () => {
-    expect(pixelToPercent({ px: 10, py: 10 }, 0, 969)).toBeNull();
-    expect(pixelToPercent({ px: 10, py: 10 }, 1624, -1)).toBeNull();
-    expect(pixelToPercent({ px: 10, py: 10 }, Number.NaN, 969)).toBeNull();
   });
 });
