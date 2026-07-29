@@ -31,10 +31,10 @@ wss://{service-domain}/ws/signaling
 | 구분 | 책임 |
 | --- | --- |
 | Frontend | WebRTC PeerConnection 생성, 사용자 화면 공유 track 생성, offer/answer 생성, ICE candidate 수집, signaling message 송수신, DataChannel 생성, 음성 입력 수집 및 번역 자막 표시 |
-| Backend | WebSocket 연결 수락, signaling room/session 검증, 사용자와 상담자 간 signaling message relay, 비정상 메시지 오류 응답, 번역 자막 이벤트 전달 지원 |
+| Backend | WebSocket 연결 수락, signaling room 등록/정리, 사용자와 상담자 간 signaling message relay, 비정상 메시지 오류 응답 |
 | Infra | HTTPS/WSS reverse proxy, STUN/TURN 서버, 외부망 NAT 연결 검증 |
 
-Backend는 SDP와 ICE candidate 내용을 해석하거나 수정하지 않는다. Backend는 session과 sender를 검증한 뒤 상대방에게 relay한다.
+Backend는 SDP와 ICE candidate 내용을 해석하거나 수정하지 않는다. Backend는 `sessionId`와 `senderType` 기준으로 같은 room의 상대방에게 signaling message를 relay한다.
 
 상담 중 사용자의 화면은 WebRTC media track으로 상담자에게 공유한다. 단, 사용자와 상담자의 원본 음성은 서로에게 직접 전달하지 않는다. 음성 입력은 STT 및 번역 처리 후 상대방 화면에 자막으로 표시하는 것을 기본 정책으로 한다.
 
@@ -233,14 +233,14 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 
 ## 8. 오류 코드
 
-| 코드 | 설명 | retryable |
-| --- | --- | --- |
-| `INVALID_SIGNALING_MESSAGE` | JSON 형식, 필수 필드, enum 값이 잘못됨 | false |
-| `SIGNALING_SESSION_NOT_FOUND` | 존재하지 않는 sessionId | false |
-| `SIGNALING_SESSION_CLOSED` | 이미 종료된 session | false |
-| `SIGNALING_ROOM_FULL` | 사용자와 상담자가 이미 모두 입장한 room | false |
-| `SIGNALING_PEER_NOT_CONNECTED` | 상대방이 아직 연결되지 않음 | true |
-| `SIGNALING_INTERNAL_ERROR` | 서버 내부 오류 | true |
+| 코드 | 설명 | retryable | 현재 구현 |
+| --- | --- | --- | --- |
+| `INVALID_SIGNALING_MESSAGE` | JSON 형식, 필수 필드, enum 값이 잘못됨 | false | Y |
+| `SIGNALING_PEER_NOT_CONNECTED` | 상대방이 아직 연결되지 않음 | true | Y |
+| `SIGNALING_SESSION_NOT_FOUND` | 존재하지 않는 sessionId | false | N |
+| `SIGNALING_SESSION_CLOSED` | 이미 종료된 session | false | N |
+| `SIGNALING_ROOM_FULL` | 사용자와 상담자가 이미 모두 입장한 room | false | N |
+| `SIGNALING_INTERNAL_ERROR` | 서버 내부 오류 | true | N |
 
 ---
 
@@ -248,9 +248,10 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 
 - `sessionId`는 상담 요청이 수락되거나 상담 room이 생성될 때 서버가 발급한다.
 - 하나의 `sessionId`에는 기본적으로 `USER` 1명과 `COUNSELOR` 1명만 입장할 수 있다.
-- 동일 senderType의 중복 입장은 후속 구현에서 정책을 정한다.
-- `LEAVE` 또는 비정상 연결 종료 시 Backend는 room/session cleanup을 수행한다.
-- 종료된 `sessionId`로 들어온 signaling message는 `SIGNALING_SESSION_CLOSED`로 응답한다.
+- 동일 `sessionId`에서 같은 `senderType`이 다시 `JOIN`하면 현재 WebSocket session으로 교체된다.
+- `LEAVE` 또는 비정상 연결 종료 시 Backend는 room cleanup을 수행한다.
+- 현재 구현은 인메모리 room registry 기준이다. 서버 재시작 시 room 정보는 유지되지 않는다.
+- 상담 session 존재 여부와 종료 session 검증은 상담 상태 도메인 연동 시 추가한다.
 
 ---
 
