@@ -8,13 +8,17 @@ import styles from './StationSearch.module.css';
 /** Accent cycle for the nearby list; the detected station stays mint. */
 const TONES: readonly BlobTone[] = ['mint', 'sky', 'coral', 'lilac'];
 
+type StationSearchProps = {
+  onSelect?: (station: string) => void;
+};
+
 /**
  * Nearby-station list with a name search.
  *
  * TODO: `STATIONS` is a fixture. Swap for the GPS + station lookup APIs once
  * those contracts land.
  */
-export function StationSearch() {
+export function StationSearch({ onSelect }: StationSearchProps) {
   const station = useStationStore((state) => state.station);
   const setStation = useStationStore((state) => state.setStation);
   const [query, setQuery] = useState('');
@@ -29,9 +33,12 @@ export function StationSearch() {
       className={styles.row}
       selected={item.name === station}
       indicator={item.here ? 'none' : 'check'}
-      onClick={() => setStation(item.name)}
+      onClick={() => {
+        setStation(item.name);
+        onSelect?.(item.name);
+      }}
     >
-      <Blob tone={tone} style={{ width: 34, height: 34 }} />
+      <Blob tone={tone} style={{ width: 28, height: 28 }} />
       <span className={styles.rowBody}>
         <b className={styles.name}>{item.name}</b> <span className={styles.line}>{item.line}</span>
         <br />

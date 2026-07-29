@@ -29,18 +29,16 @@ export const USER_ROUTES = {
   STATION: `${USER}/station`, // s-station
   CAPTURE_GUIDE: `${USER}/capture`, // s-cam
   CAPTURE_PORTRAIT: `${USER}/capture/portrait`, // s-cam-port
-  CAPTURE_LANDSCAPE: `${USER}/capture/landscape`, // s-cam-land
-  ANALYZING: `${USER}/analyzing`, // s-analyze
+  /** Legacy deep link. Redirects to the combined capture and matching screen. */
+  ANALYZING: `${USER}/analyzing`,
   LOCATE_FAILED: `${USER}/locate/failed`, // s-fail
   LOCATE_MANUAL: `${USER}/locate/manual`, // s-mapselect
   LOCATE_SUCCESS: `${USER}/locate/success`, // s-success
-  DESTINATION: `${USER}/destination`, // s-dest
-  DESTINATION_MAP: `${USER}/destination/map`, // s-destmap
   ROUTE_OPTIONS: `${USER}/route`, // s-route
   NAVIGATION: `${USER}/navigation`, // s-nav
+  BACKSTAGE: `${USER}/backstage`,
   NAVIGATION_REROUTE: `${USER}/navigation/reroute`, // s-reroute
   ARRIVAL: `${USER}/arrival`, // s-arrive
-  EXTERNAL_MAP: `${USER}/external-map`, // s-external
   OFFLINE: `${USER}/offline`, // s-offline
   SETTINGS: `${USER}/settings`, // s-settings
   CONSULT_REQUEST: `${USER}/consult`, // s-consult-req

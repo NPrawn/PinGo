@@ -62,14 +62,14 @@ export function SplashPage() {
               </div>
             </div>
             <div className={styles.sceneTitle}>
-              지하철에서도
+              Need directions
               <br />
-              길찾기가 필요했나요?
+              inside the subway?
             </div>
             <div className={styles.sceneBody}>
-              복잡한 역 안, GPS가 안 통하는 실내에서
+              In complex stations where GPS cannot reach,
               <br />
-              PinGo가 출구까지 안내해요.
+              PinGo guides you all the way to your exit.
             </div>
           </div>
 
@@ -77,17 +77,17 @@ export function SplashPage() {
             <div className={styles.phoneMock}>
               <div className={styles.phoneMockLens} />
               <div className={styles.phoneMockArrow}>↑</div>
-              <div className={styles.phoneMockCaption}>3번 출구까지 직진</div>
+              <div className={styles.phoneMockCaption}>Go straight to Exit 3</div>
             </div>
             <div className={styles.sceneTitle}>
-              카메라를 비추면
+              Point your camera
               <br />
-              화살표로 안내해요
+              and follow the arrows
             </div>
             <div className={styles.sceneBody}>
-              주변을 촬영하면 현재 위치를 찾고,
+              Scan your surroundings to find your location
               <br />
-              가야 할 방향을 실시간으로 알려줘요.
+              and get real-time directions.
             </div>
           </div>
 
@@ -102,10 +102,12 @@ export function SplashPage() {
                 </div>
                 <div className={styles.chatStatus}>
                   <span className={styles.chatSpinner} />
-                  실시간 번역 중…
+                  Translating live…
                 </div>
                 <div className={`${styles.chatRow} ${styles.chatRowAgent}`}>
-                  <span className={styles.chatBubbleAgent}>왼쪽 엘리베이터로 안내할게요</span>
+                  <span className={styles.chatBubbleAgent}>
+                    I&apos;ll guide you to the elevator on your left.
+                  </span>
                   <span className={styles.chatAvatar}>
                     <Icon name="headset" size={22} />
                   </span>
@@ -113,14 +115,14 @@ export function SplashPage() {
               </div>
             </div>
             <div className={styles.sceneTitle}>
-              언어가 통하지 않아도
+              Get help even without
               <br />
-              쉽게 상담할 수 있어요
+              a shared language
             </div>
             <div className={styles.sceneBody}>
-              화면·음성을 공유하면 상담원이
+              Share your screen and voice with an agent
               <br />
-              번역과 함께 길을 안내해줘요.
+              for guidance with live translation.
             </div>
           </div>
         </div>
@@ -132,7 +134,7 @@ export function SplashPage() {
         </div>
 
         <div className={styles.action}>
-          <ButtonLink to={USER_ROUTES.LANGUAGE}>시작하기</ButtonLink>
+          <ButtonLink to={USER_ROUTES.LANGUAGE}>Get Started</ButtonLink>
         </div>
       </>
     </PhoneFrame>

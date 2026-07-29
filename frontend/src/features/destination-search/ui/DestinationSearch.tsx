@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
-import { searchDestinations } from '@/entities/poi';
+import { PLACES, searchDestinations } from '@/entities/poi';
 import { USER_ROUTES } from '@/shared/config';
 import { Field, Icon3d, Kicker, SelectRow } from '@/shared/ui';
 import type { Icon3dTone, IconName } from '@/shared/ui';
@@ -10,17 +10,24 @@ import styles from './DestinationSearch.module.css';
 const RESULT_TONES: readonly Icon3dTone[] = ['mint', 'sky', 'coral', 'lilac', 'gold'];
 
 /** Shortcuts shown before the user types anything. */
-const QUICK_TILES: readonly {
+const QUICK_TILES = PLACES.slice(0, 4).map((place, index) => ({
+  title: place.name,
+  meta: place.meta,
+  tone: RESULT_TONES[index % RESULT_TONES.length],
+  icon: place.icon,
+})) satisfies readonly {
   title: string;
   meta: string;
   tone: Icon3dTone;
   icon: IconName;
-}[] = [
-  { title: '화장실', meta: 'Restroom · 4곳', tone: 'mint', icon: 'restroom' },
-  { title: '승강장', meta: 'Platform · 1-14', tone: 'coral', icon: 'train' },
-  { title: '편의점', meta: 'Store · 6곳', tone: 'lilac', icon: 'store' },
-  { title: '출구', meta: 'Exit · 1-8', tone: 'sky', icon: 'door' },
-];
+}[];
+
+type DestinationSearchProps = {
+  nextRoute?: string;
+  compact?: boolean;
+  deferNavigation?: boolean;
+  onSelect?: (destination: string) => void;
+};
 
 /**
  * Destination search with quick-access tiles.
@@ -28,7 +35,12 @@ const QUICK_TILES: readonly {
  * TODO: `searchDestinations` filters a fixture list. Replace with the search
  * endpoint once its contract is agreed.
  */
-export function DestinationSearch() {
+export function DestinationSearch({
+  nextRoute = USER_ROUTES.ROUTE_OPTIONS,
+  compact = false,
+  deferNavigation = false,
+  onSelect,
+}: DestinationSearchProps) {
   const navigate = useNavigate();
   const setDestination = useNavigationStore((state) => state.setDestination);
   const [query, setQuery] = useState('');
@@ -38,14 +50,16 @@ export function DestinationSearch() {
 
   const choose = (name: string) => {
     setDestination(name);
-    void navigate(USER_ROUTES.DESTINATION_MAP);
+    onSelect?.(name);
+    if (!deferNavigation) void navigate(nextRoute);
   };
 
   return (
-    <>
+    <div className={compact ? styles.compact : undefined}>
       <div className={styles.searchWrap}>
         <Field
           big
+          className={styles.searchField}
           placeholder="어디로 가세요? (역, 출구, 시설)"
           aria-label="목적지 검색"
           value={query}
@@ -116,17 +130,17 @@ export function DestinationSearch() {
           </div>
           <div className={styles.tiles}>
             {QUICK_TILES.map((tile) => (
-              <Link
+              <button
                 key={tile.title}
-                to={USER_ROUTES.DESTINATION_MAP}
+                type="button"
                 className={styles.tile}
-                onClick={() => setDestination(tile.title)}
+                onClick={() => choose(tile.title)}
               >
                 <Icon3d
                   name={tile.icon}
                   tone={tile.tone}
-                  size={52}
-                  iconSize={26}
+                  size={compact ? 28 : 52}
+                  iconSize={compact ? 14 : 26}
                   className={styles.tileIcon}
                 />
                 <div className={styles.tileBody}>
@@ -138,11 +152,11 @@ export function DestinationSearch() {
                     ›
                   </span>
                 </div>
-              </Link>
+              </button>
             ))}
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }

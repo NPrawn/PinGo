@@ -62,12 +62,13 @@ export function RecordingBadge({ label }: RecordingBadgeProps) {
 
 type ViewfinderBackProps = {
   to: string;
+  label?: string;
 };
 
 /** Circular back control over the dark viewfinder. */
-export function ViewfinderBack({ to }: ViewfinderBackProps) {
+export function ViewfinderBack({ to, label = '이전 화면으로 돌아가기' }: ViewfinderBackProps) {
   return (
-    <Link to={to} className={styles.backButton} aria-label="촬영 안내로 돌아가기">
+    <Link to={to} className={styles.backButton} aria-label={label}>
       <svg
         width="15"
         height="15"

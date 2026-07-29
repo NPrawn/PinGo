@@ -3,6 +3,80 @@
   margin-top: 28px;
 }
 
+.compact .searchWrap {
+  margin-top: 10px;
+}
+
+.compact .quickHead {
+  margin-top: 12px;
+  margin-bottom: 7px;
+}
+
+.compact .tiles {
+  gap: 6px;
+}
+
+.compact .tile {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  align-content: center;
+  height: 66px;
+  min-height: 66px;
+  padding: 9px 10px;
+  border-radius: 14px;
+}
+
+.compact .tileIcon {
+  flex: none;
+  place-self: center;
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border-radius: 9px;
+}
+
+.compact .tileMeta {
+  display: none;
+}
+
+.compact .tileBody {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  align-self: center;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+}
+
+.compact .tileBody > div {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+}
+
+.compact .tileTitle {
+  display: flex;
+  align-items: center;
+  overflow: visible;
+  font-size: 11.5px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.compact .tileArrow {
+  display: none;
+}
+
+.searchField {
+  padding-right: 78px;
+  text-overflow: ellipsis;
+}
+
 .searchIcon {
   position: absolute;
   top: 18px;
@@ -93,9 +167,13 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
   padding: 14px;
+  font: inherit;
   color: var(--color-ink);
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
   background: rgb(255 255 255 / 85%);
   backdrop-filter: blur(18px) saturate(1.2);
   border: 1.5px solid rgb(255 255 255 / 90%);

@@ -4,6 +4,10 @@
   height: 6px;
 }
 
+.guideLead {
+  min-height: 190px;
+}
+
 .headerBar {
   display: flex;
   align-items: center;
@@ -157,11 +161,9 @@
   color: var(--color-sub);
 }
 
-.altLink {
-  display: block;
-  margin-top: 9px;
-  color: var(--color-sub);
-  text-align: center;
+.captureButton {
+  min-height: 60px;
+  font-size: 15px;
 }
 
 @keyframes radar-sweep {

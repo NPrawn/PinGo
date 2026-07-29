@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { usePermissionStore } from '@/entities/permission';
 import { PermissionList, PermissionReminder } from '@/features/permission-request';
 import { USER_ROUTES } from '@/shared/config';
-import { BackLink, Button, GhostButton, Kicker, Spring, Sub, Title } from '@/shared/ui';
+import { BackLink, Button, Kicker, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './PermissionPage.module.css';
 
-type Modal = 'none' | 'incomplete' | 'blocked';
+type Modal = 'none' | 'incomplete';
 
 /** Screen 03 (FR-U-002) — permission request. */
 export function PermissionPage() {
@@ -41,7 +41,6 @@ export function PermissionPage() {
 
       <Spring />
       <Button onClick={start}>권한 허용하고 시작하기</Button>
-      <GhostButton onClick={() => setModal('blocked')}>권한 없이 계속하기</GhostButton>
 
       {modal !== 'none' && (
         <PermissionReminder
