@@ -20,6 +20,10 @@ public class SignalingRoomRegistry {
         remove(webSocketSession);
 
         rooms.compute(signalingSessionId, (sessionId, participants) -> {
+            if (!webSocketSession.isOpen()) {
+                return participants;
+            }
+
             Map<SignalingSenderType, WebSocketSession> room = participants;
             if (room == null) {
                 room = new ConcurrentHashMap<>();

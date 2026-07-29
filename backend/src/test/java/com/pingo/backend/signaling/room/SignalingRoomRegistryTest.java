@@ -98,6 +98,16 @@ class SignalingRoomRegistryTest {
     }
 
     @Test
+    void registerSkipsClosedSession() {
+        WebSocketSession userSession = webSocketSession("user-session");
+        when(userSession.isOpen()).thenReturn(false);
+
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+
+        assertThat(registry.containsRoom("consultation-1")).isFalse();
+    }
+
+    @Test
     void registerThrowsForSystemSenderType() {
         WebSocketSession systemSession = webSocketSession("system-session");
 
@@ -109,6 +119,7 @@ class SignalingRoomRegistryTest {
     private WebSocketSession webSocketSession(String id) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);
+        when(session.isOpen()).thenReturn(true);
         when(session.getAttributes()).thenReturn(new ConcurrentHashMap<>());
         return session;
     }
