@@ -10,10 +10,14 @@ import org.springframework.web.socket.WebSocketSession;
 @Component
 public class SignalingRoomRegistry {
 
+    private static final String SIGNALING_SESSION_ID_ATTRIBUTE = "signalingSessionId";
+    private static final String SENDER_TYPE_ATTRIBUTE = "signalingSenderType";
+
     private final Map<String, Map<SignalingSenderType, WebSocketSession>> rooms = new ConcurrentHashMap<>();
 
     public void register(String signalingSessionId, SignalingSenderType senderType, WebSocketSession webSocketSession) {
         validateParticipant(senderType);
+        remove(webSocketSession);
 
         rooms.compute(signalingSessionId, (sessionId, participants) -> {
             Map<SignalingSenderType, WebSocketSession> room = participants;
@@ -24,6 +28,9 @@ public class SignalingRoomRegistry {
             room.put(senderType, webSocketSession);
             return room;
         });
+
+        webSocketSession.getAttributes().put(SIGNALING_SESSION_ID_ATTRIBUTE, signalingSessionId);
+        webSocketSession.getAttributes().put(SENDER_TYPE_ATTRIBUTE, senderType);
     }
 
     public Optional<WebSocketSession> findPeer(String signalingSessionId, SignalingSenderType senderType) {
@@ -38,12 +45,25 @@ public class SignalingRoomRegistry {
     }
 
     public void remove(WebSocketSession webSocketSession) {
-        rooms.entrySet().removeIf(entry -> {
-            entry.getValue().entrySet().removeIf(participant ->
-                    isSameSession(participant.getValue(), webSocketSession));
+        Object signalingSessionId = webSocketSession.getAttributes().get(SIGNALING_SESSION_ID_ATTRIBUTE);
+        Object senderType = webSocketSession.getAttributes().get(SENDER_TYPE_ATTRIBUTE);
 
-            return entry.getValue().isEmpty();
+        if (!(signalingSessionId instanceof String sessionId)
+                || !(senderType instanceof SignalingSenderType signalingSenderType)) {
+            return;
+        }
+
+        rooms.computeIfPresent(sessionId, (id, participants) -> {
+            WebSocketSession registeredSession = participants.get(signalingSenderType);
+            if (isSameSession(registeredSession, webSocketSession)) {
+                participants.remove(signalingSenderType);
+            }
+
+            return participants.isEmpty() ? null : participants;
         });
+
+        webSocketSession.getAttributes().remove(SIGNALING_SESSION_ID_ATTRIBUTE);
+        webSocketSession.getAttributes().remove(SENDER_TYPE_ATTRIBUTE);
     }
 
     boolean containsRoom(String signalingSessionId) {
