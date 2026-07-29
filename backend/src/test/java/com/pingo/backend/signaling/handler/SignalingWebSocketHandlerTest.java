@@ -80,6 +80,8 @@ class SignalingWebSocketHandlerTest {
         when(counselorSession.isOpen()).thenReturn(true);
         when(signalingRoomRegistry.findPeer("consultation-1", SignalingSenderType.USER))
                 .thenReturn(Optional.of(counselorSession));
+        when(signalingRoomRegistry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))
+                .thenReturn(true);
 
         handler.handleTextMessage(userSession, textMessage(SignalingMessageType.OFFER, SignalingSenderType.USER));
 
@@ -103,6 +105,8 @@ class SignalingWebSocketHandlerTest {
         when(userSession.isOpen()).thenReturn(true);
         when(signalingRoomRegistry.findPeer("consultation-1", SignalingSenderType.COUNSELOR))
                 .thenReturn(Optional.of(userSession));
+        when(signalingRoomRegistry.isRegistered("consultation-1", SignalingSenderType.COUNSELOR, counselorSession))
+                .thenReturn(true);
 
         handler.handleTextMessage(
                 counselorSession,
@@ -127,6 +131,8 @@ class SignalingWebSocketHandlerTest {
         WebSocketSession userSession = webSocketSession("ws-user");
         when(signalingRoomRegistry.findPeer("consultation-1", SignalingSenderType.USER))
                 .thenReturn(Optional.empty());
+        when(signalingRoomRegistry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))
+                .thenReturn(true);
 
         handler.handleTextMessage(userSession, textMessage(SignalingMessageType.OFFER, SignalingSenderType.USER));
 
@@ -205,6 +211,8 @@ class SignalingWebSocketHandlerTest {
         when(counselorSession.isOpen()).thenReturn(false);
         when(signalingRoomRegistry.findPeer("consultation-1", SignalingSenderType.USER))
                 .thenReturn(Optional.of(counselorSession));
+        when(signalingRoomRegistry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))
+                .thenReturn(true);
 
         handler.handleTextMessage(userSession, textMessage(SignalingMessageType.ANSWER, SignalingSenderType.USER));
 
@@ -247,6 +255,30 @@ class SignalingWebSocketHandlerTest {
         assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
         assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
         assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_SESSION");
+    }
+
+    @Test
+    void handleRelayMessageReturnsErrorWhenSessionIsNotJoined() throws Exception {
+        WebSocketSession userSession = webSocketSession("ws-user");
+        when(signalingRoomRegistry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))
+                .thenReturn(false);
+
+        handler.handleTextMessage(userSession, textMessage(SignalingMessageType.OFFER, SignalingSenderType.USER));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(userSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).findPeer(any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.sessionId()).isEqualTo("consultation-1");
+        assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
+        assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("SIGNALING_SESSION_NOT_JOINED");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isFalse();
     }
 
     private TextMessage textMessage(SignalingMessageType type, SignalingSenderType senderType) throws Exception {

@@ -69,6 +69,17 @@ public class SignalingRoomRegistry {
         webSocketSession.getAttributes().remove(SENDER_TYPE_ATTRIBUTE);
     }
 
+    public boolean isRegistered(String signalingSessionId, SignalingSenderType senderType, WebSocketSession webSocketSession) {
+        validateParticipant(senderType);
+
+        Map<SignalingSenderType, WebSocketSession> room = rooms.get(signalingSessionId);
+        if (room == null) {
+            return false;
+        }
+
+        return isSameSession(room.get(senderType), webSocketSession);
+    }
+
     boolean containsRoom(String signalingSessionId) {
         return rooms.containsKey(signalingSessionId);
     }

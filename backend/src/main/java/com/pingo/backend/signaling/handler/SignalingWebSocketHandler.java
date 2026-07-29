@@ -101,6 +101,20 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void relayToPeer(WebSocketSession session, SignalingMessage signalingMessage) throws IOException {
+        if (!signalingRoomRegistry.isRegistered(
+                signalingMessage.sessionId(),
+                signalingMessage.senderType(),
+                session
+        )) {
+            sendError(
+                    session,
+                    signalingMessage.sessionId(),
+                SignalingErrorCode.SIGNALING_SESSION_NOT_JOINED,
+                "Signaling session is not joined.",
+                false
+        );
+            return;
+        }
         WebSocketSession peerSession = signalingRoomRegistry
                 .findPeer(signalingMessage.sessionId(), signalingMessage.senderType())
                 .filter(WebSocketSession::isOpen)
