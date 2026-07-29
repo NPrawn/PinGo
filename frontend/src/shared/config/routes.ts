@@ -17,8 +17,6 @@ export const ROUTES = {
   INDOOR_MAP: `${USER}/map`,
   COUNSELOR,
   ADMIN,
-  /** Device permission verification page (FR-U-002). */
-  PERMISSION_TEST: '/permission-test',
 } as const;
 
 /** User-facing flow. Prototype ids `s-*`. */

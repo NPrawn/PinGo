@@ -23,10 +23,16 @@ export type {
   PermissionKind,
   PermissionRequestResult,
   PermissionStatus,
+  RequestRequiredPermissionsOptions,
+  RequiredPermissionsProgress,
   RequiredPermissionsResult,
   SingleMediaPermissionResult,
 } from './model/permission.service';
 
 export type { StoredRequiredPermissionState } from './model/permission.storage';
 
-export type { PermissionRequestPhase, UsePermissionRequestValue } from './model/permission.hook';
+export type {
+  PermissionRequestPhase,
+  RequiredPermissionStatuses,
+  UsePermissionRequestValue,
+} from './model/permission.hook';

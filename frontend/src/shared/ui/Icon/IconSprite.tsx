@@ -278,6 +278,17 @@ export function IconSprite() {
             d="M12 2.2 22.6 21.4H1.4L12 2.2Zm-1.2 6.4v5.8h2.4V8.6h-2.4Zm0 7.6v2.4h2.4v-2.4h-2.4Z"
           />
         </symbol>
+        {/* Counterpart to `i-check`, drawn with the same stroke weight. */}
+        <symbol id="i-x" viewBox="0 0 24 24">
+          <path
+            d="M5.6 5.6 18.4 18.4M18.4 5.6 5.6 18.4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3.2"
+            strokeLinecap="butt"
+            strokeLinejoin="miter"
+          />
+        </symbol>
       </defs>
     </svg>
   );

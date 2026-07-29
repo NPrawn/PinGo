@@ -639,6 +639,7 @@ auth/
 consultation/
 signaling/
 realtime/
+usersession/
 ```
 
 ## 인증

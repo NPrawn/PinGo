@@ -77,6 +77,23 @@ export interface RequiredPermissionsResult {
 }
 
 /**
+ * 요청 도중 확정된 단계별 권한 상태.
+ *
+ * 세 권한을 한 번에 요청하지 않고 위치 → 카메라·마이크 순서로 물어보므로,
+ * 화면이 각 단계가 끝나는 즉시 결과를 반영할 수 있도록 중간 상태를 전달한다.
+ * 아직 확정되지 않은 권한은 키 자체가 없다.
+ */
+export type RequiredPermissionsProgress = Partial<Record<PermissionKind, PermissionStatus>>;
+
+/**
+ * requestRequiredPermissions 호출 옵션.
+ */
+export interface RequestRequiredPermissionsOptions {
+  /** 각 단계가 끝날 때마다 확정된 상태를 전달받는다. */
+  onProgress?: (progress: RequiredPermissionsProgress) => void;
+}
+
+/**
  * 위치 권한 요청 옵션.
  *
  * - enableHighAccuracy: 가능한 높은 정확도의 위치를 요청한다.
@@ -409,8 +426,12 @@ export function requestMicrophonePermission(): Promise<SingleMediaPermissionResu
  * 2. 위치 권한 실패 시 즉시 서비스 진입 불가 처리
  * 3. 카메라+마이크 권한 요청
  * 4. 세 권한이 모두 granted일 때만 canUseService = true
+ *
+ * onProgress를 넘기면 각 단계가 끝나는 즉시 확정된 상태를 전달받는다.
  */
-export async function requestRequiredPermissions(): Promise<RequiredPermissionsResult> {
+export async function requestRequiredPermissions({
+  onProgress,
+}: RequestRequiredPermissionsOptions = {}): Promise<RequiredPermissionsResult> {
   const idleCamera: PermissionRequestResult = {
     kind: 'camera',
     status: 'idle',
@@ -428,6 +449,8 @@ export async function requestRequiredPermissions(): Promise<RequiredPermissionsR
    * 카메라/마이크 권한 요청을 이어서 하지 않는다.
    */
   const location = await requestLocationPermission();
+
+  onProgress?.({ location: location.status });
 
   if (location.status !== 'granted') {
     return {
@@ -449,6 +472,11 @@ export async function requestRequiredPermissions(): Promise<RequiredPermissionsR
    * 실제 카메라 화면이나 WebRTC 연결에서는 해당 화면에서 별도로 스트림을 다시 요청한다.
    */
   stopMediaStream(media.stream);
+
+  onProgress?.({
+    camera: media.camera.status,
+    microphone: media.microphone.status,
+  });
 
   const canUseService =
     location.status === 'granted' &&

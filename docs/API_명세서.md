@@ -82,7 +82,7 @@ Authorization: Bearer {accessToken}
 | 인증 방식          | JWT Access Token                                                    |
 | JWT 만료 시간      | 6시간                                                               |
 | Refresh Token      | MVP에서는 생략                                                      |
-| 사용자 세션 만료   | 마지막 활동 기준 24시간                                             |
+| 사용자 세션 만료   | 마지막 활동 기준 1시간                                              |
 | 상담 세션 ID       | UUID 또는 ULID 기반 문자열                                          |
 | WebRTC signaling   | WebSocket                                                           |
 | STUN/TURN          | 무료 STUN 우선, 연결 불안정 시 TURN 추가                            |
@@ -171,7 +171,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
     "accountId": 7,
     "name": "역무원",
     "stationId": 1,
-    "status": "available"
+    "status": "AVAILABLE"
   },
   "message": null
 }
@@ -288,11 +288,57 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 ---
 
-## 3.2 사용자 세션 갱신
+## 3.2 사용자 세션 조회
+
+### GET `/user-sessions/{userSessionId}`
+
+저장해 둔 세션 ID로 현재 세션 상태를 조회한다. 새로고침·앱 재실행 등으로 클라이언트가 들고 있던 상태가 사라졌을 때 복구 용도로 사용한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "userSessionId": "usr_9f3a2b",
+    "language": "en",
+    "selectedStationId": 1,
+    "currentNodeId": 15,
+    "destinationType": "place",
+    "destinationId": 3,
+    "expiresAt": "2026-07-16T13:00:00Z"
+  },
+  "message": null
+}
+```
+
+응답 필드 구성은 3.3 사용자 세션 갱신과 동일하며, 아직 설정되지 않은 항목은 `null`로 내려간다.
+
+조회는 활동 시각을 갱신하지 않는다. `last_active_at`과 `expires_at`은 `PATCH /user-sessions/{userSessionId}` 호출 시에만 연장되므로, 이 API를 반복 호출해도 세션 만료를 늦출 수 없다.
+
+만료·종료된 세션이거나 존재하지 않는 ID이면 `USER_SESSION_NOT_FOUND`를 반환한다. 클라이언트는 이 응답을 받으면 세션을 새로 생성하고 `language`를 다시 전송해 흐름을 이어간다.
+
+역·목적지의 표시 이름이 필요하면 `GET /stations/{stationId}`(4.3), `GET /facilities/{facilityId}`(5.3)로 별도 조회한다. 세션 응답은 ID만 반환한다.
+
+---
+
+## 3.3 사용자 세션 갱신
 
 ### PATCH `/user-sessions/{userSessionId}`
 
 사용자의 선택 언어, 현재 역, 현재 위치, 목적지 등을 갱신한다.
+
+#### 호출 시점
+
+| 갱신 항목 | 호출 시점 |
+| --- | --- |
+| language | 언어 변경 시 |
+| selectedStationId | 역 선택 시 |
+| destinationType, destinationId | 목적지 선택 시 |
+| currentNodeId | 위치 확정 시 (VPS 인식 확정, 수동 위치 확정, 상담자 위치 수정) |
+| lastGpsLatitude, lastGpsLongitude | 경로 안내 화면에서만 전송한다. 직전 전송 위치 대비 10m 이상 이동했고 마지막 전송 후 5초가 지난 경우 전송하며, 위치 변화가 없어도 15초마다 1회 전송한다. |
+
+경로 안내 화면을 벗어나면 GPS 전송을 중단한다.
 
 #### Request
 
@@ -315,14 +361,57 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
   "success": true,
   "data": {
     "userSessionId": "usr_9f3a2b",
+    "language": "en",
     "selectedStationId": 1,
     "currentNodeId": 15,
     "destinationType": "place",
-    "destinationId": 3
+    "destinationId": 3,
+    "expiresAt": "2026-07-16T13:00:00Z"
   },
   "message": null
 }
 ```
+
+부분 갱신 API이므로 요청에 포함된 필드만 반영하고, 응답은 갱신 후 세션의 현재 상태 전체를 반환한다. 아직 설정되지 않은 항목은 `null`로 내려가며 응답 필드 구성은 요청 내용과 무관하게 항상 동일하다.
+
+호출할 때마다 `last_active_at`이 갱신되고 `expires_at`이 연장되므로, 클라이언트는 응답의 `expiresAt`으로 다음 호출 시점을 판단한다. 요청 본문이 비어 있어도(`{}`) 활동 시각 갱신 용도로 사용할 수 있다.
+
+`destinationType`과 `destinationId`는 항상 함께 전달해야 한다. 둘 중 하나만 전달하면 `INVALID_DESTINATION`을 반환한다. 만료·종료된 세션 ID로 요청하면 `USER_SESSION_NOT_FOUND`를 반환한다.
+
+---
+
+## 3.4 사용자 세션 종료
+
+### DELETE `/user-sessions/{userSessionId}`
+
+경로 안내가 정상적으로 끝났을 때 세션을 즉시 종료한다. 앱 종료·네트워크 끊김처럼 종료 요청이 도달하지 않는 경우는 세션 만료 정책(18. 확정된 구현 사항 참고)으로 처리한다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": true,
+  "message": "세션이 종료되었습니다."
+}
+```
+
+이미 종료·만료된 세션이면 `data`가 `false`로 내려간다.
+
+```json
+{
+  "success": false,
+  "data": false,
+  "message": "이미 종료된 세션입니다.",
+  "errorCode": "USER_SESSION_ALREADY_ENDED"
+}
+```
+
+세션 종료는 행 삭제가 아니라 `expires_at`을 현재 시각으로 설정하는 만료 처리다. `consultation_session`, `location_share`, `localization_log`가 `user_session`을 FK로 참조하므로 행을 삭제하지 않으며, 상담·위치 인식 이력은 그대로 보존된다.
+
+진행 중인 상담(`WAITING`, `ACCEPTED`, `CONNECTING`, `IN_PROGRESS`)이 연결된 세션은 종료할 수 없으며 `USER_SESSION_IN_CONSULTATION`을 반환한다. 존재하지 않는 세션 ID는 `USER_SESSION_NOT_FOUND`를 반환한다.
+
+종료·만료된 세션 ID로 다시 요청이 오면 클라이언트는 새 세션을 생성하고 `language`를 다시 전송해 흐름을 이어간다.
 
 ---
 
@@ -650,7 +739,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ## 7.1 현재 위치 인식
 
-### POST `/vps/localize`
+### POST `/api/vps/localize`
 
 카메라 이미지 또는 프레임을 기반으로 사용자의 실내 위치를 인식한다.
 
@@ -660,14 +749,33 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 multipart/form-data
 ```
 
-#### Request
+#### Request Parts
 
-| 이름          | 타입   | 필수 | 설명           |
-| ------------- | ------ | ---- | -------------- |
-| userSessionId | string | Y    | 사용자 세션 ID |
-| stationId     | number | Y    | 현재 역 ID     |
-| image         | file   | Y    | 카메라 이미지  |
-| heading       | number | N    | 단말 방향      |
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| image | file | Y | 카메라 이미지. `image/jpeg`, `image/png`만 허용 |
+| metadata | JSON | Y | 위치추정 요청 메타데이터 |
+
+##### metadata
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| userSessionId | string | Y | 사용자 세션 ID |
+| stationId | number | Y | 현재 역 ID |
+| mapVersion | string | Y | AI 위치추정 맵 버전 |
+| heading | number | N | 단말 방향 |
+| capturedAt | string | N | 촬영 시각, ISO-8601 |
+| camera | object | N | 카메라 내부 파라미터 |
+
+##### camera
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| model | string | N | 카메라 모델. 예: `PINHOLE` |
+| width | number | N | 촬영 이미지 너비(px) |
+| height | number | N | 촬영 이미지 높이(px) |
+| params | number[] | N | 카메라 내부 파라미터. 제공 시 4개 값 |
+| intrinsicsSource | string | N | 카메라 내부 파라미터 출처 |
 
 #### Response
 
@@ -675,7 +783,9 @@ multipart/form-data
 {
   "success": true,
   "data": {
+    "requestId": "loc_01JABC",
     "resultStatus": "success",
+    "mapVersion": "YS-2026-07-23.1",
     "candidates": [
       {
         "nodeId": 15,
@@ -686,7 +796,9 @@ multipart/form-data
         "confidenceScore": 0.87,
         "confidenceLabel": "high"
       }
-    ]
+    ],
+    "fallbackOptions": [],
+    "processingTimeMs": 2310
   },
   "message": null
 }
@@ -699,9 +811,12 @@ multipart/form-data
 
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |
+| requestId | string | 위치추정 요청 추적 ID |
 | resultStatus | string | 위치 인식 처리 결과 |
+| mapVersion | string | 위치추정에 사용된 AI 맵 버전 |
 | candidates | array | 표시 가능한 위치 후보. 후보가 없으면 빈 배열 |
 | fallbackOptions | string[] | 사용자에게 제공할 대체 행동 목록 |
+| processingTimeMs | number | AI 위치추정 처리 시간(ms). AI 호출 실패로 측정할 수 없으면 `null` 또는 생략 |
 
 ##### resultStatus
 
@@ -751,14 +866,17 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "success": true,
   "data": {
+    "requestId": "loc_01JABC",
     "resultStatus": "low_confidence",
+    "mapVersion": "YS-2026-07-23.1",
     "candidates": [],
     "fallbackOptions": [
       "retry_capture",
       "select_landmark",
       "select_on_map",
       "request_consultation"
-    ]
+    ],
+    "processingTimeMs": 2310
   },
   "message": "위치를 정확히 찾지 못했습니다."
 }
@@ -770,14 +888,17 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "success": true,
   "data": {
+    "requestId": "loc_01JABC",
     "resultStatus": "no_match",
+    "mapVersion": "YS-2026-07-23.1",
     "candidates": [],
     "fallbackOptions": [
       "retry_capture",
       "select_landmark",
       "select_on_map",
       "request_consultation"
-    ]
+    ],
+    "processingTimeMs": 2310
   },
   "message": "현재 위치와 일치하는 후보를 찾지 못했습니다."
 }
@@ -789,12 +910,15 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "success": true,
   "data": {
+    "requestId": "loc_01JABC",
     "resultStatus": "ai_server_unavailable",
+    "mapVersion": "YS-2026-07-23.1",
     "candidates": [],
     "fallbackOptions": [
       "select_on_map",
       "request_consultation"
-    ]
+    ],
+    "processingTimeMs": null
   },
   "message": "위치 인식 서버에 연결할 수 없습니다."
 }
@@ -1086,7 +1210,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "userSessionId": "usr_9f3a2b",
   "stationId": 1,
-  "problemType": "cannot_find_exit",
+  "problemType": "CANNOT_FIND_EXIT",
   "currentNodeId": 15,
   "destinationType": "place",
   "destinationId": 3,
@@ -1102,7 +1226,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "waiting",
+    "status": "WAITING",
     "requestedAt": "2026-07-16T03:00:00Z"
   },
   "message": null
@@ -1124,7 +1248,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "accepted",
+    "status": "ACCEPTED",
     "counselorId": 7,
     "signalingRoomId": "room_cs_abc123"
   },
@@ -1147,11 +1271,71 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "canceled"
+    "status": "CANCELED"
   },
   "message": null
 }
 ```
+
+---
+
+## 10.4 상담 대기 상태 SSE 구독
+
+### GET `/api/consultations/{consultationRequestId}/waiting-events`
+
+상담 요청 ID 기준으로 상담 대기 상태 변경 이벤트를 Server-Sent Events로 구독한다.
+
+#### 인증
+
+비로그인 접근 허용
+
+#### Path Variables
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `consultationRequestId` | string | Y | 상담 요청 ID |
+
+#### Response
+
+`text/event-stream`
+
+#### Event Name
+
+| 이벤트 | 설명 |
+| --- | --- |
+| `INIT` | SSE 연결 완료 확인 |
+| `WAITING` | 상담자를 기다리는 중 |
+| `ACCEPTED` | 상담자가 요청을 수락함 |
+| `REJECTED` | 상담자가 요청을 거절함 |
+| `CANCELED` | 사용자가 상담 요청을 취소함 |
+| `NO_COUNSELOR` | 상담 가능한 상담자가 없음 |
+
+#### Event Data
+
+```json
+{
+  "consultationRequestId": "consultation-1",
+  "type": "ACCEPTED",
+  "signalingRoomId": "room-1",
+  "message": "상담자가 요청을 수락했습니다.",
+  "timestamp": "2026-07-29T00:00:00Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `consultationRequestId` | string | Y | 상담 요청 ID |
+| `type` | string | Y | 상담 대기 이벤트 타입 |
+| `signalingRoomId` | string | N | WebRTC signaling room ID. `ACCEPTED` 이벤트에서만 전달 |
+| `message` | string | Y | 사용자 표시 메시지 |
+| `timestamp` | string | Y | 이벤트 생성 시각 |
+
+#### 비고
+
+- 클라이언트는 상담 대기 화면 진입 시 이 SSE endpoint를 구독한다.
+- 서버는 구독 직후 연결 확인을 위해 `INIT` 이벤트와 `connected` 데이터를 전송한다.
+- `ACCEPTED` 이벤트를 받으면 `signalingRoomId`를 사용해 `/ws/signaling` WebSocket signaling에 참여한다.
+- 연결이 끊기면 클라이언트는 동일한 `consultationRequestId`로 재구독할 수 있다.
 
 ---
 
@@ -1179,7 +1363,7 @@ Authorization: Bearer {accessToken}
 
 | 이름   | 타입   | 필수 | 설명                 |
 | ------ | ------ | ---- | -------------------- |
-| status | string | N    | waiting, accepted 등 |
+| status | string | N    | WAITING, ACCEPTED 등 |
 
 #### Response
 
@@ -1190,8 +1374,8 @@ Authorization: Bearer {accessToken}
     {
       "consultationId": "cs_abc123",
       "stationId": 1,
-      "problemType": "cannot_find_exit",
-      "status": "waiting",
+      "problemType": "CANNOT_FIND_EXIT",
+      "status": "WAITING",
       "currentLocationLabel": "B2 개찰구 앞",
       "destinationLabel": "COEX Mall",
       "requestedAt": "2026-07-16T03:00:00Z"
@@ -1222,7 +1406,7 @@ Authorization: Bearer {accessToken}
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "accepted",
+    "status": "ACCEPTED",
     "signalingRoomId": "room_cs_abc123"
   },
   "message": null
@@ -1244,7 +1428,7 @@ Authorization: Bearer {accessToken}
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "rejected"
+    "status": "REJECTED"
   },
   "message": null
 }
@@ -1273,7 +1457,7 @@ Authorization: Bearer {accessToken}
   "success": true,
   "data": {
     "consultationId": "cs_abc123",
-    "status": "ended"
+    "status": "ENDED"
   },
   "message": null
 }
@@ -2093,6 +2277,9 @@ multipart/form-data
 | EXIT_RECOMMENDATION_NOT_FOUND | 장소-출구 추천을 찾을 수 없음           |
 | DUPLICATE_EXIT_RECOMMENDATION | 이미 등록된 장소-출구 추천              |
 | USER_SESSION_NOT_FOUND        | 사용자 세션을 찾을 수 없음              |
+| INVALID_DESTINATION           | 목적지 유형과 ID 중 하나만 전달됨       |
+| USER_SESSION_ALREADY_ENDED    | 이미 종료·만료된 세션                   |
+| USER_SESSION_IN_CONSULTATION  | 진행 중인 상담이 있어 세션을 종료할 수 없음 |
 | LOCALIZATION_FAILED           | 위치 인식 실패                          |
 | ROUTE_NOT_FOUND               | 경로를 찾을 수 없음                     |
 | ROUTE_NODE_NOT_FOUND          | 경로 노드를 찾을 수 없음                |
@@ -2115,11 +2302,11 @@ multipart/form-data
 
 | 구분        | API                                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------------------- |
-| 사용자 세션 | POST /user-sessions                                                                                     |
+| 사용자 세션 | POST /user-sessions, GET /user-sessions/{userSessionId}, PATCH /user-sessions/{userSessionId}, DELETE /user-sessions/{userSessionId} |
 | 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                   |
 | 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                    |
 | 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits     |
-| 위치 인식   | POST /vps/localize, POST /localization/manual                                                           |
+| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                       |
 | 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                       |
 | 외부 지도   | POST /external-maps/directions                                                                          |
 | 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                   |
@@ -2145,7 +2332,8 @@ multipart/form-data
 | 인증 방식              | JWT Access Token                                                 |
 | JWT 만료 시간          | 6시간                                                            |
 | Refresh Token          | MVP에서는 생략                                                   |
-| 사용자 세션 만료       | 마지막 활동 기준 24시간                                          |
+| 사용자 세션 만료       | 마지막 활동 기준 1시간                                          |
+| 사용자 세션 종료 | 경로 안내 정상 종료 시 즉시 만료 처리. 진행 중 상담(WAITING·ACCEPTED·CONNECTING·IN_PROGRESS)이 있으면 만료하지 않는다 | 
 | 상담 세션 ID           | UUID 또는 ULID 기반 문자열                                       |
 | WebRTC signaling       | WebSocket                                                        |
 | STUN/TURN              | 무료 STUN 우선, 연결 불안정 시 TURN 추가                         |

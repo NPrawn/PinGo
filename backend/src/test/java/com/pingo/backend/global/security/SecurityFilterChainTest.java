@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.MediaType;
@@ -23,8 +24,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -110,6 +112,50 @@ class SecurityFilterChainTest {
         mockMvc.perform(post("/api/external-maps/directions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void 비로그인_위치추정API_200() throws Exception {
+        MockMultipartFile image = new MockMultipartFile(
+                "image",
+                "query.jpg",
+                "image/jpeg",
+                "image".getBytes(StandardCharsets.UTF_8)
+        );
+
+        MockMultipartFile metadata = new MockMultipartFile(
+                "metadata",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                """
+                {
+                  "userSessionId": "usr_sess_01JABC",
+                  "stationId": 1,
+                  "mapVersion": "YS-2026-07-23.1"
+                }
+                """.getBytes(StandardCharsets.UTF_8)
+        );
+
+        mockMvc.perform(multipart("/api/vps/localize")
+                        .file(image)
+                        .file(metadata))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void 비로그인_userSession_생성_200() throws Exception {
+        mockMvc.perform(post("/api/user-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"language":"ko"}
+                        """))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void 비로그인_상담생성SSE_200() throws Exception {
+        mockMvc.perform(get("/api/consultations/consultation-1/waiting-events"))
                 .andExpect(status().isOk());
     }
 

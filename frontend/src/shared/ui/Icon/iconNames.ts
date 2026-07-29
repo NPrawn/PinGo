@@ -49,6 +49,7 @@ export const ICON_NAMES = [
   'target',
   'train',
   'warning',
+  'x',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
