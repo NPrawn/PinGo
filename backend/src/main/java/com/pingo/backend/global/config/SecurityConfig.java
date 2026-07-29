@@ -44,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/user-sessions","/api/user-sessions/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/consultations/*/accept", "/api/consultations/*/reject")
                         .hasRole("COUNSELOR")
+                        .requestMatchers("/api/consultations/*/waiting-events").permitAll()
                         .requestMatchers(
                                 "/api/stations/**",
                                 "/api/facilities/**",
@@ -51,7 +52,8 @@ public class SecurityConfig {
                                 "/api/places/**",
                                 "/api/routes/**",
                                 "/api/external-maps/**",
-                                "/api/consultations/**"
+                                "/api/consultations/**",
+                                "/api/vps/**"
                         ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/counselors/**").hasRole("COUNSELOR")

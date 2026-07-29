@@ -14,3 +14,22 @@ export interface FloorMap {
   scaleMPerPx: number;
   version: string;
 }
+
+/**
+ * 층 평면도의 미터 좌표계와 원본 이미지 픽셀 좌표 사이의 변환 규칙.
+ * (docs/역삼역_FE_좌표연동_스펙.md §2 좌표 프레임)
+ *
+ * route_node의 mapX/mapY는 층간 엘리베이터를 원점으로 하는 미터 값이므로,
+ * 이미지 위에 그리려면 회전(angleDeg)과 축척(mpp)을 함께 적용해야 한다.
+ *
+ * TODO: 현재 층별 지도 조회 응답에 이 필드가 없어 FE 상수로 들고 있다.
+ * floor_map에 프레임 컬럼이 추가되면 FloorMap으로 합친다.
+ */
+export interface CoordinateFrame {
+  // 미터 원점 (0, 0)이 놓이는 원본 이미지 픽셀 좌표.
+  originPx: readonly [x: number, y: number];
+  // 이미지 기준 +X축(승강장·6번출구 방향) 각도. 진북 기준이 아니다.
+  angleDeg: number;
+  // meter per pixel.
+  mpp: number;
+}

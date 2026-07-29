@@ -739,7 +739,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ## 7.1 현재 위치 인식
 
-### POST `/vps/localize`
+### POST `/api/vps/localize`
 
 카메라 이미지 또는 프레임을 기반으로 사용자의 실내 위치를 인식한다.
 
@@ -749,14 +749,33 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 multipart/form-data
 ```
 
-#### Request
+#### Request Parts
 
-| 이름          | 타입   | 필수 | 설명           |
-| ------------- | ------ | ---- | -------------- |
-| userSessionId | string | Y    | 사용자 세션 ID |
-| stationId     | number | Y    | 현재 역 ID     |
-| image         | file   | Y    | 카메라 이미지  |
-| heading       | number | N    | 단말 방향      |
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| image | file | Y | 카메라 이미지. `image/jpeg`, `image/png`만 허용 |
+| metadata | JSON | Y | 위치추정 요청 메타데이터 |
+
+##### metadata
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| userSessionId | string | Y | 사용자 세션 ID |
+| stationId | number | Y | 현재 역 ID |
+| mapVersion | string | Y | AI 위치추정 맵 버전 |
+| heading | number | N | 단말 방향 |
+| capturedAt | string | N | 촬영 시각, ISO-8601 |
+| camera | object | N | 카메라 내부 파라미터 |
+
+##### camera
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| model | string | N | 카메라 모델. 예: `PINHOLE` |
+| width | number | N | 촬영 이미지 너비(px) |
+| height | number | N | 촬영 이미지 높이(px) |
+| params | number[] | N | 카메라 내부 파라미터. 제공 시 4개 값 |
+| intrinsicsSource | string | N | 카메라 내부 파라미터 출처 |
 
 #### Response
 
@@ -764,7 +783,9 @@ multipart/form-data
 {
   "success": true,
   "data": {
+    "requestId": "loc_01JABC",
     "resultStatus": "success",
+    "mapVersion": "YS-2026-07-23.1",
     "candidates": [
       {
         "nodeId": 15,
@@ -775,7 +796,9 @@ multipart/form-data
         "confidenceScore": 0.87,
         "confidenceLabel": "high"
       }
-    ]
+    ],
+    "fallbackOptions": [],
+    "processingTimeMs": 2310
   },
   "message": null
 }
@@ -788,9 +811,12 @@ multipart/form-data
 
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |
+| requestId | string | 위치추정 요청 추적 ID |
 | resultStatus | string | 위치 인식 처리 결과 |
+| mapVersion | string | 위치추정에 사용된 AI 맵 버전 |
 | candidates | array | 표시 가능한 위치 후보. 후보가 없으면 빈 배열 |
 | fallbackOptions | string[] | 사용자에게 제공할 대체 행동 목록 |
+| processingTimeMs | number | AI 위치추정 처리 시간(ms). AI 호출 실패로 측정할 수 없으면 `null` 또는 생략 |
 
 ##### resultStatus
 
@@ -840,14 +866,17 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "success": true,
   "data": {
+    "requestId": "loc_01JABC",
     "resultStatus": "low_confidence",
+    "mapVersion": "YS-2026-07-23.1",
     "candidates": [],
     "fallbackOptions": [
       "retry_capture",
       "select_landmark",
       "select_on_map",
       "request_consultation"
-    ]
+    ],
+    "processingTimeMs": 2310
   },
   "message": "위치를 정확히 찾지 못했습니다."
 }
@@ -859,14 +888,17 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "success": true,
   "data": {
+    "requestId": "loc_01JABC",
     "resultStatus": "no_match",
+    "mapVersion": "YS-2026-07-23.1",
     "candidates": [],
     "fallbackOptions": [
       "retry_capture",
       "select_landmark",
       "select_on_map",
       "request_consultation"
-    ]
+    ],
+    "processingTimeMs": 2310
   },
   "message": "현재 위치와 일치하는 후보를 찾지 못했습니다."
 }
@@ -878,12 +910,15 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "success": true,
   "data": {
+    "requestId": "loc_01JABC",
     "resultStatus": "ai_server_unavailable",
+    "mapVersion": "YS-2026-07-23.1",
     "candidates": [],
     "fallbackOptions": [
       "select_on_map",
       "request_consultation"
-    ]
+    ],
+    "processingTimeMs": null
   },
   "message": "위치 인식 서버에 연결할 수 없습니다."
 }
@@ -1241,6 +1276,66 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "message": null
 }
 ```
+
+---
+
+## 10.4 상담 대기 상태 SSE 구독
+
+### GET `/api/consultations/{consultationRequestId}/waiting-events`
+
+상담 요청 ID 기준으로 상담 대기 상태 변경 이벤트를 Server-Sent Events로 구독한다.
+
+#### 인증
+
+비로그인 접근 허용
+
+#### Path Variables
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `consultationRequestId` | string | Y | 상담 요청 ID |
+
+#### Response
+
+`text/event-stream`
+
+#### Event Name
+
+| 이벤트 | 설명 |
+| --- | --- |
+| `INIT` | SSE 연결 완료 확인 |
+| `WAITING` | 상담자를 기다리는 중 |
+| `ACCEPTED` | 상담자가 요청을 수락함 |
+| `REJECTED` | 상담자가 요청을 거절함 |
+| `CANCELED` | 사용자가 상담 요청을 취소함 |
+| `NO_COUNSELOR` | 상담 가능한 상담자가 없음 |
+
+#### Event Data
+
+```json
+{
+  "consultationRequestId": "consultation-1",
+  "type": "ACCEPTED",
+  "signalingRoomId": "room-1",
+  "message": "상담자가 요청을 수락했습니다.",
+  "timestamp": "2026-07-29T00:00:00Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `consultationRequestId` | string | Y | 상담 요청 ID |
+| `type` | string | Y | 상담 대기 이벤트 타입 |
+| `signalingRoomId` | string | N | WebRTC signaling room ID. `ACCEPTED` 이벤트에서만 전달 |
+| `message` | string | Y | 사용자 표시 메시지 |
+| `timestamp` | string | Y | 이벤트 생성 시각 |
+
+#### 비고
+
+- 클라이언트는 상담 대기 화면 진입 시 이 SSE endpoint를 구독한다.
+- 서버는 구독 직후 연결 확인을 위해 `INIT` 이벤트와 `connected` 데이터를 전송한다.
+- `ACCEPTED` 이벤트를 받으면 `signalingRoomId`를 사용해 `/ws/signaling` WebSocket signaling에 참여한다.
+- 연결이 끊기면 클라이언트는 동일한 `consultationRequestId`로 재구독할 수 있다.
 
 ---
 
@@ -2211,7 +2306,7 @@ multipart/form-data
 | 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                   |
 | 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                    |
 | 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits     |
-| 위치 인식   | POST /vps/localize, POST /localization/manual                                                           |
+| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                       |
 | 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                       |
 | 외부 지도   | POST /external-maps/directions                                                                          |
 | 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                   |
