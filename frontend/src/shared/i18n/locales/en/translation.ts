@@ -37,6 +37,11 @@ export const en = {
       empty: 'No map is registered',
       floorNotFound: 'No map for this floor',
       imageAlt: '{{floorCode}} indoor map',
+      overlay: {
+        currentLocation: 'Current location',
+        destination: 'Destination',
+        route: 'Route',
+      },
     },
   },
 } as const;
