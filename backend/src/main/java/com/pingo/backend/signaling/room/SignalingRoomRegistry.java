@@ -20,17 +20,20 @@ public class SignalingRoomRegistry {
         remove(webSocketSession);
 
         rooms.compute(signalingSessionId, (sessionId, participants) -> {
+            if (!webSocketSession.isOpen()) {
+                return participants;
+            }
+
             Map<SignalingSenderType, WebSocketSession> room = participants;
             if (room == null) {
                 room = new ConcurrentHashMap<>();
             }
 
+            webSocketSession.getAttributes().put(SIGNALING_SESSION_ID_ATTRIBUTE, signalingSessionId);
+            webSocketSession.getAttributes().put(SENDER_TYPE_ATTRIBUTE, senderType);
             room.put(senderType, webSocketSession);
             return room;
         });
-
-        webSocketSession.getAttributes().put(SIGNALING_SESSION_ID_ATTRIBUTE, signalingSessionId);
-        webSocketSession.getAttributes().put(SENDER_TYPE_ATTRIBUTE, senderType);
     }
 
     public Optional<WebSocketSession> findPeer(String signalingSessionId, SignalingSenderType senderType) {
