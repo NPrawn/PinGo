@@ -72,4 +72,8 @@ public class ConsultationSession {
     private static String generateId() {
         return "cs_" + UUID.randomUUID().toString().replace("-", "");
     }
+
+    public void cancel(){
+        this.status = ConsultationStatus.CANCELED;
+    }
 }
