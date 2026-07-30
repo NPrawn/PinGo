@@ -1,23 +1,36 @@
 package com.pingo.backend.signaling.room;
 
 import com.pingo.backend.signaling.dto.SignalingSenderType;
+import java.io.IOException;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SignalingRoomRegistryTest {
 
     private SignalingRoomRegistry registry;
+    private MutableClock clock;
+    private static final CloseStatus SIGNALING_ROOM_EXPIRED =
+            new CloseStatus(4408, "Signaling Room Expired");
 
     @BeforeEach
     void setUp() {
-        registry = new SignalingRoomRegistry();
+        clock = new MutableClock(Instant.parse("2026-07-30T00:00:00Z"));
+        registry = new SignalingRoomRegistry(clock);
     }
 
     @Test
@@ -145,11 +158,113 @@ class SignalingRoomRegistryTest {
                 .isFalse();
     }
 
+    @Test
+    void registerUpdatesLastTouchedAt() {
+        WebSocketSession userSession = webSocketSession("user-session");
+
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+
+        assertThat(registry.lastTouchedAt("consultation-1"))
+                .contains(Instant.parse("2026-07-30T00:00:00Z"));
+    }
+
+    @Test
+    void findPeerUpdatesLastTouchedAt() {
+        WebSocketSession userSession = webSocketSession("user-session");
+        WebSocketSession counselorSession = webSocketSession("counselor-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        registry.register("consultation-1", SignalingSenderType.COUNSELOR, counselorSession);
+        clock.setInstant(Instant.parse("2026-07-30T00:01:00Z"));
+
+        registry.findPeer("consultation-1", SignalingSenderType.USER);
+
+        assertThat(registry.lastTouchedAt("consultation-1"))
+                .contains(Instant.parse("2026-07-30T00:01:00Z"));
+    }
+
+    @Test
+    void removeExpiredRoomsRemovesOldRoomAndClosesParticipants() throws IOException {
+        WebSocketSession userSession = webSocketSession("user-session");
+        WebSocketSession counselorSession = webSocketSession("counselor-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        registry.register("consultation-1", SignalingSenderType.COUNSELOR, counselorSession);
+        clock.setInstant(Instant.parse("2026-07-30T00:31:00Z"));
+
+        int removedCount = registry.removeExpiredRooms(Duration.ofMinutes(30));
+
+        assertThat(removedCount).isEqualTo(1);
+        assertThat(registry.containsRoom("consultation-1")).isFalse();
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))
+                .isFalse();
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.COUNSELOR, counselorSession))
+                .isFalse();
+        verify(userSession).close(SIGNALING_ROOM_EXPIRED);
+        verify(counselorSession).close(SIGNALING_ROOM_EXPIRED);
+    }
+
+    @Test
+    void removeExpiredRoomsKeepsRecentlyTouchedRoom() throws IOException {
+        WebSocketSession userSession = webSocketSession("user-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        clock.setInstant(Instant.parse("2026-07-30T00:29:00Z"));
+
+        int removedCount = registry.removeExpiredRooms(Duration.ofMinutes(30));
+
+        assertThat(removedCount).isZero();
+        assertThat(registry.containsRoom("consultation-1")).isTrue();
+        verify(userSession, never()).close();
+    }
+
+    @Test
+    void removeExpiredRoomsKeepsRoomTouchedByPeerLookup() throws IOException {
+        WebSocketSession userSession = webSocketSession("user-session");
+        WebSocketSession counselorSession = webSocketSession("counselor-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        registry.register("consultation-1", SignalingSenderType.COUNSELOR, counselorSession);
+        clock.setInstant(Instant.parse("2026-07-30T00:31:00Z"));
+
+        registry.findPeer("consultation-1", SignalingSenderType.USER);
+        int removedCount = registry.removeExpiredRooms(Duration.ofMinutes(30));
+
+        assertThat(removedCount).isZero();
+        assertThat(registry.containsRoom("consultation-1")).isTrue();
+        verify(userSession, never()).close();
+        verify(counselorSession, never()).close();
+    }
+
     private WebSocketSession webSocketSession(String id) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);
         when(session.isOpen()).thenReturn(true);
         when(session.getAttributes()).thenReturn(new ConcurrentHashMap<>());
         return session;
+    }
+
+    private static class MutableClock extends Clock {
+
+        private Instant instant;
+
+        private MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        private void setInstant(Instant instant) {
+            this.instant = instant;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 }
