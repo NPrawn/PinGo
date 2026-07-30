@@ -534,7 +534,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ### GET `/stations/{stationId}/maps`
 
-역의 층별 지도 정보를 조회한다.
+역의 층별 지도 정보를 조회한다. 응답에는 **좌표 프레임**이 포함된다 — 노드·경로·현재위치 좌표는 캐노니컬 미터로 내려가므로, 지도 위에 그리려면 이 값으로 픽셀로 변환해야 한다.
 
 #### Response
 
@@ -548,15 +548,65 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "floorCode": "B1",
       "mapType": "image",
       "mapUrl": "/uploads/maps/3f2a1b.png",
-      "width": 1200,
-      "height": 800,
-      "scaleMPerPx": 0.05,
+      "width": 1626,
+      "height": 967,
+      "scaleMPerPx": 0.19,
+      "originPxX": 594,
+      "originPxY": 501,
+      "frameAngleDeg": -21.28,
       "version": "v1"
     }
   ],
   "message": null
 }
 ```
+
+#### 좌표 프레임 필드
+
+| 이름 | 타입 | 필수 | 설명 |
+| ------------- | ------ | ---- | ---------------------------------------------- |
+| width | number | N | 원본 지도 이미지 너비(px) |
+| height | number | N | 원본 지도 이미지 높이(px) |
+| scaleMPerPx | number | N | 픽셀당 실제 거리(m) |
+| originPxX | number | N | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 x |
+| originPxY | number | N | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 y |
+| frameAngleDeg | number | N | 캐노니컬 +X축과 이미지 x축의 각도(도) |
+
+프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)가 **모두 있어야** 좌표 변환이 가능하다. 하나라도 `null`이면 지도 이미지는 표시할 수 있으나 좌표 오버레이는 할 수 없다. **층마다 값이 다르므로 층별로 사용해야 한다** — 원본 평면도 이미지의 크기·여백이 층마다 달라 원점 픽셀이 다르다.
+
+> **구현 상태: `originPxX`·`originPxY`·`frameAngleDeg`는 미구현이다.** 이 엔드포인트는 구현돼 있으나 세 필드는 아직 응답에 없다. `floor_map` 컬럼 추가(V6)·엔티티·DTO 반영이 필요하며 별도 작업이다. 또한 **`floor_map`에 시드 데이터가 없어 현재 이 엔드포인트는 빈 배열을 반환한다.**
+> 그때까지 FE는 [`역삼역_FE_좌표연동_스펙.md`](역삼역_FE_좌표연동_스펙.md) §2의 프레임 값을 사용한다.
+
+#### 좌표 변환식
+
+`px`/`py`는 **원본 이미지 픽셀**이다. 화면에 축소·확대해 그린다면 뷰 배율을 추가로 곱한다.
+
+```js
+// 미터(x, y) → 원본 이미지 픽셀(px, py)  [노드·경로·현재위치를 지도에 그릴 때]
+function meterToPixel(x, y, frame) {
+  const t = (frame.frameAngleDeg * Math.PI) / 180;
+  const c = Math.cos(t), s = Math.sin(t);
+  return {
+    px: frame.originPxX + (c * x - s * y) / frame.scaleMPerPx,
+    py: frame.originPxY + (s * x + c * y) / frame.scaleMPerPx,
+  };
+}
+
+// 원본 이미지 픽셀(px, py) → 미터(x, y)  [지도를 눌러 위치를 지정할 때]
+function pixelToMeter(px, py, frame) {
+  const t = (frame.frameAngleDeg * Math.PI) / 180;
+  const c = Math.cos(t), s = Math.sin(t);
+  const dx = px - frame.originPxX, dy = py - frame.originPxY;
+  return {
+    x: (dx * c + dy * s) * frame.scaleMPerPx,
+    y: (-dx * s + dy * c) * frame.scaleMPerPx,
+  };
+}
+```
+
+검증 예시 (역삼역 B2): `meterToPixel(0, 0, frameB2)` → `(622, 512)` = B2-B3 엘리베이터 B(원점), `meterToPixel(-0.4, 27.2, frameB2)` → `(672, 646)` = B2-B3 엘리베이터 A.
+
+> 좌표계 결정 배경은 [`기술_의사결정_정리.md`](기술_의사결정_정리.md) §6.3, FE 연동 계약은 [`역삼역_FE_좌표연동_스펙.md`](역삼역_FE_좌표연동_스펙.md)를 기준으로 한다.
 
 ---
 
@@ -587,15 +637,17 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "facilityType": "exit",
       "nameKo": "5번 출구",
       "nameEn": "Exit 5",
-      "mapX": 820.4,
-      "mapY": 120.7,
+      "mapX": 97.454,
+      "mapY": -19.34,
       "linkedNodeId": 44,
-      "isAccessible": true
+      "isAccessible": false
     }
   ],
   "message": null
 }
 ```
+
+`mapX`·`mapY`는 **캐노니컬 미터**다(픽셀이 아니다). 음수가 정상이며, 원점 기준 상대 위치다. 지도에 그릴 때는 §5.1의 좌표 프레임으로 변환한다.
 
 ---
 
@@ -2016,13 +2068,20 @@ multipart/form-data
 
 #### Request
 
-| 이름        | 타입   | 필수 | 설명             |
-| ----------- | ------ | ---- | ---------------- |
-| mapType     | string | Y    | image, svg       |
-| mapFile     | file   | Y    | 지도 파일        |
-| width       | number | N    | 지도 너비        |
-| height      | number | N    | 지도 높이        |
-| scaleMPerPx | number | N    | 픽셀당 실제 거리 |
+| 이름          | 타입   | 필수 | 설명                                           |
+| ------------- | ------ | ---- | ---------------------------------------------- |
+| mapType       | string | Y    | image, svg                                     |
+| mapFile       | file   | Y    | 지도 파일                                      |
+| width         | number | N    | 지도 너비                                      |
+| height        | number | N    | 지도 높이                                      |
+| scaleMPerPx   | number | N    | 픽셀당 실제 거리(m)                            |
+| originPxX     | number | N    | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 x |
+| originPxY     | number | N    | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 y |
+| frameAngleDeg | number | N    | 캐노니컬 +X축과 이미지 x축의 각도(도)          |
+
+프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)는 업로드하는 **이 이미지 기준**으로 넣는다. 같은 층의 지도를 다른 이미지로 교체하면 원점 픽셀과 축척이 달라지므로 새 이미지에 맞춰 다시 측정해야 한다. 값을 넣지 않으면 지도 표시는 되지만 좌표 오버레이는 동작하지 않는다. 의미와 변환식은 §5.1 참고.
+
+> **구현 상태: `originPxX`·`originPxY`·`frameAngleDeg`는 미구현이다.** §5.1 참고.
 
 #### Response
 
@@ -2054,9 +2113,12 @@ multipart/form-data
       "floorCode": "B2",
       "mapType": "image",
       "mapUrl": "/uploads/maps/3f2a1b.png",
-      "width": 1200,
-      "height": 800,
-      "scaleMPerPx": 0.05,
+      "width": 1624,
+      "height": 969,
+      "scaleMPerPx": 0.19,
+      "originPxX": 622,
+      "originPxY": 512,
+      "frameAngleDeg": -21.28,
       "version": "v1"
     }
   ],
