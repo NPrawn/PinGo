@@ -59,9 +59,11 @@ public class ConsultationWaitingEmitterRegistry {
         }
 
         try {
-            emitter.send(SseEmitter.event()
-                    .name(eventName)
-                    .data(data));
+            synchronized (emitter) {
+                emitter.send(SseEmitter.event()
+                        .name(eventName)
+                        .data(data));
+            }
         } catch (IOException | IllegalStateException exception) {
             emitters.remove(consultationRequestId, emitter);
             emitter.completeWithError(exception);
