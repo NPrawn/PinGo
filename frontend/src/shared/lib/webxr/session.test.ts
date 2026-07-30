@@ -234,6 +234,25 @@ describe('createXrSessionController', () => {
       });
     });
 
+    /**
+     * `viewer` 공간에서 getViewerPose는 항상 원점을 돌려준다. 뷰어 자신을 기준으로 한 뷰어의
+     * pose이므로 위치가 영원히 (0,0,0)이다. 그대로 쓰면 pose가 있으니 tracking으로 보이는데
+     * 이동은 한 번도 감지되지 않아, 조용히 틀린 위치를 내보내게 된다.
+     *
+     * 11.7의 원칙은 추적 없이도 안내가 완결되어야 한다는 것이다. 쓸 수 없는 공간이면 실패로
+     * 알리고 fallback 경로를 타는 편이 맞다.
+     */
+    it('viewer 공간만 있으면 상대 위치를 못 구하므로 실패로 처리한다', async () => {
+      const fake = createFakeSession(['viewer']);
+      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+
+      await expect(controller.start()).resolves.toMatchObject({
+        status: 'failed',
+        reason: 'no-reference-space',
+      });
+      expect(fake.endCalls()).toBe(1);
+    });
+
     it('쓸 수 있는 reference space가 없으면 세션을 닫고 실패한다', async () => {
       const fake = createFakeSession([]);
       const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
@@ -302,6 +321,39 @@ describe('createXrSessionController', () => {
 
       expect(xr.requestSession).toHaveBeenCalledTimes(1);
       expect(second).toEqual(first);
+    });
+
+    /**
+     * 권한 프롬프트는 실측에서 2.04~25.29초 걸렸다. 그 사이에 사용자가 화면을 벗어나면
+     * 언마운트 훅이 stop()을 부르는데, 그 시점에는 아직 세션 객체가 없다. 이 경우를 처리하지
+     * 않으면 뒤늦게 세션이 열리고 아무도 닫지 않는다.
+     */
+    it('start 도중에 stop이 호출되면 열린 세션을 즉시 닫는다', async () => {
+      const fake = createFakeSession();
+      let openSession: ((session: XRSession) => void) | null = null;
+      const controller = createXrSessionController({
+        xr: fakeXr(
+          () =>
+            new Promise<XRSession>((resolve) => {
+              openSession = resolve;
+            }),
+        ),
+      });
+
+      const starting = controller.start();
+      const stopping = controller.stop();
+
+      await vi.waitFor(() => {
+        expect(openSession).not.toBeNull();
+      });
+      openSession!(fake.session);
+      await starting;
+      await stopping;
+
+      expect(fake.endCalls()).toBe(1);
+      expect(fake.hasPendingFrame()).toBe(false);
+      expect(fake.listenerCount()).toBe(0);
+      expect(controller.getState().status).toBe('ended');
     });
 
     it('종료한 뒤에는 다시 시작할 수 있다', async () => {

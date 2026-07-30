@@ -32,12 +32,14 @@ const PERMISSION_BLOCKED_MS = 500;
  *
  * 1차 실기기 검증에서 `local`이 첫 후보로 성공했다. 없는 기기도 있어 순서대로 시도한다.
  * 층 계산에 높이 절대값을 쓰지 않으므로(11.2) `local-floor`가 아니어도 무관하다.
+ *
+ * **`viewer`는 후보에 넣지 않는다.** 검증 페이지는 어떤 공간이 존재하는지 알아보려고 후보에
+ * 넣었지만, `viewer` 공간에서 `getViewerPose`는 뷰어 자신을 기준으로 한 뷰어의 pose를
+ * 돌려주므로 위치가 영원히 원점이다. 그대로 쓰면 pose가 있으니 `tracking`으로 보이는데
+ * 이동은 한 번도 감지되지 않아 **조용히 틀린 위치를 내보낸다.** 상대 위치 추적이라는 이
+ * 모듈의 목적을 채울 수 없으므로 실패로 알리고 11.7의 fallback 경로를 타게 한다.
  */
-const REFERENCE_SPACE_CANDIDATES: readonly XRReferenceSpaceType[] = [
-  'local',
-  'local-floor',
-  'viewer',
-];
+const REFERENCE_SPACE_CANDIDATES: readonly XRReferenceSpaceType[] = ['local', 'local-floor'];
 
 /**
  * 세션 시작 시 함께 요청하는 기능.
@@ -150,6 +152,15 @@ export function createXrSessionController(
    * 0.96~1.54초 동안 getViewerPose가 null이므로, 이 구간을 추적 상실과 구분해야 한다.
    */
   let lastPoseAt: DOMHighResTimeStamp | null = null;
+
+  /**
+   * start가 끝나기 전에 stop이 호출됐는지.
+   *
+   * 세션 객체는 `requestSession`이 resolve된 뒤에야 존재한다. 권한 프롬프트는 실측에서
+   * 2.04~25.29초 걸렸고, 그 사이에 사용자가 화면을 벗어나면 언마운트 훅이 stop을 부르는데
+   * 그 시점에는 닫을 세션이 없다. 이 표시가 없으면 뒤늦게 세션이 열리고 아무도 닫지 않는다.
+   */
+  let stopRequested = false;
 
   function setState(next: Partial<XrSessionState> & { status: XrTrackingStatus }): XrSessionState {
     const merged: XrSessionState = {
@@ -266,9 +277,23 @@ export function createXrSessionController(
     sampler.reset();
   }
 
+  /**
+   * start 도중에 stop이 들어온 경우. 열린 세션을 쓰지 않고 즉시 닫는다.
+   */
+  async function abandon(opened: XRSession): Promise<XrSessionState> {
+    try {
+      await opened.end();
+    } catch {
+      // 이미 끝났거나 종료에 실패해도 더 할 수 있는 일이 없다.
+    }
+
+    return setState({ status: 'ended', reason: undefined, referenceSpaceType: undefined });
+  }
+
   async function run(startOptions: XrStartOptions): Promise<XrSessionState> {
     const xr = options.xr ?? navigator.xr;
 
+    stopRequested = false;
     setState({ status: 'starting', reason: undefined, referenceSpaceType: undefined });
 
     if (!xr) {
@@ -314,6 +339,13 @@ export function createXrSessionController(
       });
     }
 
+    /**
+     * 권한 프롬프트를 기다리는 동안 화면을 벗어난 경우. reference space를 구하기 전에 닫는다.
+     */
+    if (stopRequested) {
+      return abandon(opened);
+    }
+
     let acquired: XRReferenceSpace | null = null;
     let acquiredType: XRReferenceSpaceType | undefined;
 
@@ -337,6 +369,13 @@ export function createXrSessionController(
       return setState({ status: 'failed', reason: 'no-reference-space' });
     }
 
+    /**
+     * reference space를 구하는 동안 화면을 벗어난 경우. 추적 루프를 걸지 않고 닫는다.
+     */
+    if (stopRequested) {
+      return abandon(opened);
+    }
+
     session = opened;
     referenceSpace = acquired;
     sampler = createPoseSampler(rule);
@@ -358,6 +397,17 @@ export function createXrSessionController(
   }
 
   async function stop(): Promise<void> {
+    stopRequested = true;
+
+    /**
+     * 시작이 진행 중이면 그것이 끝나기를 기다린다. 세션 객체는 requestSession이 resolve된
+     * 뒤에야 생기므로, 기다리지 않으면 닫을 대상이 없어 그냥 돌아가고 세션이 남는다.
+     * run은 stopRequested를 보고 세션을 열자마자 닫으므로, 기다린 뒤에는 정리가 끝나 있다.
+     */
+    if (startInFlight) {
+      await startInFlight.catch(() => undefined);
+    }
+
     const current = session;
 
     if (!current) {
