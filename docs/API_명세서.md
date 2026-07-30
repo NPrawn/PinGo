@@ -1621,15 +1621,15 @@ Authorization: Bearer {accessToken}
 
 ### POST `/consultations/{consultationId}/end`
 
-사용자 또는 상담자가 상담을 종료한다.
+상담자가 수락한 상담을 종료한다.
 
-#### Request
+#### Header
 
-```json
-{
-  "endedBy": "counselor"
-}
+```http
+Authorization: Bearer {accessToken}
 ```
+
+요청 본문은 사용하지 않는다.
 
 #### Response
 
@@ -1643,6 +1643,17 @@ Authorization: Bearer {accessToken}
   "message": null
 }
 ```
+
+#### Error
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
+| `ACCEPTED`, `IN_PROGRESS`가 아닌 상담 | 409 | `CONSULTATION_NOT_ENDABLE` |
+| 담당 역 상담자가 아님 | 403 | `CONSULTATION_STATION_MISMATCH` |
+| 수락한 상담자가 아님 | 403 | `CONSULTATION_COUNSELOR_MISMATCH` |
+
+상담 종료가 성공하면 Backend는 해당 `signalingRoomId`의 WebSocket room을 정리하고, 남아 있는 WebSocket session을 `4400 Signaling Room Closed`로 종료한다.
 
 ---
 
