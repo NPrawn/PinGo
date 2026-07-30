@@ -217,11 +217,14 @@ describe('user routes', () => {
   it('reveals origin, destination, and final confirmation one step at a time', async () => {
     await renderSection('/user/station');
 
-    expect(await screen.findByRole('heading', { name: '오늘은 어디로 가시나요?' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '오늘은 어디로 가시나요?' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '출발지 선택' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '목적지 선택' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /역삼역.*현재 GPS 위치/ }));
+    useNavigationStore.setState({ waypoints: ['화장실'] });
 
     expect(screen.getAllByText('출발지')).not.toHaveLength(0);
     expect(screen.getByText('역삼역')).toBeInTheDocument();
@@ -229,6 +232,7 @@ describe('user routes', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /GS25 역삼역점/ }));
 
+    expect(useNavigationStore.getState().waypoints).toEqual([]);
     expect(await screen.findByRole('heading', { name: '출발지와 목적지' })).toBeInTheDocument();
     expect(screen.getByLabelText('역삼역에서 GS25 역삼역점까지')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /이 경로로 촬영 시작/ })).toBeInTheDocument();
@@ -249,6 +253,23 @@ describe('user routes', () => {
       screen.getByRole('heading', { name: '여기가 맞는지 확인해 주세요' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '이 위치에서 경로 선택하기 →' })).toBeInTheDocument();
+  });
+
+  it('starts portrait recapture from the reroute modal', async () => {
+    await renderSection('/user/navigation/reroute');
+
+    fireEvent.click(await screen.findByRole('link', { name: /위치 재인식/ }));
+
+    expect(await screen.findByText('세 방향을 자유롭게 비춰주세요')).toBeInTheDocument();
+  });
+
+  it('renders the offline fallback as a reusable modal', async () => {
+    await renderSection('/user/offline');
+
+    const offlineDialog = await screen.findByRole('dialog', { name: '인터넷 연결 중' });
+    expect(offlineDialog).toHaveTextContent('잠시만 기다려 주세요.');
+    expect(screen.queryByRole('button', { name: '오프라인으로 계속' })).toBeNull();
+    expect(screen.getByRole('button', { name: /다시 연결/ })).toBeInTheDocument();
   });
 
   it('shows every route option in a list and updates the selected exit', async () => {
@@ -290,9 +311,7 @@ describe('user routes', () => {
     });
     await renderSection('/user/navigation');
 
-    expect(
-      await screen.findByRole('link', { name: '이전 화면으로 돌아가기' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '이전 화면으로 돌아가기' })).toBeInTheDocument();
     expect(await screen.findByText('출발지')).toBeInTheDocument();
     expect(screen.getByText('목적지')).toBeInTheDocument();
     const routeHeader = screen.getByLabelText('현재 경로');
@@ -312,7 +331,9 @@ describe('user routes', () => {
     expect(useNavigationStore.getState().destination).toBe('GS25 역삼역점');
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: '승차권 충전 경로 설정' })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('dialog', { name: '승차권 충전 경로 설정' }),
+      ).not.toBeInTheDocument(),
     );
 
     fireEvent.click(screen.getByRole('button', { name: '엘리베이터 경로 옵션 열기' }));
@@ -323,6 +344,11 @@ describe('user routes', () => {
     expect(within(routeHeader).queryByText('2번 출입구')).toBeNull();
     expect(within(routeHeader).getByText('화장실')).toBeInTheDocument();
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '목적지를 2번 출입구로 되돌리기' }));
+    expect(useNavigationStore.getState().destination).toBe('GS25 역삼역점');
+    expect(useNavigationStore.getState().waypoints).toEqual(['화장실', '승차권 충전']);
+    expect(within(routeHeader).getByText('2번 출입구')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '목적지를 2번 출입구로 되돌리기' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '화장실 경유지 삭제' }));
     expect(within(routeHeader).queryByText('화장실')).toBeNull();
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
