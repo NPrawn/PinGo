@@ -159,6 +159,19 @@ class SecurityFilterChainTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void 비로그인_WebRTC_Fallback_API_200() throws Exception {
+        mockMvc.perform(post("/api/consultations/consultation-1/fallback-events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {
+                      "type": "VIDEO_FAILED",
+                      "reason": "camera permission denied"
+                    }
+                    """))
+                .andExpect(status().isOk());
+    }
+
     // ---- ADMIN ----
 
     @Test
