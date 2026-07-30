@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface ConsultationSessionRepository extends JpaRepository<ConsultationSession, String> {
@@ -18,4 +19,11 @@ public interface ConsultationSessionRepository extends JpaRepository<Consultatio
     @Query("select cs from ConsultationSession cs where cs.consultationId = :consultationId")
     Optional<ConsultationSession> findByIdForUpdate(@Param("consultationId") String consultationId);
 
+    @Query("""
+        SELECT cs FROM ConsultationSession cs
+        WHERE cs.stationId = :stationId
+          AND (:status IS NULL OR cs.status = :status)
+        ORDER BY cs.requestedAt ASC
+        """)
+    List<ConsultationSession> findByStationId(@Param("stationId") Long stationId, @Param("status") ConsultationStatus status);
 }

@@ -29,6 +29,7 @@ public enum ErrorCode {
     CONSULTATION_NOT_ACCEPTABLE(HttpStatus.CONFLICT, "CONSULTATION_NOT_ACCEPTABLE", "수락할 수 없는 상담 상태입니다."),
     CONSULTATION_NOT_REJECTABLE(HttpStatus.CONFLICT, "CONSULTATION_NOT_REJECTABLE", "거절할 수 없는 상담 상태입니다."),
     CONSULTATION_STATION_MISMATCH(HttpStatus.FORBIDDEN, "CONSULTATION_STATION_MISMATCH", "담당 역의 상담 요청이 아닙니다."),
+    CONSULTATION_NOT_ENDABLE(HttpStatus.CONFLICT, "CONSULTATION_NOT_ENDABLE", "종료할 수 없는 상담 상태입니다."),
 
     // 역,층,시설
     STATION_NOT_FOUND(HttpStatus.NOT_FOUND, "STATION_NOT_FOUND", "역을 찾을 수 없습니다."),

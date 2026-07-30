@@ -93,4 +93,9 @@ public class ConsultationSession {
                 || status == ConsultationStatus.ENDED;
         return roomActive ? "room_" + consultationId : null;
     }
+
+    public void end(){
+        this.status = ConsultationStatus.ENDED;
+        this.endedAt = LocalDateTime.now();
+    }
 }
