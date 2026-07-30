@@ -7,6 +7,7 @@ import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.response.*;
+import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
@@ -29,6 +30,7 @@ public class ConsultationSessionService {
     private final UserSessionRepository userSessionRepository;
     private final StationRepository stationRepository;
     private final AccountRepository accountRepository;
+    private final ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
     private static final List<ConsultationStatus> ACTIVE_STATUSES =
             List.of(ConsultationStatus.WAITING, ConsultationStatus.ACCEPTED, ConsultationStatus.IN_PROGRESS);
 
@@ -87,32 +89,40 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationAcceptResponse accept(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
+        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
-        Account counselor = findStationCounselor(counselorAccountId, session.getStationId());
+        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
+
+        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
         if(session.getStatus() != ConsultationStatus.WAITING){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_ACCEPTABLE);
         }
 
         session.accept(counselor.getAccountId());
+        consultationWaitingEventPublisher.publishAccepted(session.getConsultationId(), session.getSignalingRoomId());
         return ConsultationAcceptResponse.from(session);
     }
 
     @Transactional
     public ConsultationRejectResponse reject(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
+        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
-        Account counselor = findStationCounselor(counselorAccountId, session.getStationId());
+        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
+
+        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
         if(session.getStatus() != ConsultationStatus.WAITING){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_REJECTABLE);
         }
 
-        session.reject(counselor.getAccountId());
+        session.reject();
         log.info("상담 거절 처리 - consultationId={}, rejectedBy={}", session.getConsultationId(), counselor.getAccountId());
+        consultationWaitingEventPublisher.publishRejected(session.getConsultationId());
         return ConsultationRejectResponse.from(session);
     }
 
