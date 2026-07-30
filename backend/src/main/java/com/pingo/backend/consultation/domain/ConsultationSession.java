@@ -76,4 +76,15 @@ public class ConsultationSession {
     public void cancel(){
         this.status = ConsultationStatus.CANCELED;
     }
+
+    public void accept(Long counselorId){
+        this.status = ConsultationStatus.ACCEPTED;
+        this.counselorId = counselorId;
+        this.acceptedAt = LocalDateTime.now();
+    }
+
+    public void reject(Long counselorId){
+        this.status = ConsultationStatus.REJECTED;
+        this.counselorId = counselorId;
+    }
 }
