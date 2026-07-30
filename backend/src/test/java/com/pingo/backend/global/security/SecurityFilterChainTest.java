@@ -5,6 +5,7 @@ import com.pingo.backend.auth.domain.AccountType;
 import com.pingo.backend.auth.repository.AccountRepository;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
+import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,9 @@ class SecurityFilterChainTest {
 
     @Autowired
     private StationRepository stationRepository;
+
+    @Autowired
+    private SignalingAccessTokenProvider signalingAccessTokenProvider;
 
     @Value("${jwt.secret}")
     private String jwtSecret;
@@ -189,7 +193,10 @@ class SecurityFilterChainTest {
 
     @Test
     void 비로그인_WebRTC_ICEServer_API_200() throws Exception {
-        mockMvc.perform(get("/api/webrtc/ice-servers"))
+        String token = signalingAccessTokenProvider.createUserToken("cs_abc123", "usr_abc123");
+
+        mockMvc.perform(get("/api/webrtc/ice-servers")
+                        .param("token", token))
                 .andExpect(status().isOk());
     }
 

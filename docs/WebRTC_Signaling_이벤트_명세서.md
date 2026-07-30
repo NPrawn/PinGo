@@ -29,7 +29,7 @@ wss://{service-domain}/ws/signaling?token={signalingAccessToken}
 
 ### ICE 서버 설정
 
-Frontend는 `RTCPeerConnection` 생성 전에 `GET /api/webrtc/ice-servers`를 호출해 ICE server 설정을 조회한다. Backend는 STUN 기본값을 제공하며, TURN URL과 credential은 운영 환경변수로 주입된 경우에만 응답에 포함한다.
+Frontend는 `RTCPeerConnection` 생성 전에 `GET /api/webrtc/ice-servers?token={signalingAccessToken}`를 호출해 ICE server 설정을 조회한다. Backend는 STUN 기본값을 제공하며, TURN URL과 credential은 운영 환경변수로 주입된 경우에만 응답에 포함한다. ICE 설정 조회에는 계정 JWT 대신 상담별 `signalingAccessToken`이 필요하다.
 
 ```json
 {
