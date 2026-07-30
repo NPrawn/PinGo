@@ -126,6 +126,30 @@ public class ConsultationSessionService {
         return ConsultationRejectResponse.from(session);
     }
 
+    @Transactional
+    public ConsultationEndResponse end(String consultationSessionId, Long counselorAccountId){
+        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+
+        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
+
+        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+
+        if(session.getStatus() != ConsultationStatus.ACCEPTED
+                && session.getStatus() != ConsultationStatus.IN_PROGRESS){
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
+        }
+
+        if(!counselor.getAccountId().equals(session.getCounselorId())){
+            throw new BusinessException(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+        }
+
+        session.end();
+        log.info("상담 종료 처리 - consultationId={}, endedBy={}", session.getConsultationId(), counselor.getAccountId());
+        return ConsultationEndResponse.from(session);
+    }
+
     private Account findStationCounselor(Long counselorAccountId, Long stationId){
         Account counselor = accountRepository.findById(counselorAccountId)
                 .filter(account -> account.getAccountType() == AccountType.COUNSELOR)
