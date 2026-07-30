@@ -1,4 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useUserSessionBootstrap } from '@/entities/user-session';
 import { USER_ROUTES } from '@/shared/config';
 import { ArrivalPage } from './ArrivalPage/ArrivalPage';
 import { BackstagePage } from './BackstagePage/BackstagePage';
@@ -33,6 +35,9 @@ const rel = (path: string) => path.slice('/user/'.length);
  * The legacy hash id for each route is recorded in `shared/config/routes.ts`.
  */
 export function UserRoutes() {
+  const { i18n } = useTranslation();
+  useUserSessionBootstrap(i18n.language);
+
   return (
     <Routes>
       <Route index element={<Navigate to={USER_ROUTES.SPLASH} replace />} />

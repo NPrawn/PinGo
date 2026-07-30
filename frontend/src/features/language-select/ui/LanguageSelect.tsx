@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { useUserSessionStore } from '@/entities/user-session';
+import { updateUserSession } from '@/shared/api';
 import { SelectRow } from '@/shared/ui';
 import styles from './LanguageSelect.module.css';
 
@@ -24,6 +26,16 @@ const LANGUAGES: readonly LanguageOption[] = [
 export function LanguageSelect() {
   const { i18n } = useTranslation();
   const current = i18n.language;
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+
+  const selectLanguage = async (code: string) => {
+    await i18n.changeLanguage(code);
+    if (userSessionId) {
+      await updateUserSession(userSessionId, {
+        language: code as 'ko' | 'en' | 'ja' | 'zh',
+      });
+    }
+  };
 
   return (
     <div className={styles.options}>
@@ -32,7 +44,9 @@ export function LanguageSelect() {
           key={language.code}
           className={styles.option}
           selected={current === language.code}
-          onClick={() => void i18n.changeLanguage(language.code)}
+          onClick={() => {
+            void selectLanguage(language.code).catch(() => undefined);
+          }}
         >
           <span className={styles.code}>{language.short}</span>
           <span className={styles.labels}>
