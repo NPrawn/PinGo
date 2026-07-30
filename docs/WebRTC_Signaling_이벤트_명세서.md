@@ -1,5 +1,8 @@
 # WebRTC Signaling 이벤트 명세서
 
+> 최신화: 2026-07-30
+> 구현 상태: Backend WebSocket relay와 envelope 검증은 구현됨. Frontend PeerConnection 연동과 상담 도메인 기반 session 권한 검증은 미완료다.
+
 ## 1. 목적
 
 본 문서는 PinGo 사용자와 상담자 간 WebRTC 연결을 생성하기 위해 WebSocket으로 교환하는 signaling 이벤트 계약을 정의한다.
@@ -250,7 +253,7 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 | `SIGNALING_SESSION_NOT_FOUND` | 존재하지 않는 sessionId | false | N |
 | `SIGNALING_SESSION_CLOSED` | 이미 종료된 session | false | N |
 | `SIGNALING_ROOM_FULL` | 사용자와 상담자가 이미 모두 입장한 room | false | N |
-| `SIGNALING_INTERNAL_ERROR` | 서버 내부 오류 | true | N |
+| `SIGNALING_INTERNAL_ERROR` | 서버 내부 오류 | true | Y |
 
 ---
 
@@ -264,6 +267,7 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 - `LEAVE` 또는 비정상 연결 종료 시 Backend는 room cleanup을 수행한다.
 - 현재 구현은 인메모리 room registry 기준이다. 서버 재시작 시 room 정보는 유지되지 않는다.
 - 현재 signaling session validator 기본 구현은 모든 session을 허용한다. 상담 session 존재 여부, 수락 상태, 종료 session, 참여자 권한 검증은 상담 상태 도메인 연동 시 구체 구현으로 교체한다.
+- Backend의 현재 검증 범위는 공통 envelope와 enum·JOIN 상태까지다. SDP와 ICE candidate payload 내부 값은 relay 서버가 검증하지 않는다.
 
 ---
 

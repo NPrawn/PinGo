@@ -1,5 +1,7 @@
 # Flyway Migration Rollback 정책
 
+> 최신화: 2026-07-30
+
 ## 1. 목적
 
 본 문서는 Jenkins CD 배포 이후 Flyway migration이 MySQL에 적용된 상태에서 애플리케이션 jar만 이전 버전으로 rollback할 때 발생할 수 있는 schema 호환성 문제를 방지하기 위한 정책을 정의한다.
