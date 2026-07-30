@@ -5,6 +5,7 @@ import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.signaling.dto.SignalingSenderType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
 
@@ -25,6 +26,7 @@ public class ConsultationSignalingSessionValidator implements SignalingSessionVa
     private final SignalingSessionIdParser signalingSessionIdParser;
 
     @Override
+    @Transactional(readOnly = true)
     public SignalingSessionValidationResult validateJoin(
             String signalingSessionId,
             SignalingSenderType senderType

@@ -11,7 +11,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Method;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -113,6 +115,20 @@ class ConsultationSignalingSessionValidatorTest {
 
         assertThat(result).isEqualTo(SignalingSessionValidationResult.UNAUTHORIZED_PARTICIPANT);
         verify(consultationSessionRepository, never()).findById("cs_abc123");
+    }
+
+    @Test
+    void validateJoinIsReadOnlyTransactional() throws NoSuchMethodException {
+        Method method = ConsultationSignalingSessionValidator.class.getDeclaredMethod(
+                "validateJoin",
+                String.class,
+                SignalingSenderType.class
+        );
+
+        Transactional transactional = method.getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.readOnly()).isTrue();
     }
 
     private ConsultationSession newSession() {

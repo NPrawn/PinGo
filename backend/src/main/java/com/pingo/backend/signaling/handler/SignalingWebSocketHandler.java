@@ -183,10 +183,26 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handleJoin(WebSocketSession session, SignalingMessage signalingMessage) throws IOException {
-        SignalingSessionValidationResult validationResult = signalingSessionValidator.validateJoin(
-                signalingMessage.sessionId(),
-                signalingMessage.senderType()
-        );
+        SignalingSessionValidationResult validationResult;
+        try {
+            validationResult = signalingSessionValidator.validateJoin(
+                    signalingMessage.sessionId(),
+                    signalingMessage.senderType()
+            );
+        } catch (RuntimeException exception) {
+            log.error("Failed to validate signaling session. websocketSessionId={}, sessionId={}",
+                    session.getId(),
+                    signalingMessage.sessionId(),
+                    exception);
+            sendError(
+                    session,
+                    signalingMessage.sessionId(),
+                    SignalingErrorCode.SIGNALING_INTERNAL_ERROR,
+                    "Internal signaling error.",
+                    true
+            );
+            return;
+        }
 
         if (validationResult != SignalingSessionValidationResult.VALID) {
             sendError(
