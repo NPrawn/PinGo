@@ -83,7 +83,7 @@ public class ConsultationSession {
         this.acceptedAt = LocalDateTime.now();
     }
 
-    public void reject(Long counselorId){
+    public void reject(){
         this.status = ConsultationStatus.REJECTED;
     }
 
