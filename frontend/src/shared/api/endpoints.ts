@@ -7,6 +7,7 @@ export const ENDPOINTS = {
   },
   counselors: {
     me: '/api/counselors/me',
+    consultations: '/api/counselor/consultations',
   },
   userSessions: {
     root: '/api/user-sessions',
@@ -41,6 +42,9 @@ export const ENDPOINTS = {
   consultations: {
     root: '/api/consultations',
     detail: (consultationId: string) => `/api/consultations/${consultationId}`,
+    accept: (consultationId: string) => `/api/consultations/${consultationId}/accept`,
+    reject: (consultationId: string) => `/api/consultations/${consultationId}/reject`,
+    end: (consultationId: string) => `/api/consultations/${consultationId}/end`,
     waitingEvents: (consultationId: string) =>
       `/api/consultations/${consultationId}/waiting-events`,
     fallbackEvents: (consultationId: string) =>

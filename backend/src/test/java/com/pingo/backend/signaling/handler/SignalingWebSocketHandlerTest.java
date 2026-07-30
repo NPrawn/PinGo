@@ -127,6 +127,31 @@ class SignalingWebSocketHandlerTest {
     }
 
     @Test
+    void handleCaptionRelaysMessageToPeer() throws Exception {
+        WebSocketSession counselorSession = webSocketSession("ws-counselor");
+        WebSocketSession userSession = webSocketSession("ws-user");
+        when(userSession.isOpen()).thenReturn(true);
+        when(signalingRoomRegistry.findPeer("consultation-1", SignalingSenderType.COUNSELOR))
+                .thenReturn(Optional.of(userSession));
+        when(signalingRoomRegistry.isRegistered("consultation-1", SignalingSenderType.COUNSELOR, counselorSession))
+                .thenReturn(true);
+
+        handler.handleTextMessage(
+                counselorSession,
+                textMessage(SignalingMessageType.CAPTION, SignalingSenderType.COUNSELOR)
+        );
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(userSession).sendMessage(messageCaptor.capture());
+        SignalingMessage relayedMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(relayedMessage.type()).isEqualTo(SignalingMessageType.CAPTION);
+    }
+
+    @Test
     void handleRelayMessageReturnsErrorWhenPeerDoesNotExist() throws Exception {
         WebSocketSession userSession = webSocketSession("ws-user");
         when(signalingRoomRegistry.findPeer("consultation-1", SignalingSenderType.USER))

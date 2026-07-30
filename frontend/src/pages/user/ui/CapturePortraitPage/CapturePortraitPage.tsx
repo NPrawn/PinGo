@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useNavigationStore } from '@/entities/navigation';
+import { useStationStore } from '@/entities/station';
+import { useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
+import { getStationMaps, localize, updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
 import { RecordingBadge, ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -36,12 +41,124 @@ const DIRECTIONS = [
  * navigate to `LOCATE_SUCCESS` as soon as the VPS matching response succeeds.
  */
 export function CapturePortraitPage() {
+  const navigate = useNavigate();
+  const stationId = useStationStore((state) => state.stationId);
+  const setFloor = useStationStore((state) => state.setFloor);
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const setCurrentLocation = useNavigationStore((state) => state.setCurrentLocation);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const captureInFlight = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
   const [currentDirection, setCurrentDirection] = useState(1);
   const direction = DIRECTIONS[currentDirection];
   const remaining = Math.max(CAPTURE_SECONDS - elapsed, 0);
+
+  useEffect(() => {
+    let disposed = false;
+    let captureTimer: number | undefined;
+
+    async function captureAndLocalize() {
+      if (captureInFlight.current || !userSessionId) return;
+      const video = videoRef.current;
+      if (!video || video.videoWidth === 0 || video.videoHeight === 0) return;
+
+      captureInFlight.current = true;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d')?.drawImage(video, 0, 0);
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/jpeg', 0.86),
+        );
+        if (!blob) throw new Error('Camera frame encoding failed');
+
+        const maps = await getStationMaps(stationId);
+        const mapVersion = maps.find((map) => map.version)?.version;
+        if (!mapVersion) throw new Error('VPS map is not ready');
+
+        const result = await localize(new File([blob], 'capture.jpg', { type: 'image/jpeg' }), {
+          userSessionId,
+          stationId,
+          mapVersion,
+          capturedAt: new Date().toISOString(),
+          camera: {
+            model: 'PINHOLE',
+            width: canvas.width,
+            height: canvas.height,
+            intrinsicsSource: 'browser',
+          },
+        });
+        const candidate = result.candidates?.[0];
+
+        if (disposed) return;
+        if (
+          result.resultStatus === 'success' &&
+          candidate?.nodeId != null &&
+          candidate.floorId != null
+        ) {
+          setCurrentLocation({
+            nodeId: candidate.nodeId,
+            floorId: candidate.floorId,
+            label: candidate.label,
+            mapX: candidate.mapX,
+            mapY: candidate.mapY,
+          });
+          const floorCode = maps.find((map) => map.floorId === candidate.floorId)?.floorCode;
+          if (
+            floorCode === '1F' ||
+            floorCode === 'B1' ||
+            floorCode === 'B2' ||
+            floorCode === 'B3'
+          ) {
+            setFloor(floorCode);
+          }
+          await updateUserSession(userSessionId, { currentNodeId: candidate.nodeId });
+          navigate(USER_ROUTES.LOCATE_SUCCESS, { replace: true });
+          return;
+        }
+
+        setTimeoutOpen(true);
+      } catch {
+        if (!disposed) setTimeoutOpen(true);
+      } finally {
+        captureInFlight.current = false;
+      }
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+        if (disposed) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+          captureTimer = window.setTimeout(() => void captureAndLocalize(), 1200);
+        }
+      } catch {
+        if (!disposed) setTimeoutOpen(true);
+      }
+    }
+
+    void startCamera();
+    return () => {
+      disposed = true;
+      if (captureTimer) window.clearTimeout(captureTimer);
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, [attempt, navigate, setCurrentLocation, setFloor, stationId, userSessionId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -127,6 +244,7 @@ export function CapturePortraitPage() {
         </div>
 
         <div className={styles.viewfinder}>
+          <video ref={videoRef} className={styles.cameraVideo} muted playsInline aria-hidden />
           <svg
             viewBox="0 0 300 640"
             preserveAspectRatio="none"

@@ -1,16 +1,7 @@
 import { useNavigationStore } from '@/entities/navigation';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
-import {
-  Blob,
-  BlobHero,
-  BlobPin,
-  ButtonLink,
-  LivePill,
-  Spring,
-  Sub,
-  Title,
-} from '@/shared/ui';
+import { Blob, BlobHero, BlobPin, ButtonLink, LivePill, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './ArrivalPage.module.css';
 
@@ -18,6 +9,8 @@ import styles from './ArrivalPage.module.css';
 export function ArrivalPage() {
   const route = useNavigationStore((state) => state.route);
   const destination = useNavigationStore((state) => state.destination) ?? '선택한 목적지';
+  const destinationLatitude = useNavigationStore((state) => state.destinationLatitude);
+  const destinationLongitude = useNavigationStore((state) => state.destinationLongitude);
   const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
 
   return (
@@ -54,8 +47,17 @@ export function ArrivalPage() {
 
         <Spring />
 
-        <ButtonLink to={USER_ROUTES.STATION} className={styles.cta}>
-          새로운 길 안내 시작
+        <ButtonLink
+          to={
+            destinationLatitude != null && destinationLongitude != null
+              ? USER_ROUTES.EXTERNAL_MAP
+              : USER_ROUTES.STATION
+          }
+          className={styles.cta}
+        >
+          {destinationLatitude != null && destinationLongitude != null
+            ? '외부 도보 길찾기'
+            : '새로운 길 안내 시작'}
         </ButtonLink>
         <ConsultCta size="sm" className={styles.consult} />
       </>

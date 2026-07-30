@@ -56,6 +56,9 @@ export function DestinationSearch({
 
   const choose = async (poi: Poi) => {
     let targetNodeId: number | undefined;
+    let externalOriginName: string | undefined;
+    let externalOriginLatitude: number | undefined;
+    let externalOriginLongitude: number | undefined;
 
     try {
       if (poi.id != null && poi.kind === 'facility') {
@@ -66,6 +69,9 @@ export function DestinationSearch({
       if (poi.id != null && poi.kind === 'place') {
         const exits = await getRecommendedExits(poi.id);
         const primaryExit = exits.find((exit) => exit.isPrimary) ?? exits[0];
+        externalOriginName = primaryExit?.exitNameKo ?? primaryExit?.exitNameEn;
+        externalOriginLatitude = primaryExit?.exitLocation?.latitude;
+        externalOriginLongitude = primaryExit?.exitLocation?.longitude;
         if (primaryExit?.exitFacilityId != null) {
           const facility = await getFacility(primaryExit.exitFacilityId);
           targetNodeId = facility.linkedNodeId;
@@ -79,6 +85,12 @@ export function DestinationSearch({
       destinationId: poi.id,
       destinationType: poi.destinationType ?? poi.kind,
       targetNodeId,
+      destinationLatitude: poi.latitude,
+      destinationLongitude: poi.longitude,
+      destinationAddress: poi.address,
+      externalOriginName,
+      externalOriginLatitude,
+      externalOriginLongitude,
     });
     if (userSessionId && poi.id != null) {
       void updateUserSession(userSessionId, {

@@ -4,26 +4,16 @@ test('navigates between the initial routes', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'PinGo' })).toBeVisible();
   await page.getByRole('link', { name: '사용자' }).click();
-  await expect(page.getByTitle('PinGo 사용자 프로토타입')).toBeVisible();
-  const userScreen = page
-    .frameLocator('iframe[title="PinGo 사용자 프로토타입"]')
-    .locator('#s-splash.pingo-active');
-  await expect(userScreen).toBeVisible();
+  await expect(page).toHaveURL(/\/user\/splash$/);
+  await expect(page.getByRole('link', { name: 'Get Started' })).toBeVisible();
 
   await page.goto('/counselor');
-  await expect(
-    page
-      .frameLocator('iframe[title="PinGo 상담원 프로토타입"]')
-      .locator('#c-login.pingo-active'),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/counselor\/login$/);
+  await expect(page.getByRole('heading', { name: 'PinGo 콘솔 로그인' })).toBeVisible();
 
   await page.goto('/admin');
-  await expect(page.getByTitle('PinGo 관리자 프로토타입')).toBeVisible();
-  await expect(
-    page
-      .frameLocator('iframe[title="PinGo 관리자 프로토타입"]')
-      .locator('#a-console.pingo-active'),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/login$/);
+  await expect(page.getByRole('heading', { name: 'PinGo 콘솔 로그인' })).toBeVisible();
 });
 
 test('starts navigation from the selected route', async ({ page }) => {
@@ -43,17 +33,12 @@ test('highlights the navigation consultation request CTA', async ({ page }) => {
   await expect(consultCta).toBeVisible();
   await expect(consultCta).toHaveCSS('animation-name', 'none');
   await expect(consultIcon).toHaveCSS('animation-name', 'consultIconBounce');
-  await expect(consultCta).toHaveCSS(
-    'border-top-color',
-    'rgba(255, 255, 255, 0.7)',
-  );
+  await expect(consultCta).toHaveCSS('border-top-color', 'rgba(255, 255, 255, 0.7)');
   await consultCta.click();
   await expect(page).toHaveURL(/#s-consult-req$/);
 });
 
-test('highlights the location recognition failure consultation CTA', async ({
-  page,
-}) => {
+test('highlights the location recognition failure consultation CTA', async ({ page }) => {
   await page.goto('/pingo-user.html#s-fail');
 
   const consultCta = page.locator('#s-fail.pingo-active .fail-consult-cta');
@@ -76,13 +61,11 @@ test('centers the landscape camera screen vertically', async ({ page }) => {
   await expect(landscapeFrame).toHaveCSS('height', '342px');
   await expect(landscapeFrame).toHaveCSS('border-radius', '40px');
 
-  const verticalOffset = await landscapeScreen
-    .locator('> div:not(.lab)')
-    .evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      const center = window.innerHeight / 2;
-      return Math.abs(rect.top + rect.height / 2 - center);
-    });
+  const verticalOffset = await landscapeScreen.locator('> div:not(.lab)').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const center = window.innerHeight / 2;
+    return Math.abs(rect.top + rect.height / 2 - center);
+  });
   expect(verticalOffset).toBeLessThan(2);
 });
 
@@ -97,9 +80,7 @@ test('extends portrait phone backgrounds to the viewport height', async ({ page 
   await expect(phone).toHaveCSS('height', '896px');
 });
 
-test('shows the trimmed nearby station list with the standard CTA height', async ({
-  page,
-}) => {
+test('shows the trimmed nearby station list with the standard CTA height', async ({ page }) => {
   await page.goto('/pingo-user.html#s-station');
 
   const stationScreen = page.locator('#s-station.pingo-active');
@@ -112,9 +93,7 @@ test('shows the trimmed nearby station list with the standard CTA height', async
   await expect(continueButton).toHaveCSS('height', '56px');
 });
 
-test('moves the reroute modal content down without moving the dismiss action', async ({
-  page,
-}) => {
+test('moves the reroute modal content down without moving the dismiss action', async ({ page }) => {
   await page.goto('/pingo-user.html#s-reroute');
 
   const modal = page.locator('#s-reroute.pingo-active .reroute-modal');
@@ -125,9 +104,7 @@ test('moves the reroute modal content down without moving the dismiss action', a
   await expect(modal.locator('.reroute-dismiss')).toHaveCSS('transform', 'none');
 });
 
-test('requires at least one issue type before requesting consultation', async ({
-  page,
-}) => {
+test('requires at least one issue type before requesting consultation', async ({ page }) => {
   await page.goto('/pingo-user.html#s-consult-req');
 
   const consultRequest = page.locator('#s-consult-req.pingo-active');
@@ -157,7 +134,5 @@ test('opens the satisfaction modal automatically after arriving', async ({ page 
   await page.locator('#s-consult-end.pingo-active [data-n="5"]').click();
   await expect(page).toHaveURL(/#s-nav$/, { timeout: 2000 });
   await expect(page.locator('#s-nav.pingo-active')).toBeVisible();
-  await expect(page.locator('#s-dest.pingo-active').getByText('전체 보기')).toHaveCount(
-    0,
-  );
+  await expect(page.locator('#s-dest.pingo-active').getByText('전체 보기')).toHaveCount(0);
 });

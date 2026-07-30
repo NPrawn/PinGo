@@ -93,13 +93,11 @@ export function uploadAdminFloorMap(
   );
 }
 
-export function getAdminFacilities(
-  filters: {
-    stationId?: number;
-    floorId?: number;
-    facilityType?: string;
-  } = {},
-) {
+export function getAdminFacilities(filters: {
+  stationId: number;
+  floorId?: number;
+  facilityType?: string;
+}) {
   return unwrap<Facility[]>(apiClient.get(ENDPOINTS.admin.facilities, { params: filters }));
 }
 
@@ -219,6 +217,10 @@ export function getAdminCounselors(
   } = {},
 ) {
   return unwrap<CounselorAccount[]>(apiClient.get(ENDPOINTS.admin.counselors, { params: filters }));
+}
+
+export function getAdminCounselor(accountId: number) {
+  return unwrap<CounselorAccountDetail>(apiClient.get(ENDPOINTS.admin.counselor(accountId)));
 }
 
 export function updateAdminCounselor(accountId: number, request: CounselorAccountUpdateRequest) {

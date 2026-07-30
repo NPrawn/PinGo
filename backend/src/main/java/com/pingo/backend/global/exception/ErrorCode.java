@@ -26,6 +26,8 @@ public enum ErrorCode {
     CONSULTATION_NOT_FOUND(HttpStatus.NOT_FOUND, "CONSULTATION_NOT_FOUND", "상담 세션을 찾을 수 없습니다."),
     CONSULTATION_NOT_CANCELABLE(HttpStatus.BAD_REQUEST, "CONSULTATION_NOT_CANCELABLE", "취소할 수 없는 상담 상태입니다."),
     CONSULTATION_ALREADY_IN_PROGRESS(HttpStatus.CONFLICT, "CONSULTATION_ALREADY_IN_PROGRESS", "이미 대기 중이거나 진행 중인 상담이 있습니다."),
+    CONSULTATION_NOT_WAITING(HttpStatus.CONFLICT, "CONSULTATION_NOT_WAITING", "이미 처리된 상담 요청입니다."),
+    CONSULTATION_NOT_ACTIVE(HttpStatus.CONFLICT, "CONSULTATION_NOT_ACTIVE", "진행 중인 상담이 아닙니다."),
 
     // 역,층,시설
     STATION_NOT_FOUND(HttpStatus.NOT_FOUND, "STATION_NOT_FOUND", "역을 찾을 수 없습니다."),

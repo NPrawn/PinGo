@@ -11,6 +11,9 @@ export type Poi = {
   star?: boolean;
   kind: PoiKind;
   destinationType?: string;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
 };
 
 export type PoiKind = 'facility' | 'place';

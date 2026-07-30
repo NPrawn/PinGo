@@ -1,164 +1,180 @@
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { CONSULT_REQUESTS, useCounselorQueueStore } from '@/entities/consult';
+import { useConsultStore } from '@/entities/consult';
+import { acceptConsultation, getCounselorConsultations, rejectConsultation } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { Button, ButtonLink, Icon, MapPreview } from '@/shared/ui';
+import { Button, Icon, MapPreview } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import styles from './RequestsPage.module.css';
 
-/** Screens 28·29 (FR-C-002 / FR-C-003) — request queue and its detail pane. */
+const PROBLEM_LABELS: Record<string, string> = {
+  CANNOT_FIND_EXIT: '출구를 찾을 수 없어요',
+  LOST: '현재 위치를 모르겠어요',
+  ROUTE_HELP: '경로 안내가 필요해요',
+  OTHER: '기타 문의',
+};
+
+function elapsedLabel(requestedAt: string) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(requestedAt).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}초`;
+  return `${Math.floor(seconds / 60)}분`;
+}
+
+/** 담당 역의 실제 상담 대기열을 조회하고 수락·거절을 서버 상태로 처리한다. */
 export function RequestsPage() {
   const navigate = useNavigate();
-  const selected = useCounselorQueueStore((state) => state.selected);
-  const statuses = useCounselorQueueStore((state) => state.statuses);
-  const select = useCounselorQueueStore((state) => state.select);
-  const accept = useCounselorQueueStore((state) => state.accept);
+  const queryClient = useQueryClient();
+  const setConsultation = useConsultStore((state) => state.setConsultation);
+  const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const statusOf = (index: number) => statuses[index] ?? 'waiting';
-  const request = CONSULT_REQUESTS[selected] ?? CONSULT_REQUESTS[0];
-  const status = statusOf(selected);
+  const queueQuery = useQuery({
+    queryKey: ['counselor-consultations'],
+    queryFn: () => getCounselorConsultations(),
+    refetchInterval: 5000,
+  });
+  const requests = queueQuery.data ?? [];
+  const selected = requests.find((request) => request.consultationId === selectedId) ?? requests[0];
 
-  const onAccept = () => {
-    accept(selected);
-    void navigate(COUNSELOR_ROUTES.CONNECTING);
-  };
+  const acceptMutation = useMutation({
+    mutationFn: acceptConsultation,
+    onSuccess: (response) => {
+      if (!response.consultationId || !response.signalingRoomId) return;
+      setConsultation(response.consultationId);
+      setSignalingRoom(response.signalingRoomId);
+      void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
+      void navigate(COUNSELOR_ROUTES.CONNECTING);
+    },
+  });
+  const rejectMutation = useMutation({
+    mutationFn: rejectConsultation,
+    onSuccess: () => {
+      setSelectedId(null);
+      void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
+    },
+  });
 
   return (
     <CounselorConsoleShell>
       <div className={styles.wrap}>
         <div className={styles.rail}>
           <div className={styles.railScroll}>
-            {CONSULT_REQUESTS.map((item, index) => {
-              const isSelected = index === selected;
-              const itemStatus = statusOf(index);
-              return (
-                <button
-                  key={item.type}
-                  type="button"
-                  aria-pressed={isSelected}
-                  className={[
-                    styles.request,
-                    isSelected && styles.requestOn,
-                    itemStatus === 'done' && styles.requestDone,
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  onClick={() => select(index)}
-                >
-                  {itemStatus === 'active' && (
-                    <span className={styles.liveBadge}>
-                      <span className={styles.liveDot} aria-hidden />
-                      상담중
-                    </span>
-                  )}
-                  {itemStatus === 'done' && (
-                    <span className={styles.doneBadge}>
-                      <Icon name="check" size={10} />
-                      완료
-                    </span>
-                  )}
-                  <span className={styles.tag}>{item.type}</span>
-                  <div className={styles.meta}>
-                    요청 {item.time} · 대기 {item.wait}
-                  </div>
-                  <div className={styles.loc}>{item.loc}</div>
-                  {itemStatus === 'active' && (
-                    <div className={styles.assigned}>
-                      <Icon name="person" size={13} />
-                      김상담 상담원이 진행 중 · 배정됨
-                    </div>
-                  )}
-                  {itemStatus === 'done' && (
-                    <div className={styles.completed}>
-                      <Icon name="flag" size={13} />
-                      상담 완료 · 이력에 저장됨
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+            {queueQuery.isPending && <p>상담 요청을 불러오는 중입니다.</p>}
+            {queueQuery.isError && <p role="alert">상담 요청을 불러오지 못했습니다.</p>}
+            {!queueQuery.isPending && requests.length === 0 && <p>대기 중인 상담이 없습니다.</p>}
+            {requests.map((request) => (
+              <button
+                key={request.consultationId}
+                type="button"
+                aria-pressed={request.consultationId === selected?.consultationId}
+                className={[
+                  styles.request,
+                  request.consultationId === selected?.consultationId && styles.requestOn,
+                  request.status === 'ENDED' && styles.requestDone,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => setSelectedId(request.consultationId)}
+              >
+                <span className={styles.tag}>
+                  {PROBLEM_LABELS[request.problemType] ?? request.problemType}
+                </span>
+                {request.status === 'ACCEPTED' && <span className={styles.liveBadge}>상담중</span>}
+                {request.status === 'ENDED' && <span className={styles.doneBadge}>완료</span>}
+                <div className={styles.meta}>대기 {elapsedLabel(request.requestedAt)}</div>
+                <div className={styles.loc}>{request.currentLocationLabel ?? '위치 미확정'}</div>
+              </button>
+            ))}
           </div>
         </div>
 
         <div className={styles.detail}>
-          <div className={styles.detailHead}>
-            <div>
-              <div className={styles.eyebrow}>
-                <Icon name="pin" size={13} />
-                사용자 정보
+          {selected ? (
+            <>
+              <div className={styles.detailHead}>
+                <div>
+                  <div className={styles.eyebrow}>
+                    <Icon name="pin" size={13} />
+                    사용자 정보
+                  </div>
+                  <h2 className={styles.heading}>
+                    {PROBLEM_LABELS[selected.problemType] ?? selected.problemType}
+                  </h2>
+                  <div className={styles.route}>
+                    {selected.currentLocationLabel ?? '현재 위치 미확정'} →{' '}
+                    {selected.destinationLabel ?? '목적지 미지정'}
+                  </div>
+                </div>
+                {selected.status === 'WAITING' && (
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => rejectMutation.mutate(selected.consultationId)}
+                      disabled={rejectMutation.isPending}
+                    >
+                      거절
+                    </Button>
+                    <Button
+                      size="sm"
+                      className={styles.accept}
+                      onClick={() => acceptMutation.mutate(selected.consultationId)}
+                      disabled={acceptMutation.isPending}
+                    >
+                      상담 수락
+                    </Button>
+                  </div>
+                )}
+                {selected.status === 'ACCEPTED' && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setConsultation(selected.consultationId);
+                      setSignalingRoom(`room_${selected.consultationId}`);
+                      void navigate(COUNSELOR_ROUTES.SESSION);
+                    }}
+                  >
+                    상담 화면 열기
+                  </Button>
+                )}
               </div>
-              <h2 className={styles.heading}>{request.type}</h2>
-              <div className={styles.route}>역삼역 {request.loc} → 목적지 3번 출구 · 한국어</div>
-            </div>
-            {status === 'active' && (
-              <span className={styles.inProgress}>
-                <span className={styles.inProgressDot} aria-hidden />
-                상담 진행 중
-              </span>
-            )}
-            {status === 'done' && (
-              <span className={styles.completedChip}>
-                <Icon name="check" size={13} />
-                상담 완료
-              </span>
-            )}
-            {status === 'waiting' && (
-              <Button size="sm" className={styles.accept} onClick={onAccept}>
-                상담 수락
-              </Button>
-            )}
-          </div>
 
-          <div className={styles.cards}>
-            <div className={styles.card}>
-              <div className={styles.cardLabel}>현재 위치</div>
-              <div className={styles.cardValue}>{request.loc}</div>
-              <MapPreview className={styles.cardMap} me={{ left: '44%', top: '50%' }} />
-            </div>
-            <div className={styles.card}>
-              <div className={styles.cardLabel}>목적지 · 이동 옵션</div>
-              <div className={styles.cardValue}>3번 출구 · 스타벅스 역삼점</div>
-              <div className={styles.optionList}>
-                <span className={styles.option}>
-                  <Icon name="luggage" size={13} />
-                  계단 없는 경로 선택
-                </span>
-                <span className={styles.option}>
-                  <Icon name="elevator" size={13} />
-                  엘리베이터 중심
-                </span>
-                <span>⏱️ 예상 6분 · 230m</span>
+              {(acceptMutation.isError || rejectMutation.isError) && (
+                <p role="alert">요청 상태가 이미 변경됐거나 처리하지 못했습니다.</p>
+              )}
+
+              <div className={styles.cards}>
+                <div className={styles.card}>
+                  <div className={styles.cardLabel}>현재 위치</div>
+                  <div className={styles.cardValue}>
+                    {selected.currentLocationLabel ?? '위치 미확정'}
+                  </div>
+                  <MapPreview className={styles.cardMap} me={{ left: '44%', top: '50%' }} />
+                </div>
+                <div className={styles.card}>
+                  <div className={styles.cardLabel}>목적지</div>
+                  <div className={styles.cardValue}>
+                    {selected.destinationLabel ?? '목적지 미지정'}
+                  </div>
+                  <div className={styles.optionList}>
+                    <span>
+                      요청 시각 {new Date(selected.requestedAt).toLocaleTimeString('ko-KR')}
+                    </span>
+                    <span>상담 ID {selected.consultationId}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div className={`${styles.card} ${styles.issueCard}`}>
-            <div className={styles.cardLabel}>문제 유형</div>
-            <div className={styles.issueText}>
-              {request.type} — {request.detail}
-            </div>
-          </div>
-
-          {status === 'active' && (
-            <div className={styles.acceptedBanner}>
-              <span>상담을 수락했습니다. 사용자와 연결 중이에요.</span>
-              <ButtonLink to={COUNSELOR_ROUTES.SESSION} size="sm" className={styles.openSession}>
-                상담 화면 열기
-              </ButtonLink>
-            </div>
-          )}
-
-          {status === 'done' && (
-            <div className={styles.doneBanner}>
-              <span>상담이 종료되었습니다. 대화 내용은 상담 이력에서 확인할 수 있어요.</span>
-              <ButtonLink
-                to={COUNSELOR_ROUTES.HISTORY}
-                size="sm"
-                variant="secondary"
-                className={styles.openHistory}
-              >
-                상담 이력 보기
-              </ButtonLink>
-            </div>
+              <div className={`${styles.card} ${styles.issueCard}`}>
+                <div className={styles.cardLabel}>문제 유형</div>
+                <div className={styles.issueText}>
+                  {PROBLEM_LABELS[selected.problemType] ?? selected.problemType}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p>왼쪽 목록에서 상담 요청을 선택해 주세요.</p>
           )}
         </div>
       </div>

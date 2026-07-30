@@ -42,7 +42,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/signup", "/api/auth/check-login-id").permitAll()
                         .requestMatchers("/api/user-sessions", "/api/user-sessions/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/consultations/*/accept", "/api/consultations/*/reject")
+                .requestMatchers(
+                        HttpMethod.POST,
+                        "/api/consultations/*/accept",
+                        "/api/consultations/*/reject",
+                        "/api/consultations/*/end"
+                )
                 .hasRole("COUNSELOR")
                         .requestMatchers("/api/consultations/*/waiting-events").permitAll()
                         .requestMatchers(
@@ -56,6 +61,7 @@ public class SecurityConfig {
                                 "/api/vps/**"
                         ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/counselor/**").hasRole("COUNSELOR")
                         .requestMatchers("/api/counselors/**").hasRole("COUNSELOR")
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()

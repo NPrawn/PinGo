@@ -32,6 +32,9 @@ export function useDestinationSearch(stationId: number, keyword: string, enabled
         meta: destination.category ?? destination.destinationType ?? '',
         kind: toKind(destination.destinationType),
         destinationType: destination.destinationType,
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+        address: destination.address,
       }));
     },
     enabled: enabled && stationId > 0 && normalizedKeyword.length > 0,

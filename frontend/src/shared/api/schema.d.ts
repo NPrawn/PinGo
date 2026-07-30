@@ -1590,6 +1590,9 @@ export interface components {
       nameKo?: string;
       nameEn?: string;
       category?: string;
+      latitude?: number;
+      longitude?: number;
+      address?: string;
     };
     ApiResponseConsultationResponse: {
       success?: boolean;

@@ -10,9 +10,9 @@ public record ConsultationResponse (
         String signalingRoomId
 ){
     public static ConsultationResponse from(ConsultationSession session){
-        String signalingRoomId = session.getStatus() == ConsultationStatus.WAITING
-                ? null
-                : "room_" + session.getConsultationId();
+        boolean signalingReady = session.getStatus() == ConsultationStatus.ACCEPTED
+                || session.getStatus() == ConsultationStatus.IN_PROGRESS;
+        String signalingRoomId = signalingReady ? "room_" + session.getConsultationId() : null;
 
         return new ConsultationResponse(
                 session.getConsultationId(),

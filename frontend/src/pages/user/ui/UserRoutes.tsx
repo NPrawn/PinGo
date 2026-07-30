@@ -11,6 +11,7 @@ import { ConsultPermissionPage } from './ConsultPermissionPage/ConsultPermission
 import { ConsultRequestPage } from './ConsultRequestPage/ConsultRequestPage';
 import { ConsultSessionPage } from './ConsultSessionPage/ConsultSessionPage';
 import { ConsultWaitingPage } from './ConsultWaitingPage/ConsultWaitingPage';
+import { ExternalMapPage } from './ExternalMapPage/ExternalMapPage';
 import { LanguagePage } from './LanguagePage/LanguagePage';
 import { LocateFailedPage } from './LocateFailedPage/LocateFailedPage';
 import { LocateManualPage } from './LocateManualPage/LocateManualPage';
@@ -66,6 +67,7 @@ export function UserRoutes() {
       <Route path={rel(USER_ROUTES.BACKSTAGE)} element={<BackstagePage />} />
       <Route path={rel(USER_ROUTES.NAVIGATION_REROUTE)} element={<ReroutePage />} />
       <Route path={rel(USER_ROUTES.ARRIVAL)} element={<ArrivalPage />} />
+      <Route path={rel(USER_ROUTES.EXTERNAL_MAP)} element={<ExternalMapPage />} />
 
       {/* Consultation */}
       <Route path={rel(USER_ROUTES.CONSULT_REQUEST)} element={<ConsultRequestPage />} />

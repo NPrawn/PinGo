@@ -76,4 +76,20 @@ public class ConsultationSession {
     public void cancel(){
         this.status = ConsultationStatus.CANCELED;
     }
+
+    public void accept(Long counselorId) {
+        this.counselorId = counselorId;
+        this.status = ConsultationStatus.ACCEPTED;
+        this.acceptedAt = LocalDateTime.now();
+    }
+
+    public void reject() {
+        this.status = ConsultationStatus.REJECTED;
+        this.endedAt = LocalDateTime.now();
+    }
+
+    public void end() {
+        this.status = ConsultationStatus.ENDED;
+        this.endedAt = LocalDateTime.now();
+    }
 }

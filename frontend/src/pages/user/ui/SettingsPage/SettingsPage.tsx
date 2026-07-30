@@ -1,10 +1,23 @@
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useAccessibilityStore } from '@/entities/accessibility';
 import { usePermissionStore } from '@/entities/permission';
+import { useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
 import { PERMISSION_CATALOG } from '@/features/permission-request';
 import { USER_ROUTES } from '@/shared/config';
-import { BackLink, Card, Kicker, PillButton, SelectRow, Sub, Title, Toggle } from '@/shared/ui';
+import { deleteUserSession } from '@/shared/api';
+import {
+  BackLink,
+  Button,
+  Card,
+  Kicker,
+  PillButton,
+  SelectRow,
+  Sub,
+  Title,
+  Toggle,
+} from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './SettingsPage.module.css';
 
@@ -19,6 +32,9 @@ const PENDING_CHIP = { bg: '#fff', fg: '#8b857a' };
 /** Screen 24 (FR-U-016) — language, permissions and accessibility. */
 export function SettingsPage() {
   const { i18n } = useTranslation();
+  const navigate = useNavigate();
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const clearSession = useUserSessionStore((state) => state.clearSession);
   const granted = usePermissionStore((state) => state.granted);
   const togglePermission = usePermissionStore((state) => state.toggle);
   const accessibility = useAccessibilityStore();
@@ -100,6 +116,18 @@ export function SettingsPage() {
 
       <Kicker className={styles.sectionLabel}>도움이 필요하신가요?</Kicker>
       <ConsultCta size="sm" className={styles.consult} />
+      <Button
+        variant="secondary"
+        onClick={() => {
+          void (async () => {
+            if (userSessionId) await deleteUserSession(userSessionId).catch(() => undefined);
+            clearSession();
+            navigate(USER_ROUTES.SPLASH, { replace: true });
+          })();
+        }}
+      >
+        현재 이용 세션 종료
+      </Button>
     </PhoneFrame>
   );
 }

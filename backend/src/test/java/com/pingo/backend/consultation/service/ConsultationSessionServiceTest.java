@@ -1,5 +1,6 @@
 package com.pingo.backend.consultation.service;
 
+import com.pingo.backend.auth.repository.AccountRepository;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.domain.ProblemType;
@@ -8,6 +9,7 @@ import com.pingo.backend.consultation.dto.response.ConsultationCancelResponse;
 import com.pingo.backend.consultation.dto.response.ConsultationCreateResponse;
 import com.pingo.backend.consultation.dto.response.ConsultationResponse;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
+import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.station.domain.Station;
@@ -41,6 +43,10 @@ class ConsultationSessionServiceTest {
     private UserSessionRepository userSessionRepository;
     @Mock
     private StationRepository stationRepository;
+    @Mock
+    private AccountRepository accountRepository;
+    @Mock
+    private ConsultationWaitingEventPublisher waitingEventPublisher;
 
     @InjectMocks
     private ConsultationSessionService consultationSessionService;

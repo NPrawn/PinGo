@@ -9,6 +9,7 @@ import com.pingo.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -40,5 +41,29 @@ public class ConsultationSessionController {
             @RequestParam String userSessionId
     ){
         return ApiResponse.success(consultationSessionService.cancel(consultationSessionId, userSessionId));
+    }
+
+    @PostMapping("/{consultationSessionId}/accept")
+    public ApiResponse<ConsultationResponse> acceptConsultation(
+            @PathVariable String consultationSessionId,
+            @AuthenticationPrincipal Long counselorId
+    ) {
+        return ApiResponse.success(consultationSessionService.accept(consultationSessionId, counselorId));
+    }
+
+    @PostMapping("/{consultationSessionId}/reject")
+    public ApiResponse<ConsultationResponse> rejectConsultation(
+            @PathVariable String consultationSessionId,
+            @AuthenticationPrincipal Long counselorId
+    ) {
+        return ApiResponse.success(consultationSessionService.reject(consultationSessionId, counselorId));
+    }
+
+    @PostMapping("/{consultationSessionId}/end")
+    public ApiResponse<ConsultationResponse> endConsultation(
+            @PathVariable String consultationSessionId,
+            @AuthenticationPrincipal Long counselorId
+    ) {
+        return ApiResponse.success(consultationSessionService.end(consultationSessionId, counselorId));
     }
 }

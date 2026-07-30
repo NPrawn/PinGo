@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNavigationStore } from '@/entities/navigation';
+import { useConsultStore } from '@/entities/consult';
 import { usePermissionStore } from '@/entities/permission';
 import { setAuthSession } from '@/shared/api';
 import { App } from './App';
@@ -387,31 +388,21 @@ describe('counselor routes', () => {
     expect(await screen.findByRole('heading', { name: 'PinGo 콘솔 로그인' })).toBeInTheDocument();
   });
 
-  // These two run in order: accepting marks the request active, ending the
-  // session marks the same request done. Each step re-renders the queue to
-  // prove the status survived navigating away.
-  it('marks a request in progress after it is accepted', async () => {
+  it('opens the connecting screen after the API accepts a request', async () => {
     authenticateAs('COUNSELOR');
     await renderSection('/counselor/requests');
     fireEvent.click(await screen.findByRole('button', { name: '상담 수락' }));
-    cleanup();
-
-    authenticateAs('COUNSELOR');
-    await renderSection('/counselor/requests');
-    expect(await screen.findByText('상담 진행 중')).toBeInTheDocument();
-    expect(screen.getByText('상담중')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '사용자와 연결하고 있어요' }),
+    ).toBeInTheDocument();
   });
 
-  it('marks a request complete after the session ends', async () => {
+  it('returns to the API-backed queue after ending the session', async () => {
     authenticateAs('COUNSELOR');
+    useConsultStore.setState({ consultationId: 'cs_test', signalingRoomId: null });
     await renderSection('/counselor/session');
     fireEvent.click(await screen.findByRole('button', { name: '상담 종료' }));
-    cleanup();
-
-    authenticateAs('COUNSELOR');
-    await renderSection('/counselor/requests');
-    expect(await screen.findByText('상담 완료')).toBeInTheDocument();
-    expect(screen.getByText('완료')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '상담 수락' })).toBeInTheDocument();
   });
 
   it('rejects unknown credentials', async () => {

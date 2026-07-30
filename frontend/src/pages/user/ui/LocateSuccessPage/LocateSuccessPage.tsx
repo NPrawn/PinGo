@@ -1,3 +1,4 @@
+import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
@@ -9,6 +10,9 @@ import styles from './LocateSuccessPage.module.css';
 /** Keep the live camera visible while the user confirms the matched position. */
 export function LocateSuccessPage() {
   const station = useStationStore((state) => state.station);
+  const floor = useStationStore((state) => state.floor);
+  const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const locationText = currentLocationLabel ?? `${station} · ${floor}`;
 
   return (
     <PhoneFrame layout="flush" bodyClassName={styles.body} statusBarClassName={styles.statusBar}>
@@ -50,7 +54,7 @@ export function LocateSuccessPage() {
               <Icon name="check" size={22} />
             </span>
             <strong>현재 위치를 찾았어요</strong>
-            <span>{station} · B1 대합실</span>
+            <span>{locationText}</span>
           </div>
 
           <div className={styles.cameraMeta}>
@@ -77,7 +81,7 @@ export function LocateSuccessPage() {
             <div className={styles.locationRow}>
               <Icon3d name="pin" iconSize={20} className={styles.mark} />
               <div className={styles.locationBody}>
-                <b>{station} · B1 대합실</b>
+                <b>{locationText}</b>
                 <span>3번 출구 방면 · 12번 기둥 부근</span>
               </div>
               <span className={styles.confirmedBadge}>

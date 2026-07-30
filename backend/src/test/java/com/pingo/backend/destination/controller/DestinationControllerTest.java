@@ -39,8 +39,10 @@ class DestinationControllerTest {
     @Test
     void searchReturnsUnifiedResults() throws Exception {
         when(destinationService.search(1L, "출구")).thenReturn(List.of(
-                new DestinationSearchResponse("facility", 10L, "5번 출구", "Exit 5", "exit"),
-                new DestinationSearchResponse("place", 3L, "코엑스몰", "COEX Mall", "shopping")));
+                new DestinationSearchResponse(
+                        "facility", 10L, "5번 출구", "Exit 5", "exit", null, null, null),
+                new DestinationSearchResponse(
+                        "place", 3L, "코엑스몰", "COEX Mall", "shopping", null, null, null)));
 
         mockMvc.perform(get("/api/destinations/search")
                         .param("stationId", "1")

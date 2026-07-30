@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
-import { cancelConsultation, subscribeToConsultationWaitingEvents } from '@/shared/api';
+import {
+  cancelConsultation,
+  getConsultation,
+  subscribeToConsultationWaitingEvents,
+} from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import {
   Blob,
   BlobHero,
   BlobPin,
-  ButtonLink,
   Card,
   GhostButton,
   Icon,
@@ -33,7 +36,14 @@ export function ConsultWaitingPage() {
   const [statusMessage, setStatusMessage] = useState('잠시만 기다려 주세요 · 평균 30초 소요');
 
   useEffect(() => {
-    if (!consultationId) return;
+    if (!consultationId || !userSessionId) return;
+
+    void getConsultation(consultationId, userSessionId).then((consultation) => {
+      if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
+        setSignalingRoom(consultation.signalingRoomId);
+        void navigate(USER_ROUTES.CONSULT_SESSION);
+      }
+    });
 
     const events = subscribeToConsultationWaitingEvents(consultationId);
     const handleAccepted = (event: MessageEvent<string>) => {
@@ -59,7 +69,7 @@ export function ConsultWaitingPage() {
     events.addEventListener('NO_COUNSELOR', handleUnavailable as EventListener);
 
     return () => events.close();
-  }, [consultationId, navigate, setSignalingRoom]);
+  }, [consultationId, navigate, setSignalingRoom, userSessionId]);
 
   const cancel = async () => {
     try {
@@ -119,9 +129,6 @@ export function ConsultWaitingPage() {
         </Card>
 
         <Spring />
-        <ButtonLink to={USER_ROUTES.CONSULT_SESSION} variant="secondary" className={styles.primary}>
-          상담 화면 수동 열기
-        </ButtonLink>
         <GhostButton className={styles.cancel} onClick={() => void cancel()}>
           요청 취소
         </GhostButton>

@@ -7,6 +7,42 @@ type Schemas = components['schemas'];
 
 export type CounselorSelfAccount = Schemas['AccountDetailResponse'];
 export type CounselorSelfUpdateRequest = Schemas['CounselorSelfUpdateRequest'];
+export type CounselorConsultation = {
+  consultationId: string;
+  stationId: number;
+  problemType: string;
+  status: 'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+  currentNodeId?: number;
+  currentLocationLabel?: string;
+  destinationType?: string;
+  destinationId?: number;
+  destinationLabel?: string;
+  requestedAt: string;
+};
+
+export function getCounselorConsultations(status?: CounselorConsultation['status']) {
+  return unwrap<CounselorConsultation[]>(
+    apiClient.get(ENDPOINTS.counselors.consultations, { params: { status } }),
+  );
+}
+
+export function acceptConsultation(consultationId: string) {
+  return unwrap<Schemas['ConsultationResponse']>(
+    apiClient.post(ENDPOINTS.consultations.accept(consultationId)),
+  );
+}
+
+export function rejectConsultation(consultationId: string) {
+  return unwrap<Schemas['ConsultationResponse']>(
+    apiClient.post(ENDPOINTS.consultations.reject(consultationId)),
+  );
+}
+
+export function endConsultation(consultationId: string) {
+  return unwrap<Schemas['ConsultationResponse']>(
+    apiClient.post(ENDPOINTS.consultations.end(consultationId)),
+  );
+}
 
 export function getCounselorMe() {
   return unwrap<CounselorSelfAccount>(apiClient.get(ENDPOINTS.counselors.me));

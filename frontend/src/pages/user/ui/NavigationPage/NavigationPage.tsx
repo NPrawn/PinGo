@@ -1,8 +1,10 @@
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import { createIndoorRoute } from '@/shared/api';
 import { Button, ButtonLink, HeadingMarker, Icon, MapPreview, Sheet } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -32,10 +34,15 @@ const MAP_FILTERS: readonly { name: string; icon: IconName }[] = [
 /** Camera guidance with an interactive indoor map and up to two stops. */
 export function NavigationPage() {
   const station = useStationStore((state) => state.station);
+  const stationId = useStationStore((state) => state.stationId);
   const floor = useStationStore((state) => state.floor);
   const setFloor = useStationStore((state) => state.setFloor);
   const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
   const route = useNavigationStore((state) => state.route);
+  const currentNodeId = useNavigationStore((state) => state.currentNodeId);
+  const targetNodeId = useNavigationStore((state) => state.targetNodeId);
+  const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const setRouteResult = useNavigationStore((state) => state.setRouteResult);
   const waypoints = useNavigationStore((state) => state.waypoints);
   const addWaypoint = useNavigationStore((state) => state.addWaypoint);
   const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
@@ -50,6 +57,20 @@ export function NavigationPage() {
   const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
+  const routeQuery = useQuery({
+    queryKey: ['indoor-route', stationId, currentNodeId, targetNodeId, route],
+    queryFn: () =>
+      createIndoorRoute({
+        stationId,
+        startNodeId: currentNodeId!,
+        targetNodeId: targetNodeId!,
+        routeType: route === 'elev' ? 'elevator_only' : 'fastest',
+      }),
+    enabled: currentNodeId != null && targetNodeId != null,
+    retry: false,
+  });
+  const routeResult = routeQuery.data;
+  const firstStep = routeResult?.steps?.[0];
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
     ? waypoints.includes(selectedFacility.name)
@@ -57,6 +78,10 @@ export function NavigationPage() {
   const selectedFacilityIsDestination = selectedFacility
     ? selectedFacility.name === activeDestination
     : false;
+
+  useEffect(() => {
+    if (routeResult) setRouteResult(routeResult);
+  }, [routeResult, setRouteResult]);
 
   return (
     <PhoneFrame
@@ -143,7 +168,7 @@ export function NavigationPage() {
                 <span className={styles.pointDot} aria-hidden />
                 <small>출발지</small>
               </span>
-              <strong>{station} B1</strong>
+              <strong>{currentLocationLabel ?? station}</strong>
             </div>
             {waypoints.map((waypoint, index) => (
               <Fragment key={waypoint}>
@@ -204,11 +229,33 @@ export function NavigationPage() {
             </span>
             <div className={styles.instructionBody}>
               <span className={styles.instructionEyebrow}>
-                다음 안내 · {recalculated ? '경로 업데이트 완료' : '25m'}
+                다음 안내 ·{' '}
+                {routeQuery.isPending
+                  ? '경로 계산 중'
+                  : recalculated
+                    ? '경로 업데이트 완료'
+                    : firstStep
+                      ? `${Math.round(firstStep.distanceM ?? 0)}m`
+                      : '-'}
               </span>
-              <strong className={styles.instructionTitle}>직진 25m</strong>
+              <strong className={styles.instructionTitle}>
+                {firstStep?.instruction ??
+                  (currentNodeId == null || targetNodeId == null
+                    ? '직진 25m'
+                    : routeQuery.isError
+                      ? '경로를 불러오지 못했습니다'
+                      : '경로 확인 중')}
+              </strong>
               <span className={styles.instructionMeta}>
-                개찰구를 지나 에스컬레이터 방향으로 이동
+                {routeResult?.available
+                  ? `총 ${Math.round(routeResult.totalDistanceM ?? 0)}m · 약 ${Math.max(
+                      1,
+                      Math.ceil((routeResult.estimatedTimeSec ?? 0) / 60),
+                    )}분`
+                  : (routeResult?.unavailableReason ??
+                    (currentNodeId == null || targetNodeId == null
+                      ? '개찰구를 지나 에스컬레이터 방향으로 이동'
+                      : '현재 위치와 목적지를 확인해 주세요'))}
               </span>
             </div>
           </div>
@@ -325,11 +372,19 @@ export function NavigationPage() {
 
             {stepsOpen && (
               <div className={styles.steps}>
-                <div className={styles.step}>
-                  <span className={styles.stepIcon}>↑</span>
-                  <b>직진 25m</b>
-                  <span>개찰구 지나 계속</span>
-                </div>
+                {routeResult?.steps?.map((step) => (
+                  <div
+                    key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
+                    className={styles.step}
+                  >
+                    <span className={styles.stepIcon}>↑</span>
+                    <b>{step.instruction ?? step.moveType ?? '이동'}</b>
+                    <span>
+                      {Math.round(step.distanceM ?? 0)}m · 약{' '}
+                      {Math.max(1, Math.ceil((step.estimatedTimeSec ?? 0) / 60))}분
+                    </span>
+                  </div>
+                ))}
                 {waypoints.map((waypoint) => (
                   <div key={waypoint} className={styles.step}>
                     <span className={styles.stepIcon}>
