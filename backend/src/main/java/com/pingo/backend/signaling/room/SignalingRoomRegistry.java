@@ -11,11 +11,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class SignalingRoomRegistry {
@@ -92,13 +95,16 @@ public class SignalingRoomRegistry {
 
     public int removeExpiredRooms(Duration expiration) {
         Instant expiredBefore = clock.instant().minus(expiration);
-        List<SignalingRoom> expiredRooms = new ArrayList<>();
+        AtomicInteger removedRoomCount = new AtomicInteger();
+        List<ExpiredParticipant> expiredParticipants = new ArrayList<>();
 
         rooms.forEach((signalingSessionId, room) -> {
             if (room.lastTouchedAt.isBefore(expiredBefore)) {
                 rooms.computeIfPresent(signalingSessionId, (id, currentRoom) -> {
                     if (currentRoom.lastTouchedAt.isBefore(expiredBefore)) {
-                        expiredRooms.add(currentRoom);
+                        removedRoomCount.incrementAndGet();
+                        currentRoom.participants.forEach((senderType, session) ->
+                                expiredParticipants.add(new ExpiredParticipant(id, senderType, session)));
                         return null;
                     }
 
@@ -107,8 +113,8 @@ public class SignalingRoomRegistry {
             }
         });
 
-        expiredRooms.forEach(this::closeParticipants);
-        return expiredRooms.size();
+        expiredParticipants.forEach(this::closeExpiredParticipant);
+        return removedRoomCount.get();
     }
 
     boolean containsRoom(String signalingSessionId) {
@@ -142,19 +148,42 @@ public class SignalingRoomRegistry {
         return left != null && right != null && left.getId().equals(right.getId());
     }
 
-    private void closeParticipants(SignalingRoom room) {
-        room.participants.values().forEach(this::closeQuietly);
-    }
+    private void closeExpiredParticipant(ExpiredParticipant participant) {
+        WebSocketSession session = participant.session();
+        if (!isSameRegistration(session, participant.signalingSessionId(), participant.senderType())) {
+            return;
+        }
 
-    private void closeQuietly(WebSocketSession session) {
+        session.getAttributes().remove(SIGNALING_SESSION_ID_ATTRIBUTE);
+        session.getAttributes().remove(SENDER_TYPE_ATTRIBUTE);
         if (!session.isOpen()) {
             return;
         }
 
         try {
             session.close();
-        } catch (IOException ignored) {
+        } catch (IOException exception) {
+            log.warn("Failed to close expired signaling session. websocketSessionId={}, signalingSessionId={}",
+                    session.getId(),
+                    participant.signalingSessionId(),
+                    exception);
         }
+    }
+
+    private boolean isSameRegistration(
+            WebSocketSession session,
+            String signalingSessionId,
+            SignalingSenderType senderType
+    ) {
+        return Objects.equals(session.getAttributes().get(SIGNALING_SESSION_ID_ATTRIBUTE), signalingSessionId)
+                && session.getAttributes().get(SENDER_TYPE_ATTRIBUTE) == senderType;
+    }
+
+    private record ExpiredParticipant(
+            String signalingSessionId,
+            SignalingSenderType senderType,
+            WebSocketSession session
+    ) {
     }
 
     private static class SignalingRoom {

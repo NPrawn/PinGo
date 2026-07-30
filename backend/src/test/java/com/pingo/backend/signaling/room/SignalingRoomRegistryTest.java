@@ -191,6 +191,10 @@ class SignalingRoomRegistryTest {
 
         assertThat(removedCount).isEqualTo(1);
         assertThat(registry.containsRoom("consultation-1")).isFalse();
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))
+                .isFalse();
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.COUNSELOR, counselorSession))
+                .isFalse();
         verify(userSession).close();
         verify(counselorSession).close();
     }
