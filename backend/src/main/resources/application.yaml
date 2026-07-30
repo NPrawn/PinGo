@@ -19,6 +19,8 @@ ai:
     read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
 
 signaling:
+  access-token:
+    expiration-ms: ${SIGNALING_ACCESS_TOKEN_EXPIRATION_MS:600000}
   room:
     cleanup:
       expiration-minutes: ${SIGNALING_ROOM_EXPIRATION_MINUTES:30}
