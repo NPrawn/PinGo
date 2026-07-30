@@ -432,10 +432,11 @@ DataChannel 연결이 실패하거나 중간에 끊기면 다음 순서로 처�
 
 ```text
 POST /api/consultations/{consultationRequestId}/fallback-events
+POST /api/consultations/{consultationRequestId}/data-channel-events
 GET  /api/consultations/{consultationRequestId}/waiting-events
 ```
 
-Fallback 이벤트 타입은 다음 값을 사용한다.
+WebRTC 영상·음성·채팅 fallback 이벤트 타입은 다음 값을 사용한다.
 
 | 값 | 설명 |
 | --- | --- |
@@ -446,6 +447,16 @@ Fallback 이벤트 타입은 다음 값을 사용한다.
 | `FALLBACK_CONFIRMED` | fallback 상담 방식 전환 확정 |
 
 Backend는 fallback 이벤트를 수신하면 기존 상담 대기 SSE 구독자에게 전환 안내 메시지를 전달한다. 현재 SSE `type`은 `FALLBACK` 값을 사용하고, 상세 fallback 상태는 `message`로 전달한다.
+
+DataChannel fallback 이벤트 타입은 다음 값을 사용한다.
+
+| 값 | 설명 |
+| --- | --- |
+| `ARROW_POINTED` | 상담자가 특정 방향 또는 위치를 화살표로 지시함 |
+| `GUIDE_MESSAGE_SENT` | 상담자가 안내 메시지를 전송함 |
+| `DESTINATION_CHANGE_REQUESTED` | 상담자가 목적지 변경을 요청함 |
+
+Backend는 DataChannel fallback 이벤트를 수신하면 기존 상담 대기 SSE 구독자에게 `DATA_CHANNEL` event name으로 전달한다. event data에는 `consultationRequestId`, `type`, `payload`, `timestamp`가 포함된다.
 
 ---
 
