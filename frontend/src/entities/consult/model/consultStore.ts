@@ -5,8 +5,12 @@ type ConsultStore = {
   issue: number | null;
   /** 1–5 star rating collected when the consultation ends. */
   satisfaction: number;
+  consultationId: string | null;
+  signalingRoomId: string | null;
   selectIssue: (index: number) => void;
   rate: (score: number) => void;
+  setConsultation: (consultationId: string) => void;
+  setSignalingRoom: (signalingRoomId: string) => void;
   reset: () => void;
 };
 
@@ -22,7 +26,17 @@ type ConsultStore = {
 export const useConsultStore = create<ConsultStore>((set) => ({
   issue: null,
   satisfaction: 0,
+  consultationId: null,
+  signalingRoomId: null,
   selectIssue: (issue) => set({ issue }),
   rate: (satisfaction) => set({ satisfaction }),
-  reset: () => set({ issue: null, satisfaction: 0 }),
+  setConsultation: (consultationId) => set({ consultationId }),
+  setSignalingRoom: (signalingRoomId) => set({ signalingRoomId }),
+  reset: () =>
+    set({
+      issue: null,
+      satisfaction: 0,
+      consultationId: null,
+      signalingRoomId: null,
+    }),
 }));

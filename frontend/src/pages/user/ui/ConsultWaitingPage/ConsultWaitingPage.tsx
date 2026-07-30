@@ -1,3 +1,8 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useConsultStore } from '@/entities/consult';
+import { useUserSessionStore } from '@/entities/user-session';
+import { cancelConsultation, subscribeToConsultationWaitingEvents } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import {
   Blob,
@@ -5,7 +10,7 @@ import {
   BlobPin,
   ButtonLink,
   Card,
-  GhostLink,
+  GhostButton,
   Icon,
   LivePill,
   Spring,
@@ -18,10 +23,55 @@ import styles from './ConsultWaitingPage.module.css';
 /**
  * Screen 19 (FR-U-014) — waiting in the consult queue.
  *
- * TODO: Advance automatically when the counselor accepts, once the signalling
- * events are wired. The prototype required a manual tap.
+ * 상담 대기 SSE를 구독하고 수락 이벤트를 받으면 상담 화면으로 이동한다.
  */
 export function ConsultWaitingPage() {
+  const navigate = useNavigate();
+  const consultationId = useConsultStore((state) => state.consultationId);
+  const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const [statusMessage, setStatusMessage] = useState('잠시만 기다려 주세요 · 평균 30초 소요');
+
+  useEffect(() => {
+    if (!consultationId) return;
+
+    const events = subscribeToConsultationWaitingEvents(consultationId);
+    const handleAccepted = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as { signalingRoomId?: string };
+        if (payload.signalingRoomId) setSignalingRoom(payload.signalingRoomId);
+        void navigate(USER_ROUTES.CONSULT_SESSION);
+      } catch {
+        setStatusMessage('상담 연결 정보를 읽지 못했습니다.');
+      }
+    };
+    const handleUnavailable = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as { message?: string };
+        setStatusMessage(payload.message ?? '상담 연결을 완료하지 못했습니다.');
+      } catch {
+        setStatusMessage('상담 연결을 완료하지 못했습니다.');
+      }
+    };
+
+    events.addEventListener('ACCEPTED', handleAccepted as EventListener);
+    events.addEventListener('REJECTED', handleUnavailable as EventListener);
+    events.addEventListener('NO_COUNSELOR', handleUnavailable as EventListener);
+
+    return () => events.close();
+  }, [consultationId, navigate, setSignalingRoom]);
+
+  const cancel = async () => {
+    try {
+      if (consultationId && userSessionId) {
+        await cancelConsultation(consultationId, userSessionId);
+      }
+      void navigate(USER_ROUTES.CONSULT_REQUEST);
+    } catch {
+      setStatusMessage('상담 요청을 취소하지 못했습니다.');
+    }
+  };
+
   return (
     <PhoneFrame bodyClassName={styles.body}>
       <>
@@ -53,7 +103,7 @@ export function ConsultWaitingPage() {
           <br />
           연결하고 있어요
         </Title>
-        <Sub className={styles.sub}>잠시만 기다려 주세요 · 평균 30초 소요</Sub>
+        <Sub className={styles.sub}>{statusMessage}</Sub>
 
         <Card className={styles.tip}>
           <span className={styles.tipIcon}>
@@ -70,11 +120,11 @@ export function ConsultWaitingPage() {
 
         <Spring />
         <ButtonLink to={USER_ROUTES.CONSULT_SESSION} variant="secondary" className={styles.primary}>
-          연결됨 · 상담 화면 보기
+          상담 화면 수동 열기
         </ButtonLink>
-        <GhostLink to={USER_ROUTES.CONSULT_REQUEST} className={styles.cancel}>
+        <GhostButton className={styles.cancel} onClick={() => void cancel()}>
           요청 취소
-        </GhostLink>
+        </GhostButton>
       </>
     </PhoneFrame>
   );

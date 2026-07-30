@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useConsultStore } from '@/entities/consult';
+import { useNavigationStore } from '@/entities/navigation';
 import { usePermissionStore } from '@/entities/permission';
+import { useStationStore } from '@/entities/station';
+import { useUserSessionStore } from '@/entities/user-session';
+import { ApiError, createConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import {
   BackLink,
@@ -39,6 +44,12 @@ const SHARES = [
 
 const GRANTED_CHIP = { bg: '#d9f0df', fg: '#0f5a3e' };
 const PENDING_CHIP = { bg: '#fff', fg: '#8b857a' };
+const PROBLEM_TYPES = [
+  'CANNOT_FIND_LOCATION',
+  'CANNOT_FIND_EXIT',
+  'WRONG_DIRECTION',
+  'OTHER',
+] as const;
 
 /** Screen 18 (FR-U-013) — consent to share camera and microphone. */
 export function ConsultPermissionPage() {
@@ -47,11 +58,50 @@ export function ConsultPermissionPage() {
   const toggle = usePermissionStore((state) => state.toggle);
   const grant = usePermissionStore((state) => state.grant);
   const hasAll = usePermissionStore((state) => state.hasAll);
+  const issue = useConsultStore((state) => state.issue);
+  const setConsultation = useConsultStore((state) => state.setConsultation);
+  const stationId = useStationStore((state) => state.stationId);
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const destinationId = useNavigationStore((state) => state.destinationId);
+  const destinationType = useNavigationStore((state) => state.destinationType);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const requestConsultation = async () => {
+    if (!userSessionId || issue == null) {
+      setErrorMessage('사용자 세션 또는 상담 유형을 확인해 주세요.');
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage('');
+    try {
+      const consultation = await createConsultation({
+        userSessionId,
+        stationId,
+        problemType: PROBLEM_TYPES[issue],
+        destinationId: destinationId ?? undefined,
+        destinationType: destinationType ?? undefined,
+        videoConsent: true,
+        audioConsent: true,
+      });
+
+      if (!consultation.consultationId) {
+        throw new Error('상담 요청 ID가 없습니다.');
+      }
+      setConsultation(consultation.consultationId);
+      void navigate(USER_ROUTES.CONSULT_WAITING);
+    } catch (error) {
+      setErrorMessage(error instanceof ApiError ? error.message : '상담 요청을 보내지 못했습니다.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const connect = () => {
     if (hasAll('cam', 'mic')) {
-      void navigate(USER_ROUTES.CONSULT_WAITING);
+      void requestConsultation();
       return;
     }
     setReminderOpen(true);
@@ -60,7 +110,7 @@ export function ConsultPermissionPage() {
   const allowAll = () => {
     grant('cam', 'mic');
     setReminderOpen(false);
-    void navigate(USER_ROUTES.CONSULT_WAITING);
+    void requestConsultation();
   };
 
   return (
@@ -97,7 +147,10 @@ export function ConsultPermissionPage() {
       </div>
 
       <Spring />
-      <Button onClick={connect}>동의하고 상담 연결</Button>
+      {errorMessage && <p role="alert">{errorMessage}</p>}
+      <Button onClick={connect} disabled={submitting}>
+        {submitting ? '요청 중…' : '동의하고 상담 연결'}
+      </Button>
 
       {reminderOpen && (
         <Sheet
