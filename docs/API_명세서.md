@@ -1759,6 +1759,8 @@ Authorization: Bearer {accessToken}
 WebRTC signaling은 WebSocket 기반으로 구현한다. 상세 계약의 단일 기준은
 [`WebRTC_Signaling_이벤트_명세서.md`](WebRTC_Signaling_이벤트_명세서.md)이다.
 
+Backend는 `JOIN` 요청의 `sessionId`를 `room_{consultationId}` 형식으로 해석하고, 해당 상담 session이 `ACCEPTED` 또는 `IN_PROGRESS` 상태일 때만 room 입장을 허용한다. 미수락, 종료, 취소, 거절, 실패 상태의 상담 session은 `INVALID_SIGNALING_SESSION` 오류로 응답한다.
+
 ## 12.1 WebSocket 연결
 
 ### WS `/ws/signaling`
