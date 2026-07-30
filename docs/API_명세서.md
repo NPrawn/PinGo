@@ -1765,7 +1765,47 @@ WebRTC signaling은 WebSocket 기반으로 구현한다. 상세 계약의 단일
 
 Backend는 `JOIN` 요청의 `sessionId`를 `room_{consultationId}` 형식으로 해석하고, 해당 상담 session이 `ACCEPTED` 또는 `IN_PROGRESS` 상태일 때만 room 입장을 허용한다. 미수락, 종료, 취소, 거절, 실패 상태의 상담 session은 `INVALID_SIGNALING_SESSION` 오류로 응답한다.
 
-## 12.1 WebSocket 연결
+## 12.1 ICE 서버 설정 조회
+
+### GET `/api/webrtc/ice-servers`
+
+WebRTC `RTCPeerConnection` 생성에 필요한 ICE server 설정을 조회한다. 비로그인 사용자도 상담 연결 전에 호출할 수 있다.
+
+TURN 서버 정보는 운영 환경변수로 설정하며, credential이 설정되지 않은 경우 STUN 서버만 응답한다. TURN credential은 코드와 문서에 하드코딩하지 않는다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "iceServers": [
+      {
+        "urls": ["stun:stun.l.google.com:19302"]
+      },
+      {
+        "urls": ["turn:turn.example.com:3478?transport=udp"],
+        "username": "turn-username",
+        "credential": "turn-credential"
+      }
+    ]
+  },
+  "message": null
+}
+```
+
+#### 환경변수
+
+| 변수 | 설명 | 기본값 |
+| --- | --- | --- |
+| `WEBRTC_STUN_URLS` | STUN URL 목록. 쉼표로 여러 값을 전달할 수 있다. | `stun:stun.l.google.com:19302` |
+| `WEBRTC_TURN_URLS` | TURN URL 목록. 쉼표로 여러 값을 전달할 수 있다. | 없음 |
+| `WEBRTC_TURN_USERNAME` | TURN username | 없음 |
+| `WEBRTC_TURN_CREDENTIAL` | TURN credential | 없음 |
+
+---
+
+## 12.2 WebSocket 연결
 
 ### WS `/ws/signaling?token={signalingAccessToken}`
 

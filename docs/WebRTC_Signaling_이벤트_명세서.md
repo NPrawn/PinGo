@@ -27,6 +27,20 @@ wss://{service-domain}/ws/signaling?token={signalingAccessToken}
 
 운영 환경에서는 HTTPS reverse proxy를 통해 `/ws/` 요청이 backend로 전달된다.
 
+### ICE 서버 설정
+
+Frontend는 `RTCPeerConnection` 생성 전에 `GET /api/webrtc/ice-servers`를 호출해 ICE server 설정을 조회한다. Backend는 STUN 기본값을 제공하며, TURN URL과 credential은 운영 환경변수로 주입된 경우에만 응답에 포함한다.
+
+```json
+{
+  "iceServers": [
+    {
+      "urls": ["stun:stun.l.google.com:19302"]
+    }
+  ]
+}
+```
+
 ### 인증
 
 WebSocket handshake에는 상담별 `signalingAccessToken`을 전달한다. 브라우저 표준 `WebSocket` API는 커스텀 header 지정이 제한되므로 query parameter 전달을 기본 방식으로 사용한다. header 지정이 가능한 클라이언트는 `Authorization: Bearer {signalingAccessToken}`도 사용할 수 있다.
