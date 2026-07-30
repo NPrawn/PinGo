@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>PinGo WebXR 검증 (S15P11A206-294)</title>
+    <!--
+      WebXR 지원 환경과 실기기 pose 추적을 검증하는 최소 PoC.
+
+      - 앱 번들과 무관한 단독 페이지다. FSD 계층과 프로덕션 코드에 영향을 주지 않는다.
+      - 실기기 검증을 배포된 HTTPS 주소로 진행하기 위해 프로덕션 빌드에 포함한다.
+        파일명이 `pingo-`로 시작하면 vite.config.ts의 excludePrototypeFromBuild가
+        dist에서 삭제하므로 접두사를 붙이지 않는다.
+      - 검증이 끝나면 이 페이지를 삭제한다. 조건은 docs/WebXR_검증_결과.md 1장을 따른다.
+      - 확정 기준은 docs/기술_의사결정_정리.md 11장,
+        좌표 정렬 제안은 docs/역삼역_FE_좌표연동_스펙.md 8장을 따른다.
+      - 이 페이지는 pose 수집까지만 한다. 3D 렌더링과 지도 좌표 변환은 범위 밖이다.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --panel: #161b22;
+        --line: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --ok: #3fb950;
+        --warn: #d29922;
+        --err: #f85149;
+        --accent: #3eb489;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 12px;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          14px/1.5 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 12px;
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+      }
+      h2 {
+        font-size: 13px;
+        margin: 0 0 8px;
+        color: var(--accent);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      td {
+        padding: 3px 0;
+        vertical-align: top;
+      }
+      td:first-child {
+        color: var(--muted);
+        width: 42%;
+        padding-right: 8px;
+      }
+      td:last-child {
+        font-family: ui-monospace, monospace;
+        word-break: break-all;
+      }
+      .ok {
+        color: var(--ok);
+      }
+      .warn {
+        color: var(--warn);
+      }
+      .err {
+        color: var(--err);
+      }
+      .btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      button {
+        flex: 1 1 auto;
+        min-height: 44px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #21262d;
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 600;
+      }
+      button:disabled {
+        opacity: 0.4;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #04231a;
+      }
+      #log {
+        max-height: 42vh;
+        overflow-y: auto;
+        margin: 0;
+        font-family: ui-monospace, monospace;
+        font-size: 11.5px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      #overlay {
+        position: fixed;
+        inset: auto 8px 8px 8px;
+        background: rgba(13, 17, 23, 0.86);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        display: none;
+      }
+      #overlay.on {
+        display: block;
+      }
+      #overlay button {
+        margin-top: 8px;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebXR 지원 환경 및 pose 추적 검증</h1>
+    <div class="sub">
+      S15P11A206-294 · FR-U-010 · 이 페이지는 pose 수집만 하고 3D는 렌더링하지 않는다
+    </div>
+
+    <section>
+      <h2>1. 실행 환경</h2>
+      <table id="env"></table>
+    </section>
+
+    <section>
+      <h2>2. 지원 탐지</h2>
+      <table id="support"></table>
+      <div class="btns" style="margin-top: 10px">
+        <button id="btnDetect">지원 여부 다시 탐지</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 세션</h2>
+      <div class="btns">
+        <button id="btnStart" class="primary" disabled>immersive-ar 세션 시작</button>
+        <button id="btnEnd" disabled>세션 종료</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. pose 수집</h2>
+      <table id="pose"></table>
+    </section>
+
+    <section>
+      <h2>5. 로그</h2>
+      <pre id="log"></pre>
+      <div class="btns" style="margin-top: 10px">
+        <button id="btnCopy">로그 복사</button>
+        <button id="btnClear">로그 지우기</button>
+      </div>
+    </section>
+
+    <div id="overlay">
+      <div id="overlayText">pose 대기 중</div>
+      <button id="btnEndOverlay">세션 종료</button>
+    </div>
+
+    <script>
+      // ── 로그 ────────────────────────────────────────────────────────────────
+      const logEl = document.getElementById('log');
+      const lines = [];
+      const t0 = performance.now();
+
+      function log(kind, message, detail) {
+        const at = ((performance.now() - t0) / 1000).toFixed(2).padStart(7, ' ');
+        const body = detail === undefined ? message : `${message} ${JSON.stringify(detail)}`;
+        const line = `[${at}s] ${kind.padEnd(5)} ${body}`;
+        lines.push(line);
+        const span = document.createElement('span');
+        span.textContent = line + '\n';
+        if (kind === 'OK') span.className = 'ok';
+        if (kind === 'WARN') span.className = 'warn';
+        if (kind === 'FAIL') span.className = 'err';
+        logEl.appendChild(span);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      /**
+       * 실패를 성공으로 뭉개지 않기 위해 name과 message를 그대로 남긴다.
+       * 미지원, 권한 거부, 세션 실패는 여기서 구분된다.
+       */
+      function logError(step, error) {
+        const name = error && error.name ? error.name : 'UnknownError';
+        const message = error && error.message ? error.message : String(error);
+        log('FAIL', step, { name, message });
+      }
+
+      function renderTable(id, rows) {
+        const table = document.getElementById(id);
+        table.innerHTML = '';
+        for (const [label, value, cls] of rows) {
+          const tr = table.insertRow();
+          tr.insertCell().textContent = label;
+          const td = tr.insertCell();
+          td.textContent = value;
+          if (cls) td.className = cls;
+        }
+      }
+
+      // ── 1. 실행 환경 ────────────────────────────────────────────────────────
+      // WebXR은 secure context에서만 노출된다. HTTPS 또는 localhost가 아니면
+      // navigator.xr 자체가 undefined다.
+      const secure = window.isSecureContext;
+      renderTable('env', [
+        ['isSecureContext', String(secure), secure ? 'ok' : 'err'],
+        ['origin', location.origin],
+        ['protocol', location.protocol],
+        ['userAgent', navigator.userAgent],
+        ['화면', `${screen.width}×${screen.height} @${window.devicePixelRatio}x`],
+      ]);
+      log('INFO', 'origin', { origin: location.origin, isSecureContext: secure });
+      log('INFO', 'userAgent', { ua: navigator.userAgent });
+      if (!secure) {
+        log(
+          'FAIL',
+          'secure context 아님 — navigator.xr이 노출되지 않는다. HTTPS 또는 localhost로 접속해야 한다.',
+        );
+      }
+
+      // ── 2. 지원 탐지 ────────────────────────────────────────────────────────
+      const btnStart = document.getElementById('btnStart');
+      let arSupported = false;
+
+      async function detect() {
+        const hasXr = typeof navigator.xr !== 'undefined';
+        const rows = [['navigator.xr', hasXr ? '있음' : '없음', hasXr ? 'ok' : 'err']];
+
+        if (!hasXr) {
+          rows.push(['immersive-ar', '확인 불가 (navigator.xr 없음)', 'err']);
+          arSupported = false;
+          log('FAIL', 'navigator.xr 없음 — 이 브라우저는 WebXR을 지원하지 않는다.');
+        } else {
+          for (const mode of ['immersive-ar', 'inline']) {
+            try {
+              const supported = await navigator.xr.isSessionSupported(mode);
+              rows.push([mode, supported ? '지원' : '미지원', supported ? 'ok' : 'warn']);
+              log(supported ? 'OK' : 'WARN', `isSessionSupported('${mode}')`, { supported });
+              if (mode === 'immersive-ar') arSupported = supported;
+            } catch (error) {
+              rows.push([mode, '탐지 실패', 'err']);
+              logError(`isSessionSupported('${mode}') 실패`, error);
+              if (mode === 'immersive-ar') arSupported = false;
+            }
+          }
+        }
+
+        renderTable('support', rows);
+        btnStart.disabled = !arSupported;
+        if (!arSupported) {
+          log(
+            'WARN',
+            'immersive-ar을 쓸 수 없다. 확정된 fallback은 위치 재인식 + 지도 수동 위치 선택이다.',
+          );
+        }
+      }
+
+      // ── 3~4. 세션과 pose ───────────────────────────────────────────────────
+      const btnEnd = document.getElementById('btnEnd');
+      const btnEndOverlay = document.getElementById('btnEndOverlay');
+      const overlay = document.getElementById('overlay');
+      const overlayText = document.getElementById('overlayText');
+
+      let session = null;
+      let refSpace = null;
+      let refSpaceType = null;
+      let frames = 0;
+      let posesMissing = 0;
+
+      // 앵커: 지도 좌표 정렬 검증용 기준점. 좌표 스펙 8.2의 anchor.xr에 해당한다.
+      let anchor = null;
+      let maxDistanceM = 0;
+      let maxYawDeg = 0;
+
+      // 확정 주기: 기술_의사결정_정리.md 11.4 기준값을 그대로 적용해 실측한다.
+      const RULE = { moveM: 2, turnDeg: 15, minIntervalMs: 1000, heartbeatMs: 5000 };
+      let lastFix = null;
+      let fixCount = 0;
+
+      function yawDegOf(orientation) {
+        const { x, y, z, w } = orientation;
+        const rad = Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z));
+        return (rad * 180) / Math.PI;
+      }
+
+      function angleDiffDeg(a, b) {
+        let d = ((a - b + 180) % 360) - 180;
+        return Math.abs(d < -180 ? d + 360 : d);
+      }
+
+      async function start() {
+        log('INFO', 'requestSession(immersive-ar) 호출');
+        try {
+          /**
+           * dom-overlay는 세션 중에도 이 페이지 DOM을 볼 수 있게 해준다.
+           * 미지원 기기에서도 세션은 열려야 하므로 optionalFeatures로 둔다.
+           */
+          session = await navigator.xr.requestSession('immersive-ar', {
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: overlay },
+          });
+        } catch (error) {
+          logError('세션 시작 실패', error);
+          log(
+            'INFO',
+            '권한 거부는 보통 NotAllowedError, 기기·ARCore 미지원은 NotSupportedError로 나타난다.',
+          );
+          return;
+        }
+        log('OK', '세션 시작됨');
+
+        /**
+         * immersive 세션은 baseLayer가 없으면 프레임을 만들지 않는다.
+         * pose만 볼 목적이라도 xrCompatible WebGL 컨텍스트가 필요하다.
+         */
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl', { xrCompatible: true });
+          if (!gl) throw new Error('WebGL 컨텍스트를 만들 수 없다');
+          await gl.makeXRCompatible();
+          session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+          log('OK', 'XRWebGLLayer 연결됨');
+        } catch (error) {
+          logError('XRWebGLLayer 연결 실패', error);
+          await session.end().catch(() => {});
+          return;
+        }
+
+        // local이 없는 기기도 있어 순서대로 시도한다.
+        for (const type of ['local', 'local-floor', 'viewer']) {
+          try {
+            refSpace = await session.requestReferenceSpace(type);
+            refSpaceType = type;
+            log('OK', `requestReferenceSpace('${type}') 성공`);
+            break;
+          } catch (error) {
+            logError(`requestReferenceSpace('${type}') 실패`, error);
+          }
+        }
+        if (!refSpace) {
+          log('FAIL', 'reference space를 만들 수 없어 pose를 수집할 수 없다.');
+          await session.end().catch(() => {});
+          return;
+        }
+
+        session.addEventListener('end', onEnd);
+        btnStart.disabled = true;
+        btnEnd.disabled = false;
+        overlay.classList.add('on');
+        frames = 0;
+        posesMissing = 0;
+        fixCount = 0;
+        anchor = null;
+        lastFix = null;
+        maxDistanceM = 0;
+        maxYawDeg = 0;
+        session.requestAnimationFrame(onFrame);
+      }
+
+      function onFrame(time, frame) {
+        if (!session) return;
+        session.requestAnimationFrame(onFrame);
+        frames += 1;
+
+        const viewerPose = frame.getViewerPose(refSpace);
+        if (!viewerPose) {
+          posesMissing += 1;
+          // 추적이 끊긴 프레임. 실기기에서 얼마나 자주 생기는지가 검증 대상이다.
+          if (posesMissing % 30 === 1) log('WARN', 'getViewerPose가 null', { frames });
+          return;
+        }
+
+        const p = viewerPose.transform.position;
+        const yawDeg = yawDegOf(viewerPose.transform.orientation);
+
+        if (!anchor) {
+          anchor = { x: p.x, y: p.y, z: p.z, yawDeg };
+          lastFix = { x: p.x, z: p.z, yawDeg, at: time };
+          fixCount = 1;
+          log('OK', '첫 pose 수집 — 앵커 설정', {
+            x: +p.x.toFixed(3),
+            y: +p.y.toFixed(3),
+            z: +p.z.toFixed(3),
+            yawDeg: +yawDeg.toFixed(1),
+            refSpace: refSpaceType,
+          });
+        }
+
+        const dx = p.x - anchor.x;
+        const dz = p.z - anchor.z;
+        const dy = p.y - anchor.y;
+        const distance = Math.hypot(dx, dz);
+        const yawFromAnchor = angleDiffDeg(yawDeg, anchor.yawDeg);
+        if (distance > maxDistanceM) maxDistanceM = distance;
+        if (yawFromAnchor > maxYawDeg) maxYawDeg = yawFromAnchor;
+
+        // 11.4 확정 주기 적용
+        const sinceFix = time - lastFix.at;
+        const movedFromFix = Math.hypot(p.x - lastFix.x, p.z - lastFix.z);
+        const turnedFromFix = angleDiffDeg(yawDeg, lastFix.yawDeg);
+        const changed = movedFromFix >= RULE.moveM || turnedFromFix >= RULE.turnDeg;
+        if ((changed && sinceFix >= RULE.minIntervalMs) || sinceFix >= RULE.heartbeatMs) {
+          fixCount += 1;
+          log('INFO', `위치 확정 #${fixCount}`, {
+            dxM: +movedFromFix.toFixed(2),
+            dYawDeg: +turnedFromFix.toFixed(1),
+            afterMs: Math.round(sinceFix),
+            reason: changed ? 'change' : 'heartbeat',
+          });
+          lastFix = { x: p.x, z: p.z, yawDeg, at: time };
+        }
+
+        const rows = [
+          ['reference space', refSpaceType, 'ok'],
+          ['프레임 수', String(frames)],
+          ['pose 없는 프레임', String(posesMissing), posesMissing ? 'warn' : 'ok'],
+          ['XR 위치 (x, y, z)', `${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)}`],
+          ['yaw (도)', yawDeg.toFixed(1)],
+          ['앵커 대비 수평 이동', `${distance.toFixed(2)} m`],
+          ['앵커 대비 높이 변화', `${dy.toFixed(2)} m`],
+          ['앵커 대비 회전', `${yawFromAnchor.toFixed(1)}°`],
+          ['최대 이동 / 최대 회전', `${maxDistanceM.toFixed(2)} m / ${maxYawDeg.toFixed(1)}°`],
+          ['확정 횟수 (11.4 기준)', String(fixCount)],
+          ['Δx, Δz (앵커 기준)', `${dx.toFixed(3)}, ${dz.toFixed(3)}`],
+        ];
+        renderTable('pose', rows);
+        overlayText.textContent =
+          `이동 ${distance.toFixed(2)}m · 회전 ${yawFromAnchor.toFixed(0)}°\n` +
+          `Δx ${dx.toFixed(2)} Δz ${dz.toFixed(2)} · yaw ${yawDeg.toFixed(0)}°\n` +
+          `frame ${frames} · 확정 ${fixCount} · pose없음 ${posesMissing}`;
+      }
+
+      function onEnd() {
+        log('OK', '세션 종료됨', {
+          frames,
+          posesMissing,
+          fixCount,
+          maxDistanceM: +maxDistanceM.toFixed(2),
+          maxYawDeg: +maxYawDeg.toFixed(1),
+        });
+        session = null;
+        refSpace = null;
+        btnEnd.disabled = true;
+        btnStart.disabled = !arSupported;
+        overlay.classList.remove('on');
+      }
+
+      async function end() {
+        if (!session) return;
+        log('INFO', 'session.end() 호출');
+        try {
+          await session.end();
+        } catch (error) {
+          logError('세션 종료 실패', error);
+        }
+      }
+
+      // ── 버튼 ────────────────────────────────────────────────────────────────
+      document.getElementById('btnDetect').addEventListener('click', detect);
+      btnStart.addEventListener('click', start);
+      btnEnd.addEventListener('click', end);
+      btnEndOverlay.addEventListener('click', end);
+      document.getElementById('btnCopy').addEventListener('click', async () => {
+        const text = lines.join('\n');
+        try {
+          await navigator.clipboard.writeText(text);
+          log('OK', '로그를 클립보드에 복사했다');
+        } catch (error) {
+          logError('클립보드 복사 실패', error);
+        }
+      });
+      document.getElementById('btnClear').addEventListener('click', () => {
+        lines.length = 0;
+        logEl.textContent = '';
+      });
+
+      renderTable('support', [['상태', '탐지 대기 중', 'warn']]);
+      renderTable('pose', [['상태', '세션 시작 전', 'warn']]);
+      detect();
+    </script>
+  </body>
+</html>
