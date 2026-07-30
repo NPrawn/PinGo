@@ -1,6 +1,7 @@
 package com.pingo.backend.consultation.controller;
 
 import com.pingo.backend.consultation.dto.response.ConsultationAcceptResponse;
+import com.pingo.backend.consultation.dto.response.ConsultationEndResponse;
 import com.pingo.backend.consultation.dto.response.ConsultationRejectResponse;
 import com.pingo.backend.consultation.service.ConsultationSessionService;
 import com.pingo.backend.global.response.ApiResponse;
@@ -34,5 +35,13 @@ public class ConsultationCounselorController {
             @AuthenticationPrincipal Long accountId
     ) {
         return ApiResponse.success(consultationSessionService.reject(consultationSessionId, accountId));
+    }
+
+    @PostMapping("/{consultationSessionId}/end")
+    public ApiResponse<ConsultationEndResponse> endConsultation(
+            @PathVariable String consultationSessionId,
+            @AuthenticationPrincipal Long accountId
+    ) {
+        return ApiResponse.success(consultationSessionService.end(consultationSessionId, accountId));
     }
 }
