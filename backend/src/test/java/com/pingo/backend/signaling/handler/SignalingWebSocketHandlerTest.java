@@ -255,6 +255,54 @@ class SignalingWebSocketHandlerTest {
         assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
         assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
         assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_SESSION");
+        assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Signaling session does not exist.");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isFalse();
+    }
+
+    @Test
+    void handleJoinReturnsRetryableErrorWhenConsultationIsNotAcceptedYet() throws Exception {
+        when(signalingSessionValidator.validateJoin("consultation-1", SignalingSenderType.USER))
+                .thenReturn(SignalingSessionValidationResult.SESSION_NOT_ACCEPTED);
+
+        WebSocketSession webSocketSession = webSocketSession("ws-user");
+
+        handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(webSocketSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_SESSION");
+        assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Consultation is not accepted yet.");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isTrue();
+    }
+
+    @Test
+    void handleJoinReturnsNonRetryableErrorWhenConsultationIsClosed() throws Exception {
+        when(signalingSessionValidator.validateJoin("consultation-1", SignalingSenderType.USER))
+                .thenReturn(SignalingSessionValidationResult.SESSION_CLOSED);
+
+        WebSocketSession webSocketSession = webSocketSession("ws-user");
+
+        handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(webSocketSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_SESSION");
+        assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Consultation signaling session is closed.");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isFalse();
     }
 
     @Test

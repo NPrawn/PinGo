@@ -183,18 +183,34 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handleJoin(WebSocketSession session, SignalingMessage signalingMessage) throws IOException {
-        SignalingSessionValidationResult validationResult = signalingSessionValidator.validateJoin(
-                signalingMessage.sessionId(),
-                signalingMessage.senderType()
-        );
+        SignalingSessionValidationResult validationResult;
+        try {
+            validationResult = signalingSessionValidator.validateJoin(
+                    signalingMessage.sessionId(),
+                    signalingMessage.senderType()
+            );
+        } catch (RuntimeException exception) {
+            log.error("Failed to validate signaling session. websocketSessionId={}, sessionId={}",
+                    session.getId(),
+                    signalingMessage.sessionId(),
+                    exception);
+            sendError(
+                    session,
+                    signalingMessage.sessionId(),
+                    SignalingErrorCode.SIGNALING_INTERNAL_ERROR,
+                    "Internal signaling error.",
+                    true
+            );
+            return;
+        }
 
         if (validationResult != SignalingSessionValidationResult.VALID) {
             sendError(
                     session,
                     signalingMessage.sessionId(),
                     SignalingErrorCode.INVALID_SIGNALING_SESSION,
-                    "Invalid signaling session.",
-                    false
+                    messageOf(validationResult),
+                    retryable(validationResult)
             );
             return;
         }
@@ -204,5 +220,19 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 signalingMessage.senderType(),
                 session
         );
+    }
+
+    private String messageOf(SignalingSessionValidationResult validationResult) {
+        return switch (validationResult) {
+            case SESSION_NOT_FOUND -> "Signaling session does not exist.";
+            case SESSION_NOT_ACCEPTED -> "Consultation is not accepted yet.";
+            case SESSION_CLOSED -> "Consultation signaling session is closed.";
+            case UNAUTHORIZED_PARTICIPANT -> "Participant is not allowed to join signaling session.";
+            case VALID -> "Signaling session is valid.";
+        };
+    }
+
+    private boolean retryable(SignalingSessionValidationResult validationResult) {
+        return validationResult == SignalingSessionValidationResult.SESSION_NOT_ACCEPTED;
     }
 }
