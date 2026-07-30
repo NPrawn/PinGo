@@ -187,6 +187,7 @@
 
     <div id="overlay">
       <div id="overlayText">pose 대기 중</div>
+      <button id="btnMark">지금 값 기록</button>
       <button id="btnEndOverlay">세션 종료</button>
     </div>
 
@@ -305,11 +306,23 @@
       let anchor = null;
       let maxDistanceM = 0;
       let maxYawDeg = 0;
+      // 층 전환 판정용. 앵커 대비 최대 상승·최대 하강을 따로 본다.
+      let maxUpM = 0;
+      let minDownM = 0;
 
-      // 확정 주기: 기술_의사결정_정리.md 11.4 기준값을 그대로 적용해 실측한다.
-      const RULE = { moveM: 2, turnDeg: 15, minIntervalMs: 1000, heartbeatMs: 5000 };
+      /**
+       * 확정 주기: 기술_의사결정_정리.md 11.4 기준.
+       * 1차 실측에서 회전 15도 기준이 상시 참이 되어(손에 든 폰의 자연스러운 흔들림)
+       * 확정의 79%가 회전으로 발화했다. 회전을 트리거에서 제외하고 거리와 heartbeat만 쓴다.
+       * 회전량은 계속 기록해 표시 갱신 기준을 따로 정하는 데 쓴다.
+       */
+      const RULE = { moveM: 2, minIntervalMs: 1000, heartbeatMs: 5000 };
       let lastFix = null;
       let fixCount = 0;
+
+      // 보행 절차(검증 결과 문서 3.4)에서 원하는 시점의 값을 남기기 위한 스냅샷
+      let lastSample = null;
+      let markCount = 0;
 
       function yawDegOf(orientation) {
         const { x, y, z, w } = orientation;
@@ -324,6 +337,7 @@
 
       async function start() {
         log('INFO', 'requestSession(immersive-ar) 호출');
+        const requestedAt = performance.now();
         try {
           /**
            * dom-overlay는 세션 중에도 이 페이지 DOM을 볼 수 있게 해준다.
@@ -334,14 +348,29 @@
             domOverlay: { root: overlay },
           });
         } catch (error) {
+          /**
+           * 실측 결과 권한 거부도 NotSupportedError로 나타나 오류 name만으로는
+           * 미지원과 구분되지 않는다. 대신 실패까지 걸린 시간이 갈린다.
+           * 프롬프트가 뜬 경우는 2초 이상, 이미 차단된 경우는 10ms 수준이었다.
+           */
+          const elapsedMs = Math.round(performance.now() - requestedAt);
           logError('세션 시작 실패', error);
-          log(
-            'INFO',
-            '권한 거부는 보통 NotAllowedError, 기기·ARCore 미지원은 NotSupportedError로 나타난다.',
-          );
+          log('INFO', '실패까지 걸린 시간', { elapsedMs });
+          if (arSupported && elapsedMs < 500) {
+            log(
+              'WARN',
+              '프롬프트 없이 즉시 실패했다. 권한이 이미 차단된 상태로 보인다. 앱에서는 복구할 수 없고 브라우저 사이트 설정에서 권한을 초기화해야 한다.',
+            );
+          } else if (arSupported) {
+            log('INFO', '프롬프트가 표시된 뒤 실패했다. 이번 요청이 거부됐거나 일시적 실패다.');
+          }
           return;
         }
         log('OK', '세션 시작됨');
+
+        // 지도 UI를 오버레이로 얹을 수 있는지 판별하는 값이다.
+        const overlayType = session.domOverlayState && session.domOverlayState.type;
+        log(overlayType ? 'OK' : 'WARN', 'dom-overlay 상태', { type: overlayType || null });
 
         /**
          * immersive 세션은 baseLayer가 없으면 프레임을 만들지 않는다.
@@ -388,6 +417,8 @@
         lastFix = null;
         maxDistanceM = 0;
         maxYawDeg = 0;
+        maxUpM = 0;
+        minDownM = 0;
         session.requestAnimationFrame(onFrame);
       }
 
@@ -427,16 +458,27 @@
         const yawFromAnchor = angleDiffDeg(yawDeg, anchor.yawDeg);
         if (distance > maxDistanceM) maxDistanceM = distance;
         if (yawFromAnchor > maxYawDeg) maxYawDeg = yawFromAnchor;
+        if (dy > maxUpM) maxUpM = dy;
+        if (dy < minDownM) minDownM = dy;
+        lastSample = { dx, dz, dY: dy, distanceM: distance, yawFromAnchor, yawDeg };
 
         // 11.4 확정 주기 적용
         const sinceFix = time - lastFix.at;
         const movedFromFix = Math.hypot(p.x - lastFix.x, p.z - lastFix.z);
         const turnedFromFix = angleDiffDeg(yawDeg, lastFix.yawDeg);
-        const changed = movedFromFix >= RULE.moveM || turnedFromFix >= RULE.turnDeg;
+        const changed = movedFromFix >= RULE.moveM;
         if ((changed && sinceFix >= RULE.minIntervalMs) || sinceFix >= RULE.heartbeatMs) {
           fixCount += 1;
+          /**
+           * dx·dz·dY는 앵커 기준 누적 변위다. 좌표계 방향성(부호 조합)과
+           * 층 전환 판정에 필요해 원시값 그대로 남긴다.
+           * movedM·dYawDeg는 직전 확정 대비 변화량이다.
+           */
           log('INFO', `위치 확정 #${fixCount}`, {
-            dxM: +movedFromFix.toFixed(2),
+            dx: +dx.toFixed(2),
+            dz: +dz.toFixed(2),
+            dY: +dy.toFixed(2),
+            movedM: +movedFromFix.toFixed(2),
             dYawDeg: +turnedFromFix.toFixed(1),
             afterMs: Math.round(sinceFix),
             reason: changed ? 'change' : 'heartbeat',
@@ -471,6 +513,8 @@
           fixCount,
           maxDistanceM: +maxDistanceM.toFixed(2),
           maxYawDeg: +maxYawDeg.toFixed(1),
+          maxUpM: +maxUpM.toFixed(2),
+          maxDownM: +minDownM.toFixed(2),
         });
         session = null;
         refSpace = null;
@@ -494,6 +538,20 @@
       btnStart.addEventListener('click', start);
       btnEnd.addEventListener('click', end);
       btnEndOverlay.addEventListener('click', end);
+      document.getElementById('btnMark').addEventListener('click', () => {
+        if (!lastSample) {
+          log('WARN', '아직 pose가 없어 기록할 값이 없다');
+          return;
+        }
+        markCount += 1;
+        log('OK', `수동 기록 #${markCount}`, {
+          dx: +lastSample.dx.toFixed(3),
+          dz: +lastSample.dz.toFixed(3),
+          dY: +lastSample.dY.toFixed(3),
+          distanceM: +lastSample.distanceM.toFixed(2),
+          yawFromAnchorDeg: +lastSample.yawFromAnchor.toFixed(1),
+        });
+      });
       document.getElementById('btnCopy').addEventListener('click', async () => {
         const text = lines.join('\n');
         try {
