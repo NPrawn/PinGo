@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
 @Slf4j
@@ -25,6 +26,8 @@ public class SignalingRoomRegistry {
 
     private static final String SIGNALING_SESSION_ID_ATTRIBUTE = "signalingSessionId";
     private static final String SENDER_TYPE_ATTRIBUTE = "signalingSenderType";
+    private static final CloseStatus SIGNALING_ROOM_EXPIRED =
+            new CloseStatus(4408, "Signaling Room Expired");
 
     private final Clock clock;
     private final Map<String, SignalingRoom> rooms = new ConcurrentHashMap<>();
@@ -97,20 +100,22 @@ public class SignalingRoomRegistry {
         Instant expiredBefore = clock.instant().minus(expiration);
         AtomicInteger removedRoomCount = new AtomicInteger();
         List<ExpiredParticipant> expiredParticipants = new ArrayList<>();
+        List<String> expiredSessionIds = rooms.entrySet().stream()
+                .filter(entry -> entry.getValue().lastTouchedAt.isBefore(expiredBefore))
+                .map(Map.Entry::getKey)
+                .toList();
 
-        rooms.forEach((signalingSessionId, room) -> {
-            if (room.lastTouchedAt.isBefore(expiredBefore)) {
-                rooms.computeIfPresent(signalingSessionId, (id, currentRoom) -> {
-                    if (currentRoom.lastTouchedAt.isBefore(expiredBefore)) {
-                        removedRoomCount.incrementAndGet();
-                        currentRoom.participants.forEach((senderType, session) ->
-                                expiredParticipants.add(new ExpiredParticipant(id, senderType, session)));
-                        return null;
-                    }
+        expiredSessionIds.forEach(signalingSessionId -> {
+            rooms.computeIfPresent(signalingSessionId, (id, currentRoom) -> {
+                if (currentRoom.lastTouchedAt.isBefore(expiredBefore)) {
+                    removedRoomCount.incrementAndGet();
+                    currentRoom.participants.forEach((senderType, session) ->
+                            expiredParticipants.add(new ExpiredParticipant(id, senderType, session)));
+                    return null;
+                }
 
-                    return currentRoom;
-                });
-            }
+                return currentRoom;
+            });
         });
 
         expiredParticipants.forEach(this::closeExpiredParticipant);
@@ -161,7 +166,7 @@ public class SignalingRoomRegistry {
         }
 
         try {
-            session.close();
+            session.close(SIGNALING_ROOM_EXPIRED);
         } catch (IOException exception) {
             log.warn("Failed to close expired signaling session. websocketSessionId={}, signalingSessionId={}",
                     session.getId(),

@@ -10,6 +10,7 @@ import java.time.ZoneOffset;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,6 +24,8 @@ class SignalingRoomRegistryTest {
 
     private SignalingRoomRegistry registry;
     private MutableClock clock;
+    private static final CloseStatus SIGNALING_ROOM_EXPIRED =
+            new CloseStatus(4408, "Signaling Room Expired");
 
     @BeforeEach
     void setUp() {
@@ -195,8 +198,8 @@ class SignalingRoomRegistryTest {
                 .isFalse();
         assertThat(registry.isRegistered("consultation-1", SignalingSenderType.COUNSELOR, counselorSession))
                 .isFalse();
-        verify(userSession).close();
-        verify(counselorSession).close();
+        verify(userSession).close(SIGNALING_ROOM_EXPIRED);
+        verify(counselorSession).close(SIGNALING_ROOM_EXPIRED);
     }
 
     @Test
