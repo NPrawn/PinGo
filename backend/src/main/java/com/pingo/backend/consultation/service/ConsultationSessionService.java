@@ -14,12 +14,14 @@ import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
 import com.pingo.backend.usersession.repository.UserSessionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ConsultationSessionService {
 
@@ -85,7 +87,7 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationAcceptResponse accept(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
+        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
         Account counselor = findStationCounselor(counselorAccountId, session.getStationId());
@@ -100,7 +102,7 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationRejectResponse reject(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
+        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
         Account counselor = findStationCounselor(counselorAccountId, session.getStationId());
@@ -110,6 +112,7 @@ public class ConsultationSessionService {
         }
 
         session.reject(counselor.getAccountId());
+        log.info("상담 거절 처리 - consultationId={}, rejectedBy={}", session.getConsultationId(), counselor.getAccountId());
         return ConsultationRejectResponse.from(session);
     }
 
@@ -117,6 +120,10 @@ public class ConsultationSessionService {
         Account counselor = accountRepository.findById(counselorAccountId)
                 .filter(account -> account.getAccountType() == AccountType.COUNSELOR)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
+
+        if(!counselor.isActive()){
+            throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
+        }
 
         if(!stationId.equals(counselor.getStationId())){
             throw new BusinessException(ErrorCode.CONSULTATION_STATION_MISMATCH);
