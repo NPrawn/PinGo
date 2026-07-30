@@ -1,5 +1,8 @@
 # WebRTC Signaling 이벤트 명세서
 
+> 최신화: 2026-07-30
+> 구현 상태: Backend WebSocket relay와 envelope 검증은 구현됨. Frontend PeerConnection 연동과 상담 도메인 기반 session 권한 검증은 미완료다.
+
 ## 1. 목적
 
 본 문서는 PinGo 사용자와 상담자 간 WebRTC 연결을 생성하기 위해 WebSocket으로 교환하는 signaling 이벤트 계약을 정의한다.
@@ -250,7 +253,7 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 | `SIGNALING_SESSION_NOT_FOUND` | 존재하지 않는 sessionId | false | N |
 | `SIGNALING_SESSION_CLOSED` | 이미 종료된 session | false | N |
 | `SIGNALING_ROOM_FULL` | 사용자와 상담자가 이미 모두 입장한 room | false | N |
-| `SIGNALING_INTERNAL_ERROR` | 서버 내부 오류 | true | N |
+| `SIGNALING_INTERNAL_ERROR` | 서버 내부 오류 | true | Y |
 
 ---
 
@@ -262,12 +265,28 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 - 동일 `sessionId`에서 같은 `senderType`이 다시 `JOIN`하면 현재 WebSocket session으로 교체된다.
 - `OFFER`, `ANSWER`, `ICE_CANDIDATE`는 동일한 `sessionId`와 `senderType`으로 `JOIN`된 WebSocket session에서 보낸 경우에만 relay된다.
 - `LEAVE` 또는 비정상 연결 종료 시 Backend는 room cleanup을 수행한다.
+- 상담 종료 API가 성공하면 Backend는 해당 signaling room을 즉시 제거하고, room에 남아 있는 WebSocket session을 `4400 Signaling Room Closed`로 종료한다.
+- `JOIN`, `OFFER`, `ANSWER`, `ICE_CANDIDATE` relay 과정에서 room의 마지막 활동 시각을 갱신한다.
+- 마지막 활동 시각 기준으로 만료 시간이 지난 room은 Backend scheduler가 주기적으로 제거한다.
+- 만료 room 제거 시 room에 남아 있는 WebSocket session은 `4408 Signaling Room Expired`로 종료한다.
 - 현재 구현은 인메모리 room registry 기준이다. 서버 재시작 시 room 정보는 유지되지 않는다.
 - 현재 signaling session validator 기본 구현은 모든 session을 허용한다. 상담 session 존재 여부, 수락 상태, 종료 session, 참여자 권한 검증은 상담 상태 도메인 연동 시 구체 구현으로 교체한다.
+- Backend의 현재 검증 범위는 공통 envelope와 enum·JOIN 상태까지다. SDP와 ICE candidate payload 내부 값은 relay 서버가 검증하지 않는다.
 
 ---
 
-## 10. 처리 순서 예시
+## 10. Room 만료 설정
+
+signaling room 만료 정책은 운영 환경 변수로 조정한다.
+
+| 환경 변수 | 기본값 | 설명 |
+| --- | --- | --- |
+| `SIGNALING_ROOM_EXPIRATION_MINUTES` | `30` | 마지막 활동 시각 이후 room을 만료 처리할 기준 시간 |
+| `SIGNALING_ROOM_CLEANUP_FIXED_DELAY_MS` | `60000` | 만료 room 정리 scheduler 실행 간격 |
+
+---
+
+## 11. 처리 순서 예시
 
 ```text
 USER      -> BE -> COUNSELOR : JOIN
@@ -281,7 +300,7 @@ USER      -> BE -> COUNSELOR : LEAVE
 
 ---
 
-## 11. DataChannel과의 경계
+## 12. DataChannel과의 경계
 
 이 문서는 WebRTC 연결 생성을 위한 signaling만 다룬다.
 
@@ -334,9 +353,9 @@ y: 0.0 ~ 1.0
 
 ---
 
-## 12. 상담 화면 공유 및 번역 자막 정책
+## 13. 상담 화면 공유 및 번역 자막 정책
 
-### 12.1 화면 공유
+### 13.1 화면 공유
 
 상담 연결 시 상담자는 사용자의 현재 화면을 볼 수 있어야 한다.
 
@@ -344,7 +363,7 @@ y: 0.0 ~ 1.0
 
 Backend는 화면 공유 track을 직접 처리하지 않는다. Backend는 `OFFER`, `ANSWER`, `ICE_CANDIDATE` 메시지를 relay하여 화면 공유 media track이 연결될 수 있도록 signaling만 담당한다.
 
-### 12.2 음성 전달 정책
+### 13.2 음성 전달 정책
 
 사용자와 상담자는 서로 다른 언어를 사용하는 상황을 기본 전제로 한다.
 
@@ -357,7 +376,7 @@ Backend는 화면 공유 track을 직접 처리하지 않는다. Backend는 `OFF
 - 사용자가 영어로 말하면 상담자 화면에는 한국어 자막이 표시된다.
 - 상담자가 한국어로 말하면 사용자 화면에는 영어 자막이 표시된다.
 
-### 12.3 번역 자막 이벤트 경계
+### 13.3 번역 자막 이벤트 경계
 
 번역 자막은 WebRTC 연결 생성을 위한 signaling 이벤트가 아니다.
 

@@ -4,6 +4,7 @@
 > 협업 도구: GitLab · Jira
 > 팀 구성: 6인
 > 기본 브랜치 흐름: `작업 브랜치 → develop → master`
+> 최신화: 2026-07-30
 
 ---
 
@@ -915,26 +916,14 @@ test: 위치 추정 벤치마크 테스트 추가
 * 개발, 테스트, 운영 환경 설정을 분리한다.
 * 환경변수 추가 및 변경 시 MR 설명과 관련 문서를 함께 수정한다.
 
-### `.env.example`
+### 현재 환경파일 예시
 
-```env
-# Frontend
-VITE_API_BASE_URL=
-VITE_WEBRTC_URL=
+- Frontend: `frontend/.env.example`
+- Backend: Spring `application-*.yaml`과 운영 env 파일(`/opt/pingo/backend/config/pingo-backend.env`)
+- AI CPU 배포: `ai/ec2-cpu.env.example`
+- AI GPU 개발: `ai/laptop-gpu.env.example`
 
-# Backend
-DB_URL=
-DB_USERNAME=
-DB_PASSWORD=
-JWT_SECRET=
-REDIS_HOST=
-REDIS_PORT=
-
-# AI / VPS
-AI_SERVER_URL=
-MODEL_PATH=
-LOCALIZATION_DB_PATH=
-```
+Redis는 현재 프로젝트 구성요소가 아니므로 Redis 환경변수를 필수값으로 두지 않는다.
 
 ---
 
@@ -967,6 +956,10 @@ dist/
 coverage/
 *.local
 ```
+
+### AI / VPS
+
+`runtime_maps/`, `model-cache/`, `pipeline_output/`과 원본 데이터·모델 가중치는 Git에 커밋하지 않는다.
 
 ### Backend
 

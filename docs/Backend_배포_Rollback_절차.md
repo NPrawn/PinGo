@@ -1,10 +1,12 @@
 # Backend 배포 및 Rollback 절차
 
+> 최신화: 2026-07-30
+
 ## 1. 목적
 
 본 문서는 PinGo Spring backend를 EC2 서버에 배포하고, 장애 발생 시 이전 정상 jar로 rollback하는 절차를 정리한다.
 
-배포 자동화는 Jenkins `Backend CD` stage를 기준으로 한다. 수동 배포와 rollback은 장애 대응 또는 Jenkins 배포 실패 시 사용한다.
+배포 자동화는 Jenkins `Backend CD` stage를 기준으로 한다. 전체 Pipeline에는 별도의 `Frontend CD`도 있으며, 이 문서는 Backend jar/systemd rollback만 다룬다. AI 서비스 배포와 모델 artifact rollback도 별도 절차로 관리한다.
 
 ---
 

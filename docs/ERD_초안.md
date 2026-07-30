@@ -1,5 +1,7 @@
 # 외국인 관광객 대상 지하철 실내 내비게이션 ERD 초안
 
+> 최신화: 2026-07-30
+
 ## 1. 문서 목적
 
 본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 데이터 구조 초안을 정의한다.
@@ -189,7 +191,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | facility_id | bigint | 시설 ID | PK |
 | station_id | bigint | 역 ID | FK station.station_id |
 | floor_id | bigint | 층 ID | FK station_floor.floor_id |
-| facility_type | varchar | 시설 유형 | exit, gate, platform, elevator 등 |
+| facility_type | varchar | 시설 유형 | exit, gate, platform, elevator, info 등 |
 | name_ko | varchar | 시설명 한국어 | not null |
 | name_en | varchar | 시설명 영어 | nullable |
 | map_x | decimal | 지도 X 좌표 | not null |
@@ -245,7 +247,8 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 
 실내 경로 탐색에 사용하는 노드이다.
 
-지도 좌표는 이미지 좌상단을 `(0, 0)`으로 하는 `map_x`, `map_y` 값을 사용한다.
+`map_x`, `map_y`, `map_z`는 층별 EVA를 원점으로 하는 캐노니컬 미터 좌표를 사용한다.
+픽셀 변환은 Frontend의 층별 좌표 프레임에서 수행하며 DB에는 이미지 픽셀을 저장하지 않는다.
 
 | 컬럼 | 타입 예시 | 설명 | 제약 |
 | --- | --- | --- | --- |
@@ -256,6 +259,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | name | varchar | 노드 이름 | nullable |
 | map_x | decimal | 지도 X 좌표 | not null |
 | map_y | decimal | 지도 Y 좌표 | not null |
+| map_z | decimal | 층 높이를 포함한 지도 Z 좌표 | not null, default 0 |
 | is_landmark | boolean | 랜드마크 후보 여부 | default false |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |
@@ -803,7 +807,7 @@ AI 모델·VPS 구축 데이터는 강민수가 책임지고, AI 서버 호출·
 
 ## 12. 구현 중 검증할 사항
 
-1. 실제 배포 도메인 확정
+1. 운영 도메인 `jenkins.example.invalid`와 DB에 저장되는 공개 URL의 일치 검증
 2. 추후 일본어·중국어 확장 시 `translation` 테이블 적용 시점 검토
 
 다음 항목은 확정된 기준으로 설계한다.
@@ -811,7 +815,7 @@ AI 모델·VPS 구축 데이터는 강민수가 책임지고, AI 서버 호출·
 | 항목 | 확정 기준 |
 | --- | --- |
 | DBMS | MySQL |
-| 지도 좌표계 | 이미지 좌상단 `(0, 0)` 기준 `map_x`, `map_y` |
+| 지도 좌표계 | EVA 원점의 캐노니컬 미터 `map_x`, `map_y`, `map_z`; 픽셀 변환은 FE 좌표 프레임에서 수행 |
 | 지도 이미지 저장 | 서버 정적 파일 저장 + DB URL 관리 |
 | 경로 거리 | `route_edge.distance_m` 우선 |
 | 사용자 세션 만료 | 마지막 활동 기준 1시간 (정상 종료 시 즉시 만료, 진행 중 상담이 있으면 만료 안 함) |

@@ -172,6 +172,38 @@ class SecurityFilterChainTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void 비로그인_DataChannel_Fallback_API_200() throws Exception {
+        mockMvc.perform(post("/api/consultations/consultation-1/data-channel-events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {
+                      "type": "GUIDE_MESSAGE_SENT",
+                      "payload": {
+                        "message": "왼쪽으로 이동하세요."
+                      }
+                    }
+                    """))
+                .andExpect(status().isOk());
+    }
+    @Test
+    void 비로그인_상담수락API_401() throws Exception {
+        mockMvc.perform(post("/api/consultations/consultation-1/accept"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 비로그인_상담거절API_401() throws Exception {
+        mockMvc.perform(post("/api/consultations/consultation-1/reject"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 비로그인_상담종료API_401() throws Exception {
+        mockMvc.perform(post("/api/consultations/consultation-1/end"))
+                .andExpect(status().isUnauthorized());
+    }
+
     // ---- ADMIN ----
 
     @Test
@@ -188,6 +220,32 @@ class SecurityFilterChainTest {
         String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
 
         mockMvc.perform(get("/api/counselors/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+    @Test
+    void ADMIN_상담수락API_403() throws Exception {
+        String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
+
+        mockMvc.perform(post("/api/consultations/consultation-1/accept")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ADMIN_상담거절API_403() throws Exception {
+        String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
+
+        mockMvc.perform(post("/api/consultations/consultation-1/reject")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ADMIN_상담종료API_403() throws Exception {
+        String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
+
+        mockMvc.perform(post("/api/consultations/consultation-1/end")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden());
     }
@@ -211,6 +269,34 @@ class SecurityFilterChainTest {
         mockMvc.perform(get("/api/admin/stations")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden());
+    }
+    @Test
+    void COUNSELOR_상담수락API_인가통과_404() throws Exception {
+        String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
+
+        // 인가(Security)는 통과하고, 존재하지 않는 상담이라 서비스 단에서 404가 나는지 확인
+        // (401/403이 아니라는 것 자체가 COUNSELOR 권한으로 필터를 통과했다는 증거)
+        mockMvc.perform(post("/api/consultations/consultation-1/accept")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void COUNSELOR_상담거절API_인가통과_404() throws Exception {
+        String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
+
+        mockMvc.perform(post("/api/consultations/consultation-1/reject")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void COUNSELOR_상담종료API_인가통과_404() throws Exception {
+        String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
+
+        mockMvc.perform(post("/api/consultations/consultation-1/end")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
     }
 
 

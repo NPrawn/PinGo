@@ -17,3 +17,9 @@ ai:
     internal-token: ${AI_LOCALIZATION_INTERNAL_TOKEN:}
     connect-timeout-ms: ${AI_LOCALIZATION_CONNECT_TIMEOUT_MS:300}
     read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
+
+signaling:
+  room:
+    cleanup:
+      expiration-minutes: ${SIGNALING_ROOM_EXPIRATION_MINUTES:30}
+      fixed-delay-ms: ${SIGNALING_ROOM_CLEANUP_FIXED_DELAY_MS:60000}
