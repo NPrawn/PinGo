@@ -124,6 +124,16 @@
         white-space: pre-wrap;
         word-break: break-all;
       }
+      #preview {
+        width: 100%;
+        max-height: 26vh;
+        background: #000;
+        border-radius: 6px;
+        display: none;
+      }
+      #preview.on {
+        display: block;
+      }
       #overlay {
         position: fixed;
         inset: auto 8px 8px 8px;
@@ -165,6 +175,14 @@
 
     <section>
       <h2>3. 세션</h2>
+      <p class="sub" style="margin: 0 0 8px">
+        AR 동의 프롬프트가 <b>camera-access 때문에</b> 뜨는지, 아니면 <b>페이지 로드마다</b> 뜨는지
+        가른다. 새로고침 직후 체크를 <b>끈 채로</b> 먼저 열어보고, 종료 후 켜서 다시 열어본다.
+      </p>
+      <label style="display: block; margin-bottom: 8px">
+        <input type="checkbox" id="chkCamera" checked />
+        camera-access 요청 (VPS 프레임 확보용)
+      </label>
       <div class="btns">
         <button id="btnStart" class="primary" disabled>immersive-ar 세션 시작</button>
         <button id="btnEnd" disabled>세션 종료</button>
@@ -177,7 +195,22 @@
     </section>
 
     <section>
-      <h2>5. 로그</h2>
+      <h2>5. 카메라 권한 · 표시 방식</h2>
+      <p class="sub" style="margin: 0 0 8px">
+        앱은 초기 권한 화면에서 카메라를 먼저 허용받는다. 그 허용이 AR 세션 동의를 갈음하는지
+        확인한다. 미리보기를 켠 뒤 세션을 시작해 <b>프롬프트가 다시 뜨는지</b>와
+        <b>세션 시작에 걸린 시간</b>을 본다. 카메라를 video로 띄운 채 세션이 유지되는지도 함께 본다.
+      </p>
+      <video id="preview" playsinline muted></video>
+      <table id="camera"></table>
+      <div class="btns" style="margin-top: 10px">
+        <button id="btnPreview">카메라 미리보기 시작</button>
+        <button id="btnPreviewStop" disabled>미리보기 정지</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. 로그</h2>
       <pre id="log"></pre>
       <div class="btns" style="margin-top: 10px">
         <button id="btnCopy">로그 복사</button>
@@ -187,6 +220,7 @@
 
     <div id="overlay">
       <div id="overlayText">pose 대기 중</div>
+      <button id="btnMark">지금 값 기록</button>
       <button id="btnEndOverlay">세션 종료</button>
     </div>
 
@@ -236,13 +270,23 @@
       // WebXR은 secure context에서만 노출된다. HTTPS 또는 localhost가 아니면
       // navigator.xr 자체가 undefined다.
       const secure = window.isSecureContext;
-      renderTable('env', [
+      const envRows = [
         ['isSecureContext', String(secure), secure ? 'ok' : 'err'],
         ['origin', location.origin],
         ['protocol', location.protocol],
         ['userAgent', navigator.userAgent],
         ['화면', `${screen.width}×${screen.height} @${window.devicePixelRatio}x`],
-      ]);
+      ];
+      renderTable('env', envRows);
+
+      /** 같은 라벨이 있으면 갈아끼우고 없으면 덧붙인다. 비동기 조회 결과를 반영하는 용도다. */
+      function setEnvRow(label, value, cls) {
+        const at = envRows.findIndex((row) => row[0] === label);
+        if (at === -1) envRows.push([label, value, cls]);
+        else envRows[at] = [label, value, cls];
+        renderTable('env', envRows);
+      }
+
       log('INFO', 'origin', { origin: location.origin, isSecureContext: secure });
       log('INFO', 'userAgent', { ua: navigator.userAgent });
       if (!secure) {
@@ -250,6 +294,49 @@
           'FAIL',
           'secure context 아님 — navigator.xr이 노출되지 않는다. HTTPS 또는 localhost로 접속해야 한다.',
         );
+      }
+
+      /**
+       * AR 동의를 프롬프트 없이 미리 받는 API는 없다. 다만 상태 조회는 가능할 수 있어서,
+       * granted면 안내 없이 세션을 열고 prompt면 우리 화면에서 먼저 설명한 뒤 열 수 있다.
+       * 이 조회가 되는지에 따라 권한 안내 화면 설계가 갈린다.
+       */
+      /*
+       * query()는 인자 변환 단계에서 동기 throw를 낼 수 있다. Chrome 150은 거부된 Promise로
+       * 돌려주지만 엔진마다 다르고, 이 블록이 스크립트 앞부분이라 동기 throw가 나면
+       * 뒤의 지원 탐지와 버튼 배선까지 통째로 실행되지 않는다. try로 감싼다.
+       */
+      try {
+        if (!navigator.permissions || !navigator.permissions.query) {
+          throw new Error('navigator.permissions 없음');
+        }
+        navigator.permissions
+          .query({ name: 'xr-spatial-tracking' })
+          .then((status) => {
+            log('OK', 'permissions.query(xr-spatial-tracking)', { state: status.state });
+            setEnvRow(
+              'xr-spatial-tracking',
+              status.state,
+              status.state === 'granted' ? 'ok' : 'warn',
+            );
+          })
+          .catch((error) => {
+            /**
+             * Chrome 150은 이 이름을 PermissionName으로 받지 않아 TypeError가 난다.
+             * 페이지 결함이 아니라 예상된 부정 결과이므로 FAIL로 올리지 않는다.
+             */
+            log('WARN', 'permissions.query(xr-spatial-tracking) 조회 불가', {
+              name: error && error.name,
+              message: error && error.message,
+            });
+            setEnvRow('xr-spatial-tracking', '조회 불가', 'warn');
+          });
+      } catch (error) {
+        log('WARN', 'permissions.query를 호출할 수 없다 — AR 동의 상태를 미리 알 수 없다.', {
+          name: error && error.name,
+          message: error && error.message,
+        });
+        setEnvRow('xr-spatial-tracking', '조회 불가', 'warn');
       }
 
       // ── 2. 지원 탐지 ────────────────────────────────────────────────────────
@@ -292,6 +379,7 @@
       // ── 3~4. 세션과 pose ───────────────────────────────────────────────────
       const btnEnd = document.getElementById('btnEnd');
       const btnEndOverlay = document.getElementById('btnEndOverlay');
+      const chkCamera = document.getElementById('chkCamera');
       const overlay = document.getElementById('overlay');
       const overlayText = document.getElementById('overlayText');
 
@@ -301,15 +389,35 @@
       let frames = 0;
       let posesMissing = 0;
 
+      /**
+       * 경로 안내 중 VPS 재인식은 세션을 유지한 채 카메라 프레임을 꺼내야 한다.
+       * getUserMedia는 세션과 공존하지 못하므로(1차 실측) camera-access가 유일한 경로다.
+       * 부여되지 않으면 재인식마다 세션을 끊어야 하고 그때마다 앵커가 초기화된다.
+       */
+      let glCtx = null;
+      let cameraProbed = false;
+
       // 앵커: 지도 좌표 정렬 검증용 기준점. 좌표 스펙 8.2의 anchor.xr에 해당한다.
       let anchor = null;
       let maxDistanceM = 0;
       let maxYawDeg = 0;
+      // 층 전환 판정용. 앵커 대비 최대 상승·최대 하강을 따로 본다.
+      let maxUpM = 0;
+      let minDownM = 0;
 
-      // 확정 주기: 기술_의사결정_정리.md 11.4 기준값을 그대로 적용해 실측한다.
-      const RULE = { moveM: 2, turnDeg: 15, minIntervalMs: 1000, heartbeatMs: 5000 };
+      /**
+       * 확정 주기: 기술_의사결정_정리.md 11.4 기준.
+       * 1차 실측에서 회전 15도 기준이 상시 참이 되어(손에 든 폰의 자연스러운 흔들림)
+       * 확정의 79%가 회전으로 발화했다. 회전을 트리거에서 제외하고 거리와 heartbeat만 쓴다.
+       * 회전량은 계속 기록해 표시 갱신 기준을 따로 정하는 데 쓴다.
+       */
+      const RULE = { moveM: 2, minIntervalMs: 1000, heartbeatMs: 5000 };
       let lastFix = null;
       let fixCount = 0;
+
+      // 보행 절차(검증 결과 문서 3.4)에서 원하는 시점의 값을 남기기 위한 스냅샷
+      let lastSample = null;
+      let markCount = 0;
 
       function yawDegOf(orientation) {
         const { x, y, z, w } = orientation;
@@ -322,26 +430,167 @@
         return Math.abs(d < -180 ? d + 360 : d);
       }
 
+      // ── 5. 카메라 권한·표시 방식 ────────────────────────────────────────────
+      const video = document.getElementById('preview');
+      const btnPreview = document.getElementById('btnPreview');
+      const btnPreviewStop = document.getElementById('btnPreviewStop');
+      let previewStream = null;
+
+      function trackState() {
+        if (!previewStream) return null;
+        const track = previewStream.getVideoTracks()[0];
+        if (!track) return { track: 'none' };
+        return {
+          readyState: track.readyState,
+          enabled: track.enabled,
+          muted: track.muted,
+        };
+      }
+
+      function logTrackState(when) {
+        const state = trackState();
+        const dead = state && (state.readyState !== 'live' || state.muted);
+        log(dead ? 'WARN' : 'OK', `${when} 카메라 트랙 상태`, state);
+        renderCamera();
+      }
+
+      function renderCamera() {
+        const state = trackState();
+        const rows = [['미리보기', previewStream ? '켜짐' : '꺼짐', previewStream ? 'ok' : 'warn']];
+        if (state) {
+          rows.push([
+            'readyState',
+            String(state.readyState),
+            state.readyState === 'live' ? 'ok' : 'err',
+          ]);
+          rows.push(['muted', String(state.muted), state.muted ? 'warn' : 'ok']);
+          rows.push(['해상도', `${video.videoWidth}×${video.videoHeight}`]);
+        }
+        const overlayType = session && session.domOverlayState && session.domOverlayState.type;
+        rows.push([
+          'dom-overlay',
+          overlayType || '(세션 없음 또는 미지원)',
+          overlayType ? 'ok' : 'warn',
+        ]);
+        renderTable('camera', rows);
+      }
+
+      async function startPreview() {
+        log('INFO', 'getUserMedia({ video: { facingMode: environment } }) 호출');
+        try {
+          previewStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' },
+          });
+        } catch (error) {
+          logError('getUserMedia 실패', error);
+          return;
+        }
+        video.srcObject = previewStream;
+        video.classList.add('on');
+        try {
+          await video.play();
+        } catch (error) {
+          logError('video.play() 실패', error);
+        }
+        btnPreview.disabled = true;
+        btnPreviewStop.disabled = false;
+        logTrackState('미리보기 시작');
+        log(
+          'INFO',
+          '이제 세션을 시작해 AR 동의 프롬프트가 다시 뜨는지 확인한다. 뜨지 않고 바로 열리면 카메라 허용으로 갈음되는 것이다.',
+        );
+      }
+
+      function stopPreview() {
+        if (!previewStream) return;
+        for (const track of previewStream.getTracks()) track.stop();
+        previewStream = null;
+        video.srcObject = null;
+        video.classList.remove('on');
+        btnPreview.disabled = false;
+        btnPreviewStop.disabled = true;
+        log('INFO', '미리보기 정지');
+        renderCamera();
+      }
+
       async function start() {
-        log('INFO', 'requestSession(immersive-ar) 호출');
+        /**
+         * camera-access를 뺀 요청과 넣은 요청을 같은 조건에서 비교하기 위한 토글이다.
+         * 프롬프트가 이 기능 때문에 뜨는지, 페이지 로드마다 뜨는지는 이 둘을 비교해야 갈린다.
+         */
+        const wantCamera = chkCamera.checked;
+        const features = wantCamera ? ['dom-overlay', 'camera-access'] : ['dom-overlay'];
+        log('INFO', 'requestSession(immersive-ar) 호출', {
+          카메라미리보기: previewStream ? '켜짐' : '꺼짐',
+          optionalFeatures: features,
+        });
+        const requestedAt = performance.now();
         try {
           /**
            * dom-overlay는 세션 중에도 이 페이지 DOM을 볼 수 있게 해준다.
            * 미지원 기기에서도 세션은 열려야 하므로 optionalFeatures로 둔다.
            */
           session = await navigator.xr.requestSession('immersive-ar', {
-            optionalFeatures: ['dom-overlay'],
+            optionalFeatures: features,
             domOverlay: { root: overlay },
           });
         } catch (error) {
+          /**
+           * 실측 결과 권한 거부도 NotSupportedError로 나타나 오류 name만으로는
+           * 미지원과 구분되지 않는다. 대신 실패까지 걸린 시간이 갈린다.
+           * 프롬프트가 뜬 경우는 2초 이상, 이미 차단된 경우는 10ms 수준이었다.
+           */
+          const elapsedMs = Math.round(performance.now() - requestedAt);
           logError('세션 시작 실패', error);
-          log(
-            'INFO',
-            '권한 거부는 보통 NotAllowedError, 기기·ARCore 미지원은 NotSupportedError로 나타난다.',
-          );
+          log('INFO', '실패까지 걸린 시간', { elapsedMs });
+          if (arSupported && elapsedMs < 500) {
+            log(
+              'WARN',
+              '프롬프트 없이 즉시 실패했다. 권한이 이미 차단된 상태로 보인다. 앱에서는 복구할 수 없고 브라우저 사이트 설정에서 권한을 초기화해야 한다.',
+            );
+          } else if (arSupported) {
+            log('INFO', '프롬프트가 표시된 뒤 실패했다. 이번 요청이 거부됐거나 일시적 실패다.');
+          }
           return;
         }
-        log('OK', '세션 시작됨');
+        /**
+         * 성공까지 걸린 시간으로 프롬프트 노출 여부를 가늠한다.
+         * 사용자가 탭해야 하면 수 초가 걸리고, 동의가 갈음되면 수백 ms 안에 열린다.
+         * 확정 판단은 실제 화면에 프롬프트가 떴는지로 한다.
+         */
+        const startedMs = Math.round(performance.now() - requestedAt);
+        log('OK', '세션 시작됨', { elapsedMs: startedMs });
+        if (previewStream) {
+          log(
+            startedMs < 500 ? 'OK' : 'WARN',
+            startedMs < 500
+              ? '카메라 허용 상태에서 프롬프트 없이 바로 열린 것으로 보인다. 화면에 프롬프트가 뜨지 않았다면 카메라 권한으로 갈음된다.'
+              : '카메라 허용 상태인데도 시간이 걸렸다. 프롬프트가 떴다면 AR 동의는 별도다.',
+          );
+        }
+
+        // 지도 UI를 오버레이로 얹을 수 있는지 판별하는 값이다.
+        const overlayType = session.domOverlayState && session.domOverlayState.type;
+        log(overlayType ? 'OK' : 'WARN', 'dom-overlay 상태', { type: overlayType || null });
+
+        /**
+         * optionalFeatures는 거부돼도 세션이 열리므로, 요청한 것과 실제 부여된 것을 구분해야 한다.
+         * enabledFeatures를 노출하지 않는 브라우저도 있어 최종 판단은 XRView.camera로 한다.
+         */
+        const enabled = session.enabledFeatures ? Array.from(session.enabledFeatures) : null;
+        log(enabled && enabled.includes('camera-access') ? 'OK' : 'WARN', 'enabledFeatures', {
+          features: enabled,
+          'camera-access': enabled ? enabled.includes('camera-access') : '알 수 없음',
+        });
+
+        /**
+         * 미리보기를 켠 채 세션을 열었다면 ARCore가 카메라를 가져가며 트랙이
+         * 죽는지 확인한다. 상단 카메라·하단 지도 구조를 video로 만들 수 있는지가 갈린다.
+         */
+        if (previewStream) {
+          logTrackState('세션 시작 직후');
+          setTimeout(() => logTrackState('세션 시작 2초 후'), 2000);
+        }
 
         /**
          * immersive 세션은 baseLayer가 없으면 프레임을 만들지 않는다.
@@ -353,6 +602,8 @@
           if (!gl) throw new Error('WebGL 컨텍스트를 만들 수 없다');
           await gl.makeXRCompatible();
           session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+          // camera-access 확인 때 XRWebGLBinding을 만들어야 해서 붙들어 둔다.
+          glCtx = gl;
           log('OK', 'XRWebGLLayer 연결됨');
         } catch (error) {
           logError('XRWebGLLayer 연결 실패', error);
@@ -384,10 +635,13 @@
         frames = 0;
         posesMissing = 0;
         fixCount = 0;
+        cameraProbed = false;
         anchor = null;
         lastFix = null;
         maxDistanceM = 0;
         maxYawDeg = 0;
+        maxUpM = 0;
+        minDownM = 0;
         session.requestAnimationFrame(onFrame);
       }
 
@@ -402,6 +656,36 @@
           // 추적이 끊긴 프레임. 실기기에서 얼마나 자주 생기는지가 검증 대상이다.
           if (posesMissing % 30 === 1) log('WARN', 'getViewerPose가 null', { frames });
           return;
+        }
+
+        /**
+         * VPS 재인식을 세션 중에 할 수 있는지 판별한다.
+         * XRView.camera가 있어야 프레임에 접근할 수 있고, 실제로 꺼내지는지는
+         * getCameraImage까지 해봐야 안다. 텍스처는 이 프레임 안에서만 유효하다.
+         */
+        if (!cameraProbed) {
+          cameraProbed = true;
+          const camera = viewerPose.views.length ? viewerPose.views[0].camera : null;
+          if (!camera) {
+            log(
+              'WARN',
+              'XRView.camera 없음 — 세션 중에는 카메라 프레임을 얻을 수 없다. 재인식하려면 세션을 끊어야 하고 앵커가 초기화된다.',
+            );
+          } else {
+            log('OK', 'XRView.camera 있음', { width: camera.width, height: camera.height });
+            try {
+              const binding = new XRWebGLBinding(session, glCtx);
+              const texture = binding.getCameraImage(camera);
+              log(
+                texture ? 'OK' : 'WARN',
+                texture
+                  ? 'getCameraImage 성공 — 세션을 유지한 채 VPS 프레임을 확보할 수 있다.'
+                  : 'getCameraImage가 null을 반환했다.',
+              );
+            } catch (error) {
+              logError('getCameraImage 실패', error);
+            }
+          }
         }
 
         const p = viewerPose.transform.position;
@@ -427,16 +711,27 @@
         const yawFromAnchor = angleDiffDeg(yawDeg, anchor.yawDeg);
         if (distance > maxDistanceM) maxDistanceM = distance;
         if (yawFromAnchor > maxYawDeg) maxYawDeg = yawFromAnchor;
+        if (dy > maxUpM) maxUpM = dy;
+        if (dy < minDownM) minDownM = dy;
+        lastSample = { dx, dz, dY: dy, distanceM: distance, yawFromAnchor, yawDeg };
 
         // 11.4 확정 주기 적용
         const sinceFix = time - lastFix.at;
         const movedFromFix = Math.hypot(p.x - lastFix.x, p.z - lastFix.z);
         const turnedFromFix = angleDiffDeg(yawDeg, lastFix.yawDeg);
-        const changed = movedFromFix >= RULE.moveM || turnedFromFix >= RULE.turnDeg;
+        const changed = movedFromFix >= RULE.moveM;
         if ((changed && sinceFix >= RULE.minIntervalMs) || sinceFix >= RULE.heartbeatMs) {
           fixCount += 1;
+          /**
+           * dx·dz·dY는 앵커 기준 누적 변위다. 좌표계 방향성(부호 조합)과
+           * 층 전환 판정에 필요해 원시값 그대로 남긴다.
+           * movedM·dYawDeg는 직전 확정 대비 변화량이다.
+           */
           log('INFO', `위치 확정 #${fixCount}`, {
-            dxM: +movedFromFix.toFixed(2),
+            dx: +dx.toFixed(2),
+            dz: +dz.toFixed(2),
+            dY: +dy.toFixed(2),
+            movedM: +movedFromFix.toFixed(2),
             dYawDeg: +turnedFromFix.toFixed(1),
             afterMs: Math.round(sinceFix),
             reason: changed ? 'change' : 'heartbeat',
@@ -471,7 +766,11 @@
           fixCount,
           maxDistanceM: +maxDistanceM.toFixed(2),
           maxYawDeg: +maxYawDeg.toFixed(1),
+          maxUpM: +maxUpM.toFixed(2),
+          maxDownM: +minDownM.toFixed(2),
         });
+        // 세션이 끝난 뒤 카메라 트랙이 되살아나는지도 기록한다.
+        if (previewStream) logTrackState('세션 종료 후');
         session = null;
         refSpace = null;
         btnEnd.disabled = true;
@@ -494,6 +793,33 @@
       btnStart.addEventListener('click', start);
       btnEnd.addEventListener('click', end);
       btnEndOverlay.addEventListener('click', end);
+      const btnMark = document.getElementById('btnMark');
+      btnMark.addEventListener('click', () => {
+        if (!lastSample) {
+          log('WARN', '아직 pose가 없어 기록할 값이 없다');
+          btnMark.textContent = '아직 pose 없음';
+          setTimeout(() => {
+            btnMark.textContent = markCount ? `지금 값 기록 (${markCount})` : '지금 값 기록';
+          }, 800);
+          return;
+        }
+        markCount += 1;
+        /**
+         * 1차 검증에서 눌린 게 보이지 않아 같은 지점을 여러 번 기록했다.
+         * 누적 횟수를 버튼에 남겨 중복 기록을 알아볼 수 있게 한다.
+         */
+        btnMark.textContent = `기록됨 #${markCount}`;
+        setTimeout(() => {
+          btnMark.textContent = `지금 값 기록 (${markCount})`;
+        }, 600);
+        log('OK', `수동 기록 #${markCount}`, {
+          dx: +lastSample.dx.toFixed(3),
+          dz: +lastSample.dz.toFixed(3),
+          dY: +lastSample.dY.toFixed(3),
+          distanceM: +lastSample.distanceM.toFixed(2),
+          yawFromAnchorDeg: +lastSample.yawFromAnchor.toFixed(1),
+        });
+      });
       document.getElementById('btnCopy').addEventListener('click', async () => {
         const text = lines.join('\n');
         try {
@@ -508,8 +834,12 @@
         logEl.textContent = '';
       });
 
+      btnPreview.addEventListener('click', startPreview);
+      btnPreviewStop.addEventListener('click', stopPreview);
+
       renderTable('support', [['상태', '탐지 대기 중', 'warn']]);
       renderTable('pose', [['상태', '세션 시작 전', 'warn']]);
+      renderCamera();
       detect();
     </script>
   </body>
