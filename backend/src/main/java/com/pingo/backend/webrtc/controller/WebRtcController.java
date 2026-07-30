@@ -1,10 +1,8 @@
 package com.pingo.backend.webrtc.controller;
 
-import com.pingo.backend.global.exception.BusinessException;
-import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.global.response.ApiResponse;
-import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import com.pingo.backend.webrtc.dto.IceServersResponse;
+import com.pingo.backend.webrtc.service.IceServerAccessValidator;
 import com.pingo.backend.webrtc.service.IceServerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,7 +24,7 @@ public class WebRtcController {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final IceServerService iceServerService;
-    private final SignalingAccessTokenProvider signalingAccessTokenProvider;
+    private final IceServerAccessValidator iceServerAccessValidator;
 
     @Operation(summary = "WebRTC ICE 서버 설정 조회")
     @GetMapping("/ice-servers")
@@ -34,7 +32,7 @@ public class WebRtcController {
             @RequestParam(required = false) String token,
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization
     ) {
-        validateSignalingAccessToken(resolveToken(token, authorization));
+        iceServerAccessValidator.validate(resolveToken(token, authorization));
         return ApiResponse.success(iceServerService.getIceServers());
     }
 
@@ -48,17 +46,5 @@ public class WebRtcController {
         }
 
         return null;
-    }
-
-    private void validateSignalingAccessToken(String token) {
-        if (!StringUtils.hasText(token)) {
-            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
-        }
-
-        try {
-            signalingAccessTokenProvider.parseToken(token);
-        } catch (RuntimeException exception) {
-            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
-        }
     }
 }
