@@ -3,13 +3,14 @@ import type { ReactNode } from 'react';
 import styles from './BackLink.module.css';
 
 type BackLinkProps = {
-  to: string;
+  to?: string;
+  onClick?: () => void;
   children: ReactNode;
 };
 
-export function BackLink({ to, children }: BackLinkProps) {
-  return (
-    <Link to={to} className={styles.back}>
+export function BackLink({ to, onClick, children }: BackLinkProps) {
+  const content = (
+    <>
       <span className={styles.chevron}>
         <svg
           width="15"
@@ -26,6 +27,20 @@ export function BackLink({ to, children }: BackLinkProps) {
         </svg>
       </span>
       {children}
-    </Link>
+    </>
+  );
+
+  if (to) {
+    return (
+      <Link to={to} className={styles.back}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" className={styles.back} onClick={onClick}>
+      {content}
+    </button>
   );
 }

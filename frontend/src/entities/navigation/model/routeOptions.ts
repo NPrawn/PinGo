@@ -1,4 +1,4 @@
-export type RouteOptionId = 'fast' | 'nostair' | 'elev';
+export type RouteOptionId = 'fast' | 'elev';
 
 export type RouteOption = {
   id: RouteOptionId;
@@ -16,18 +16,13 @@ export type RouteOption = {
 export const ROUTE_OPTIONS: readonly RouteOption[] = [
   {
     id: 'fast',
-    name: '빠른 경로',
-    caption: '가장 빠르게 갈 수 있는 최단 경로 · 3번 출구로 안내해요.',
-  },
-  {
-    id: 'nostair',
-    name: '계단 없는 경로',
-    caption: '가장 빠르게 갈 수 있는 최단 경로 · 3번 출구로 안내해요.',
+    name: '최단 경로',
+    caption: '목적지에서 가장 가까운 출입구까지 안내해요.',
   },
   {
     id: 'elev',
-    name: '엘리베이터 중심',
-    caption: '엘리베이터로만 이동 · 엘리베이터와 연결된 2번 출구로 안내해요.',
+    name: '엘리베이터 우선',
+    caption: '엘리베이터를 이용할 수 있는 출입구까지 안내해요.',
   },
 ];
 

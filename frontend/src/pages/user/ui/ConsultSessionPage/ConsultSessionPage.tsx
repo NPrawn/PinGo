@@ -1,4 +1,7 @@
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
+import { useNavigationStore } from '@/entities/navigation';
+import { useStationStore } from '@/entities/station';
 import { USER_ROUTES } from '@/shared/config';
 import { HeadingMarker, Icon, MapPreview } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -11,6 +14,11 @@ import styles from './ConsultSessionPage.module.css';
  * WebRTC media stream and STT/translation data channel.
  */
 export function ConsultSessionPage() {
+  const station = useStationStore((state) => state.station);
+  const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
+  const waypoints = useNavigationStore((state) => state.waypoints);
+  const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
+
   return (
     <PhoneFrame dark layout="flush">
       <>
@@ -29,18 +37,65 @@ export function ConsultSessionPage() {
         </div>
 
         <div className={styles.cam}>
-          <div className={styles.camPill}>
-            <b>To 3번 출구</b> · 상담원 안내 중
+          <div
+            className={[
+              styles.routeHeader,
+              waypoints.length > 0 && styles.routeHeaderCompact,
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            aria-label="상담 중인 경로"
+          >
+            <div className={styles.routePoint}>
+              <span className={styles.routeLabel}>
+                <span className={styles.pointDot} aria-hidden />
+                <small>출발지</small>
+              </span>
+              <strong>{station} B1</strong>
+            </div>
+            {waypoints.map((waypoint, index) => (
+              <Fragment key={waypoint}>
+                <span className={styles.routeArrow} aria-hidden>
+                  <Icon name="arrow-right" size={16} />
+                </span>
+                <div className={`${styles.routePoint} ${styles.waypointPoint}`}>
+                  <button
+                    type="button"
+                    className={styles.removeWaypoint}
+                    onClick={() => removeWaypoint(waypoint)}
+                    aria-label={`${waypoint} 경유지 삭제`}
+                    title={`${waypoint} 경유지 삭제`}
+                  >
+                    ×
+                  </button>
+                  <span className={styles.routeLabel}>
+                    <span
+                      className={`${styles.pointDot} ${styles.pointDotWaypoint}`}
+                      aria-hidden
+                    />
+                    <small>경유 {index + 1}</small>
+                  </span>
+                  <strong title={waypoint}>{waypoint}</strong>
+                </div>
+              </Fragment>
+            ))}
+            <span className={styles.routeArrow} aria-hidden>
+              <Icon name="arrow-right" size={16} />
+            </span>
+            <div className={styles.routePoint}>
+              <span className={styles.routeLabel}>
+                <span className={`${styles.pointDot} ${styles.pointDotDestination}`} aria-hidden />
+                <small>목적지</small>
+              </span>
+              <strong title={destination}>{destination}</strong>
+            </div>
           </div>
           <div className={styles.translation}>
             <div className={styles.translationLabel}>
               <Icon name="globe" size={13} />
-              실시간 음성 번역 · 상담원
+              Live voice translation · Counselor
             </div>
             <div className={styles.translationPrimary}>
-              12번 기둥 기준으로 왼쪽 엘리베이터로 이동하세요.
-            </div>
-            <div className={styles.translationSecondary}>
               Go to the elevator on your left, using pillar 12 as a reference.
             </div>
           </div>

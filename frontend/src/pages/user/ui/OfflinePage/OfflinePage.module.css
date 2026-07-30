@@ -1,133 +1,29 @@
-/* Screen 23 — offline fallback. Ported from prototype `#s-offline`. */
-
-.topSpacer {
-  height: 8px;
+.body {
+  position: relative;
+  background: #0a1511;
 }
 
-.offlinePill {
-  color: #c24a3d;
-  border-color: rgb(255 139 122 / 50%);
-}
-
-.offlineDot {
-  background: #ff8b7a;
-  box-shadow: 0 0 0 3px rgb(255 139 122 / 25%);
-}
-
-.title {
-  margin-top: 14px;
-}
-
-.strong {
-  color: var(--color-ink);
-}
-
-.card {
-  padding: 15px 16px;
-  margin-top: 16px;
-}
-
-.savedRow {
-  display: flex;
-  gap: 11px;
-  align-items: center;
-}
-
-.savedMark {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  background: #d1f5e4;
-  border-radius: 11px;
-}
-
-.savedBody {
-  flex: 1;
-}
-
-.savedTitle {
-  font-size: 13.5px;
-  font-weight: 800;
-}
-
-.savedMeta {
-  margin-top: 2px;
-  font-size: 11.5px;
-  color: var(--color-sub);
-}
-
-.divider {
-  height: 1px;
-  margin: 13px 0;
-  background: rgb(15 44 34 / 8%);
-}
-
-.capabilities {
+.preview {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  height: 100%;
+  filter: brightness(0.55);
 }
 
-.capability {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  font-size: 12.5px;
-  color: var(--color-ink);
+.previewHeader {
+  flex: 0 0 54px;
+  background: #07130f;
 }
 
-.capabilityOff {
-  color: rgb(15 44 34 / 42%);
+.previewCamera {
+  flex: 0 0 46%;
+  background:
+    linear-gradient(135deg, transparent 49.7%, rgb(127 239 195 / 16%) 50%, transparent 50.3%),
+    radial-gradient(120% 90% at 50% 20%, #33423c, #0d1814);
 }
 
-.capabilityDot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  background: #0ea36f;
-  border-radius: 50%;
-}
-
-.capabilityDotOff {
-  background: #c9d3cd;
-}
-
-.retryCard {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 13px 15px;
-  margin-top: 12px;
-}
-
-.retrySpinner {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border: 2.5px solid rgb(14 163 111 / 25%);
-  border-top-color: #0ea36f;
-  border-radius: 50%;
-  animation: offline-spin 1s linear infinite;
-}
-
-.retryText {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--color-ink);
-}
-
-.retryLink {
-  display: block;
-  margin-top: 9px;
-  color: var(--color-sub);
-  text-align: center;
-}
-
-@keyframes offline-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.previewMap {
+  flex: 1;
+  background:
+    linear-gradient(90deg, transparent 20%, rgb(86 145 111 / 8%) 20% 34%, transparent 34%), #f4f8f4;
 }

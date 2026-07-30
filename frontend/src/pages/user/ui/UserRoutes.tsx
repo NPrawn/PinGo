@@ -1,18 +1,14 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { USER_ROUTES } from '@/shared/config';
-import { AnalyzingPage } from './AnalyzingPage/AnalyzingPage';
 import { ArrivalPage } from './ArrivalPage/ArrivalPage';
+import { BackstagePage } from './BackstagePage/BackstagePage';
 import { CaptureGuidePage } from './CaptureGuidePage/CaptureGuidePage';
-import { CaptureLandscapePage } from './CaptureLandscapePage/CaptureLandscapePage';
 import { CapturePortraitPage } from './CapturePortraitPage/CapturePortraitPage';
 import { ConsultEndedPage } from './ConsultEndedPage/ConsultEndedPage';
 import { ConsultPermissionPage } from './ConsultPermissionPage/ConsultPermissionPage';
 import { ConsultRequestPage } from './ConsultRequestPage/ConsultRequestPage';
 import { ConsultSessionPage } from './ConsultSessionPage/ConsultSessionPage';
 import { ConsultWaitingPage } from './ConsultWaitingPage/ConsultWaitingPage';
-import { DestinationMapPage } from './DestinationMapPage/DestinationMapPage';
-import { DestinationPage } from './DestinationPage/DestinationPage';
-import { ExternalMapPage } from './ExternalMapPage/ExternalMapPage';
 import { LanguagePage } from './LanguagePage/LanguagePage';
 import { LocateFailedPage } from './LocateFailedPage/LocateFailedPage';
 import { LocateManualPage } from './LocateManualPage/LocateManualPage';
@@ -30,7 +26,7 @@ import { StationPage } from './StationPage/StationPage';
 const rel = (path: string) => path.slice('/user/'.length);
 
 /**
- * The user-facing flow — 26 screens.
+ * The user-facing flow.
  *
  * Each screen is its own route. The prototype switched between them with
  * `location.hash`, which meant no history, no deep links and no code splitting.
@@ -47,23 +43,24 @@ export function UserRoutes() {
       <Route path={rel(USER_ROUTES.PERMISSION)} element={<PermissionPage />} />
       <Route path={rel(USER_ROUTES.STATION)} element={<StationPage />} />
 
-      {/* Location recognition */}
+      {/* Location capture and recognition */}
       <Route path={rel(USER_ROUTES.CAPTURE_GUIDE)} element={<CaptureGuidePage />} />
       <Route path={rel(USER_ROUTES.CAPTURE_PORTRAIT)} element={<CapturePortraitPage />} />
-      <Route path={rel(USER_ROUTES.CAPTURE_LANDSCAPE)} element={<CaptureLandscapePage />} />
-      <Route path={rel(USER_ROUTES.ANALYZING)} element={<AnalyzingPage />} />
+      <Route
+        path={rel(USER_ROUTES.ANALYZING)}
+        element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
+      />
       <Route path={rel(USER_ROUTES.LOCATE_FAILED)} element={<LocateFailedPage />} />
       <Route path={rel(USER_ROUTES.LOCATE_MANUAL)} element={<LocateManualPage />} />
       <Route path={rel(USER_ROUTES.LOCATE_SUCCESS)} element={<LocateSuccessPage />} />
 
       {/* Destination and routing */}
-      <Route path={rel(USER_ROUTES.DESTINATION)} element={<DestinationPage />} />
-      <Route path={rel(USER_ROUTES.DESTINATION_MAP)} element={<DestinationMapPage />} />
+      <Route path="destination/*" element={<Navigate to={USER_ROUTES.STATION} replace />} />
       <Route path={rel(USER_ROUTES.ROUTE_OPTIONS)} element={<RouteOptionsPage />} />
       <Route path={rel(USER_ROUTES.NAVIGATION)} element={<NavigationPage />} />
+      <Route path={rel(USER_ROUTES.BACKSTAGE)} element={<BackstagePage />} />
       <Route path={rel(USER_ROUTES.NAVIGATION_REROUTE)} element={<ReroutePage />} />
       <Route path={rel(USER_ROUTES.ARRIVAL)} element={<ArrivalPage />} />
-      <Route path={rel(USER_ROUTES.EXTERNAL_MAP)} element={<ExternalMapPage />} />
 
       {/* Consultation */}
       <Route path={rel(USER_ROUTES.CONSULT_REQUEST)} element={<ConsultRequestPage />} />

@@ -1,18 +1,17 @@
-import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
-import { BackLink, ButtonLink, Card, GhostLink, LivePill, Spring, Sub, Title } from '@/shared/ui';
+import { BackLink, ButtonLink, Card, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './CaptureGuidePage.module.css';
 
 const TIPS = [
   {
-    title: '발은 그대로, 몸만 회전',
-    body: '자리를 옮기지 않아야 위치가 정확해요',
+    title: '휴대폰은 세로로 유지',
+    body: '후면 카메라가 앞을 향하도록 들어주세요',
   },
   {
-    title: '가로로 들면 더 넓게',
-    body: '한 번에 담기는 범위가 약 2배 넓어져요',
+    title: '발은 그대로, 몸만 회전',
+    body: '한자리에서 왼쪽·정면·오른쪽을 담아주세요',
   },
   {
     title: '표지판이 보이면 잠깐 멈춤',
@@ -22,25 +21,25 @@ const TIPS = [
 
 /** Screen 05 (FR-U-004) — how to capture the surroundings. */
 export function CaptureGuidePage() {
-  const station = useStationStore((state) => state.station);
-
   return (
     <PhoneFrame>
-      <div className={styles.topSpacer} />
-      <div className={styles.headerBar}>
-        <BackLink to={USER_ROUTES.STATION}>역 다시 선택</BackLink>
-        <ConsultCta variant="icon" />
+      <div className={styles.guideLead}>
+        <div className={styles.topSpacer} />
+        <div className={styles.headerBar}>
+          <BackLink to={USER_ROUTES.STATION}>출발지 목적지 재설정</BackLink>
+          <ConsultCta variant="icon" />
+        </div>
+        <Title className={styles.title}>
+          세로 화면으로 주변을
+          <br />
+          천천히 담아주세요
+        </Title>
+        <Sub>
+          촬영한 주변 모습으로
+          <br />
+          지금 서 있는 정확한 위치를 찾아드려요.
+        </Sub>
       </div>
-      <LivePill tone="gps">{station} · 위치 인식</LivePill>
-      <Title className={styles.title}>
-        제자리에서 주변을
-        <br />한 바퀴 담아주세요
-      </Title>
-      <Sub>
-        촬영한 주변 모습으로
-        <br />
-        지금 서 있는 정확한 위치를 찾아드려요.
-      </Sub>
 
       <div className={styles.radar} aria-hidden>
         <div className={styles.ringOuter} />
@@ -63,7 +62,7 @@ export function CaptureGuidePage() {
           </svg>
         </div>
         <span className={`${styles.compass} ${styles.compassTop}`}>정면</span>
-        <span className={`${styles.compass} ${styles.compassBottom}`}>뒤쪽</span>
+        <span className={`${styles.compass} ${styles.compassBottom}`}>제자리</span>
         <span className={`${styles.compass} ${styles.compassLeft}`}>왼쪽</span>
         <span className={`${styles.compass} ${styles.compassRight}`}>오른쪽</span>
       </div>
@@ -81,10 +80,9 @@ export function CaptureGuidePage() {
       </Card>
 
       <Spring />
-      <ButtonLink to={USER_ROUTES.CAPTURE_LANDSCAPE}>가로로 촬영 시작</ButtonLink>
-      <GhostLink to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.altLink}>
-        세로로 촬영할게요 →
-      </GhostLink>
+      <ButtonLink to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.captureButton}>
+        세로로 촬영 시작
+      </ButtonLink>
     </PhoneFrame>
   );
 }

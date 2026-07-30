@@ -36,7 +36,7 @@ export function SettingsPage() {
   return (
     <PhoneFrame>
       <div className={styles.topSpacer} />
-      <BackLink to={USER_ROUTES.DESTINATION}>홈으로</BackLink>
+      <BackLink to={USER_ROUTES.STATION}>홈으로</BackLink>
       <Title className={styles.title}>설정</Title>
       <Sub>언어와 권한, 안내 방식을 언제든 바꿀 수 있어요.</Sub>
 

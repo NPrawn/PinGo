@@ -64,7 +64,7 @@ export function ConsultWaitingPage() {
             <span className={styles.tipLine}>
               <b>B1 고객안내센터</b>를 방문해 주세요.
             </span>
-            <span className={styles.tipLine}>역무원에게 보여줄 안내 문장이 준비되어 있어요.</span>
+            <span className={styles.tipLine}>역무원용 안내 문장도 준비되어 있어요.</span>
           </div>
         </Card>
 
@@ -72,7 +72,7 @@ export function ConsultWaitingPage() {
         <ButtonLink to={USER_ROUTES.CONSULT_SESSION} variant="secondary" className={styles.primary}>
           연결됨 · 상담 화면 보기
         </ButtonLink>
-        <GhostLink to={USER_ROUTES.NAVIGATION} className={styles.cancel}>
+        <GhostLink to={USER_ROUTES.CONSULT_REQUEST} className={styles.cancel}>
           요청 취소
         </GhostLink>
       </>

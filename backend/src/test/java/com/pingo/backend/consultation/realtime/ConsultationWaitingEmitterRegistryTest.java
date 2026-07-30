@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import java.io.IOException;
@@ -92,5 +93,14 @@ public class ConsultationWaitingEmitterRegistryTest {
 
         assertThat(registry.contains("consultation-1")).isFalse();
         verify(emitter).completeWithError(exception);
+    }
+
+    @Test
+    void publishSendsCustomEventData() throws Exception {
+        SseEmitter emitter = registry.register("consultation-1");
+
+        registry.publish("consultation-1", "DATA_CHANNEL", "payload");
+
+        verify(emitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
     }
 }

@@ -1,47 +1,206 @@
-/* Screen 10 (FR-U-006) — position recognised. Prototype `#s-success`. */
+.body {
+  position: relative;
+  background: #071712;
+}
 
-.topPill {
-  position: absolute;
-  top: 56px;
-  right: 20px;
-  left: 20px;
-  z-index: 3;
+.statusBar {
+  position: relative;
+  z-index: 5;
+  color: #f4fbf5;
+  background: #061310;
+}
+
+.camera {
+  position: relative;
+  flex: 1 1 50%;
+  min-height: 320px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 20%, #2b3833, #08120e);
+  border-bottom: 1px solid rgb(127 239 195 / 16%);
+}
+
+.topBar {
+  position: relative;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: 54px;
+  padding: 8px 16px 0;
+  background: linear-gradient(180deg, rgb(6 19 16 / 92%), transparent);
 }
 
-.topSpacer {
-  height: 100px;
+.scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.58;
 }
 
-.content {
-  padding: 0 22px;
+.horizon {
+  position: absolute;
+  top: 53%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(127 239 195 / 42%), transparent);
 }
 
-.hero {
-  height: 150px;
-  margin: 6px 0 4px;
+.cornerLeft,
+.cornerRight {
+  position: absolute;
+  top: 70px;
+  width: 22px;
+  height: 22px;
 }
 
-.check {
-  font-size: 26px;
-  font-weight: 900;
-  color: #0ea36f;
+.cornerLeft {
+  left: 16px;
+  border-top: 2px solid rgb(127 239 195 / 58%);
+  border-left: 2px solid rgb(127 239 195 / 58%);
+  border-radius: 8px 0 0;
 }
 
-.title {
-  font-size: 26px;
+.cornerRight {
+  right: 16px;
+  border-top: 2px solid rgb(127 239 195 / 58%);
+  border-right: 2px solid rgb(127 239 195 / 58%);
+  border-radius: 0 8px 0 0;
 }
 
-.card {
-  padding: 16px 16px 14px;
-  margin-top: 16px;
-}
-
-.row {
+.cameraResult {
+  position: absolute;
+  top: 50%;
+  left: 50%;
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 60%);
+  transform: translate(-50%, -50%);
+}
+
+.cameraCheck {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 10px;
+  color: #052f21;
+  background: linear-gradient(135deg, var(--color-mint-highlight), var(--color-mint));
+  border: 2px solid rgb(255 255 255 / 55%);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 22px -8px rgb(60 216 160 / 70%),
+    inset 0 1px 0 rgb(255 255 255 / 50%);
+}
+
+.cameraResult strong {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.cameraResult > span:last-child {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: rgb(223 246 230 / 72%);
+}
+
+.cameraMeta {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 11px;
+  font-size: 9.5px;
+  color: rgb(223 246 230 / 72%);
+  background: rgb(6 19 16 / 72%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(127 239 195 / 18%);
+  border-radius: 11px;
+}
+
+.cameraMeta span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.cameraMeta strong {
+  color: var(--color-mint-highlight);
+}
+
+.confidenceDot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-mint);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(60 216 160 / 18%);
+}
+
+.panel {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex: 1 1 50%;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 340px;
+  padding: 24px 18px 26px;
+  color: var(--color-ink);
+  background:
+    radial-gradient(220px 170px at 100% 0%, rgb(196 181 253 / 16%), transparent 68%),
+    var(--color-paper);
+  border-radius: 24px 24px 0 0;
+}
+
+.panelHead {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.panelIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border-radius: 12px;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  color: var(--color-mint-dark);
+}
+
+.panelHead h1 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.03em;
+}
+
+.locationCard {
+  padding: 14px;
+  margin-top: 0;
+}
+
+.locationRow {
+  display: flex;
+  gap: 10px;
   align-items: center;
 }
 
@@ -51,63 +210,64 @@
   border-radius: 12px;
 }
 
-.rowBody {
+.locationBody {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
 }
 
-.place {
-  font-size: 15px;
-  letter-spacing: -0.015em;
+.locationBody b {
+  overflow: hidden;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.detail {
-  font-size: 12px;
+.locationBody span {
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-sub);
 }
 
-.confidenceRow {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding-top: 12px;
-  margin-top: 12px;
-  border-top: 1px dashed rgb(15 44 34 / 10%);
-}
-
-.confidence {
+.confirmedBadge {
   display: inline-flex;
-  gap: 5px;
+  flex: none;
+  gap: 3px;
   align-items: center;
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 5px 7px;
+  font-size: 8.5px;
   font-weight: 800;
-  color: #0ea36f;
-  background: linear-gradient(135deg, #d1f5e4, #b8ecd4);
+  color: var(--color-mint-dark);
+  background: var(--color-mint-tint);
   border-radius: var(--radius-pill);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%);
 }
 
-.confidenceDot {
-  width: 5px;
-  height: 5px;
-  background: #0ea36f;
-  border-radius: 50%;
-}
-
-.confidenceNote {
-  font-size: 11px;
-  font-weight: 600;
+.locationMeta {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 10px;
+  margin-top: 10px;
+  font-size: 9.5px;
   color: var(--color-sub);
+  border-top: 1px dashed rgb(15 44 34 / 10%);
 }
 
 .actions {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 0 22px 22px;
+  margin-top: 0;
+}
+
+.actions > a:first-child {
+  min-height: 48px;
 }
 
 .retake {
+  font-size: 11px;
   text-align: center;
 }

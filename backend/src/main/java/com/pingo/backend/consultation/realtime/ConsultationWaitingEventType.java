@@ -6,4 +6,5 @@ public enum ConsultationWaitingEventType {
     REJECTED,
     CANCELED,
     NO_COUNSELOR,
+    FALLBACK
 }
