@@ -7,14 +7,16 @@ public record ConsultationResponse (
         String consultationId,
         ConsultationStatus status,
         Long counselorId,
-        String signalingRoomId
+        String signalingRoomId,
+        String signalingAccessToken
 ){
-    public static ConsultationResponse from(ConsultationSession session){
+    public static ConsultationResponse from(ConsultationSession session, String signalingAccessToken){
         return new ConsultationResponse(
                 session.getConsultationId(),
                 session.getStatus(),
                 session.getCounselorId(),
-                session.getSignalingRoomId()
+                session.getSignalingRoomId(),
+                signalingAccessToken
         );
     }
 }

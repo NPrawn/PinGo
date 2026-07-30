@@ -64,14 +64,15 @@ class ConsultationSessionControllerTest {
     @Test
     void getConsultation_성공() throws Exception {
         ConsultationResponse response = new ConsultationResponse(
-                CONSULTATION_ID, ConsultationStatus.ACCEPTED, 7L, "room_" + CONSULTATION_ID
+                CONSULTATION_ID, ConsultationStatus.ACCEPTED, 7L, "room_" + CONSULTATION_ID, "signaling-token"
         );
         given(consultationSessionService.get(CONSULTATION_ID, USER_SESSION_ID)).willReturn(response);
 
         mockMvc.perform(get("/api/consultations/{id}", CONSULTATION_ID)
                         .param("userSessionId", USER_SESSION_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.consultationId").value(CONSULTATION_ID));
+                .andExpect(jsonPath("$.data.consultationId").value(CONSULTATION_ID))
+                .andExpect(jsonPath("$.data.signalingAccessToken").value("signaling-token"));
     }
 
     @Test

@@ -12,6 +12,7 @@ import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
 import com.pingo.backend.usersession.repository.UserSessionRepository;
@@ -34,6 +35,7 @@ public class ConsultationSessionService {
     private final AccountRepository accountRepository;
     private final ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final SignalingAccessTokenProvider signalingAccessTokenProvider;
     private static final List<ConsultationStatus> ACTIVE_STATUSES =
             List.of(ConsultationStatus.WAITING, ConsultationStatus.ACCEPTED, ConsultationStatus.IN_PROGRESS);
 
@@ -75,7 +77,7 @@ public class ConsultationSessionService {
         ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
         validateOwner(session, userSessionId);
-        return ConsultationResponse.from(session);
+        return ConsultationResponse.from(session, createUserSignalingAccessToken(session));
     }
 
     @Transactional
@@ -106,7 +108,7 @@ public class ConsultationSessionService {
 
         session.accept(counselor.getAccountId());
         consultationWaitingEventPublisher.publishAccepted(session.getConsultationId(), session.getSignalingRoomId());
-        return ConsultationAcceptResponse.from(session);
+        return ConsultationAcceptResponse.from(session, createCounselorSignalingAccessToken(session));
     }
 
     @Transactional
@@ -168,6 +170,28 @@ public class ConsultationSessionService {
             throw new BusinessException(ErrorCode.CONSULTATION_STATION_MISMATCH);
         }
         return counselor;
+    }
+
+    private String createUserSignalingAccessToken(ConsultationSession session) {
+        if (session.getSignalingRoomId() == null) {
+            return null;
+        }
+
+        return signalingAccessTokenProvider.createUserToken(
+                session.getConsultationId(),
+                session.getUserSessionId()
+        );
+    }
+
+    private String createCounselorSignalingAccessToken(ConsultationSession session) {
+        if (session.getSignalingRoomId() == null || session.getCounselorId() == null) {
+            return null;
+        }
+
+        return signalingAccessTokenProvider.createCounselorToken(
+                session.getConsultationId(),
+                session.getCounselorId()
+        );
     }
 
     private void validateDestination(String destinationType, Long destinationId){

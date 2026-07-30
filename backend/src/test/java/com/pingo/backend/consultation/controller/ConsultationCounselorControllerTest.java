@@ -36,14 +36,15 @@ class ConsultationCounselorControllerTest {
     @Test
     void acceptConsultation_성공() throws Exception {
         ConsultationAcceptResponse response = new ConsultationAcceptResponse(
-                CONSULTATION_ID, ConsultationStatus.ACCEPTED, 7L, "room_" + CONSULTATION_ID
+                CONSULTATION_ID, ConsultationStatus.ACCEPTED, 7L, "room_" + CONSULTATION_ID, "signaling-token"
         );
         given(consultationSessionService.accept(eq(CONSULTATION_ID), any())).willReturn(response);
 
         mockMvc.perform(post("/api/consultations/{id}/accept", CONSULTATION_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
-                .andExpect(jsonPath("$.data.signalingRoomId").value("room_" + CONSULTATION_ID));
+                .andExpect(jsonPath("$.data.signalingRoomId").value("room_" + CONSULTATION_ID))
+                .andExpect(jsonPath("$.data.signalingAccessToken").value("signaling-token"));
     }
 
     @Test
