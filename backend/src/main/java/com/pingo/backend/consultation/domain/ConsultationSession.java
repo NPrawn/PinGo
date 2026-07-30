@@ -87,10 +87,14 @@ public class ConsultationSession {
         this.status = ConsultationStatus.REJECTED;
     }
 
+    public void end(){
+        this.status = ConsultationStatus.ENDED;
+        this.endedAt = LocalDateTime.now();
+    }
+
     public String getSignalingRoomId(){
         boolean roomActive = status == ConsultationStatus.ACCEPTED
-                || status == ConsultationStatus.IN_PROGRESS
-                || status == ConsultationStatus.ENDED;
+                || status == ConsultationStatus.IN_PROGRESS;
         return roomActive ? "room_" + consultationId : null;
     }
 }

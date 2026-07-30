@@ -26,6 +26,8 @@ class SignalingRoomRegistryTest {
     private MutableClock clock;
     private static final CloseStatus SIGNALING_ROOM_EXPIRED =
             new CloseStatus(4408, "Signaling Room Expired");
+    private static final CloseStatus SIGNALING_ROOM_CLOSED =
+            new CloseStatus(4400, "Signaling Room Closed");
 
     @BeforeEach
     void setUp() {
@@ -230,6 +232,30 @@ class SignalingRoomRegistryTest {
         assertThat(registry.containsRoom("consultation-1")).isTrue();
         verify(userSession, never()).close();
         verify(counselorSession, never()).close();
+    }
+
+    @Test
+    void removeRoomRemovesRoomAndClosesParticipants() throws IOException {
+        WebSocketSession userSession = webSocketSession("user-session");
+        WebSocketSession counselorSession = webSocketSession("counselor-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        registry.register("consultation-1", SignalingSenderType.COUNSELOR, counselorSession);
+
+        boolean removed = registry.removeRoom("consultation-1");
+
+        assertThat(removed).isTrue();
+        assertThat(registry.containsRoom("consultation-1")).isFalse();
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.USER, userSession))
+                .isFalse();
+        assertThat(registry.isRegistered("consultation-1", SignalingSenderType.COUNSELOR, counselorSession))
+                .isFalse();
+        verify(userSession).close(SIGNALING_ROOM_CLOSED);
+        verify(counselorSession).close(SIGNALING_ROOM_CLOSED);
+    }
+
+    @Test
+    void removeRoomReturnsFalseWhenRoomDoesNotExist() {
+        assertThat(registry.removeRoom("unknown-room")).isFalse();
     }
 
     private WebSocketSession webSocketSession(String id) {

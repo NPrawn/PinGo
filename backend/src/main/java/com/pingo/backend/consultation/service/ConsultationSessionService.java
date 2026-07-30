@@ -7,6 +7,7 @@ import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.response.*;
+import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
@@ -16,6 +17,7 @@ import com.pingo.backend.usersession.domain.UserSession;
 import com.pingo.backend.usersession.repository.UserSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,7 @@ public class ConsultationSessionService {
     private final StationRepository stationRepository;
     private final AccountRepository accountRepository;
     private final ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private static final List<ConsultationStatus> ACTIVE_STATUSES =
             List.of(ConsultationStatus.WAITING, ConsultationStatus.ACCEPTED, ConsultationStatus.IN_PROGRESS);
 
@@ -124,6 +127,32 @@ public class ConsultationSessionService {
         log.info("상담 거절 처리 - consultationId={}, rejectedBy={}", session.getConsultationId(), counselor.getAccountId());
         consultationWaitingEventPublisher.publishRejected(session.getConsultationId());
         return ConsultationRejectResponse.from(session);
+    }
+
+    @Transactional
+    public ConsultationEndResponse end(String consultationSessionId, Long counselorAccountId){
+        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+
+        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
+
+        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+
+        if(session.getStatus() != ConsultationStatus.ACCEPTED
+                && session.getStatus() != ConsultationStatus.IN_PROGRESS){
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
+        }
+
+        if(!counselor.getAccountId().equals(session.getCounselorId())){
+            throw new BusinessException(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+        }
+
+        String signalingRoomId = session.getSignalingRoomId();
+        session.end();
+        applicationEventPublisher.publishEvent(new ConsultationEndedEvent(session.getConsultationId(), signalingRoomId));
+        log.info("상담 종료 처리 - consultationId={}, endedBy={}", session.getConsultationId(), counselor.getAccountId());
+        return ConsultationEndResponse.from(session);
     }
 
     private Account findStationCounselor(Long counselorAccountId, Long stationId){

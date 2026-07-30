@@ -2,6 +2,7 @@ package com.pingo.backend.consultation.controller;
 
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.dto.response.ConsultationAcceptResponse;
+import com.pingo.backend.consultation.dto.response.ConsultationEndResponse;
 import com.pingo.backend.consultation.dto.response.ConsultationRejectResponse;
 import com.pingo.backend.consultation.service.ConsultationSessionService;
 import com.pingo.backend.global.exception.BusinessException;
@@ -73,5 +74,26 @@ class ConsultationCounselorControllerTest {
 
         mockMvc.perform(post("/api/consultations/{id}/reject", CONSULTATION_ID))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void endConsultation_성공() throws Exception {
+        ConsultationEndResponse response = new ConsultationEndResponse(
+                CONSULTATION_ID, ConsultationStatus.ENDED
+        );
+        given(consultationSessionService.end(eq(CONSULTATION_ID), any())).willReturn(response);
+
+        mockMvc.perform(post("/api/consultations/{id}/end", CONSULTATION_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ENDED"));
+    }
+
+    @Test
+    void endConsultation_실패_종료_불가능한_상태() throws Exception {
+        given(consultationSessionService.end(eq(CONSULTATION_ID), any()))
+                .willThrow(new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE));
+
+        mockMvc.perform(post("/api/consultations/{id}/end", CONSULTATION_ID))
+                .andExpect(status().isConflict());
     }
 }
