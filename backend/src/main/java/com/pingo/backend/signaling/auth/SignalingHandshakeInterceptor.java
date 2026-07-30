@@ -1,8 +1,12 @@
 package com.pingo.backend.signaling.auth;
 
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.security.SignatureException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.stereotype.Component;
@@ -33,17 +37,23 @@ public class SignalingHandshakeInterceptor implements HandshakeInterceptor {
     ) {
         String token = resolveToken(request);
         if (!StringUtils.hasText(token)) {
-            return true;
+            log.info("Missing signaling access token for WebSocket handshake.");
+            return rejectUnauthorized(response);
         }
 
         try {
             SignalingPrincipal principal = signalingAccessTokenProvider.parseToken(token);
             attributes.put(SIGNALING_PRINCIPAL_ATTRIBUTE, principal);
-        } catch (RuntimeException exception) {
+            return true;
+        } catch (ExpiredJwtException exception) {
+            log.info("Expired signaling access token for WebSocket handshake.");
+        } catch (SignatureException exception) {
+            log.warn("Invalid signaling access token signature for WebSocket handshake.", exception);
+        } catch (JwtException | IllegalArgumentException exception) {
             log.warn("Invalid signaling access token for WebSocket handshake.", exception);
         }
 
-        return true;
+        return rejectUnauthorized(response);
     }
 
     @Override
@@ -70,5 +80,10 @@ public class SignalingHandshakeInterceptor implements HandshakeInterceptor {
         }
 
         return null;
+    }
+
+    private boolean rejectUnauthorized(ServerHttpResponse response) {
+        response.setStatusCode(HttpStatus.UNAUTHORIZED);
+        return false;
     }
 }

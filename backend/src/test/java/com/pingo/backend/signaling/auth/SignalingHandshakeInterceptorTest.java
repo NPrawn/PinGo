@@ -1,9 +1,12 @@
 package com.pingo.backend.signaling.auth;
 
 import com.pingo.backend.signaling.dto.SignalingSenderType;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.security.SignatureException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.socket.WebSocketHandler;
@@ -102,36 +105,78 @@ class SignalingHandshakeInterceptorTest {
     }
 
     @Test
-    void beforeHandshakeKeepsConnectionWhenTokenIsMissing() {
+    void beforeHandshakeRejectsConnectionWhenTokenIsMissing() {
         Map<String, Object> attributes = new HashMap<>();
+        ServerHttpResponse response = mock(ServerHttpResponse.class);
 
         boolean result = interceptor.beforeHandshake(
                 request("ws://localhost:8080/ws/signaling", new HttpHeaders()),
-                mock(ServerHttpResponse.class),
+                response,
                 mock(WebSocketHandler.class),
                 attributes
         );
 
-        assertThat(result).isTrue();
+        assertThat(result).isFalse();
         assertThat(attributes).doesNotContainKey(SignalingHandshakeInterceptor.SIGNALING_PRINCIPAL_ATTRIBUTE);
+        verify(response).setStatusCode(HttpStatus.UNAUTHORIZED);
         verify(signalingAccessTokenProvider, never()).parseToken(org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
-    void beforeHandshakeKeepsConnectionWhenTokenIsInvalid() {
+    void beforeHandshakeRejectsConnectionWhenTokenIsInvalid() {
         given(signalingAccessTokenProvider.parseToken("invalid-token"))
                 .willThrow(new IllegalArgumentException("invalid token"));
         Map<String, Object> attributes = new HashMap<>();
+        ServerHttpResponse response = mock(ServerHttpResponse.class);
 
         boolean result = interceptor.beforeHandshake(
                 request("ws://localhost:8080/ws/signaling?token=invalid-token", new HttpHeaders()),
-                mock(ServerHttpResponse.class),
+                response,
                 mock(WebSocketHandler.class),
                 attributes
         );
 
-        assertThat(result).isTrue();
+        assertThat(result).isFalse();
         assertThat(attributes).doesNotContainKey(SignalingHandshakeInterceptor.SIGNALING_PRINCIPAL_ATTRIBUTE);
+        verify(response).setStatusCode(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void beforeHandshakeRejectsConnectionWhenTokenIsExpired() {
+        given(signalingAccessTokenProvider.parseToken("expired-token"))
+                .willThrow(new ExpiredJwtException(null, null, "expired"));
+        Map<String, Object> attributes = new HashMap<>();
+        ServerHttpResponse response = mock(ServerHttpResponse.class);
+
+        boolean result = interceptor.beforeHandshake(
+                request("ws://localhost:8080/ws/signaling?token=expired-token", new HttpHeaders()),
+                response,
+                mock(WebSocketHandler.class),
+                attributes
+        );
+
+        assertThat(result).isFalse();
+        assertThat(attributes).doesNotContainKey(SignalingHandshakeInterceptor.SIGNALING_PRINCIPAL_ATTRIBUTE);
+        verify(response).setStatusCode(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void beforeHandshakeRejectsConnectionWhenTokenSignatureIsInvalid() {
+        given(signalingAccessTokenProvider.parseToken("invalid-signature-token"))
+                .willThrow(new SignatureException("invalid signature"));
+        Map<String, Object> attributes = new HashMap<>();
+        ServerHttpResponse response = mock(ServerHttpResponse.class);
+
+        boolean result = interceptor.beforeHandshake(
+                request("ws://localhost:8080/ws/signaling?token=invalid-signature-token", new HttpHeaders()),
+                response,
+                mock(WebSocketHandler.class),
+                attributes
+        );
+
+        assertThat(result).isFalse();
+        assertThat(attributes).doesNotContainKey(SignalingHandshakeInterceptor.SIGNALING_PRINCIPAL_ATTRIBUTE);
+        verify(response).setStatusCode(HttpStatus.UNAUTHORIZED);
     }
 
     private ServerHttpRequest request(String uri, HttpHeaders headers) {

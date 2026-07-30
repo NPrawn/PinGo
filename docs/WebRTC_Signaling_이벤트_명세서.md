@@ -41,7 +41,7 @@ WebSocket handshake에는 상담별 `signalingAccessToken`을 전달한다. 브�
 | `accountId` | COUNSELOR 토큰에 포함되는 상담자 계정 ID |
 | `exp` | 만료 시각 |
 
-Backend는 handshake에서 토큰을 검증해 WebSocket session attributes에 참여자 정보를 저장한다. `JOIN` 시에는 token payload와 message의 `sessionId`, `senderType`, 상담 session의 `userSessionId` 또는 `counselorId`가 일치하는지 확인한 뒤 room에 등록한다.
+Backend는 handshake에서 토큰을 검증해 WebSocket session attributes에 참여자 정보를 저장한다. 토큰이 누락되었거나 만료·변조·형식 오류가 있으면 `401 Unauthorized`로 handshake를 거절하고 WebSocket 연결을 수립하지 않는다. `JOIN` 시에는 token payload와 message의 `sessionId`, `senderType`, 상담 session의 `userSessionId` 또는 `counselorId`가 일치하는지 확인한 뒤 room에 등록한다.
 
 ---
 
