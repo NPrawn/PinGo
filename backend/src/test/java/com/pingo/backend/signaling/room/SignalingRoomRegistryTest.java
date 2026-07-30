@@ -208,6 +208,23 @@ class SignalingRoomRegistryTest {
         verify(userSession, never()).close();
     }
 
+    @Test
+    void removeExpiredRoomsKeepsRoomTouchedByPeerLookup() throws IOException {
+        WebSocketSession userSession = webSocketSession("user-session");
+        WebSocketSession counselorSession = webSocketSession("counselor-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        registry.register("consultation-1", SignalingSenderType.COUNSELOR, counselorSession);
+        clock.setInstant(Instant.parse("2026-07-30T00:31:00Z"));
+
+        registry.findPeer("consultation-1", SignalingSenderType.USER);
+        int removedCount = registry.removeExpiredRooms(Duration.ofMinutes(30));
+
+        assertThat(removedCount).isZero();
+        assertThat(registry.containsRoom("consultation-1")).isTrue();
+        verify(userSession, never()).close();
+        verify(counselorSession, never()).close();
+    }
+
     private WebSocketSession webSocketSession(String id) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);

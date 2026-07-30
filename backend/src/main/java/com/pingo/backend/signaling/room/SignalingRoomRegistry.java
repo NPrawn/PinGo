@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
@@ -48,13 +49,15 @@ public class SignalingRoomRegistry {
     public Optional<WebSocketSession> findPeer(String signalingSessionId, SignalingSenderType senderType) {
         validateParticipant(senderType);
 
-        SignalingRoom room = rooms.get(signalingSessionId);
-        if (room == null) {
-            return Optional.empty();
-        }
+        SignalingSenderType peerType = peerType(senderType);
+        AtomicReference<WebSocketSession> peerSession = new AtomicReference<>();
+        rooms.computeIfPresent(signalingSessionId, (sessionId, room) -> {
+            room.touch(clock.instant());
+            peerSession.set(room.participants.get(peerType));
+            return room;
+        });
 
-        room.touch(clock.instant());
-        return Optional.ofNullable(room.participants.get(peerType(senderType)));
+        return Optional.ofNullable(peerSession.get());
     }
 
     public void remove(WebSocketSession webSocketSession) {
