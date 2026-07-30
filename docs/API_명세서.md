@@ -1309,8 +1309,9 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 | `REJECTED` | 상담자가 요청을 거절함 |
 | `CANCELED` | 사용자가 상담 요청을 취소함 |
 | `NO_COUNSELOR` | 상담 가능한 상담자가 없음 |
+| `FALLBACK` | WebRTC 영상·음성·채팅 fallback 상태 변경 |
 
-WebRTC fallback 이벤트는 별도 SSE endpoint를 만들지 않고 이 구독 채널로 전달한다. 현재 구현에서는 fallback 상세 상태를 `message`에 담고, `type`은 기존 대기 이벤트 타입인 `WAITING`으로 전달한다.
+WebRTC fallback 이벤트는 별도 SSE endpoint를 만들지 않고 이 구독 채널로 전달한다. 현재 구현에서는 fallback 상세 상태를 `message`에 담고, `type`은 `FALLBACK`으로 전달한다.
 
 #### Event Data
 
@@ -1412,7 +1413,7 @@ WebRTC 상담 중 영상 연결 실패, 음성 상담 전환, 채팅 상담 전�
 ```json
 {
   "consultationRequestId": "consultation-1",
-  "type": "WAITING",
+  "type": "FALLBACK",
   "signalingRoomId": null,
   "message": "영상 연결에 실패했습니다. 음성 상담으로 전환을 시도합니다.",
   "timestamp": "2026-07-30T00:00:00Z"

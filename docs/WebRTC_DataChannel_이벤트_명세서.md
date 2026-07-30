@@ -445,7 +445,7 @@ Fallback 이벤트 타입은 다음 값을 사용한다.
 | `CHAT_ONLY_REQUESTED` | 채팅 상담으로 전환 요청 |
 | `FALLBACK_CONFIRMED` | fallback 상담 방식 전환 확정 |
 
-Backend는 fallback 이벤트를 수신하면 기존 상담 대기 SSE 구독자에게 전환 안내 메시지를 전달한다. 현재 SSE `type`은 기존 `WAITING` 값을 사용하고, 상세 fallback 상태는 `message`로 전달한다.
+Backend는 fallback 이벤트를 수신하면 기존 상담 대기 SSE 구독자에게 전환 안내 메시지를 전달한다. 현재 SSE `type`은 `FALLBACK` 값을 사용하고, 상세 fallback 상태는 `message`로 전달한다.
 
 ---
 
