@@ -3,8 +3,10 @@ package com.pingo.backend.consultation.fallback;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEmitterRegistry;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventResponse;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventType;
+import com.pingo.backend.global.config.AsyncConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -13,6 +15,7 @@ public class ConsultationFallbackEventListener {
 
     private final ConsultationWaitingEmitterRegistry emitterRegistry;
 
+    @Async(AsyncConfig.CONSULTATION_EVENT_TASK_EXECUTOR)
     @EventListener
     public void handleFallbackEvent(ConsultationFallbackEventResponse event) {
         emitterRegistry.publish(new ConsultationWaitingEventResponse(
