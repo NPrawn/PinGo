@@ -49,17 +49,21 @@ public class ConsultationWaitingEmitterRegistry {
     }
 
     public void publish(ConsultationWaitingEventResponse event) {
-        SseEmitter emitter = emitters.get(event.consultationRequestId());
+        publish(event.consultationRequestId(), event.type().name(), event);
+    }
+
+    public void publish(String consultationRequestId, String eventName, Object data) {
+        SseEmitter emitter = emitters.get(consultationRequestId);
         if (emitter == null) {
             return;
         }
 
         try {
             emitter.send(SseEmitter.event()
-                    .name(event.type().name())
-                    .data(event));
+                    .name(eventName)
+                    .data(data));
         } catch (IOException | IllegalStateException exception) {
-            emitters.remove(event.consultationRequestId(), emitter);
+            emitters.remove(consultationRequestId, emitter);
             emitter.completeWithError(exception);
         }
     }
