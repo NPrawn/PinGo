@@ -1,4 +1,4 @@
-import type { XrSupport } from './types';
+import type { XrFailureReason, XrSupport } from './types';
 
 /**
  * immersive-ar 지원 여부를 검사한다.
@@ -32,4 +32,20 @@ export async function detectXrSupport(xr: XRSystem | undefined = navigator.xr): 
  */
 export function canAttemptXrSession(support: XrSupport): boolean {
   return support === 'supported';
+}
+
+/**
+ * 실패한 세션을 다시 시도해도 결과가 달라질 수 있는지 판단한다.
+ *
+ * 11.7의 사용자 안내 기준을 그대로 옮긴 것이다. 다음 세 경우는 재시도해도 같은 결과이므로
+ * 화면에 재시도 수단을 두지 않는다.
+ *
+ * - no-xr-object / unsupported: 브라우저·기기가 immersive-ar을 지원하지 않는다.
+ * - permission-blocked: 한 번 거부하면 프롬프트 없이 즉시 실패한다. **앱 안에서 되돌릴 수
+ *   없고** 브라우저 사이트 설정에서 권한을 초기화해야 한다.
+ *
+ * 어느 경우든 추적 없이 위치 재인식과 수동 위치 선택으로 안내가 완결되어야 한다.
+ */
+export function canRetryXrSession(reason: XrFailureReason | undefined): boolean {
+  return reason === 'request-rejected' || reason === 'no-reference-space';
 }

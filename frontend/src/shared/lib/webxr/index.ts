@@ -12,7 +12,7 @@ export type {
   XrSessionState,
   XrStartOptions,
 } from './session';
-export { canAttemptXrSession, detectXrSupport } from './support';
+export { canAttemptXrSession, canRetryXrSession, detectXrSupport } from './support';
 export type {
   XrFailureReason,
   XrPoseReading,
