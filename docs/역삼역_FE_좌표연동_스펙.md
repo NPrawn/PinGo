@@ -114,39 +114,72 @@ function pixelToMeter(px, py, floor) {
 |---|---|
 | `anchor.x`, `anchor.y`, `anchor.floorId` | 확정된 지도 미터 좌표 (`candidates[].mapX/mapY` 또는 `pixelToMeter` 결과) |
 | `anchor.xr` = `(X, Z)` | 같은 시점 `XRFrame.getViewerPose()`의 위치 |
-| `anchor.xrYaw` | 같은 시점 pose 방향의 수평 성분 |
-| `anchor.mapYaw` | 같은 시점 단말이 지도 프레임에서 향한 방위 — **출처 미정, §8.5 참고** |
+| `anchor.forwardXr` | 같은 시점 단말 전방의 XR 평면 단위벡터. `yawDegOf`가 반환하는 ψ에 대해 `(-sin ψ, -cos ψ)`. WebXR 뷰어의 전방이 `-Z`이기 때문이다 |
+| `anchor.forwardMap` | 같은 시점 단말 전방의 지도 미터 평면 단위벡터 — **출처 미정, §8.5 참고** |
 
 ### 8.3 변환식 (검증 전)
 
 ```js
-// yawOffset은 앵커 1회 계산 후 재인식까지 고정
-const yawOffset = anchor.mapYaw - anchor.xrYaw;
+// 앵커 시점의 전방 벡터 두 개로 회전을 정한다.
+// 각도를 쓰면 0도 기준과 회전 방향 규약을 추가로 합의해야 하므로 벡터로 계산한다.
+// 재인식으로 앵커가 갱신될 때까지 cosA·sinA는 고정이다.
+const f1 = anchor.forwardXr; // (-sin ψ, -cos ψ)
+const f2 = anchor.forwardMap; // 지도 미터 평면 단위벡터
+const cosA = f1.x * f2.x + f1.y * f2.y; // 내적
+const sinA = f1.x * f2.y - f1.y * f2.x; // 2D 외적
 
-// XR 상대 이동량 → 지도 미터 좌표
-function xrToMeter(pose, anchor, yawOffset) {
+function xrToMeter(pose, anchor) {
   const dX = pose.x - anchor.xr.X;
-  const dZ = pose.z - anchor.xr.Z;
-  const c = Math.cos(yawOffset), s = Math.sin(yawOffset);
+  const dZ = pose.z - anchor.xr.Z; // 부호 반전 없음
   return {
-    x: anchor.x + (c * dX - s * dZ),
-    y: anchor.y + (s * dX + c * dZ),
-    floorId: anchor.floorId,
+    x: anchor.x + (cosA * dX - sinA * dZ),
+    y: anchor.y + (sinA * dX + cosA * dZ),
+    floorId: anchor.floorId, // pose에서 유도하지 않는다. 현재 확정된 층을 그대로 전달한다(8.4)
   };
 }
 ```
 
-반사(축 뒤집힘) 없이 2D 회전만 적용했다. 근거는 `meterToPixel`의 변환 행렬식이 `+1`이어서 미터 프레임이 평면도 이미지와 같은 방향성을 갖고, XR을 위에서 내려다본 `(X, Z)` 평면도 같은 방향성을 갖기 때문이다. **다만 이는 계산상 추론이며 실기기에서 남·북·좌·우 이동을 실측해 확인해야 한다.** 부호가 뒤집히면 `dZ` 항의 부호만 교정한다.
+**이전 판(각도 뺄셈) 폐기 이유**: `yawOffset = mapYaw - xrYaw`를 그대로 회전 행렬에 넣었는데, 두 각도의 0도 기준과 증가 방향이 정의돼 있지 않았다. `yawDegOf`가 반환하는 값은 `+Y` 축 기준 우수 회전각 ψ이고 이때 전방은 `(-sin ψ, -cos ψ)`다. 지도 방위를 같은 방식으로 정의해 회전각을 풀면 필요한 회전은 `ψ - θ`인데 문서에는 `θ - ψ`가 들어가 있었다. 부호가 반대였다. 전방 벡터 방식은 이 규약 문제 자체를 없앤다.
 
-### 8.4 층과 높이
+`dZ`는 부호를 뒤집지 않는다. WebXR 뷰어의 전방이 `-Z`이므로 세션 시작 방향으로 걸으면 `dZ`가 음수가 되지만, 이는 그 방향이 지도 위에서 그려지는 방향일 뿐 오류가 아니다.
 
-- **층 판정에 XR `Y`(높이)를 사용하지 않는다.** §6의 `z`가 명목값이고 실제 층고가 미확정이다.
-- 층은 위치 확정 시의 `floorId`를 유지하며, 층 변경은 위치 재인식으로만 반영한다.
-- 계단·에스컬레이터·엘리베이터 이동 중에는 추적 좌표를 신뢰하지 않고 재인식을 유도한다.
+반사(축 뒤집힘)를 넣지 않은 근거는 두 프레임의 방향성이 같다는 것이다. `meterToPixel`의 변환 행렬식이 `+1`이라 미터 프레임은 평면도 이미지와 같은 방향성이고, XR을 위에서 내려다본 `(X, Z)` 평면도 `오른쪽·아래` 방향성이다. **이 부분만은 계산상 추론이며 실측 전이다**(`WebXR_검증_결과.md` 체크리스트 16번).
 
-### 8.5 미결 — 앵커 시점의 `mapYaw` 출처
+가정이 틀렸다면, 즉 두 평면이 거울 관계라면 보정은 다음과 같다. **`sinA` 부호만 뒤집는 것으로는 맞지 않는다.** 그 경우 대응은 `지도벡터 = 회전 × 반사 × XR벡터`이므로, 반사를 먼저 적용한 뒤 회전을 산출해야 한다.
 
-`POST /api/vps/localize` 응답 `candidates[]`에는 `nodeId`, `floorId`, `label`, `mapX`, `mapY`, `confidenceScore`만 있고 **방향 값이 없다.** 정렬에는 앵커 시점의 지도 프레임 방위가 반드시 필요하다. 선택지는 다음 셋이다.
+```js
+// parity 가정이 틀렸을 때만 적용한다
+const f1m = { x: f1.x, y: -f1.y }; // 반사 후의 XR 전방
+const cosA = f1m.x * f2.x + f1m.y * f2.y;
+const sinA = f1m.x * f2.y - f1m.y * f2.x;
+// xrToMeter 안에서도 dZ를 반전해 사용한다
+//   x: anchor.x + (cosA * dX - sinA * (-dZ))
+//   y: anchor.y + (sinA * dX + cosA * (-dZ))
+```
+
+`sinA`만 뒤집으면 `y` 성분이 반대로 나온다. 수치 검산으로 확인했다.
+
+### 8.4 층 전환과 높이
+
+**절대 높이는 쓰지 않는다.** `local` 공간의 원점 `Y`는 세션 시작 시점 단말 높이(손에 든 높이)라 알 수 없다. 따라서 `pose.y` 값 자체로는 층을 계산할 수 없다.
+
+**변화량은 쓴다.** 앵커 시점 대비 ΔY는 원점 높이와 무관하게 구해지므로 층 전환 감지에 사용한다.
+
+| 값 | 용도 |
+|---|---|
+| `pose.y` 절대값 | 사용하지 않음 |
+| ΔY (앵커 대비) | 층 전환(상승·하강) 감지 |
+| `floorId` | 위치 재인식·수동 선택·경로 단계로 확정 |
+
+층 전환 판정은 **경로 단계와 ΔY를 결합**한다. 경로에 `moveType = stair`·`escalator`·`elevator` 간선이 있으므로, 해당 구간을 지나는 중에 프레임 `z` 차이(B2=0, B3=−5)와 부호·크기가 대체로 일치하는 ΔY가 관측되면 층 전환으로 판정한다. 명목값이 provisional이어도 부호와 대략적 크기만 쓰므로 실측 층고 확정 전에도 동작한다.
+
+ΔY 단독으로는 "몇 층인지"를 정할 수 없고 "올라가는 중/내려가는 중"만 정할 수 있다.
+
+층 전환 구간은 추적이 가장 취약한 구간이므로 실측 결과(`WebXR_검증_결과.md` 3.3의 17~19번)에 따라 이 규칙을 다시 조정한다.
+
+### 8.5 미결 — 앵커 시점의 `forwardMap` 출처
+
+`POST /api/vps/localize` 응답 `candidates[]`에는 `nodeId`, `floorId`, `label`, `mapX`, `mapY`, `confidenceScore`만 있고 **방향 값이 없다.** 정렬에는 앵커 시점에 단말이 지도 프레임에서 향한 방향이 반드시 필요하다. 선택지는 다음 셋이다.
 
 | 안 | 내용 | 비고 |
 |---|---|---|
@@ -155,6 +188,8 @@ function xrToMeter(pose, anchor, yawOffset) {
 | 이동 방향 추정 | 사용자가 몇 미터 걷는 동안의 XR 변위와 경로 진행 방향을 맞춤 | 사용자가 경로 방향으로 걷는다는 가정이 필요. 앵커 직후 오차가 큼 |
 
 **수동 위치 선택(U-06)으로 위치를 확정한 경우에는 어느 안에서도 방위를 알 수 없다.** 이 경우 추적 시작 조건을 어떻게 둘지도 함께 정해야 한다.
+
+권장안을 협의할 때 **각도가 아니라 방향 단위벡터로 받는 것**을 요청한다. 각도로 받으면 0도 기준과 증가 방향을 다시 합의해야 하지만 벡터는 그 논쟁이 없다.
 
 ### 8.6 이 절이 바꾸지 않는 것
 
