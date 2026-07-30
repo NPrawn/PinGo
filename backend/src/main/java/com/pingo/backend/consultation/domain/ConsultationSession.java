@@ -87,4 +87,11 @@ public class ConsultationSession {
         this.status = ConsultationStatus.REJECTED;
         this.counselorId = counselorId;
     }
+
+    public String getSignalingRoomId(){
+        boolean roomActive = status == ConsultationStatus.ACCEPTED
+                || status == ConsultationStatus.IN_PROGRESS
+                || status == ConsultationStatus.ENDED;
+        return roomActive ? "room_" + consultationId : null;
+    }
 }
