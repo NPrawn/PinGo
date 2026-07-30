@@ -1,4 +1,5 @@
 export type Station = {
+  id?: number;
   name: string;
   line: string;
   /** Human-readable distance, or a GPS note for the detected station. */
