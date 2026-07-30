@@ -1,6 +1,10 @@
 package com.pingo.backend.signaling.room;
 
 import com.pingo.backend.signaling.dto.SignalingSenderType;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,10 +18,12 @@ import static org.mockito.Mockito.when;
 class SignalingRoomRegistryTest {
 
     private SignalingRoomRegistry registry;
+    private MutableClock clock;
 
     @BeforeEach
     void setUp() {
-        registry = new SignalingRoomRegistry();
+        clock = new MutableClock(Instant.parse("2026-07-30T00:00:00Z"));
+        registry = new SignalingRoomRegistry(clock);
     }
 
     @Test
@@ -145,11 +151,63 @@ class SignalingRoomRegistryTest {
                 .isFalse();
     }
 
+    @Test
+    void registerUpdatesLastTouchedAt() {
+        WebSocketSession userSession = webSocketSession("user-session");
+
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+
+        assertThat(registry.lastTouchedAt("consultation-1"))
+                .contains(Instant.parse("2026-07-30T00:00:00Z"));
+    }
+
+    @Test
+    void findPeerUpdatesLastTouchedAt() {
+        WebSocketSession userSession = webSocketSession("user-session");
+        WebSocketSession counselorSession = webSocketSession("counselor-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        registry.register("consultation-1", SignalingSenderType.COUNSELOR, counselorSession);
+        clock.setInstant(Instant.parse("2026-07-30T00:01:00Z"));
+
+        registry.findPeer("consultation-1", SignalingSenderType.USER);
+
+        assertThat(registry.lastTouchedAt("consultation-1"))
+                .contains(Instant.parse("2026-07-30T00:01:00Z"));
+    }
+
     private WebSocketSession webSocketSession(String id) {
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.getId()).thenReturn(id);
         when(session.isOpen()).thenReturn(true);
         when(session.getAttributes()).thenReturn(new ConcurrentHashMap<>());
         return session;
+    }
+
+    private static class MutableClock extends Clock {
+
+        private Instant instant;
+
+        private MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        private void setInstant(Instant instant) {
+            this.instant = instant;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 }
