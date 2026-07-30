@@ -95,22 +95,16 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationAcceptResponse accept(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
-        if(existingSession.getStatus() != ConsultationStatus.WAITING){
-            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ACCEPTABLE);
-        }
-
-        Account counselor = findStationCounselorForUpdate(counselorAccountId, existingSession.getStationId());
-        if(counselor.getStatus() != CounselorStatus.AVAILABLE){
-            throw new BusinessException(ErrorCode.COUNSELOR_NOT_AVAILABLE);
-        }
-
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
         if(session.getStatus() != ConsultationStatus.WAITING){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_ACCEPTABLE);
+        }
+
+        Account counselor = findStationCounselorForUpdate(counselorAccountId, session.getStationId());
+        if(counselor.getStatus() != CounselorStatus.AVAILABLE){
+            throw new BusinessException(ErrorCode.COUNSELOR_NOT_AVAILABLE);
         }
 
         session.accept(counselor.getAccountId());
@@ -121,20 +115,14 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationRejectResponse reject(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
-        if(existingSession.getStatus() != ConsultationStatus.WAITING){
-            throw new BusinessException(ErrorCode.CONSULTATION_NOT_REJECTABLE);
-        }
-
-        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
-
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
         if(session.getStatus() != ConsultationStatus.WAITING){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_REJECTABLE);
         }
+
+        Account counselor = findStationCounselor(counselorAccountId, session.getStationId());
 
         session.reject();
         log.info("상담 거절 처리 - consultationId={}, rejectedBy={}", session.getConsultationId(), counselor.getAccountId());
@@ -144,15 +132,6 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationEndResponse end(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
-        if(existingSession.getStatus() != ConsultationStatus.ACCEPTED
-                && existingSession.getStatus() != ConsultationStatus.IN_PROGRESS){
-            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
-        }
-
-        Account counselor = findStationCounselorForUpdate(counselorAccountId, existingSession.getStationId());
-
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
@@ -160,6 +139,8 @@ public class ConsultationSessionService {
                 && session.getStatus() != ConsultationStatus.IN_PROGRESS){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
         }
+
+        Account counselor = findStationCounselorForUpdate(counselorAccountId, session.getStationId());
 
         if(!counselor.getAccountId().equals(session.getCounselorId())){
             throw new BusinessException(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
