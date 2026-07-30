@@ -23,7 +23,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -438,6 +441,40 @@ class ConsultationSessionServiceTest {
         assertThat(session.getEndedAt()).isNotNull();
         assertThat(session.getSignalingRoomId()).isNull();
         verify(signalingRoomRegistry).removeRoom("room_" + session.getConsultationId());
+    }
+
+    @Test
+    void end_성공_트랜잭션_커밋_이후_signaling_room을_정리한다() {
+        ConsultationSession session = newSession();
+        session.accept(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            ConsultationEndResponse response =
+                    consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
+
+            assertThat(response.status()).isEqualTo(ConsultationStatus.ENDED);
+            verify(signalingRoomRegistry, never()).removeRoom(anyString());
+
+            List<TransactionSynchronization> synchronizations =
+                    TransactionSynchronizationManager.getSynchronizations();
+            synchronizations.forEach(TransactionSynchronization::afterCommit);
+
+            verify(signalingRoomRegistry).removeRoom("room_" + session.getConsultationId());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

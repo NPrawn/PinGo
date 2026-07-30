@@ -2452,39 +2452,41 @@ multipart/form-data
 
 ## 16. 오류 코드 초안
 
-| 코드                          | 설명                                    |
-| ----------------------------- | --------------------------------------- |
-| INVALID_REQUEST               | 요청 형식이 잘못됨                      |
-| DUPLICATE_LOGIN_ID            | 이미 사용 중인 로그인 ID                |
-| STATION_NOT_FOUND             | 역을 찾을 수 없음                       |
-| FACILITY_NOT_FOUND            | 시설을 찾을 수 없음                     |
-| UNSUPPORTED_FACILITY_TYPE     | 지원하지 않는 시설 유형                 |
-| FLOOR_NOT_FOUND               | 층을 찾을 수 없음                       |
-| INVALID_MAP_FILE              | 지도 파일이 비어 있거나 올바르지 않음   |
-| UNSUPPORTED_MAP_TYPE          | 지원하지 않는 지도 유형                 |
-| FILE_STORAGE_FAILED           | 파일 저장 실패                          |
-| PLACE_NOT_FOUND               | 주변 장소를 찾을 수 없음                |
-| EXIT_RECOMMENDATION_NOT_FOUND | 장소-출구 추천을 찾을 수 없음           |
-| DUPLICATE_EXIT_RECOMMENDATION | 이미 등록된 장소-출구 추천              |
-| USER_SESSION_NOT_FOUND        | 사용자 세션을 찾을 수 없음              |
-| INVALID_DESTINATION           | 목적지 유형과 ID 중 하나만 전달됨       |
-| USER_SESSION_ALREADY_ENDED    | 이미 종료·만료된 세션                   |
-| USER_SESSION_IN_CONSULTATION  | 진행 중인 상담이 있어 세션을 종료할 수 없음 |
-| LOCALIZATION_FAILED           | 위치 인식 실패                          |
-| ROUTE_NOT_FOUND               | 경로를 찾을 수 없음                     |
-| ROUTE_NODE_NOT_FOUND          | 경로 노드를 찾을 수 없음                |
-| ROUTE_EDGE_NOT_FOUND          | 경로 간선을 찾을 수 없음                |
-| ROUTE_NODE_IN_USE             | 사용 중인 경로 노드는 삭제할 수 없음    |
-| UNSUPPORTED_NODE_TYPE         | 지원하지 않는 노드 유형                 |
-| UNSUPPORTED_MOVE_TYPE         | 지원하지 않는 이동 유형                 |
-| UNSUPPORTED_ROUTE_TYPE        | 지원하지 않는 경로 옵션 유형            |
-| CONSULTATION_NOT_FOUND        | 상담 세션을 찾을 수 없음                |
-| INVALID_CREDENTIALS           | 로그인 ID 또는 비밀번호가 올바르지 않음 |
-| INVALID_CURRENT_PASSWORD      | 현재 비밀번호가 올바르지 않음           |
-| ACCOUNT_NOT_FOUND             | 계정을 찾을 수 없음                     |
-| INACTIVE_ACCOUNT              | 비활성화된 계정으로 로그인 시도         |
-| WEBRTC_SIGNALING_FAILED       | WebRTC signaling 실패                   |
-| EXTERNAL_MAP_LINK_FAILED      | 외부 지도 링크 생성 실패                |
+| 코드                            | 설명                                    |
+| ------------------------------- | --------------------------------------- |
+| INVALID_REQUEST                 | 요청 형식이 잘못됨                      |
+| DUPLICATE_LOGIN_ID              | 이미 사용 중인 로그인 ID                |
+| STATION_NOT_FOUND               | 역을 찾을 수 없음                       |
+| FACILITY_NOT_FOUND              | 시설을 찾을 수 없음                     |
+| UNSUPPORTED_FACILITY_TYPE       | 지원하지 않는 시설 유형                 |
+| FLOOR_NOT_FOUND                 | 층을 찾을 수 없음                       |
+| INVALID_MAP_FILE                | 지도 파일이 비어 있거나 올바르지 않음   |
+| UNSUPPORTED_MAP_TYPE            | 지원하지 않는 지도 유형                 |
+| FILE_STORAGE_FAILED             | 파일 저장 실패                          |
+| PLACE_NOT_FOUND                 | 주변 장소를 찾을 수 없음                |
+| EXIT_RECOMMENDATION_NOT_FOUND   | 장소-출구 추천을 찾을 수 없음           |
+| DUPLICATE_EXIT_RECOMMENDATION   | 이미 등록된 장소-출구 추천              |
+| USER_SESSION_NOT_FOUND          | 사용자 세션을 찾을 수 없음              |
+| INVALID_DESTINATION             | 목적지 유형과 ID 중 하나만 전달됨       |
+| USER_SESSION_ALREADY_ENDED      | 이미 종료·만료된 세션                   |
+| USER_SESSION_IN_CONSULTATION    | 진행 중인 상담이 있어 세션을 종료할 수 없음 |
+| LOCALIZATION_FAILED             | 위치 인식 실패                          |
+| ROUTE_NOT_FOUND                 | 경로를 찾을 수 없음                     |
+| ROUTE_NODE_NOT_FOUND            | 경로 노드를 찾을 수 없음                |
+| ROUTE_EDGE_NOT_FOUND            | 경로 간선을 찾을 수 없음                |
+| ROUTE_NODE_IN_USE               | 사용 중인 경로 노드는 삭제할 수 없음    |
+| UNSUPPORTED_NODE_TYPE           | 지원하지 않는 노드 유형                 |
+| UNSUPPORTED_MOVE_TYPE           | 지원하지 않는 이동 유형                 |
+| UNSUPPORTED_ROUTE_TYPE          | 지원하지 않는 경로 옵션 유형            |
+| CONSULTATION_NOT_FOUND          | 상담 세션을 찾을 수 없음                |
+| CONSULTATION_NOT_ENDABLE        | 종료할 수 없는 상담 상태                |
+| CONSULTATION_COUNSELOR_MISMATCH | 담당 상담자가 아님                      |
+| INVALID_CREDENTIALS             | 로그인 ID 또는 비밀번호가 올바르지 않음 |
+| INVALID_CURRENT_PASSWORD        | 현재 비밀번호가 올바르지 않음           |
+| ACCOUNT_NOT_FOUND               | 계정을 찾을 수 없음                     |
+| INACTIVE_ACCOUNT                | 비활성화된 계정으로 로그인 시도         |
+| WEBRTC_SIGNALING_FAILED         | WebRTC signaling 실패                   |
+| EXTERNAL_MAP_LINK_FAILED        | 외부 지도 링크 생성 실패                |
 
 ---
 
