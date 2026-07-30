@@ -101,7 +101,15 @@
   border-color: rgb(241 185 104 / 28%);
 }
 
+.destinationPoint {
+  position: relative;
+}
+
 .waypointPoint .routeLabel {
+  padding-right: 13px;
+}
+
+.destinationPoint .routeLabel {
   padding-right: 13px;
 }
 
@@ -126,6 +134,28 @@
 
 .removeWaypoint:hover {
   background: rgb(241 185 104 / 22%);
+}
+
+.resetDestination {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  color: var(--color-mint-highlight);
+  cursor: pointer;
+  background: rgb(117 207 157 / 12%);
+  border: 1px solid rgb(117 207 157 / 28%);
+  border-radius: 50%;
+}
+
+.resetDestination:hover {
+  background: rgb(117 207 157 / 22%);
 }
 
 .routeArrow {

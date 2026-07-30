@@ -62,12 +62,14 @@ export function CapturePortraitPage() {
   }, [attempt]);
 
   useEffect(() => {
-    const guideTimer = window.setInterval(() => {
+    if (timeoutOpen) return;
+
+    const guideTimer = window.setTimeout(() => {
       setCurrentDirection((value) => (value + 1) % DIRECTIONS.length);
     }, 2500);
 
-    return () => window.clearInterval(guideTimer);
-  }, [attempt]);
+    return () => window.clearTimeout(guideTimer);
+  }, [currentDirection, timeoutOpen]);
 
   const retryCapture = () => {
     setTimeoutOpen(false);

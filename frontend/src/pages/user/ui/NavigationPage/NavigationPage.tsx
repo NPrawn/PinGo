@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
@@ -43,12 +43,14 @@ export function NavigationPage() {
   const stepsOpen = useNavigationStore((state) => state.stepsOpen);
   const toggleSteps = useNavigationStore((state) => state.toggleSteps);
   const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
+  const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<(typeof MAP_FACILITIES)[number] | null>(
     null,
   );
   const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
+  const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
     ? waypoints.includes(selectedFacility.name)
     : false;
@@ -96,10 +98,10 @@ export function NavigationPage() {
                 {selectedFacilityIsDestination
                   ? '현재 목적지는 추가 불가'
                   : selectedFacilityIsWaypoint
-                  ? '이미 추가된 경유지'
-                  : waypoints.length >= 2
-                    ? '경유지 2개 추가 완료'
-                    : '경유지로 추가'}
+                    ? '이미 추가된 경유지'
+                    : waypoints.length >= 2
+                      ? '경유지 2개 추가 완료'
+                      : '경유지로 추가'}
               </Button>
               <Button
                 variant="secondary"
@@ -172,7 +174,22 @@ export function NavigationPage() {
             <span className={styles.routeArrow} aria-hidden>
               <Icon name="arrow-right" size={16} />
             </span>
-            <div className={styles.routePoint}>
+            <div className={`${styles.routePoint} ${styles.destinationPoint}`}>
+              {destinationChanged && (
+                <button
+                  type="button"
+                  className={styles.resetDestination}
+                  onClick={() => {
+                    setDestination(initialDestination.current);
+                    setActiveDestination(exit);
+                    setRecalculated(true);
+                  }}
+                  aria-label={`목적지를 ${exit}로 되돌리기`}
+                  title={`처음 목적지 ${exit}로 되돌리기`}
+                >
+                  <Icon name="refresh" size={10} />
+                </button>
+              )}
               <span className={styles.routeLabel}>
                 <span className={`${styles.pointDot} ${styles.pointDotDestination}`} aria-hidden />
                 <small>목적지</small>
@@ -265,10 +282,7 @@ export function NavigationPage() {
                     <button
                       key={filter.name}
                       type="button"
-                      className={[
-                        styles.facilityFilter,
-                        active && styles.facilityFilterOn,
-                      ]
+                      className={[styles.facilityFilter, active && styles.facilityFilterOn]
                         .filter(Boolean)
                         .join(' ')}
                       aria-label={`${filter.name} ${active ? '필터 해제' : '필터 적용'}`}

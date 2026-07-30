@@ -42,14 +42,14 @@ export function DestinationSearch({
   onSelect,
 }: DestinationSearchProps) {
   const navigate = useNavigate();
-  const setDestination = useNavigationStore((state) => state.setDestination);
+  const startNewJourney = useNavigationStore((state) => state.startNewJourney);
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
 
   const results = searchDestinations(query);
 
   const choose = (name: string) => {
-    setDestination(name);
+    startNewJourney(name);
     onSelect?.(name);
     if (!deferNavigation) void navigate(nextRoute);
   };
