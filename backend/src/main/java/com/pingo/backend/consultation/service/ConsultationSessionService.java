@@ -7,20 +7,19 @@ import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.response.*;
+import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
-import com.pingo.backend.signaling.room.SignalingRoomRegistry;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
 import com.pingo.backend.usersession.repository.UserSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 
@@ -34,7 +33,7 @@ public class ConsultationSessionService {
     private final StationRepository stationRepository;
     private final AccountRepository accountRepository;
     private final ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
-    private final SignalingRoomRegistry signalingRoomRegistry;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private static final List<ConsultationStatus> ACTIVE_STATUSES =
             List.of(ConsultationStatus.WAITING, ConsultationStatus.ACCEPTED, ConsultationStatus.IN_PROGRESS);
 
@@ -151,27 +150,9 @@ public class ConsultationSessionService {
 
         String signalingRoomId = session.getSignalingRoomId();
         session.end();
-        removeSignalingRoomAfterCommit(signalingRoomId);
+        applicationEventPublisher.publishEvent(new ConsultationEndedEvent(session.getConsultationId(), signalingRoomId));
         log.info("상담 종료 처리 - consultationId={}, endedBy={}", session.getConsultationId(), counselor.getAccountId());
         return ConsultationEndResponse.from(session);
-    }
-
-    private void removeSignalingRoomAfterCommit(String signalingRoomId) {
-        if (signalingRoomId == null) {
-            return;
-        }
-
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            signalingRoomRegistry.removeRoom(signalingRoomId);
-            return;
-        }
-
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                signalingRoomRegistry.removeRoom(signalingRoomId);
-            }
-        });
     }
 
     private Account findStationCounselor(Long counselorAccountId, Long stationId){

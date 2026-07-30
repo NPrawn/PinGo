@@ -8,11 +8,11 @@ import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.domain.ProblemType;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.response.*;
+import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
-import com.pingo.backend.signaling.room.SignalingRoomRegistry;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
@@ -23,10 +23,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.context.ApplicationEventPublisher;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,7 +51,7 @@ class ConsultationSessionServiceTest {
     @Mock
     private ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
     @Mock
-    private SignalingRoomRegistry signalingRoomRegistry;
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @InjectMocks
     private ConsultationSessionService consultationSessionService;
@@ -440,41 +438,11 @@ class ConsultationSessionServiceTest {
         assertThat(response.status()).isEqualTo(ConsultationStatus.ENDED);
         assertThat(session.getEndedAt()).isNotNull();
         assertThat(session.getSignalingRoomId()).isNull();
-        verify(signalingRoomRegistry).removeRoom("room_" + session.getConsultationId());
-    }
-
-    @Test
-    void end_성공_트랜잭션_커밋_이후_signaling_room을_정리한다() {
-        ConsultationSession session = newSession();
-        session.accept(COUNSELOR_ACCOUNT_ID);
-        given(consultationSessionRepository.findById(session.getConsultationId()))
-                .willReturn(Optional.of(session));
-        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
-                .willReturn(Optional.of(session));
-
-        Account counselor = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
-        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
-        given(counselor.isActive()).willReturn(true);
-        given(counselor.getStationId()).willReturn(STATION_ID);
-        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
-
-        TransactionSynchronizationManager.initSynchronization();
-        try {
-            ConsultationEndResponse response =
-                    consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
-
-            assertThat(response.status()).isEqualTo(ConsultationStatus.ENDED);
-            verify(signalingRoomRegistry, never()).removeRoom(anyString());
-
-            List<TransactionSynchronization> synchronizations =
-                    TransactionSynchronizationManager.getSynchronizations();
-            synchronizations.forEach(TransactionSynchronization::afterCommit);
-
-            verify(signalingRoomRegistry).removeRoom("room_" + session.getConsultationId());
-        } finally {
-            TransactionSynchronizationManager.clearSynchronization();
-        }
+        verify(applicationEventPublisher)
+                .publishEvent(new ConsultationEndedEvent(
+                        session.getConsultationId(),
+                        "room_" + session.getConsultationId()
+                ));
     }
 
     @Test
@@ -503,7 +471,7 @@ class ConsultationSessionServiceTest {
         assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_ENDABLE);
-        verify(signalingRoomRegistry, never()).removeRoom(anyString());
+        verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -525,6 +493,6 @@ class ConsultationSessionServiceTest {
         assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
-        verify(signalingRoomRegistry, never()).removeRoom(anyString());
+        verify(applicationEventPublisher, never()).publishEvent(any());
     }
 }
