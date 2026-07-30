@@ -1,0 +1,2 @@
+INSERT INTO account (account_type, station_id, login_id, password_hash, name, status, is_active, created_at, updated_at)
+VALUES ('ADMIN', NULL, 'admin', '$2b$10$iP8GrS09lI6xRuA7bg/4gOqbDTxWlxpRZKBo2ksyIWOF1EypHfGUy', '시스템 관리자', NULL, TRUE, NOW(), NOW());
