@@ -17,15 +17,11 @@ public class ConsultationFallbackEventListener {
     public void handleFallbackEvent(ConsultationFallbackEventResponse event) {
         emitterRegistry.publish(new ConsultationWaitingEventResponse(
                 event.consultationRequestId(),
-                toWaitingEventType(event.type()),
+                ConsultationWaitingEventType.FALLBACK,
                 null,
                 messageOf(event),
                 event.timestamp()
         ));
-    }
-
-    private ConsultationWaitingEventType toWaitingEventType(ConsultationFallbackEventType type) {
-        return ConsultationWaitingEventType.FALLBACK;
     }
 
     private String messageOf(ConsultationFallbackEventResponse event) {

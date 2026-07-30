@@ -25,7 +25,7 @@ class ConsultationFallbackEventListenerTest {
     }
 
     @Test
-    void handleFallbackEventPublishesWaitingEvent() {
+    void handleFallbackEventPublishesFallbackEvent() {
         ConsultationFallbackEventResponse event = new ConsultationFallbackEventResponse(
                 "consultation-1",
                 ConsultationFallbackEventType.VIDEO_FAILED,
