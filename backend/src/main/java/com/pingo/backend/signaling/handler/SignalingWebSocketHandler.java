@@ -2,6 +2,8 @@ package com.pingo.backend.signaling.handler;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pingo.backend.signaling.auth.SignalingHandshakeInterceptor;
+import com.pingo.backend.signaling.auth.SignalingPrincipal;
 import com.pingo.backend.signaling.dto.SignalingErrorCode;
 import com.pingo.backend.signaling.dto.SignalingErrorPayload;
 import com.pingo.backend.signaling.dto.SignalingMessage;
@@ -187,7 +189,8 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         try {
             validationResult = signalingSessionValidator.validateJoin(
                     signalingMessage.sessionId(),
-                    signalingMessage.senderType()
+                    signalingMessage.senderType(),
+                    signalingPrincipalOf(session)
             );
         } catch (RuntimeException exception) {
             log.error("Failed to validate signaling session. websocketSessionId={}, sessionId={}",
@@ -234,5 +237,13 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     private boolean retryable(SignalingSessionValidationResult validationResult) {
         return validationResult == SignalingSessionValidationResult.SESSION_NOT_ACCEPTED;
+    }
+
+    private SignalingPrincipal signalingPrincipalOf(WebSocketSession session) {
+        Object principal = session.getAttributes().get(
+                SignalingHandshakeInterceptor.SIGNALING_PRINCIPAL_ATTRIBUTE
+        );
+
+        return principal instanceof SignalingPrincipal signalingPrincipal ? signalingPrincipal : null;
     }
 }
