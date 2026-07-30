@@ -3,8 +3,12 @@ package com.pingo.backend.global.security;
 import com.pingo.backend.auth.domain.Account;
 import com.pingo.backend.auth.domain.AccountType;
 import com.pingo.backend.auth.repository.AccountRepository;
+import com.pingo.backend.consultation.domain.ConsultationSession;
+import com.pingo.backend.consultation.domain.ProblemType;
+import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
+import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +49,12 @@ class SecurityFilterChainTest {
 
     @Autowired
     private StationRepository stationRepository;
+
+    @Autowired
+    private ConsultationSessionRepository consultationSessionRepository;
+
+    @Autowired
+    private SignalingAccessTokenProvider signalingAccessTokenProvider;
 
     @Value("${jwt.secret}")
     private String jwtSecret;
@@ -186,6 +196,28 @@ class SecurityFilterChainTest {
                     """))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void 비로그인_WebRTC_ICEServer_API_200() throws Exception {
+        ConsultationSession session = ConsultationSession.create(
+                "usr_abc123",
+                stationId,
+                ProblemType.CANNOT_FIND_EXIT,
+                15L,
+                "place",
+                3L,
+                true,
+                true
+        );
+        session.accept(counselorAccountId);
+        consultationSessionRepository.save(session);
+        String token = signalingAccessTokenProvider.createUserToken(session.getConsultationId(), "usr_abc123");
+
+        mockMvc.perform(get("/api/webrtc/ice-servers")
+                        .param("token", token))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void 비로그인_상담수락API_401() throws Exception {
         mockMvc.perform(post("/api/consultations/consultation-1/accept"))
