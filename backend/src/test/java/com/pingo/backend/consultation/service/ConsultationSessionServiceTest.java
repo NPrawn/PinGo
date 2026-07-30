@@ -12,6 +12,7 @@ import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.signaling.room.SignalingRoomRegistry;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
@@ -48,6 +49,8 @@ class ConsultationSessionServiceTest {
     private StationRepository stationRepository;
     @Mock
     private ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
+    @Mock
+    private SignalingRoomRegistry signalingRoomRegistry;
 
     @InjectMocks
     private ConsultationSessionService consultationSessionService;
@@ -434,6 +437,7 @@ class ConsultationSessionServiceTest {
         assertThat(response.status()).isEqualTo(ConsultationStatus.ENDED);
         assertThat(session.getEndedAt()).isNotNull();
         assertThat(session.getSignalingRoomId()).isNull();
+        verify(signalingRoomRegistry).removeRoom("room_" + session.getConsultationId());
     }
 
     @Test
@@ -462,6 +466,7 @@ class ConsultationSessionServiceTest {
         assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_ENDABLE);
+        verify(signalingRoomRegistry, never()).removeRoom(anyString());
     }
 
     @Test
@@ -483,5 +488,6 @@ class ConsultationSessionServiceTest {
         assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+        verify(signalingRoomRegistry, never()).removeRoom(anyString());
     }
 }
