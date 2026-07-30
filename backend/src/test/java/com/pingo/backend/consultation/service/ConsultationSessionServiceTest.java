@@ -277,10 +277,11 @@ class ConsultationSessionServiceTest {
                 .willReturn(Optional.of(session));
 
         Account counselor = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getStatus()).willReturn(CounselorStatus.AVAILABLE);
         given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
         given(signalingAccessTokenProvider.createCounselorToken(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .willReturn("counselor-signaling-token");
@@ -311,7 +312,7 @@ class ConsultationSessionServiceTest {
         ConsultationSession session = newSession();
         given(consultationSessionRepository.findById(session.getConsultationId()))
                 .willReturn(Optional.of(session));
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.empty());
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
@@ -325,7 +326,7 @@ class ConsultationSessionServiceTest {
                 .willReturn(Optional.of(session));
 
         Account adminAccount = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(adminAccount));
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(adminAccount));
         given(adminAccount.getAccountType()).willReturn(AccountType.ADMIN);
 
         assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
@@ -340,7 +341,7 @@ class ConsultationSessionServiceTest {
                 .willReturn(Optional.of(session));
 
         Account counselor = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(OTHER_STATION_ID);
@@ -359,10 +360,11 @@ class ConsultationSessionServiceTest {
                 .willReturn(Optional.of(session));
 
         Account counselor = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getStatus()).willReturn(CounselorStatus.AVAILABLE);
         given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
 
         consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID); // WAITING -> ACCEPTED
@@ -375,13 +377,33 @@ class ConsultationSessionServiceTest {
     }
 
     @Test
+    void accept_실패_상담자가_상담_가능_상태가_아님() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getStatus()).willReturn(CounselorStatus.BUSY);
+
+        assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.COUNSELOR_NOT_AVAILABLE);
+        verify(counselor, never()).changeStatus(CounselorStatus.BUSY);
+        verify(consultationSessionRepository, never()).findByIdForUpdate(session.getConsultationId());
+    }
+
+    @Test
     void accept_실패_비활성_계정() {
         ConsultationSession session = newSession();
         given(consultationSessionRepository.findById(session.getConsultationId()))
                 .willReturn(Optional.of(session));
 
         Account counselor = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(false);
 
@@ -454,7 +476,7 @@ class ConsultationSessionServiceTest {
                 .willReturn(Optional.of(session));
 
         Account counselor = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
@@ -488,19 +510,12 @@ class ConsultationSessionServiceTest {
         ConsultationSession session = newSession();
         given(consultationSessionRepository.findById(session.getConsultationId()))
                 .willReturn(Optional.of(session));
-        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
-                .willReturn(Optional.of(session));
-
-        Account counselor = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
-        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
-        given(counselor.isActive()).willReturn(true);
-        given(counselor.getStationId()).willReturn(STATION_ID);
 
         assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_ENDABLE);
-        verify(counselor, never()).changeStatus(CounselorStatus.AVAILABLE);
+        verify(accountRepository, never()).findByIdForUpdate(COUNSELOR_ACCOUNT_ID);
+        verify(consultationSessionRepository, never()).findByIdForUpdate(session.getConsultationId());
         verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
@@ -514,7 +529,7 @@ class ConsultationSessionServiceTest {
                 .willReturn(Optional.of(session));
 
         Account counselor = mock(Account.class);
-        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);

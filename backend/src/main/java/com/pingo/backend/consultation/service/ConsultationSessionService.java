@@ -97,8 +97,14 @@ public class ConsultationSessionService {
     public ConsultationAcceptResponse accept(String consultationSessionId, Long counselorAccountId){
         ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        if(existingSession.getStatus() != ConsultationStatus.WAITING){
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ACCEPTABLE);
+        }
 
-        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
+        Account counselor = findStationCounselorForUpdate(counselorAccountId, existingSession.getStationId());
+        if(counselor.getStatus() != CounselorStatus.AVAILABLE){
+            throw new BusinessException(ErrorCode.COUNSELOR_NOT_AVAILABLE);
+        }
 
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
@@ -117,6 +123,9 @@ public class ConsultationSessionService {
     public ConsultationRejectResponse reject(String consultationSessionId, Long counselorAccountId){
         ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        if(existingSession.getStatus() != ConsultationStatus.WAITING){
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_REJECTABLE);
+        }
 
         Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
 
@@ -137,8 +146,12 @@ public class ConsultationSessionService {
     public ConsultationEndResponse end(String consultationSessionId, Long counselorAccountId){
         ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        if(existingSession.getStatus() != ConsultationStatus.ACCEPTED
+                && existingSession.getStatus() != ConsultationStatus.IN_PROGRESS){
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
+        }
 
-        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
+        Account counselor = findStationCounselorForUpdate(counselorAccountId, existingSession.getStationId());
 
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
@@ -165,6 +178,20 @@ public class ConsultationSessionService {
                 .filter(account -> account.getAccountType() == AccountType.COUNSELOR)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
 
+        validateStationCounselor(counselor, stationId);
+        return counselor;
+    }
+
+    private Account findStationCounselorForUpdate(Long counselorAccountId, Long stationId){
+        Account counselor = accountRepository.findByIdForUpdate(counselorAccountId)
+                .filter(account -> account.getAccountType() == AccountType.COUNSELOR)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
+
+        validateStationCounselor(counselor, stationId);
+        return counselor;
+    }
+
+    private void validateStationCounselor(Account counselor, Long stationId){
         if(!counselor.isActive()){
             throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
         }
@@ -172,7 +199,6 @@ public class ConsultationSessionService {
         if(!stationId.equals(counselor.getStationId())){
             throw new BusinessException(ErrorCode.CONSULTATION_STATION_MISMATCH);
         }
-        return counselor;
     }
 
     private String createUserSignalingAccessToken(ConsultationSession session) {
