@@ -2,6 +2,7 @@ package com.pingo.backend.consultation.service;
 
 import com.pingo.backend.auth.domain.Account;
 import com.pingo.backend.auth.domain.AccountType;
+import com.pingo.backend.auth.domain.CounselorStatus;
 import com.pingo.backend.auth.repository.AccountRepository;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
@@ -107,6 +108,7 @@ public class ConsultationSessionService {
         }
 
         session.accept(counselor.getAccountId());
+        counselor.changeStatus(CounselorStatus.BUSY);
         consultationWaitingEventPublisher.publishAccepted(session.getConsultationId(), session.getSignalingRoomId());
         return ConsultationAcceptResponse.from(session, createCounselorSignalingAccessToken(session));
     }
@@ -152,6 +154,7 @@ public class ConsultationSessionService {
 
         String signalingRoomId = session.getSignalingRoomId();
         session.end();
+        counselor.changeStatus(CounselorStatus.AVAILABLE);
         applicationEventPublisher.publishEvent(new ConsultationEndedEvent(session.getConsultationId(), signalingRoomId));
         log.info("상담 종료 처리 - consultationId={}, endedBy={}", session.getConsultationId(), counselor.getAccountId());
         return ConsultationEndResponse.from(session);

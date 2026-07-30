@@ -2,6 +2,7 @@ package com.pingo.backend.consultation.service;
 
 import com.pingo.backend.auth.domain.Account;
 import com.pingo.backend.auth.domain.AccountType;
+import com.pingo.backend.auth.domain.CounselorStatus;
 import com.pingo.backend.auth.repository.AccountRepository;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
@@ -35,6 +36,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -290,6 +292,7 @@ class ConsultationSessionServiceTest {
         assertThat(response.counselorId()).isEqualTo(COUNSELOR_ACCOUNT_ID);
         assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
         assertThat(response.signalingAccessToken()).isEqualTo("counselor-signaling-token");
+        verify(counselor).changeStatus(CounselorStatus.BUSY);
         verify(consultationWaitingEventPublisher)
                 .publishAccepted(session.getConsultationId(), "room_" + session.getConsultationId());
     }
@@ -363,10 +366,12 @@ class ConsultationSessionServiceTest {
         given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
 
         consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID); // WAITING -> ACCEPTED
+        clearInvocations(counselor);
 
         assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_ACCEPTABLE);
+        verify(counselor, never()).changeStatus(CounselorStatus.BUSY);
     }
 
     @Test
@@ -461,6 +466,7 @@ class ConsultationSessionServiceTest {
         assertThat(response.status()).isEqualTo(ConsultationStatus.ENDED);
         assertThat(session.getEndedAt()).isNotNull();
         assertThat(session.getSignalingRoomId()).isNull();
+        verify(counselor).changeStatus(CounselorStatus.AVAILABLE);
         verify(applicationEventPublisher)
                 .publishEvent(new ConsultationEndedEvent(
                         session.getConsultationId(),
@@ -494,6 +500,7 @@ class ConsultationSessionServiceTest {
         assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_ENDABLE);
+        verify(counselor, never()).changeStatus(CounselorStatus.AVAILABLE);
         verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
@@ -516,6 +523,7 @@ class ConsultationSessionServiceTest {
         assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+        verify(counselor, never()).changeStatus(CounselorStatus.AVAILABLE);
         verify(applicationEventPublisher, never()).publishEvent(any());
     }
 }
