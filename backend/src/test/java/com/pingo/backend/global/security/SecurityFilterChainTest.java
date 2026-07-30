@@ -172,6 +172,21 @@ class SecurityFilterChainTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void 비로그인_DataChannel_Fallback_API_200() throws Exception {
+        mockMvc.perform(post("/api/consultations/consultation-1/data-channel-events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {
+                      "type": "GUIDE_MESSAGE_SENT",
+                      "payload": {
+                        "message": "왼쪽으로 이동하세요."
+                      }
+                    }
+                    """))
+                .andExpect(status().isOk());
+    }
+
     // ---- ADMIN ----
 
     @Test
