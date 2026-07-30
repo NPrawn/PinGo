@@ -1,7 +1,10 @@
 # 역삼역 Route Node 좌표계·네이밍 정의서 (S15P11A206-276)
 
+> 최신화: 2026-07-30
+
 역삼역(`station_id = 1`) B2·B3 경로 그래프의 좌표계 프레임과 노드 네이밍을 정의한다.
-seed는 [`V4__seed_yeoksam_b2_b3_route_graph.sql`](../backend/src/main/resources/db/migration/V4__seed_yeoksam_b2_b3_route_graph.sql).
+기본 그래프는 [`V4__seed_yeoksam_b2_b3_route_graph.sql`](../backend/src/main/resources/db/migration/V4__seed_yeoksam_b2_b3_route_graph.sql),
+시설과 접근 간선 보완은 [`V5__seed_yeoksam_facility_and_access_route.sql`](../backend/src/main/resources/db/migration/V5__seed_yeoksam_facility_and_access_route.sql)을 기준으로 한다.
 노드 매칭(제어점·시설 연결)·좌표 해석 시 이 문서를 기준으로 한다.
 
 > **provisional 주의**: 축척(0.19 m/px)과 z(±5m)는 잠정값이다. COLMAP↔평면도 sim3 정합(277)과 실측 층고 확보 후 갱신한다.
@@ -10,7 +13,7 @@ seed는 [`V4__seed_yeoksam_b2_b3_route_graph.sql`](../backend/src/main/resources
 
 ## 1. 좌표계 프레임 (캐노니컬 미터)
 
-평면도 이미지 픽셀 → 미터 좌표 변환 기준. 층마다 원점만 다르고 축·축척은 공통.
+평면도 이미지 픽셀 → 미터 좌표 변환 기준. 층마다 원점만 다르고 축척은 공통.
 
 | 항목 | 값 |
 |---|---|
@@ -56,6 +59,7 @@ seed는 [`V4__seed_yeoksam_b2_b3_route_graph.sql`](../backend/src/main/resources
 | 110 | NURS | 수유실 | facility | (89.1, 14.7) | 밖 |
 | 111 | B2_N2 | 대합실 복도 (3번출구 분기 방향) | normal | (−56.7, 17.9) | ✅ |
 | 112 | B2_N3 | 대합실 복도 (EVB 인접) | normal | (−12.4, 15.6) | ✅ |
+| 113 | B2_N4 | 남쪽 복도 분기(화장실·안내센터 접근) | normal | (43.217, 10.504) | 밖 |
 
 ### B3 (승강장, floor_code=B3, z=−5)
 
@@ -82,6 +86,10 @@ seed는 [`V4__seed_yeoksam_b2_b3_route_graph.sql`](../backend/src/main/resources
 | B3_N2(204) → B3_N3(205) | 66.5 | walkway | 1 | B3 승강장 |
 | B3_N3(205) → EVB(202) | 24.0 | stair | 0 | B3 계단 |
 | EVB(102) → EVB(202) | 5.0 | elevator | 1 | **층간** B2↔B3 |
+| WC(107) → B2_N4(113) | 15.74 | walkway | 1 | V5 화장실 접근 |
+| B2_N4(113) → B2_N3(112) | 55.85 | walkway | 1 | V5 본체 복귀 |
+| B2_N4(113) → INFO2(109) | 53.54 | walkway | 1 | V5 안내센터 접근 |
+| INFO2(109) → INFO1(108) | 21.74 | walkway | 1 | V5 안내센터 연결 |
 
 전부 bidirectional=1, active=1. `elevator_only` 경로는 STAIR/ESCALATOR 제외.
 
@@ -97,6 +105,7 @@ seed는 [`V4__seed_yeoksam_b2_b3_route_graph.sql`](../backend/src/main/resources
 
 ## 5. 커버리지 & 미결
 
-- **COLMAP 커버(간선 연결) 구간**: B2 = EVB→3번출구 브랜치(EV3·ESC3), B3 = 서쪽끝→계단(EVB). 나머지 시설 노드(EV4·ESC4·WC·INFO·NURS·EVA)는 **전체지도 참고용**이며 간선 없음(라우팅 대상 아님).
+- **간선 연결 구간**: B2 = EVB→3번출구 브랜치 및 V5 화장실·안내센터 접근, B3 = 서쪽끝→계단(EVB). EV4·ESC4·NURS·EVA 등은 아직 전체지도 참고용이며 간선이 없다.
 - **접근성(elevator_only)**: 현재 커버 구간의 B3 승강장→EVB가 계단(STAIR)뿐이라 계단 없는 경로는 미지원. COLMAP 확장 시 엘베 접근 통로(walkway) 추가하면 해소.
-- **TODO**: ① 실제 층고로 z·층간 거리 갱신 ② `northBearing` 확정(방위/AR) ③ COLMAP sim3 정합(277) 후 축척 확정 ④ 시설 목적지(`facility` 테이블) 연결.
+- **시설 연결 상태**: V5가 `facility` seed와 `linked_node_id`를 추가했다. 다만 연결 노드 자체가 그래프에서 분리된 시설은 경로 도달이 불가능하다.
+- **TODO**: ① 실제 층고로 z·층간 거리 갱신 ② `northBearing` 확정(방위/AR) ③ COLMAP sim3 정합(277) 후 축척 확정 ④ 분리된 시설 노드의 접근 간선 추가.

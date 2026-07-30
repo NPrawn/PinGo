@@ -2,7 +2,9 @@
 
 > 프로젝트: PinGo
 >
-> 목적: GitLab Push/MR 이벤트 발생 시 Jenkins가 백엔드 빌드와 테스트를 자동 실행하도록 설정한다.
+> 목적: GitLab 이벤트 발생 시 Backend·Frontend CI와 `develop` 기준 CD를 자동 실행한다.
+>
+> 최신화: 2026-07-30
 
 ---
 
@@ -18,7 +20,9 @@
 | Git 저장소 | `REDACTED_GITLAB_URL` |
 | 기본 빌드 브랜치 | `develop` |
 | 백엔드 빌드 도구 | Gradle |
+| 프론트엔드 런타임 | Node.js `24.18.x`, npm 11 |
 | 테스트 DB | Docker MySQL 8.4 |
+| 배포 stage | Backend CD, Frontend CD |
 
 ---
 
@@ -26,13 +30,13 @@
 
 1. 개발자가 GitLab에 코드를 push하거나 MR을 생성한다.
 2. GitLab Webhook이 Jenkins URL을 호출한다.
-3. Jenkins가 `pingo-backend-ci` Job을 실행한다.
+3. Jenkins가 Pipeline Job을 실행한다.
 4. Jenkins가 GitLab 저장소의 `develop` 브랜치를 checkout한다.
 5. Jenkins가 CI용 MySQL 컨테이너를 실행한다.
-6. Jenkins가 백엔드 `compileJava`를 실행한다.
-7. Jenkins가 백엔드 `test`를 실행한다.
-8. Jenkins가 GitLab 커밋 상태를 업데이트한다.
-9. 성공/실패 결과를 Jenkins Build History와 GitLab 커밋/MR 화면에 기록한다.
+6. Backend CI와 Frontend CI(`npm ci`, build, 선택적 lint/test)를 실행한다.
+7. CI가 성공하면 `develop` 기준 Backend CD와 Frontend 정적 파일 CD를 실행한다.
+8. Backend는 jar/systemd, Frontend는 `/opt/pingo/frontend/releases/current`에 배포한다.
+9. Jenkins가 GitLab 커밋 상태와 Build History를 업데이트한다.
 
 현재 설정은 Webhook 이벤트가 모든 브랜치에서 발생해도 Jenkins Pipeline은 `develop` 브랜치를 기준으로 빌드한다.
 
@@ -208,12 +212,12 @@ Authentication Token: REDACTED_BUILD_TOKEN
 
 Pipeline Script는 repo root의 `Jenkinsfile`로 관리한다.
 
-Frontend CI는 `frontend/package.json`이 있을 때만 조건부로 실행한다. 현재 frontend 코드가 없는 상태에서는 Frontend CI stage가 skip되는 것이 정상이다.
+Frontend CI는 `frontend/package.json`이 있을 때 실행한다. 현재 저장소에는 Frontend가 있으므로 정상 Pipeline에서는 실행 대상이다.
 
 Frontend CI 기준:
 
 - 패키지 매니저: npm
-- Node.js: 20 LTS
+- Node.js: `24.18.x` (`frontend/package.json` engines 기준)
 - lockfile: `frontend/package-lock.json`
 - 필수 명령: `npm ci`, `npm run build`
 - 선택 명령: `npm run lint`, `npm run test`
@@ -472,12 +476,11 @@ HTTP Basic: Access denied
 
 ## 14. 향후 개선
 
-현재 설정은 Jenkins 빌드 결과가 GitLab 커밋/MR 화면에 표시되는 수준까지 완료되었다. 이후 다음 작업을 별도 이슈로 분리해 개선한다.
+현재 root `Jenkinsfile`에는 동시 build 방지, Backend/Frontend CI, 동적 MySQL host port, Backend/Frontend CD가 구현돼 있다. 이후 다음 작업을 별도 이슈로 분리해 개선한다.
 
-- Jenkins UI Pipeline Script를 repo의 `Jenkinsfile`로 이전
 - MR 브랜치 자체를 빌드하는 Multibranch Pipeline 구성
 - GitLab MR에서 Jenkins 상태 체크를 필수 통과 조건으로 설정
-- 테스트 DB 포트 충돌 방지를 위한 Docker network 구성
-- 배포 자동화 CD Pipeline 추가
+- Frontend 정적 파일 rollback 자동화와 배포 smoke test 강화
+- AI 서비스 CI/CD와 모델 artifact 배포 절차 추가
 - Jenkins Credential과 Webhook Token 교체 주기 관리
 - Jenkins 접근 계정과 권한 관리 문서화

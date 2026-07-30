@@ -1,5 +1,8 @@
 # Python hloc 구현 계획
 
+> 최신화: 2026-07-30
+> 상태: 검색·특징 추출·매칭·2D–3D 대응·PnP·품질 판정·다중 맵 API는 구현됨. 평가·운영 계측과 일부 입력 검증은 남아 있다.
+
 > 확인 완료(2026-07-23): 현재 COLMAP sparse map은 `ALIKED_N16ROT`
 > (`max_num_features=4096`) 특징과 `ALIKED_LIGHTGLUE` 매칭으로 구축됐다.
 > DB descriptor는 128차원 float32이며, sparse model의 모든 2D observation
@@ -134,7 +137,7 @@ Python 서비스의 책임은 다음으로 제한한다.
 - [x] 최대 파일 크기와 pixel 수 제한
 - [x] EXIF orientation 적용
 - [x] ALIKED local feature는 원본 해상도(`resize=None`) 사용으로 확정
-- [ ] NetVLAD 입력 resize를 ALIKED local feature 전처리와 분리
+- [x] NetVLAD 입력 resize를 ALIKED local feature 전처리와 분리
 - [ ] resize가 필요한 단계에서만 비율에 맞게 camera intrinsics 변환
 - [ ] 카메라 모델, 해상도 및 파라미터 검증
 
@@ -146,13 +149,14 @@ Python 서비스의 책임은 다음으로 제한한다.
 
 ### 체크포인트 4. 이미지 검색
 
-- [ ] NetVLAD 모델을 서버 시작 시 GPU에 1회 로딩
-- [ ] 기준 이미지 descriptor를 메모리에 로딩
-- [ ] Query NetVLAD descriptor 추출
-- [ ] Query–Reference descriptor 유사도 계산
-- [ ] 유사 기준 이미지 Top-K 선택
-- [ ] 검색 후보가 없는 경우 상태 처리
-- [ ] 초기 `topK=20` 적용 후 평가 결과로 조정
+- [x] NetVLAD 모델을 서버 시작 시 1회 로딩
+- [x] 기준 이미지 descriptor를 메모리에 로딩
+- [x] Query NetVLAD descriptor 추출
+- [x] Query–Reference descriptor 유사도 계산
+- [x] 유사 기준 이미지 Top-K 선택
+- [x] 검색 후보가 없는 경우 상태 처리
+- [x] 초기 `topK=20` 적용
+- [ ] 평가 결과를 바탕으로 `topK` 조정
 
 완료 기준:
 
@@ -162,16 +166,16 @@ Python 서비스의 책임은 다음으로 제한한다.
 
 ### 체크포인트 5. 특징점 추출과 매칭
 
-- [ ] ALIKED N16Rot 모델을 서버 시작 시 GPU에 1회 로딩
+- [x] ALIKED N16Rot 모델을 서버 시작 시 1회 로딩
 - [x] Query ALIKED N16Rot feature extractor 구현
 - [x] 기준 이미지 호환성 probe 확인: 1px 이내 2,078점,
       descriptor cosine median 0.9558
-- [ ] 검색된 기준 이미지의 feature 읽기
-- [ ] LightGlue 모델을 서버 시작 시 GPU에 1회 로딩
-- [ ] Query–Reference 특징점 매칭
-- [ ] 기준 이미지별 match 개수 기록
-- [ ] 매칭 부족 상태 구분
-- [ ] Query feature를 공용 reference HDF5에 기록하지 않도록 구현
+- [x] 검색된 기준 이미지의 feature 읽기
+- [x] LightGlue 모델을 서버 시작 시 1회 로딩
+- [x] Query–Reference 특징점 매칭
+- [x] 기준 이미지별 match 개수 기록
+- [x] 매칭 부족 상태 구분
+- [x] Query feature를 공용 reference HDF5에 기록하지 않고 메모리에서 처리
 
 완료 기준:
 
@@ -181,13 +185,13 @@ Query 2D 특징점과 기준 이미지 2D 특징점의 대응을 얻는다.
 
 ### 체크포인트 6. 2D–3D 대응점 생성
 
-- [ ] 기준 이미지 keypoint index 조회
-- [ ] keypoint가 관측하는 COLMAP `point3D_id` 조회
-- [ ] Query keypoint와 COLMAP 3D point 연결
-- [ ] 3D point가 없는 match 제거
-- [ ] 중복 또는 충돌하는 2D–3D 대응점 정리
-- [ ] 서로 다른 기준 이미지의 supporting 정보 기록
-- [ ] 최소 correspondence 개수 검사
+- [x] 기준 이미지 keypoint index 조회
+- [x] keypoint가 관측하는 COLMAP `point3D_id` 조회
+- [x] Query keypoint와 COLMAP 3D point 연결
+- [x] 3D point가 없는 match 제거
+- [x] 중복 또는 충돌하는 2D–3D 대응점 정리
+- [x] 서로 다른 기준 이미지의 supporting 정보 기록
+- [x] 최소 correspondence 개수 검사
 
 완료 기준:
 
@@ -197,15 +201,15 @@ PnP 입력인 Query 2D point와 COLMAP 3D point 배열을 생성한다.
 
 ### 체크포인트 7. 6DoF pose 계산
 
-- [ ] `pycolmap.estimate_and_refine_absolute_pose()` 연결
-- [ ] PnP 및 RANSAC 설정 적용
-- [ ] pose refinement 적용
-- [ ] hloc의 `cam_from_world` 결과 검증
-- [ ] 카메라 중심 `C = -Rᵀt` 계산
-- [ ] API 출력용 `world_from_camera` pose로 변환
-- [ ] position과 quaternion 직렬화
-- [ ] PnP 실패 시 `POSE_ESTIMATION_FAILED` 반환
-- [ ] PnP 실패 시 가장 가까운 기준 카메라 pose를 반환하는 fallback 금지
+- [x] `pycolmap.estimate_and_refine_absolute_pose()` 연결
+- [x] PnP 및 RANSAC 설정 적용
+- [x] pose refinement 적용
+- [x] hloc의 `cam_from_world` 결과 검증
+- [x] 카메라 중심 `C = -Rᵀt` 계산
+- [x] API 출력용 `world_from_camera` pose로 변환
+- [x] position과 quaternion 직렬화
+- [x] PnP 실패 시 `POSE_ESTIMATION_FAILED` 반환
+- [x] PnP 실패 시 가장 가까운 기준 카메라 pose를 반환하는 fallback 금지
 
 완료 기준:
 
@@ -215,13 +219,13 @@ COLMAP 좌표계에서 사용자 카메라의 위치와 방향을 계산한다.
 
 ### 체크포인트 8. 품질 판정
 
-- [ ] 전체 match 수 계산
-- [ ] 2D–3D correspondence 수 계산
-- [ ] RANSAC inlier 수 계산
-- [ ] inlier ratio 계산
-- [ ] median 재투영 오차 계산
-- [ ] supporting reference image 수 계산
-- [ ] `LOCALIZED`와 `LOW_GEOMETRIC_QUALITY` 구분
+- [x] 전체 match 수 계산
+- [x] 2D–3D correspondence 수 계산
+- [x] RANSAC inlier 수 계산
+- [x] inlier ratio 계산
+- [x] median 재투영 오차 계산
+- [x] supporting reference image 수 계산
+- [x] `LOCALIZED`와 `LOW_GEOMETRIC_QUALITY` 구분
 - [ ] 평가셋 결과를 기반으로 threshold 조정
 
 초기 판정 기준:
@@ -275,14 +279,14 @@ HTTP 요청으로 이미지와 카메라 정보를 받아 COLMAP 기준 6DoF pos
 
 ### 체크포인트 10. 모델과 맵 사전 로딩
 
-- [ ] ALIKED N16Rot·NetVLAD·LightGlue를 process 시작 시 로딩
+- [x] ALIKED N16Rot·NetVLAD·LightGlue를 process 시작 시 로딩
 - [x] FastAPI lifespan에서 `pycolmap.Reconstruction` 사전 로딩
 - [x] 기준 이미지 global descriptor 메모리 로딩
 - [x] 이미지 이름–COLMAP image ID index 생성
 - [x] mapVersion별 불변 `MapContext` 생성
 - [ ] 서버 시작 후 warm-up inference 실행
 - [x] 맵 미설정·로딩 실패 시 readiness 실패 처리
-- [ ] 모델 로딩 실패 시 readiness 실패 처리
+- [x] 모델 로딩 실패 시 readiness 실패 처리
 
 완료 기준:
 
@@ -297,8 +301,8 @@ HTTP 요청으로 이미지와 카메라 정보를 받아 COLMAP 기준 6DoF pos
 - [x] queue 초과 시 `OVERLOADED` 즉시 반환
 - [ ] GPU 하나당 Uvicorn worker 1개 적용
 - [x] 요청별 mutable 전역 상태 공유 금지
-- [ ] 임시 파일 사용 시 request ID별 디렉터리 격리
-- [ ] 성공·실패 모두 Query 이미지와 임시 파일 삭제
+- [x] Query 이미지를 메모리에서 처리하여 요청별 임시 디렉터리를 만들지 않음
+- [x] Query 이미지와 중간 결과를 요청 종료 후 참조하지 않음
 - [ ] CUDA OOM 상태 처리 및 readiness 반영
 
 완료 기준:
@@ -329,11 +333,11 @@ reference에 포함되지 않은 평가 이미지에서 정확도와 처리시�
 ### 최종 완료 조건
 
 - [x] 기존 ALIKED N16Rot·LightGlue sparse map을 reference model로 사용한다.
-- [ ] 사용자 이미지에서 COLMAP 좌표계 기준 6DoF pose를 계산한다.
-- [ ] 반환 위치는 기준 이미지 pose가 아니라 새로 추정한 Query 카메라 중심이다.
-- [ ] PnP 실패 시 기준 카메라 pose를 대체 결과로 반환하지 않는다.
-- [ ] AI 모델과 map artifact를 warm loading한다.
-- [ ] pose와 함께 기하 품질 지표를 제공한다.
-- [ ] mapVersion 단위로 맵을 교체할 수 있다.
-- [ ] 사용자 이미지를 추론 종료 후 보관하지 않는다.
-- [ ] FastAPI에서 안정적인 내부 위치추정 API를 제공한다.
+- [x] 사용자 이미지에서 COLMAP 좌표계 기준 6DoF pose를 계산한다.
+- [x] 반환 위치는 기준 이미지 pose가 아니라 새로 추정한 Query 카메라 중심이다.
+- [x] PnP 실패 시 기준 카메라 pose를 대체 결과로 반환하지 않는다.
+- [x] AI 모델과 map artifact를 요청 전에 로딩한다.
+- [x] pose와 함께 기하 품질 지표를 제공한다.
+- [x] mapVersion 단위로 맵을 선택·교체할 수 있다.
+- [x] 사용자 이미지를 추론 종료 후 보관하지 않는다.
+- [x] FastAPI에서 내부 위치추정 API를 제공한다.

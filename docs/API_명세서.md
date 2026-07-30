@@ -1,10 +1,21 @@
 # 외국인 관광객 대상 지하철 실내 내비게이션 API 명세서
 
+> 최신화: 2026-07-30
+
 ## 1. 문서 목적
 
-본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 API 초안을 정의한다.
+본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 API 계약을 정의한다.
 
 본 문서는 프론트엔드, 백엔드, VPS, WebRTC, 관리자 기능 개발 시 요청/응답 구조를 맞추기 위한 기준 문서이다.
+
+### 현재 구현 범위
+
+| 상태 | API 영역 |
+| --- | --- |
+| 구현 | 인증·회원가입, 익명 사용자 세션, 역·층·지도·시설, 목적지 검색, 주변 장소·출구 추천, 실내 경로 2종, Kakao 외부 길찾기, 상담 생성·조회·취소·대기 SSE, 상담자 본인/관리자 계정 관리, VPS 위치추정, health, WebSocket signaling |
+| 계획 | 랜드마크 후보·수동 위치 지정, 경로 재탐색 전용 API, 역 주변 장소 목록, 상담자용 상담 큐/수락/거절/종료, 위치 공유, 교통카드 추천, 관리자 상담자 생성 |
+
+구현 여부와 최신 요청·응답 schema는 실행 중인 Swagger를 최종 확인 수단으로 사용한다.
 
 ---
 
@@ -13,9 +24,11 @@
 ### 2.1 Base URL
 
 ```text
-개발 환경: http://localhost:{port}/api
-배포 환경: https://{domain}/api
+개발 환경: http://localhost:{port}
+배포 환경: https://jenkins.example.invalid
 ```
+
+이 문서의 REST endpoint는 모두 `/api/...` 절대 경로로 표기한다.
 
 ### 2.2 응답 형식
 
@@ -74,7 +87,7 @@ Authorization: Bearer {accessToken}
 | 항목               | 확정안                                                              |
 | ------------------ | ------------------------------------------------------------------- |
 | 프론트엔드         | React + TypeScript + Vite                                           |
-| UI 스타일링        | Tailwind CSS                                                        |
+| UI 스타일링        | CSS Modules + CSS Variables                                        |
 | 아이콘             | lucide-react                                                        |
 | 백엔드 프레임워크  | Spring Boot 기준                                                    |
 | DBMS               | MySQL                                                               |
@@ -1562,43 +1575,41 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 12. WebRTC Signaling API 초안
+## 12. WebRTC Signaling API
 
-WebRTC signaling은 WebSocket 기반으로 구현한다.
+WebRTC signaling은 WebSocket 기반으로 구현한다. 상세 계약의 단일 기준은
+[`WebRTC_Signaling_이벤트_명세서.md`](WebRTC_Signaling_이벤트_명세서.md)이다.
 
 ## 12.1 WebSocket 연결
 
-### WS `/ws/signaling?roomId={signalingRoomId}&role={user|counselor}`
+### WS `/ws/signaling`
 
 #### 메시지 타입
 
-| type          | 설명          |
-| ------------- | ------------- |
-| offer         | WebRTC offer  |
-| answer        | WebRTC answer |
-| ice_candidate | ICE candidate |
-| join          | 방 입장       |
-| leave         | 방 퇴장       |
-| error         | 오류          |
+`JOIN`, `OFFER`, `ANSWER`, `ICE_CANDIDATE`, `LEAVE`, `ERROR`를 사용한다.
+room과 역할은 query parameter가 아니라 모든 메시지의 `sessionId`, `senderType`으로 전달한다.
 
 #### 예시 메시지
 
 ```json
 {
-  "type": "offer",
-  "roomId": "room_cs_abc123",
-  "sender": "user",
+  "sessionId": "room_cs_abc123",
+  "senderType": "USER",
+  "type": "OFFER",
   "payload": {
     "sdp": "..."
-  }
+  },
+  "timestamp": "2026-07-30T00:00:00Z"
 }
 ```
 
 ---
 
-## 12.2 DataChannel 이벤트
+## 12.2 DataChannel 이벤트(계약, Frontend 미구현)
 
-WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
+WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 목표다. 현재 Frontend에는
+`RTCDataChannel` 송수신이 연결되지 않았으므로 상세 이벤트는
+[`WebRTC_DataChannel_이벤트_명세서.md`](WebRTC_DataChannel_이벤트_명세서.md)의 계획 계약으로 관리한다.
 
 | eventType       | 설명                      |
 | --------------- | ------------------------- |
@@ -2324,7 +2335,7 @@ multipart/form-data
 | 항목                   | 결정                                                             |
 | ---------------------- | ---------------------------------------------------------------- |
 | 프론트엔드             | React + TypeScript + Vite                                        |
-| UI 스타일링            | Tailwind CSS                                                     |
+| UI 스타일링            | CSS Modules + CSS Variables                                     |
 | 아이콘                 | lucide-react                                                     |
 | 실제 백엔드 프레임워크 | Spring Boot                                                      |
 | DBMS                   | MySQL                                                            |
@@ -2355,5 +2366,5 @@ multipart/form-data
 ## 20. 구현 중 검증할 사항
 
 1. 카카오맵 URL Scheme 또는 웹 링크의 최종 형식 검증
-2. 실제 배포 도메인 확정
+2. 운영 도메인 `jenkins.example.invalid`의 배포별 HTTPS/WSS routing 검증
 3. 카메라 이미지 즉시 폐기 로그 검증

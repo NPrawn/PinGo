@@ -1,5 +1,8 @@
 # 역삼역 FE 좌표 연동 스펙 (S15P11A206-276)
 
+> 최신화: 2026-07-30
+> 구현 상태: 미터→픽셀 렌더링은 구현됨. 역변환·Spring 위치 anchor/node 매핑·실제 평면도 자산 연동은 미완료다.
+
 FE(김은지)가 2D 평면도 위에 **노드·경로·현재위치**를 렌더하기 위한 계약.
 좌표 정의 원본은 [`역삼역_route_node_naming.md`](역삼역_route_node_naming.md).
 
@@ -9,13 +12,14 @@ FE(김은지)가 2D 평면도 위에 **노드·경로·현재위치**를 렌더�
 
 ## 1. 자산 — 평면도 이미지 (정적)
 
-| 층 | 파일 | 크기(px) |
+| 층 | 목표 원본 파일 | 기준 크기(px) |
 |---|---|---|
 | B2 대합실 | 역삼역_B2.png | 1624 × 969 |
 | B3 승강장 | 역삼역_B3.png | 1659 × 948 |
 
 - 좌표 프레임은 **이 원본 픽셀 크기 기준**. FE가 다른 크기로 렌더하면 `표시크기/원본크기` 배율을 곱해 스케일할 것.
-- 이미지 제공 경로는 지도관리(`floor_map`/FR-A-002)에서 서빙. (호스팅 URL은 인프라와 협의)
+- 현재 저장소에는 위 PNG 원본이 없고 Frontend fixture가 같은 크기의 schematic SVG data URL을 생성한다.
+- `GET /api/stations/{stationId}/maps` 연동은 구현됐지만 실제 `floor_map` seed/업로드 자산은 배포 환경에서 별도 준비해야 한다.
 
 ## 2. 좌표 프레임 (변환 규칙) — 층별
 
@@ -30,7 +34,7 @@ FE(김은지)가 2D 평면도 위에 **노드·경로·현재위치**를 렌더�
 - `mpp`: meter per pixel (provisional, 277 정합 후 확정)
 - `z`: 층 높이(명목값, 실제 층고 미확정)
 
-## 3. 변환 헬퍼 (그대로 사용 가능)
+## 3. 변환 헬퍼
 
 ```js
 const FRAME = {
@@ -45,7 +49,7 @@ function meterToPixel(x, y, floor) {
   return { px: f.ox + (c * x - s * y) / f.mpp, py: f.oy + (s * x + c * y) / f.mpp };
 }
 
-// 픽셀(px,py) → 미터(x,y)  [지도 클릭 → 좌표, 수동 위치 선택 등]
+// 픽셀(px,py) → 미터(x,y)  [계약 예시; 현재 Frontend에는 미구현]
 function pixelToMeter(px, py, floor) {
   const f = FRAME[floor];
   const t = (f.angleDeg * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
@@ -55,16 +59,18 @@ function pixelToMeter(px, py, floor) {
 ```
 검증: `meterToPixel(-0.4, 27.2, "B2")` → `(672, 646)` (EVB), `meterToPixel(0,0,"B2")` → `(622,512)` (EVA).
 
+현재 `frontend/src/entities/floor-map/lib/coordinates.ts`에는 `meterToPixel`만 구현돼 있다. 수동 지도 선택을 연결할 때 `pixelToMeter`와 유효 범위 검증을 추가한다.
+
 ## 4. 데이터 계약 (API, 미터 좌표)
 
 **경로 조회/생성** (구현됨, `route/` 도메인):
-- `POST /api/routes/indoor/options` → 2종 경로 요약 `[{ routeType, available, totalDistanceM, totalTimeSec, unavailableReason }]`
+- `POST /api/routes/indoor/options` → 2종 경로 요약 `[{ routeType, available, totalDistanceM, estimatedTimeSec, unavailableReason }]`
   - `routeType`: `fastest` | `elevator_only`
 - `POST /api/routes/indoor` → 상세 경로
   - `steps[]`: `{ order, fromNodeId, toNodeId, distanceM, estimatedTimeSec, moveType, instruction }`
   - `pathNodes[]`: `{ nodeId, floorId, mapX, mapY }` ← **이 mapX/mapY(미터)를 `meterToPixel`로 변환해 경로선 그림**
 
-**현재위치**(위치추정, FR-U-004 / 이정우 담당)는 최종적으로 `{ x, y, floor, ... }` **미터**로 내려옴 → 같은 `meterToPixel`로 마커 표시.
+**현재위치 목표 계약**은 `{ x, y, floor, ... }` 미터 좌표이며 같은 `meterToPixel`로 표시한다. 현재 Spring VPS 응답에서 이 anchor/node 좌표로 변환하는 연동은 미완료다.
 
 노드 필드 의미: `nodeId`(안정 키), `name`(ASCII 코드 — 의미는 naming 문서 §2), `type`(node_type), `mapX/mapY`(미터), floor.
 
@@ -74,14 +80,14 @@ function pixelToMeter(px, py, floor) {
 2. 경로 API 호출 → `pathNodes` 미터좌표 수신
 3. 각 좌표 `meterToPixel(x,y,floor)` → (표시배율 곱해) 이미지 위 픽셀
 4. 노드·경로선·현재위치 마커 렌더
-5. 지도 클릭으로 위치 지정 시 `pixelToMeter`로 역변환
+5. 지도 클릭 위치 지정 기능을 구현할 때 `pixelToMeter`로 역변환
 
 ## 6. 주의 / 미결
 
 - **표시 스케일**: 프레임 픽셀은 원본 크기(§1) 기준. 렌더 크기가 다르면 배율 보정.
-- **z(높이)**: 현재 API 응답 미노출(엔티티에 `map_z` 필드 추가 필요). 우선 프레임의 층별 `z` 사용. AR 화살표 높이용.
+- **z(높이)**: DB `route_node.map_z`는 존재하지만 현재 경로 API 응답에는 노출되지 않는다. 우선 프레임의 층별 `z`를 사용한다.
 - **방위(동서남북)**: +X는 진북이 아니라 승강장 축. 나침반·북쪽정렬·AR heading이 필요하면 `northBearing`(프레임↔진북 오프셋) 확정 후 표시 레이어에서 회전. **좌표는 안 바뀜.**
-- **커버 구간만 라우팅**: 간선 연결된 노드만 경로 대상(B2 EVB~3번출구, B3 서쪽끝~계단). 나머지 시설 노드는 표시용.
+- **커버 구간만 라우팅**: V5에서 B2 화장실·안내센터 접근 간선은 추가됐지만 EV4·ESC4·NURS·EVA 등 일부 시설은 여전히 그래프와 분리돼 있다.
 - **provisional**: mpp(0.19)·z는 잠정. 277(COLMAP sim3) + 실측 층고 후 프레임 값만 갱신하면 FE 로직 변경 없이 반영됨.
 
 ## 7. 백엔드 결정 필요 (FE와 협의)

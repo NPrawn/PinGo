@@ -2,9 +2,9 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서 상태 | 구현 중 — 현재 맵 및 Python 기반 구조 검증 완료 |
+| 문서 상태 | 핵심 위치추정 파이프라인 구현, 좌표 앵커링·운영 검증 진행 중 |
 | 작성일 | 2026-07-23 |
-| 최신화 | 2026-07-23 — ALIKED 맵 검증·anchor/층 판정·FastAPI 구현 현황 반영 |
+| 최신화 | 2026-07-30 — Python 엔진·Spring adapter·다중 맵 구현 현황 반영 |
 | 대상 서비스 | PinGo 실내 위치 인식(VPS) |
 | 적용 범위 | 기존 COLMAP sparse map을 이용한 단일 이미지 6-DoF 위치추정, Spring API 연동, 운영·배포 |
 
@@ -59,27 +59,23 @@ pose adapter는 hloc의 검증된 흐름을 참고하되 현재 reference featur
 
 ### 3.1 현재 구현 상태
 
-2026-07-23 기준 Python AI 서버 구현 완료 범위:
+2026-07-30 기준 구현 완료 범위:
 
-- ALIKED N16Rot Query feature extractor와 입출력 shape 검증
-- FastAPI application factory
-- `GET /health/live`, `GET /health/ready`
-- thread-safe engine/map readiness 상태
-- `pycolmap==3.13.0` 기반 sparse model loader
-- mapVersion별 read-only `MapContext`
-- image name–COLMAP image ID index
-- FastAPI lifespan map preload
-- 맵 미설정 `MAP_NOT_CONFIGURED`, 로딩 실패 `MAP_LOAD_FAILED` readiness
-- 실제 sparse map 통합 테스트: 카메라 1개, 등록 이미지 766장, 3D point 203,384개
+- NetVLAD retrieval, ALIKED N16Rot query feature, LightGlue matching
+- Query 2D–COLMAP 3D correspondence 구성
+- `pycolmap.estimate_and_refine_absolute_pose()` 기반 6DoF pose와 품질 판정
+- mapVersion별 read-only `MapContext`, 다중 맵 선택, lifespan preload
+- 내부 token, request ID, bounded queue·동시 추론 제한
+- `POST /internal/v1/maps/{mapVersion}/localize`, `GET /health/live`, `GET /health/ready`
+- Spring AI client와 공개 `POST /api/vps/localize` adapter
+- 선택 맵 버전·층·맵별 결과를 포함한 응답
 
-아직 구현되지 않은 범위:
+남은 범위:
 
-- ALIKED·NetVLAD·LightGlue 전체 warm engine와 engine readiness
-- Spring → Python localize endpoint와 multipart/camera schema
-- retrieval, matching, 2D–3D correspondence, PnP, 품질 판정
-- GPU semaphore와 bounded queue
-- 내부 token, request ID, 임시 데이터 정리, metrics
-- Spring anchor transform·floor·route node 연동
+- Spring anchor transform·floor·route node 매핑 및 DB transform/log 확장
+- 모델 warm-up inference, CUDA OOM readiness 처리
+- 실제 ground truth 평가, 정확도·지연시간·부하 시험
+- 구조화 metrics·대시보드·alert와 AI 배포 자동화
 
 ## 4. 전체 아키텍처
 
