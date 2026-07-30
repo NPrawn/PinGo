@@ -6,6 +6,7 @@ import com.pingo.backend.auth.repository.AccountRepository;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
+import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
@@ -126,7 +127,50 @@ public class ConsultationSessionService {
         return ConsultationRejectResponse.from(session);
     }
 
-    private Account findStationCounselor(Long counselorAccountId, Long stationId){
+    @Transactional(readOnly = true)
+    public List<ConsultationListResponse> getConsultationsForCounselor(Long counselorAccountId, ConsultationStatus status){
+        Account counselor = findActiveCounselor(counselorAccountId);
+        return consultationSessionRepository.findByStationId(counselor.getStationId(), status).stream()
+                .map(ConsultationListResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ConsultationDetailResponse getConsultationDetailForCounselor(String consultationSessionId, Long counselorAccountId){
+        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        findStationCounselor(counselorAccountId, session.getStationId());
+        return ConsultationDetailResponse.from(session);
+    }
+
+    @Transactional
+    public ConsultationEndResponse end(String consultationSessionId, ConsultationEndRequest request, Long accountId){
+        if ("user".equals(request.endedBy()) && (request.userSessionId() == null || request.userSessionId().isBlank())) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+
+        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+
+        if ("counselor".equals(request.endedBy())) {
+            findStationCounselor(accountId, session.getStationId());
+        } else {
+            validateOwner(session, request.userSessionId());
+        }
+
+        if (session.getStatus() != ConsultationStatus.ACCEPTED && session.getStatus() != ConsultationStatus.IN_PROGRESS) {
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
+        }
+
+        session.end();
+        return ConsultationEndResponse.from(session);
+    }
+
+    private Account findActiveCounselor(Long counselorAccountId){
+        if (counselorAccountId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
+        }
+
         Account counselor = accountRepository.findById(counselorAccountId)
                 .filter(account -> account.getAccountType() == AccountType.COUNSELOR)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
@@ -134,7 +178,11 @@ public class ConsultationSessionService {
         if(!counselor.isActive()){
             throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
         }
+        return counselor;
+    }
 
+    private Account findStationCounselor(Long counselorAccountId, Long stationId){
+        Account counselor = findActiveCounselor(counselorAccountId);
         if(!stationId.equals(counselor.getStationId())){
             throw new BusinessException(ErrorCode.CONSULTATION_STATION_MISMATCH);
         }
