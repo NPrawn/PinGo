@@ -17,7 +17,7 @@ public class ConsultationDataChannelEventController {
 
     private final ConsultationDataChannelEventPublisher dataChannelEventPublisher;
 
-    @PostMapping("{consultationRequestId}/data-channel-events")
+    @PostMapping("/{consultationRequestId}/data-channel-events")
     public ApiResponse<Void> publishDataChannelEvent(
             @PathVariable String consultationRequestId,
             @Valid @RequestBody ConsultationDataChannelEventRequest request
