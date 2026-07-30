@@ -25,13 +25,7 @@ public class ConsultationFallbackEventListener {
     }
 
     private ConsultationWaitingEventType toWaitingEventType(ConsultationFallbackEventType type) {
-        return switch (type) {
-            case VIDEO_FAILED -> ConsultationWaitingEventType.WAITING;
-            case AUDIO_ONLY_REQUESTED -> ConsultationWaitingEventType.WAITING;
-            case AUDIO_FAILED -> ConsultationWaitingEventType.WAITING;
-            case CHAT_ONLY_REQUESTED -> ConsultationWaitingEventType.WAITING;
-            case FALLBACK_CONFIRMED -> ConsultationWaitingEventType.WAITING;
-        };
+        return ConsultationWaitingEventType.FALLBACK;
     }
 
     private String messageOf(ConsultationFallbackEventResponse event) {

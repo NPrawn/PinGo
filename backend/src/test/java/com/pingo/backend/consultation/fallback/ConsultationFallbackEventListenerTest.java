@@ -41,7 +41,7 @@ class ConsultationFallbackEventListenerTest {
 
         ConsultationWaitingEventResponse waitingEvent = captor.getValue();
         assertThat(waitingEvent.consultationRequestId()).isEqualTo("consultation-1");
-        assertThat(waitingEvent.type()).isEqualTo(ConsultationWaitingEventType.WAITING);
+        assertThat(waitingEvent.type()).isEqualTo(ConsultationWaitingEventType.FALLBACK);
         assertThat(waitingEvent.signalingRoomId()).isNull();
         assertThat(waitingEvent.message()).isEqualTo("영상 연결에 실패했습니다. 음성 상담으로 전환을 시도합니다.");
         assertThat(waitingEvent.timestamp()).isEqualTo(Instant.parse("2026-07-30T00:00:00Z"));
