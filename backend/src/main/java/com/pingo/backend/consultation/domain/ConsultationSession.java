@@ -85,7 +85,6 @@ public class ConsultationSession {
 
     public void reject(Long counselorId){
         this.status = ConsultationStatus.REJECTED;
-        this.counselorId = counselorId;
     }
 
     public String getSignalingRoomId(){
