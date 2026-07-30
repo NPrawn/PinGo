@@ -301,6 +301,7 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 - `OFFER`, `ANSWER`, `ICE_CANDIDATE`는 동일한 `sessionId`와 `senderType`으로 `JOIN`된 WebSocket session에서 보낸 경우에만 relay된다.
 - `LEAVE` 또는 비정상 연결 종료 시 Backend는 room cleanup을 수행한다.
 - 상담 종료 API가 성공하면 Backend는 해당 signaling room을 즉시 제거하고, room에 남아 있는 WebSocket session을 `4400 Signaling Room Closed`로 종료한다.
+- 상담 수락 API가 성공하면 상담자 상태는 `BUSY`가 되며, 상담 종료 API가 성공하면 `AVAILABLE`로 복귀한다.
 - `JOIN`, `OFFER`, `ANSWER`, `ICE_CANDIDATE` relay 과정에서 room의 마지막 활동 시각을 갱신한다.
 - 마지막 활동 시각 기준으로 만료 시간이 지난 room은 Backend scheduler가 주기적으로 제거한다.
 - 만료 room 제거 시 room에 남아 있는 WebSocket session은 `4408 Signaling Room Expired`로 종료한다.

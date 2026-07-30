@@ -1598,6 +1598,8 @@ Authorization: Bearer {accessToken}
 }
 ```
 
+상담 수락은 상담자 상태가 `AVAILABLE`일 때만 가능하다. 수락이 성공하면 Backend는 해당 상담자의 상태를 `BUSY`로 변경한다. 수락 실패 시 상담자 상태는 변경하지 않는다.
+
 ---
 
 ## 11.4 상담 거절
@@ -1658,6 +1660,7 @@ Authorization: Bearer {accessToken}
 | 수락한 상담자가 아님 | 403 | `CONSULTATION_COUNSELOR_MISMATCH` |
 
 상담 종료가 성공하면 Backend는 해당 `signalingRoomId`의 WebSocket room을 정리하고, 남아 있는 WebSocket session을 `4400 Signaling Room Closed`로 종료한다.
+상담 종료가 성공하면 Backend는 상담자의 상태를 `AVAILABLE`로 복귀시킨다. 종료 실패 시 상담자 상태는 변경하지 않는다.
 
 ---
 
@@ -2568,6 +2571,7 @@ multipart/form-data
 | CONSULTATION_NOT_FOUND          | 상담 세션을 찾을 수 없음                |
 | CONSULTATION_NOT_ENDABLE        | 종료할 수 없는 상담 상태                |
 | CONSULTATION_COUNSELOR_MISMATCH | 담당 상담자가 아님                      |
+| COUNSELOR_NOT_AVAILABLE         | 상담자가 상담 가능한 상태가 아님        |
 | INVALID_CREDENTIALS             | 로그인 ID 또는 비밀번호가 올바르지 않음 |
 | INVALID_CURRENT_PASSWORD        | 현재 비밀번호가 올바르지 않음           |
 | ACCOUNT_NOT_FOUND               | 계정을 찾을 수 없음                     |
