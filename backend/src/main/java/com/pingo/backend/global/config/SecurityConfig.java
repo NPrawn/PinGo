@@ -58,6 +58,7 @@ public class SecurityConfig {
                                 "/api/routes/**",
                                 "/api/external-maps/**",
                                 "/api/consultations/**",
+                                "/api/webrtc/**",
                                 "/api/vps/**"
                         ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

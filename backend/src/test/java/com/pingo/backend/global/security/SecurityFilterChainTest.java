@@ -186,6 +186,13 @@ class SecurityFilterChainTest {
                     """))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void 비로그인_WebRTC_ICEServer_API_200() throws Exception {
+        mockMvc.perform(get("/api/webrtc/ice-servers"))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void 비로그인_상담수락API_401() throws Exception {
         mockMvc.perform(post("/api/consultations/consultation-1/accept"))
