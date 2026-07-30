@@ -16,11 +16,11 @@ import {
   type RequiredPermissionStatuses,
 } from '@/features/permissions';
 import { USER_ROUTES } from '@/shared/config';
-import { BackLink, Button, GhostButton, Kicker, Spring, Sub, Title } from '@/shared/ui';
+import { BackLink, Button, Kicker, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './PermissionPage.module.css';
 
-type Modal = 'none' | 'incomplete' | 'blocked';
+type Modal = 'none' | 'incomplete';
 
 /**
  * Only a granted permission fills its circle. Denied, unsupported and error all
@@ -138,9 +138,6 @@ export function PermissionPage() {
       <Button onClick={() => void start()} disabled={isRequesting}>
         {isRequesting ? '권한 요청 중…' : '권한 허용하고 시작하기'}
       </Button>
-      <GhostButton onClick={() => setModal('blocked')} disabled={isRequesting}>
-        권한 없이 계속하기
-      </GhostButton>
 
       {modal !== 'none' && (
         <PermissionReminder

@@ -5,7 +5,6 @@ import { USER_ROUTES } from '@/shared/config';
 import {
   BackLink,
   Button,
-  GhostButton,
   Icon,
   Icon3d,
   Kicker,
@@ -135,9 +134,6 @@ export function ConsultPermissionPage() {
             <Button className={styles.primary} onClick={allowAll}>
               모두 동의하고 연결
             </Button>
-            <GhostButton className={styles.secondary} onClick={() => setReminderOpen(false)}>
-              직접 선택할게요
-            </GhostButton>
           </div>
         </Sheet>
       )}

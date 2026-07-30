@@ -20,7 +20,7 @@ export function ConsultEndedPage() {
 
   useEffect(() => {
     if (!rated) return;
-    const timer = setTimeout(() => void navigate(USER_ROUTES.DESTINATION), DISMISS_MS);
+    const timer = setTimeout(() => void navigate(USER_ROUTES.STATION), DISMISS_MS);
     return () => clearTimeout(timer);
   }, [rated, navigate]);
 

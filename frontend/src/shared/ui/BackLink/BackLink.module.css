@@ -8,8 +8,12 @@
   margin: 0 0 4px -2px;
   font-size: 14px;
   font-weight: 600;
+  font-family: inherit;
   color: #6d8680;
   text-decoration: none;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
   border-radius: var(--radius-pill);
 }
 

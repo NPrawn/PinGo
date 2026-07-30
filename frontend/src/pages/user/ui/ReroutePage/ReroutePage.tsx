@@ -76,7 +76,7 @@ export function ReroutePage() {
 
             <div className={styles.actions}>
               <ButtonLink
-                to={USER_ROUTES.CAPTURE_GUIDE}
+                to={USER_ROUTES.CAPTURE_PORTRAIT}
                 variant="secondary"
                 className={styles.action}
               >

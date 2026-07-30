@@ -1,3 +1,4 @@
+import { useNavigationStore } from '@/entities/navigation';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import {
@@ -5,8 +6,6 @@ import {
   BlobHero,
   BlobPin,
   ButtonLink,
-  GhostLink,
-  Icon,
   LivePill,
   Spring,
   Sub,
@@ -17,6 +16,10 @@ import styles from './ArrivalPage.module.css';
 
 /** Screen 21 (FR-U-011) — the user reached the destination. */
 export function ArrivalPage() {
+  const route = useNavigationStore((state) => state.route);
+  const destination = useNavigationStore((state) => state.destination) ?? '선택한 목적지';
+  const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
+
   return (
     <PhoneFrame layout="hero" bodyClassName={styles.body}>
       <>
@@ -39,26 +42,22 @@ export function ArrivalPage() {
         </BlobHero>
 
         <Title className={styles.title}>
-          3번 출구에
+          {exit}에
           <br />
           도착했습니다
         </Title>
         <Sub center className={styles.sub}>
-          이용해 주셔서 감사합니다.
+          {destination}에서 가까운 출입구예요.
           <br />
-          다음 목적지도 이어서 안내해드릴게요.
+          안전하게 이동을 마무리해 주세요.
         </Sub>
 
         <Spring />
 
-        <ButtonLink to={USER_ROUTES.EXTERNAL_MAP} className={styles.cta}>
-          <Icon name="compass" size={16} />
-          카카오지도로 이어서 길찾기
+        <ButtonLink to={USER_ROUTES.STATION} className={styles.cta}>
+          새로운 길 안내 시작
         </ButtonLink>
         <ConsultCta size="sm" className={styles.consult} />
-        <GhostLink to={USER_ROUTES.CONSULT_ENDED} className={styles.secondary}>
-          상담 만족도 남기고 종료
-        </GhostLink>
       </>
     </PhoneFrame>
   );

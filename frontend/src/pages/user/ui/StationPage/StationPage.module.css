@@ -1,32 +1,414 @@
-/* Screen 04 (FR-U-003) — confirm current station. Prototype `#s-station`. */
+/* Progressive origin/destination selector. Only the active task is expanded. */
 
-.topSpacer {
-  height: 8px;
+.body {
+  overflow-y: hidden;
 }
 
-.headerBar {
+.mainHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 44px;
 }
 
-.gpsDot {
-  background: #0ea36f;
-  box-shadow: 0 0 0 3px rgb(14 163 111 / 25%);
+.wordmark {
+  font-size: 22px;
+  font-weight: 950;
+  color: var(--color-ink);
+  letter-spacing: -0.05em;
+}
+
+.settingsLink {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  text-decoration: none;
+}
+
+.settingsEmoji {
+  display: block;
+  font-size: 30px;
+  line-height: 1;
+  filter: drop-shadow(0 5px 5px rgb(34 91 69 / 24%))
+    drop-shadow(0 -1px 0 rgb(255 255 255 / 90%));
+  transition:
+    filter 180ms ease,
+    transform 180ms ease;
+}
+
+.settingsLink:hover .settingsEmoji {
+  filter: drop-shadow(0 7px 6px rgb(34 91 69 / 30%))
+    drop-shadow(0 -1px 0 rgb(255 255 255 / 100%));
+  transform: translateY(-1px) rotate(8deg);
+}
+
+.settingsLink:focus-visible {
+  outline: 3px solid rgb(60 216 160 / 30%);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+.hero {
+  position: relative;
+  display: flex;
+  flex: 0 0 154px;
+  flex-direction: column;
+  align-items: flex-start;
+  height: 154px;
+  min-height: 154px;
+  padding: 17px 18px 16px;
+  margin-top: 10px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(240 250 244 / 76%));
+  border: 1px solid rgb(255 255 255 / 92%);
+  border-radius: 22px;
+  box-shadow:
+    0 14px 28px -18px rgb(24 82 60 / 32%),
+    inset 0 1px 0 rgb(255 255 255 / 96%);
+}
+
+.heroGlow {
+  position: absolute;
+  top: -36px;
+  right: -28px;
+  width: 126px;
+  height: 126px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 36% 38%, rgb(127 239 195 / 58%), rgb(60 216 160 / 12%) 52%, transparent 70%);
+  border-radius: 50%;
+}
+
+.heroEyebrow {
+  position: relative;
+  display: block;
+  margin-bottom: 7px;
+  font-size: 9.5px;
+  font-weight: 850;
+  color: var(--color-mint-dark);
+  letter-spacing: 0.07em;
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 12px 14px;
+  margin: 14px 0 0;
+  background: rgb(255 255 255 / 62%);
+  border: 1px solid rgb(255 255 255 / 88%);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.progressItem {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  font-size: 10.5px;
+  font-weight: 750;
+  color: #91a099;
+}
+
+.progressDot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #7f9188;
+  background: #edf3ef;
+  border-radius: 50%;
+}
+
+.progressItemActive {
+  color: var(--color-ink);
+}
+
+.progressItemActive .progressDot {
+  color: #fff;
+  background: var(--color-mint-dark);
+  box-shadow: 0 5px 12px rgb(29 127 88 / 24%);
+}
+
+.progressItemComplete {
+  color: var(--color-mint-darker);
+}
+
+.progressItemComplete .progressDot {
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+}
+
+.progressArrow {
+  position: absolute;
+  top: 5px;
+  right: -4px;
+  color: #bcc8c1;
 }
 
 .title {
+  position: relative;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.description {
+  position: relative;
+  max-width: 270px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.heroConsult {
+  position: relative;
+  align-self: flex-end;
+  margin-top: auto;
+  color: #72564d;
+  background: linear-gradient(145deg, #fff8f5, #f3e4df);
+  border-color: rgb(255 255 255 / 72%);
+  box-shadow:
+    0 7px 16px -10px rgb(118 81 70 / 42%),
+    inset 0 1px 0 rgb(255 255 255 / 82%);
+}
+
+.heroConsult svg {
+  animation: hero-consult-icon-bounce 3.2s ease-in-out infinite;
+}
+
+@keyframes hero-consult-icon-bounce {
+  0%,
+  72%,
+  100% {
+    transform: translateY(0);
+  }
+
+  80% {
+    transform: translateY(-4px);
+  }
+
+  88% {
+    transform: translateY(0);
+  }
+
+  94% {
+    transform: translateY(-2px);
+  }
+}
+
+.section,
+.summaryCard {
+  padding: 14px;
+  margin-top: 12px;
+  background: rgb(255 255 255 / 72%);
+  border: 1px solid rgb(255 255 255 / 92%);
+  border-radius: 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.sectionEntering {
+  animation: reveal-step 240ms ease-out both;
+}
+
+@keyframes reveal-step {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sectionHead,
+.summaryHeading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.step {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border-radius: 9px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 850;
+  color: var(--color-ink);
+}
+
+.sectionMeta {
+  margin: 2px 0 0;
+  font-size: 10.5px;
+  color: var(--color-sub);
+}
+
+.sectionIcon {
+  margin-left: auto;
+  color: var(--color-mint-dark);
+}
+
+.completedCard {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  padding: 13px 14px;
+  margin-top: 12px;
+  background: rgb(255 255 255 / 76%);
+  border: 1px solid rgb(255 255 255 / 94%);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.completedIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border-radius: 12px;
+}
+
+.completedBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.completedBody span,
+.routePoint span {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-sub);
+}
+
+.completedBody strong {
+  overflow: hidden;
+  font-size: 15px;
+  color: var(--color-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changeButton {
+  padding: 7px 10px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--color-mint-darker);
+  cursor: pointer;
+  background: var(--color-mint-light);
+  border: 0;
+  border-radius: var(--radius-pill);
+}
+
+.summaryCard {
+  padding: 16px;
+}
+
+.routeSummary {
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
+}
+
+.routePoint {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 72px;
+  padding: 13px;
+  background: #f5faf7;
+  border: 1px solid #dce9e1;
+  border-radius: 16px;
+}
+
+.routePointBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.routePoint strong {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.25;
+  color: var(--color-ink);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.routeArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  color: var(--color-mint-dark);
+}
+
+.routeArrow svg {
+  transform: rotate(90deg);
+}
+
+.routeEditButton {
+  flex: none;
+  min-width: 52px;
+  min-height: 34px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-mint-darker);
+  cursor: pointer;
+  background: var(--color-mint-light);
+  border: 0;
+  border-radius: var(--radius-pill);
+}
+
+.continueButton {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 50px;
   margin-top: 14px;
 }
 
-.actions {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.cta {
-  flex: 0 0 56px;
-  min-height: 56px;
+@media (prefers-reduced-motion: reduce) {
+  .sectionEntering,
+  .heroConsult svg {
+    animation: none;
+  }
 }

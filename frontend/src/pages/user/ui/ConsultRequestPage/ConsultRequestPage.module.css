@@ -2,13 +2,14 @@
    Ported from prototype `#s-consult-req`. */
 
 .topSpacer {
-  height: 8px;
+  height: 18px;
 }
 
 .header {
   display: flex;
   gap: 12px;
   align-items: center;
+  margin-top: 16px;
 }
 
 .headerIcon {
@@ -27,14 +28,14 @@
 }
 
 .lede {
-  margin-top: 10px;
+  margin-top: 16px;
 }
 
 .issues {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  margin-top: 36px;
+  margin-top: 32px;
 }
 
 .issue {
