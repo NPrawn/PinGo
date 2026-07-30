@@ -5,17 +5,17 @@
 역삼역(`station_id = 1`) 경로 그래프의 좌표계 프레임과 노드 네이밍을 정의한다.
 노드 매칭(제어점·시설 연결)·좌표 해석 시 이 문서를 기준으로 한다.
 
-> **이 문서는 전체 구간 재구축 데이터(B1·B2·B3, 노드 142개·간선 205개) 기준이다.**
-> 아직 DB에 반영되지 않았다 — 현재 DB는 B2·B3 일부 구간(노드 18개·간선 11개)이다.
+> **이 문서는 B1·B2·B3 전체 구간(노드 142개·간선 205개) 기준이다.**
 >
 > | | 노드 | 간선 | 층 |
 > |---|---|---|---|
-> | **이 문서 (재구축)** | 142 | 205 | B1·B2·B3 |
-> | 현재 DB (V4·V5) | 18 | 11 | B2·B3 일부 |
+> | **현재 (V8 재시드 후)** | 142 | 205 | B1·B2·B3 |
+> | 이전 (V4·V5) | 18 | 11 | B2·B3 일부 |
 >
-> - **`node_id`는 전부 `TBD`다.** 재시드에서 확정한다. 기존 18개 노드와의 대응은 §2.3에 있다.
-> - 현재 DB 조회·디버깅이 목적이면 [`V4__seed_yeoksam_b2_b3_route_graph.sql`](../backend/src/main/resources/db/migration/V4__seed_yeoksam_b2_b3_route_graph.sql) + [`V5__seed_yeoksam_facility_and_access_route.sql`](../backend/src/main/resources/db/migration/V5__seed_yeoksam_facility_and_access_route.sql)을 직접 볼 것.
-> - 원본 데이터: `역삼역_11_30.json` (version 17). 재시드 마이그레이션이 이 JSON에서 생성된다.
+> - `node_id`는 **B2 `101~153` · B3 `201~243` · B1 `301~346`** 이다 (§2).
+> - DB 반영: [`V8__reseed_yeoksam_full_route_graph.sql`](../backend/src/main/resources/db/migration/V8__reseed_yeoksam_full_route_graph.sql). 이 마이그레이션이 `station_id = 1`의 그래프를 비우고 새로 채운다. 방식과 근거는 §2.3.
+> - 원본 데이터: `역삼역_11_30.json` (version 17). V8 SQL은 이 JSON에서 생성했다.
+> - V4·V5는 **수정하지 않았다** — 이미 적용된 DB의 Flyway 체크섬이 깨지기 때문이다.
 
 > **provisional 주의**: 축척(0.19 m/px)과 z(±5m)는 잠정값이다. COLMAP↔평면도 sim3 정합(277)과 실측 층고 확보 후 갱신한다.
 
@@ -67,246 +67,228 @@
 
 ## 2. 노드 (route_node)
 
-`name`이 안정 식별 **코드(ASCII)**다. 실제 참조 키는 `node_id`이며 재시드 시 확정된다.
-좌표는 캐노니컬 미터(§1 프레임). `z`는 층 높이이고, B1 안의 `z = 7.5`는 B0.5 중간층이다.
+`name` 이 안정 식별 **코드(ASCII)** 이고 실제 참조 키는 `node_id` 다.
+좌표는 캐노니컬 미터(§1 프레임). `z` 는 층 높이이고, B1 안의 `z = 7.5` 는 B0.5 중간층이다.
 
-| 층 | 복도 노드 | 시설 노드 | 합 |
-|---|---|---|---|
-| B1 | 15 | 31 | 46 |
-| B2 | 17 | 36 | 53 |
-| B3 | 33 | 10 | 43 |
-| **합** | **65** | **77** | **142** |
+**`node_id` 체계**: B2 = `101~`, B3 = `201~`, B1 = `301~` (V4 관례 유지).
+층 안에서는 복도(`R`) 다음 시설(`F`), 이름 오름차순이다.
+
+| 층 | 복도 노드 | 시설 노드 | 합 | node_id |
+|---|---|---|---|---|
+| B1 | 15 | 31 | 46 | `301~346` |
+| B2 | 17 | 36 | 53 | `101~153` |
+| B3 | 33 | 10 | 43 | `201~243` |
+| **합** | **65** | **77** | **142** | |
 
 ### 2.1 복도 노드
 
-`node_type`은 `normal`(일반 복도) 또는 `junction`(교차). 이름은 `B{층}_R{순번}`.
+`node_type` 은 `normal`(일반 복도) 또는 `junction`(교차). 이름은 `B{층}_R{순번}`.
 
 **B1** (15개)
 
-| name | node_type | x | y | z | node_id |
+| node_id | name | node_type | x | y | z |
 |---|---|---|---|---|---|
-| `B1_R001` | normal | 113.924 | -26.944 | 5 | TBD |
-| `B1_R002` | junction | 112.579 | -19.566 | 5 | TBD |
-| `B1_R003` | normal | 118.58 | -19.268 | 5 | TBD |
-| `B1_R004` | normal | 123.5 | -19.136 | 5 | TBD |
-| `B1_R005` | normal | 147.245 | -19.573 | 5 | TBD |
-| `B1_R006` | junction | 103.468 | 4.157 | 5 | TBD |
-| `B1_R007` | junction | 114.59 | 5.049 | 5 | TBD |
-| `B1_R008` | normal | 123.388 | 5.034 | 5 | TBD |
-| `B1_R009` | normal | 102.203 | 25.074 | 5 | TBD |
-| `B1_R010` | junction | 113.477 | 18.379 | 5 | TBD |
-| `B1_R011` | junction | 121.616 | 18.746 | 5 | TBD |
-| `B1_R012` | normal | 113.498 | 47.443 | 5 | TBD |
-| `B1_R013` | normal | 118.619 | 48.035 | 5 | TBD |
-| `B1_R014` | junction | 124.413 | 47.233 | 5 | TBD |
-| `B1_R015` | normal | 144.494 | 48.682 | 5 | TBD |
+| 301 | `B1_R001` | normal | 113.924 | -26.944 | 5 |
+| 302 | `B1_R002` | junction | 112.579 | -19.566 | 5 |
+| 303 | `B1_R003` | normal | 118.58 | -19.268 | 5 |
+| 304 | `B1_R004` | normal | 123.5 | -19.136 | 5 |
+| 305 | `B1_R005` | normal | 147.245 | -19.573 | 5 |
+| 306 | `B1_R006` | junction | 103.468 | 4.157 | 5 |
+| 307 | `B1_R007` | junction | 114.59 | 5.049 | 5 |
+| 308 | `B1_R008` | normal | 123.388 | 5.034 | 5 |
+| 309 | `B1_R009` | normal | 102.203 | 25.074 | 5 |
+| 310 | `B1_R010` | junction | 113.477 | 18.379 | 5 |
+| 311 | `B1_R011` | junction | 121.616 | 18.746 | 5 |
+| 312 | `B1_R012` | normal | 113.498 | 47.443 | 5 |
+| 313 | `B1_R013` | normal | 118.619 | 48.035 | 5 |
+| 314 | `B1_R014` | junction | 124.413 | 47.233 | 5 |
+| 315 | `B1_R015` | normal | 144.494 | 48.682 | 5 |
 
 **B2** (17개)
 
-| name | node_type | x | y | z | node_id |
+| node_id | name | node_type | x | y | z |
 |---|---|---|---|---|---|
-| `B2_R001` | junction | -58.243 | 15.649 | 0 | TBD |
-| `B2_R002` | normal | -32.929 | 15.442 | 0 | TBD |
-| `B2_R003` | normal | -13.861 | 14.584 | 0 | TBD |
-| `B2_R004` | normal | -0.088 | 15.87 | 0 | TBD |
-| `B2_R005` | normal | 6.691 | 9.59 | 0 | TBD |
-| `B2_R006` | normal | 27.841 | 9.926 | 0 | TBD |
-| `B2_R007` | normal | 43.544 | 10.18 | 0 | TBD |
-| `B2_R008` | normal | 75.253 | 9.914 | 0 | TBD |
-| `B2_R009` | normal | 96.589 | 8.794 | 0 | TBD |
-| `B2_R010` | normal | 112.477 | 9.884 | 0 | TBD |
-| `B2_R011` | normal | 130.154 | 11.289 | 0 | TBD |
-| `B2_R012` | normal | 153.054 | 9.757 | 0 | TBD |
-| `B2_R013` | normal | 124.975 | 19.293 | 0 | TBD |
-| `B2_R014` | normal | 137.963 | 20.312 | 0 | TBD |
-| `B2_R015` | normal | 152.747 | 19.707 | 0 | TBD |
-| `B2_R016` | normal | -59.077 | -10.673 | 0 | TBD |
-| `B2_R017` | normal | -60.149 | 38.865 | 0 | TBD |
+| 101 | `B2_R001` | junction | -58.243 | 15.649 | 0 |
+| 102 | `B2_R002` | normal | -32.929 | 15.442 | 0 |
+| 103 | `B2_R003` | normal | -13.861 | 14.584 | 0 |
+| 104 | `B2_R004` | normal | -0.088 | 15.87 | 0 |
+| 105 | `B2_R005` | normal | 6.691 | 9.59 | 0 |
+| 106 | `B2_R006` | normal | 27.841 | 9.926 | 0 |
+| 107 | `B2_R007` | normal | 43.544 | 10.18 | 0 |
+| 108 | `B2_R008` | normal | 75.253 | 9.914 | 0 |
+| 109 | `B2_R009` | normal | 96.589 | 8.794 | 0 |
+| 110 | `B2_R010` | normal | 112.477 | 9.884 | 0 |
+| 111 | `B2_R011` | normal | 130.154 | 11.289 | 0 |
+| 112 | `B2_R012` | normal | 153.054 | 9.757 | 0 |
+| 113 | `B2_R013` | normal | 124.975 | 19.293 | 0 |
+| 114 | `B2_R014` | normal | 137.963 | 20.312 | 0 |
+| 115 | `B2_R015` | normal | 152.747 | 19.707 | 0 |
+| 116 | `B2_R016` | normal | -59.077 | -10.673 | 0 |
+| 117 | `B2_R017` | normal | -60.149 | 38.865 | 0 |
 
 **B3** (33개)
 
-| name | node_type | x | y | z | node_id |
+| node_id | name | node_type | x | y | z |
 |---|---|---|---|---|---|
-| `B3_R001` | normal | -91.253 | 23.183 | -5 | TBD |
-| `B3_R002` | normal | -67.857 | 22.993 | -5 | TBD |
-| `B3_R003` | normal | -41.085 | 22.97 | -5 | TBD |
-| `B3_R004` | normal | -23.477 | 23.008 | -5 | TBD |
-| `B3_R005` | normal | -4.888 | 22.595 | -5 | TBD |
-| `B3_R006` | normal | 2.974 | 22.729 | -5 | TBD |
-| `B3_R007` | normal | 22.598 | 23.105 | -5 | TBD |
-| `B3_R008` | normal | 30.475 | 23.555 | -5 | TBD |
-| `B3_R009` | normal | 49.121 | 24.331 | -5 | TBD |
-| `B3_R010` | normal | 74.392 | 24.234 | -5 | TBD |
-| `B3_R011` | normal | 96.171 | 23.286 | -5 | TBD |
-| `B3_R012` | normal | 106.264 | 22.653 | -5 | TBD |
-| `B3_R013` | normal | 125.057 | 23.067 | -5 | TBD |
-| `B3_R014` | normal | 152.541 | 24.549 | -5 | TBD |
-| `B3_R015` | normal | 160.945 | 24.788 | -5 | TBD |
-| `B3_R016` | normal | 180.499 | 25.673 | -5 | TBD |
-| `B3_R017` | normal | -89.491 | 3.607 | -5 | TBD |
-| `B3_R018` | normal | -67.473 | 4.663 | -5 | TBD |
-| `B3_R019` | normal | -45.091 | 4.459 | -5 | TBD |
-| `B3_R020` | normal | -31.213 | 5.301 | -5 | TBD |
-| `B3_R021` | normal | -23.425 | 5.861 | -5 | TBD |
-| `B3_R022` | normal | -3.999 | 6.064 | -5 | TBD |
-| `B3_R023` | normal | 5.911 | 6.058 | -5 | TBD |
-| `B3_R024` | normal | 23.305 | 5.866 | -5 | TBD |
-| `B3_R025` | normal | 31.017 | 6.21 | -5 | TBD |
-| `B3_R026` | normal | 49.955 | 4.521 | -5 | TBD |
-| `B3_R027` | normal | 75.643 | 4.331 | -5 | TBD |
-| `B3_R028` | normal | 97.385 | 6.427 | -5 | TBD |
-| `B3_R029` | normal | 107.318 | 6.947 | -5 | TBD |
-| `B3_R030` | normal | 129.855 | 7.477 | -5 | TBD |
-| `B3_R031` | normal | 151.774 | 7.536 | -5 | TBD |
-| `B3_R032` | normal | 162.004 | 7.63 | -5 | TBD |
-| `B3_R033` | normal | 182.507 | 6.446 | -5 | TBD |
+| 201 | `B3_R001` | normal | -91.253 | 23.183 | -5 |
+| 202 | `B3_R002` | normal | -67.857 | 22.993 | -5 |
+| 203 | `B3_R003` | normal | -41.085 | 22.97 | -5 |
+| 204 | `B3_R004` | normal | -23.477 | 23.008 | -5 |
+| 205 | `B3_R005` | normal | -4.888 | 22.595 | -5 |
+| 206 | `B3_R006` | normal | 2.974 | 22.729 | -5 |
+| 207 | `B3_R007` | normal | 22.598 | 23.105 | -5 |
+| 208 | `B3_R008` | normal | 30.475 | 23.555 | -5 |
+| 209 | `B3_R009` | normal | 49.121 | 24.331 | -5 |
+| 210 | `B3_R010` | normal | 74.392 | 24.234 | -5 |
+| 211 | `B3_R011` | normal | 96.171 | 23.286 | -5 |
+| 212 | `B3_R012` | normal | 106.264 | 22.653 | -5 |
+| 213 | `B3_R013` | normal | 125.057 | 23.067 | -5 |
+| 214 | `B3_R014` | normal | 152.541 | 24.549 | -5 |
+| 215 | `B3_R015` | normal | 160.945 | 24.788 | -5 |
+| 216 | `B3_R016` | normal | 180.499 | 25.673 | -5 |
+| 217 | `B3_R017` | normal | -89.491 | 3.607 | -5 |
+| 218 | `B3_R018` | normal | -67.473 | 4.663 | -5 |
+| 219 | `B3_R019` | normal | -45.091 | 4.459 | -5 |
+| 220 | `B3_R020` | normal | -31.213 | 5.301 | -5 |
+| 221 | `B3_R021` | normal | -23.425 | 5.861 | -5 |
+| 222 | `B3_R022` | normal | -3.999 | 6.064 | -5 |
+| 223 | `B3_R023` | normal | 5.911 | 6.058 | -5 |
+| 224 | `B3_R024` | normal | 23.305 | 5.866 | -5 |
+| 225 | `B3_R025` | normal | 31.017 | 6.21 | -5 |
+| 226 | `B3_R026` | normal | 49.955 | 4.521 | -5 |
+| 227 | `B3_R027` | normal | 75.643 | 4.331 | -5 |
+| 228 | `B3_R028` | normal | 97.385 | 6.427 | -5 |
+| 229 | `B3_R029` | normal | 107.318 | 6.947 | -5 |
+| 230 | `B3_R030` | normal | 129.855 | 7.477 | -5 |
+| 231 | `B3_R031` | normal | 151.774 | 7.536 | -5 |
+| 232 | `B3_R032` | normal | 162.004 | 7.63 | -5 |
+| 233 | `B3_R033` | normal | 182.507 | 6.446 | -5 |
 
 ### 2.2 시설 노드
 
-이름은 `B{층}_F{순번}`. `accessible`은 휠체어 접근 가능 여부다.
-시설도 그래프 노드로 두므로 `facility.linked_node_id`는 **그 시설 자신의 노드**를 가리킨다.
+이름은 `B{층}_F{순번}`. `acc` 는 휠체어 접근 가능 여부다.
+시설도 그래프 노드로 두므로 `facility.linked_node_id` 는 **그 시설 자신의 노드**를 가리킨다.
 
 **B1** (31개)
 
-| name | 이름(ko) | node_type | facility_type | x | y | z | acc | node_id |
+| node_id | name | 이름(ko) | node_type | facility_type | x | y | z | acc |
 |---|---|---|---|---|---|---|---|---|
-| `B1_F001` | 6번 출구 계단 | floor_transition | stair | 101.027 | -31.457 | 5 | × | TBD |
-| `B1_F002` | 6번 출구 | exit | exit | 100.354 | -39.875 | 5 | × | TBD |
-| `B1_F003` | B0.5→B1 에스컬레이터 출발점 B | floor_transition | escalator | 112.048 | -14.93 | 7.5 | × | TBD |
-| `B1_F004` | 5번 출구 계단 | floor_transition | stair | 104.489 | -19.357 | 5 | × | TBD |
-| `B1_F005` | 5번 출구 | exit | exit | 97.454 | -19.34 | 5 | × | TBD |
-| `B1_F006` | B0.5-B1 계단 2 | floor_transition | stair | 117.81 | -14.342 | 7.5 | × | TBD |
-| `B1_F007` | B1→B0.5 에스컬레이터 도착점 B | floor_transition | escalator | 123.676 | -14.351 | 7.5 | × | TBD |
-| `B1_F008` | 7번 출구 계단 | floor_transition | stair | 148.48 | -26.993 | 5 | × | TBD |
-| `B1_F009` | 8번 출구 계단 | floor_transition | stair | 151.292 | -18.507 | 5 | × | TBD |
-| `B1_F010` | 7번 출구 | exit | exit | 149.166 | -33.989 | 5 | × | TBD |
-| `B1_F011` | 8번 출구 | exit | exit | 159.425 | -18.779 | 5 | × | TBD |
-| `B1_F012` | B0.5→B1 에스컬레이터 도착점 B | floor_transition | escalator | 113.026 | -2.06 | 5 | × | TBD |
-| `B1_F013` | B1-B0.5 계단 2 | floor_transition | stair | 118.837 | -3.237 | 5 | × | TBD |
-| `B1_F014` | B1-B2 에스컬레이터 B | floor_transition | escalator | 133.136 | 0.293 | 5 | × | TBD |
-| `B1_F015` | B1→B0.5 에스컬레이터 출발점 B | floor_transition | escalator | 123.767 | -1.827 | 5 | × | TBD |
-| `B1_F016` | B1-B2 계단 B | floor_transition | stair | 132.772 | 6.14 | 5 | × | TBD |
-| `B1_F017` | 약국 | facility | pharmacy | 135.08 | 12.646 | 5 | × | TBD |
-| `B1_F018` | 강남파이낸스센터(GFC몰) 연결 출입구 | exit | exit | 100.27 | 28.399 | 5 | × | TBD |
-| `B1_F019` | B1→B0.5 에스컬레이터 출발점 A | floor_transition | escalator | 113.403 | 29.691 | 5 | × | TBD |
-| `B1_F020` | B0.5→B1 에스컬레이터 도착점 A | floor_transition | escalator | 123.646 | 30.877 | 5 | × | TBD |
-| `B1_F021` | B1-B2 에스컬레이터 A | floor_transition | escalator | 133.751 | 26.53 | 5 | × | TBD |
-| `B1_F022` | B1-B0.5 계단 1 | floor_transition | stair | 118.419 | 30.88 | 5 | × | TBD |
-| `B1_F023` | B1-B2 계단 A | floor_transition | stair | 132.462 | 20.676 | 5 | × | TBD |
-| `B1_F024` | B1→B0.5 에스컬레이터 도착점 A | floor_transition | escalator | 113.574 | 43.65 | 7.5 | × | TBD |
-| `B1_F025` | 2번 출구 계단 | floor_transition | stair | 105.672 | 47.58 | 5 | × | TBD |
-| `B1_F026` | 2번 출구 | exit | exit | 99.725 | 48.451 | 5 | × | TBD |
-| `B1_F027` | B0.5-B1 계단 1 | floor_transition | stair | 118.851 | 41.882 | 7.5 | × | TBD |
-| `B1_F028` | B0.5→B1 에스컬레이터 출발점 A | floor_transition | escalator | 123.508 | 43.42 | 7.5 | × | TBD |
-| `B1_F029` | 1번 출구 계단 | floor_transition | stair | 131.691 | 48.932 | 5 | × | TBD |
-| `B1_F030` | 1번 출구 | exit | exit | 146.703 | 66.238 | 5 | × | TBD |
-| `B1_F031` | 7·8번 출구 계단 | floor_transition | stair | 136.197 | -19.669 | 5 | × | TBD |
+| 316 | `B1_F001` | 6번 출구 계단 | floor_transition | stair | 101.027 | -31.457 | 5 | X |
+| 317 | `B1_F002` | 6번 출구 | exit | exit | 100.354 | -39.875 | 5 | X |
+| 318 | `B1_F003` | B0.5→B1 에스컬레이터 출발점 B | floor_transition | escalator | 112.048 | -14.93 | 7.5 | X |
+| 319 | `B1_F004` | 5번 출구 계단 | floor_transition | stair | 104.489 | -19.357 | 5 | X |
+| 320 | `B1_F005` | 5번 출구 | exit | exit | 97.454 | -19.34 | 5 | X |
+| 321 | `B1_F006` | B0.5-B1 계단 2 | floor_transition | stair | 117.81 | -14.342 | 7.5 | X |
+| 322 | `B1_F007` | B1→B0.5 에스컬레이터 도착점 B | floor_transition | escalator | 123.676 | -14.351 | 7.5 | X |
+| 323 | `B1_F008` | 7번 출구 계단 | floor_transition | stair | 148.48 | -26.993 | 5 | X |
+| 324 | `B1_F009` | 8번 출구 계단 | floor_transition | stair | 151.292 | -18.507 | 5 | X |
+| 325 | `B1_F010` | 7번 출구 | exit | exit | 149.166 | -33.989 | 5 | X |
+| 326 | `B1_F011` | 8번 출구 | exit | exit | 159.425 | -18.779 | 5 | X |
+| 327 | `B1_F012` | B0.5→B1 에스컬레이터 도착점 B | floor_transition | escalator | 113.026 | -2.06 | 5 | X |
+| 328 | `B1_F013` | B1-B0.5 계단 2 | floor_transition | stair | 118.837 | -3.237 | 5 | X |
+| 329 | `B1_F014` | B1-B2 에스컬레이터 B | floor_transition | escalator | 133.136 | 0.293 | 5 | X |
+| 330 | `B1_F015` | B1→B0.5 에스컬레이터 출발점 B | floor_transition | escalator | 123.767 | -1.827 | 5 | X |
+| 331 | `B1_F016` | B1-B2 계단 B | floor_transition | stair | 132.772 | 6.14 | 5 | X |
+| 332 | `B1_F017` | 약국 | facility | pharmacy | 135.08 | 12.646 | 5 | X |
+| 333 | `B1_F018` | 강남파이낸스센터(GFC몰) 연결 출입구 | exit | exit | 100.27 | 28.399 | 5 | X |
+| 334 | `B1_F019` | B1→B0.5 에스컬레이터 출발점 A | floor_transition | escalator | 113.403 | 29.691 | 5 | X |
+| 335 | `B1_F020` | B0.5→B1 에스컬레이터 도착점 A | floor_transition | escalator | 123.646 | 30.877 | 5 | X |
+| 336 | `B1_F021` | B1-B2 에스컬레이터 A | floor_transition | escalator | 133.751 | 26.53 | 5 | X |
+| 337 | `B1_F022` | B1-B0.5 계단 1 | floor_transition | stair | 118.419 | 30.88 | 5 | X |
+| 338 | `B1_F023` | B1-B2 계단 A | floor_transition | stair | 132.462 | 20.676 | 5 | X |
+| 339 | `B1_F024` | B1→B0.5 에스컬레이터 도착점 A | floor_transition | escalator | 113.574 | 43.65 | 7.5 | X |
+| 340 | `B1_F025` | 2번 출구 계단 | floor_transition | stair | 105.672 | 47.58 | 5 | X |
+| 341 | `B1_F026` | 2번 출구 | exit | exit | 99.725 | 48.451 | 5 | X |
+| 342 | `B1_F027` | B0.5-B1 계단 1 | floor_transition | stair | 118.851 | 41.882 | 7.5 | X |
+| 343 | `B1_F028` | B0.5→B1 에스컬레이터 출발점 A | floor_transition | escalator | 123.508 | 43.42 | 7.5 | X |
+| 344 | `B1_F029` | 1번 출구 계단 | floor_transition | stair | 131.691 | 48.932 | 5 | X |
+| 345 | `B1_F030` | 1번 출구 | exit | exit | 146.703 | 66.238 | 5 | X |
+| 346 | `B1_F031` | 7·8번 출구 계단 | floor_transition | stair | 136.197 | -19.669 | 5 | X |
 
 **B2** (36개)
 
-| name | 이름(ko) | node_type | facility_type | x | y | z | acc | node_id |
+| node_id | name | 이름(ko) | node_type | facility_type | x | y | z | acc |
 |---|---|---|---|---|---|---|---|---|
-| `B2_F001` | 약국 A | facility | pharmacy | -50.079 | 6.468 | 0 | × | TBD |
-| `B2_F002` | B2-B3 계단 6 | floor_transition | stair | -9.571 | 28.108 | 0 | × | TBD |
-| `B2_F003` | B2-B3 계단 8 | floor_transition | stair | -9.108 | 1.397 | 0 | × | TBD |
-| `B2_F004` | 교통카드 충전기 A | facility | card_charger | -12.433 | 23.863 | 0 | ○ | TBD |
-| `B2_F005` | 승차권 발매기 | facility | ticket_machine | -15.641 | 23.533 | 0 | ○ | TBD |
-| `B2_F006` | B2-B3 엘리베이터 A | floor_transition | elevator | -0.4 | 27.2 | 0 | ○ | TBD |
-| `B2_F007` | B2-B3 계단 5 | floor_transition | stair | 7.989 | 28.83 | 0 | × | TBD |
-| `B2_F008` | 개찰구 A | gate | gate | -3.893 | 24.329 | 0 | ○ | TBD |
-| `B2_F009` | B2-B3 엘리베이터 B | floor_transition | elevator | 0 | 0 | 0 | ○ | TBD |
-| `B2_F010` | B2-B3 계단 7 | floor_transition | stair | 8.164 | 1.881 | 0 | × | TBD |
-| `B2_F011` | 개찰구 B | gate | gate | -0.552 | 6.358 | 0 | ○ | TBD |
-| `B2_F012` | 물품보관함 | facility | locker | 33.852 | 3.985 | 0 | × | TBD |
-| `B2_F013` | 화장실 | facility | restroom | 39.5 | 25.8 | 0 | ○ | TBD |
-| `B2_F014` | 약국 B | facility | pharmacy | 42.945 | 4.849 | 0 | × | TBD |
-| `B2_F015` | 편의점 | facility | convenience_store | 75.39 | 4.846 | 0 | × | TBD |
-| `B2_F016` | 안내센터 A | facility | info | 96.7 | 13 | 0 | ○ | TBD |
-| `B2_F017` | 교통카드 충전기 B | facility | card_charger | 117.142 | 4.726 | 0 | × | TBD |
-| `B2_F018` | 안내센터 B | facility | info | 118.4 | 14.3 | 0 | ○ | TBD |
-| `B2_F019` | 외화 환전기 | facility | currency_exchange_machine | 112.05 | 4.111 | 0 | × | TBD |
-| `B2_F020` | B2-B3 계단 2 | floor_transition | stair | 122.767 | 28.292 | 0 | × | TBD |
-| `B2_F021` | B2-B3 계단 3 | floor_transition | stair | 139.58 | 0.177 | 0 | × | TBD |
-| `B2_F022` | B2-B3 계단 4 | floor_transition | stair | 122.959 | 0.968 | 0 | × | TBD |
-| `B2_F023` | 개찰구 C | gate | gate | 130.22 | 3.923 | 0 | ○ | TBD |
-| `B2_F024` | 개찰구 D | gate | gate | 130.012 | 24.742 | 0 | ○ | TBD |
-| `B2_F025` | B1-B2 에스컬레이터 B | floor_transition | escalator | 153.58 | -0.547 | 0 | × | TBD |
-| `B2_F026` | B1-B2 계단 B | floor_transition | stair | 153.512 | 4.496 | 0 | × | TBD |
-| `B2_F027` | 뽑기방 | facility | claw_machine_arcade | 160.676 | 13.746 | 0 | × | TBD |
-| `B2_F028` | B1-B2 에스컬레이터 A | floor_transition | escalator | 154.45 | 30.055 | 0 | × | TBD |
-| `B2_F029` | B1-B2 계단 A | floor_transition | stair | 153.346 | 25.038 | 0 | × | TBD |
-| `B2_F030` | B2-B3 계단 1 | floor_transition | stair | 137.253 | 28.072 | 0 | × | TBD |
-| `B2_F031` | 4번 출구 엘리베이터 | floor_transition | elevator | -55.4 | -14.8 | 0 | ○ | TBD |
-| `B2_F032` | 4번 출구 에스컬레이터 | floor_transition | escalator | -65.495 | -13.173 | 0 | × | TBD |
-| `B2_F033` | 4번 출구 | exit | exit | -77.166 | -13.641 | 0 | × | TBD |
-| `B2_F034` | 3번 출구 엘리베이터 | floor_transition | elevator | -58.4 | 42.5 | 0 | ○ | TBD |
-| `B2_F035` | 3번 출구 에스컬레이터 | floor_transition | escalator | -70.554 | 41.697 | 0 | × | TBD |
-| `B2_F036` | 3번 출구 | exit | exit | -79.138 | 41.157 | 0 | × | TBD |
+| 118 | `B2_F001` | 약국 A | facility | pharmacy | -50.079 | 6.468 | 0 | X |
+| 119 | `B2_F002` | B2-B3 계단 6 | floor_transition | stair | -9.571 | 28.108 | 0 | X |
+| 120 | `B2_F003` | B2-B3 계단 8 | floor_transition | stair | -9.108 | 1.397 | 0 | X |
+| 121 | `B2_F004` | 교통카드 충전기 A | facility | card_charger | -12.433 | 23.863 | 0 | O |
+| 122 | `B2_F005` | 승차권 발매기 | facility | ticket_machine | -15.641 | 23.533 | 0 | O |
+| 123 | `B2_F006` | B2-B3 엘리베이터 A | floor_transition | elevator | -0.4 | 27.2 | 0 | O |
+| 124 | `B2_F007` | B2-B3 계단 5 | floor_transition | stair | 7.989 | 28.83 | 0 | X |
+| 125 | `B2_F008` | 개찰구 A | gate | gate | -3.893 | 24.329 | 0 | O |
+| 126 | `B2_F009` | B2-B3 엘리베이터 B | floor_transition | elevator | 0 | 0 | 0 | O |
+| 127 | `B2_F010` | B2-B3 계단 7 | floor_transition | stair | 8.164 | 1.881 | 0 | X |
+| 128 | `B2_F011` | 개찰구 B | gate | gate | -0.552 | 6.358 | 0 | O |
+| 129 | `B2_F012` | 물품보관함 | facility | locker | 33.852 | 3.985 | 0 | X |
+| 130 | `B2_F013` | 화장실 | facility | restroom | 39.5 | 25.8 | 0 | O |
+| 131 | `B2_F014` | 약국 B | facility | pharmacy | 42.945 | 4.849 | 0 | X |
+| 132 | `B2_F015` | 편의점 | facility | convenience_store | 75.39 | 4.846 | 0 | X |
+| 133 | `B2_F016` | 안내센터 A | facility | info | 96.7 | 13 | 0 | O |
+| 134 | `B2_F017` | 교통카드 충전기 B | facility | card_charger | 117.142 | 4.726 | 0 | X |
+| 135 | `B2_F018` | 안내센터 B | facility | info | 118.4 | 14.3 | 0 | O |
+| 136 | `B2_F019` | 외화 환전기 | facility | currency_exchange_machine | 112.05 | 4.111 | 0 | X |
+| 137 | `B2_F020` | B2-B3 계단 2 | floor_transition | stair | 122.767 | 28.292 | 0 | X |
+| 138 | `B2_F021` | B2-B3 계단 3 | floor_transition | stair | 139.58 | 0.177 | 0 | X |
+| 139 | `B2_F022` | B2-B3 계단 4 | floor_transition | stair | 122.959 | 0.968 | 0 | X |
+| 140 | `B2_F023` | 개찰구 C | gate | gate | 130.22 | 3.923 | 0 | O |
+| 141 | `B2_F024` | 개찰구 D | gate | gate | 130.012 | 24.742 | 0 | O |
+| 142 | `B2_F025` | B1-B2 에스컬레이터 B | floor_transition | escalator | 153.58 | -0.547 | 0 | X |
+| 143 | `B2_F026` | B1-B2 계단 B | floor_transition | stair | 153.512 | 4.496 | 0 | X |
+| 144 | `B2_F027` | 뽑기방 | facility | claw_machine_arcade | 160.676 | 13.746 | 0 | X |
+| 145 | `B2_F028` | B1-B2 에스컬레이터 A | floor_transition | escalator | 154.45 | 30.055 | 0 | X |
+| 146 | `B2_F029` | B1-B2 계단 A | floor_transition | stair | 153.346 | 25.038 | 0 | X |
+| 147 | `B2_F030` | B2-B3 계단 1 | floor_transition | stair | 137.253 | 28.072 | 0 | X |
+| 148 | `B2_F031` | 4번 출구 엘리베이터 | floor_transition | elevator | -55.4 | -14.8 | 0 | O |
+| 149 | `B2_F032` | 4번 출구 에스컬레이터 | floor_transition | escalator | -65.495 | -13.173 | 0 | X |
+| 150 | `B2_F033` | 4번 출구 | exit | exit | -77.166 | -13.641 | 0 | X |
+| 151 | `B2_F034` | 3번 출구 엘리베이터 | floor_transition | elevator | -58.4 | 42.5 | 0 | O |
+| 152 | `B2_F035` | 3번 출구 에스컬레이터 | floor_transition | escalator | -70.554 | 41.697 | 0 | X |
+| 153 | `B2_F036` | 3번 출구 | exit | exit | -79.138 | 41.157 | 0 | X |
 
 **B3** (10개)
 
-| name | 이름(ko) | node_type | facility_type | x | y | z | acc | node_id |
+| node_id | name | 이름(ko) | node_type | facility_type | x | y | z | acc |
 |---|---|---|---|---|---|---|---|---|
-| `B3_F001` | B2-B3 계단 6 | floor_transition | stair | -25.3 | 25.601 | -5 | × | TBD |
-| `B3_F002` | B2-B3 엘리베이터 A | floor_transition | elevator | -0.401 | 27.2 | -5 | ○ | TBD |
-| `B3_F003` | B2-B3 계단 5 | floor_transition | stair | 21.56 | 27.36 | -5 | × | TBD |
-| `B3_F004` | B2-B3 계단 2 | floor_transition | stair | 105.207 | 27.57 | -5 | × | TBD |
-| `B3_F005` | B2-B3 계단 1 | floor_transition | stair | 150.602 | 28.811 | -5 | × | TBD |
-| `B3_F006` | B2-B3 계단 8 | floor_transition | stair | -22.985 | 0.709 | -5 | × | TBD |
-| `B3_F007` | B2-B3 엘리베이터 B | floor_transition | elevator | 0.0 | 0.0 | -5 | ○ | TBD |
-| `B3_F008` | B2-B3 계단 7 | floor_transition | stair | 21.789 | 1.58 | -5 | × | TBD |
-| `B3_F009` | B2-B3 계단 4 | floor_transition | stair | 105.368 | 1.635 | -5 | × | TBD |
-| `B3_F010` | B2-B3 계단 3 | floor_transition | stair | 151.648 | 3.221 | -5 | × | TBD |
+| 234 | `B3_F001` | B2-B3 계단 6 | floor_transition | stair | -25.3 | 25.601 | -5 | X |
+| 235 | `B3_F002` | B2-B3 엘리베이터 A | floor_transition | elevator | -0.401 | 27.2 | -5 | O |
+| 236 | `B3_F003` | B2-B3 계단 5 | floor_transition | stair | 21.56 | 27.36 | -5 | X |
+| 237 | `B3_F004` | B2-B3 계단 2 | floor_transition | stair | 105.207 | 27.57 | -5 | X |
+| 238 | `B3_F005` | B2-B3 계단 1 | floor_transition | stair | 150.602 | 28.811 | -5 | X |
+| 239 | `B3_F006` | B2-B3 계단 8 | floor_transition | stair | -22.985 | 0.709 | -5 | X |
+| 240 | `B3_F007` | B2-B3 엘리베이터 B | floor_transition | elevator | 0.0 | 0.0 | -5 | O |
+| 241 | `B3_F008` | B2-B3 계단 7 | floor_transition | stair | 21.789 | 1.58 | -5 | X |
+| 242 | `B3_F009` | B2-B3 계단 4 | floor_transition | stair | 105.368 | 1.635 | -5 | X |
+| 243 | `B3_F010` | B2-B3 계단 3 | floor_transition | stair | 151.648 | 3.221 | -5 | X |
 
-### 2.3 기존 `node_id` 재사용 계획
+### 2.3 재시드 방식
 
-**이 문서의 데이터가 기준이다.** 아래 표는 기존 DB 값을 검토하려는 것이 아니라,
-현재 DB에 있는 18개 `route_node` 행을 어떤 신규 노드로 **UPDATE**할지 정한 것이다.
+[`V8__reseed_yeoksam_full_route_graph.sql`](../backend/src/main/resources/db/migration/V8__reseed_yeoksam_full_route_graph.sql)
+이 `station_id = 1` 의 그래프를 **비우고 새로 채운다**. 기존 노드를 UPDATE 로 짜맞추지 않는다.
 
-`route_node`는 `user_session.current_node_id`·`consultation_session.current_node_id`가 참조하므로
-**DELETE하면 안 된다.** 그래서 기존 행을 재사용하고, 나머지 124개는 INSERT한다.
+**V4·V5 를 수정하지 않는 이유** — 이미 적용된 DB 에 Flyway 체크섬이 기록돼 있다.
+파일을 고치면 팀원 로컬과 배포 환경이 전부 기동에 실패한다. 그래서 새 마이그레이션에서 교체한다.
 
-`V4 (x, y)` 열은 참고용이다 — UPDATE 후에는 신규 좌표가 값이 된다.
-`이동` 열은 그 행의 좌표가 얼마나 바뀌는지를 뜻한다.
+**DELETE 후 재삽입이 가능한 이유** — `route_node` 를 참조하는 FK 가 8개인데,
+경로 그래프 자체(`route_edge` 2개, `facility` 1개)를 빼면 외부 참조는 5개이고 전부 임시 데이터다.
 
-| node_id | 현 DB name | 층 | 현 DB (x, y) | → UPDATE 대상 | 신규 (x, y) | 이동 |
-|---|---|---|---|---|---|---|
-| 101 | `EVA` | B2 | (0.0, 0.0) | `B2_F009` (B2-B3 엘리베이터 B) | (0, 0) | 0.00 m |
-| 102 | `EVB` | B2 | (-0.4, 27.2) | `B2_F006` (B2-B3 엘리베이터 A) | (-0.4, 27.2) | 0.00 m |
-| 103 | `EV4` | B2 | (-55.4, -14.8) | `B2_F031` (4번 출구 엘리베이터) | (-55.4, -14.8) | 0.00 m |
-| 104 | `EV3` | B2 | (-58.4, 42.5) | `B2_F034` (3번 출구 엘리베이터) | (-58.4, 42.5) | 0.00 m |
-| 105 | `ESC4` | B2 | (-79.5, -14.2) | `B2_F032` (4번 출구 에스컬레이터) | (-65.495, -13.173) | 14.04 m |
-| 106 | `ESC3` | B2 | (-80.0, 40.4) | `B2_F035` (3번 출구 에스컬레이터) | (-70.554, 41.697) | 9.53 m |
-| 107 | `WC` | B2 | (39.5, 25.8) | `B2_F013` (화장실) | (39.5, 25.8) | 0.00 m |
-| 108 | `INFO1` | B2 | (118.4, 14.3) | `B2_F018` (안내센터 B) | (118.4, 14.3) | 0.00 m |
-| 109 | `INFO2` | B2 | (96.7, 13.0) | `B2_F016` (안내센터 A) | (96.7, 13) | 0.00 m |
-| 110 | `NURS` | B2 | (89.1, 14.7) | **미정** (아래 참고) | — | — |
-| 111 | `B2_N2` | B2 | (-56.7, 17.9) | `B2_R001` | (-58.243, 15.649) | 2.73 m |
-| 112 | `B2_N3` | B2 | (-12.4, 15.6) | `B2_R003` | (-13.861, 14.584) | 1.78 m |
-| 113 | `B2_N4` | B2 | (43.217, 10.504) | `B2_R007` | (43.544, 10.18) | 0.46 m |
-| 201 | `EVA` | B3 | (0.0, 0.0) | `B3_F007` (B2-B3 엘리베이터 B) | (0.0, 0.0) | 0.00 m |
-| 202 | `EVB` | B3 | (-0.4, 27.2) | `B3_F002` (B2-B3 엘리베이터 A) | (-0.401, 27.2) | 0.00 m |
-| 203 | `NURS` | B3 | (90.0, 17.7) | **미정** (아래 참고) | — | — |
-| 204 | `B3_N2` | B3 | (-91.8, 23.6) | `B3_R001` | (-91.253, 23.183) | 0.69 m |
-| 205 | `B3_N3` | B3 | (-25.3, 25.6) | `B3_F001` (B2-B3 계단 6) | (-25.3, 25.601) | 0.00 m |
+| 참조 | NULL 허용 | V8 의 처리 |
+|---|---|---|
+| `user_session.current_node_id` | O | `NULL` 로 변경 |
+| `consultation_session.current_node_id` | O | `NULL` 로 변경 |
+| `vps_reference_image.node_id` | O | `NULL` 로 변경 |
+| `localization_log.matched_node_id` | O | `NULL` 로 변경 |
+| `location_share.shared_node_id` | **X** | 해당 행 삭제 |
+| `exit_detail.facility_id` | **X** | 해당 행 삭제 |
+| `place_exit_recommendation.exit_facility_id` | **X** | 해당 행 삭제 |
 
-기존 18행을 UPDATE하고 나머지 **124개는 INSERT**한다.
+세션·위치공유·인식로그는 만료되는 임시 데이터라 정리해도 사용자 영향이 없다.
+삭제는 FK 역순(간선 → 시설 → 노드)으로 한다.
 
-**수유실 (node 110 · 203)** — 재구축 데이터에 수유실 노드가 없다. 수유실은 시설로 다루지 않기로
-했으므로(`FacilityType`에도 코드가 없다) 이 두 행은 다른 신규 노드에 재사용하거나
-`is_active = 0`으로 남긴다. **어느 쪽이든 DELETE하지 않는다.**
-
-**좌표가 2m 이상 이동하는 행** — UPDATE 시 값이 크게 바뀌므로 파급을 확인할 것.
-
-| node_id | 현 DB name | 이동 | 사유 |
-|---|---|---|---|
-| 105 | `ESC4` (B2) | 14.04 m | 에스컬레이터는 B2와 지상을 잇는 경사 구조물이라 양 끝이 10~14m 떨어져 있다. 현 DB는 출구 쪽 끝, 이 문서는 **B2 쪽 끝**을 노드로 둔다 |
-| 106 | `ESC3` (B2) | 9.53 m | 에스컬레이터는 B2와 지상을 잇는 경사 구조물이라 양 끝이 10~14m 떨어져 있다. 현 DB는 출구 쪽 끝, 이 문서는 **B2 쪽 끝**을 노드로 둔다 |
-
-에스컬레이터와 출구를 **별개 노드**로 두는 것이 이 문서의 방식이다 (`B2_F032` 4번 출구 에스컬레이터 / `B2_F033` 4번 출구는 서로 다른 노드).
-그래서 기존 `ESC3`·`ESC4`는 에스컬레이터 노드로 UPDATE하고, 출구는 새 노드로 INSERT한다.
-
-파급: **`FR-U-011` 출구 근접 판정이 미터 임계값**이므로 좌표가 10~14m 이동하면 영향을 받는다. 3·4번 출구는 `elevator_only`로 도달 가능한 유일한 출구여서 특히 확인이 필요하다.
+> 이전 판에는 기존 `node_id` 18개를 어떤 신규 노드로 UPDATE 할지 정한 대응표가 있었다.
+> 재삽입 방식으로 바꾸면서 그 표는 필요가 없어져 삭제했다.
+> 함께 사라진 것: 기존 `ESC3`·`ESC4` 좌표가 10~14m 이동한다는 주의(이제 별개의 새 노드다),
+> 수유실 노드 110·203 의 처리 방침(재시드 데이터에 수유실이 없어 그냥 생성되지 않는다).
 
 ---
 
@@ -380,51 +362,62 @@
 
 **facility_type** (`FacilityType`): `exit` · `gate` · `platform` · `transfer_passage` · `stair` · `escalator` · `elevator` · `restroom` · `station_office` · `ticket_machine` · `card_charger` · `locker` · `info`
 
-### 재시드 데이터가 요구하는 코드값 추가
+### 전체 구간 데이터를 위해 추가한 코드값 (S15P11A206-311에서 반영)
 
-전체 구간 재구축 데이터에 **현재 enum에 없는 코드값**이 있다. 재시드 전에 enum과 DB 제약을 맞춰야 한다.
+전체 구간 데이터에 기존 enum에 없는 코드값이 있어 추가했다. 추가하지 않으면 시설 6개·노드 4개가 저장되지 않는다.
 
-| enum | 추가 필요 | 개수 | 비고 |
+| enum | 추가한 값 | 개수 | 비고 |
 |---|---|---|---|
 | `FacilityType` | `pharmacy` | 3 | 약국 |
 | `FacilityType` | `convenience_store` | 1 | 편의점 |
 | `FacilityType` | `currency_exchange_machine` | 1 | 환전기 |
 | `FacilityType` | `claw_machine_arcade` | 1 | 인형뽑기 |
-| `RouteNodeType` | `gate` | 4 | 개찰구 노드. `gate`는 `RouteMoveType`에만 있고 `RouteNodeType`에는 없다 |
+| `RouteNodeType` | `gate` | 4 | 개찰구 노드 |
 
-`gate`를 `RouteNodeType`에 추가하는 대신 개찰구 노드를 `junction`으로 두는 선택지도 있으나, 개찰구는 **통과 시 태그가 필요한 지점**이어서 경로 안내 문구·요금 안내에서 구분이 필요하므로 별도 타입을 권한다.
+**DB 마이그레이션은 필요하지 않았다.** `facility.facility_type` · `route_node.node_type` · `route_edge.move_type`이 전부 `VARCHAR(50)`이고 CHECK 제약도 ENUM 타입도 없어서, Java enum만 고치면 된다.
+
+`gate`를 `RouteNodeType`에 둔 이유는 시설 노드가 이미 `exit`·`floor_transition`처럼 **역할별로 유형을 나누고** 있어 개찰구도 같은 방식을 따른 것이다. `RouteMoveType`에도 `gate`가 있지만 그쪽은 간선의 이동 수단이고 **현재 데이터에서는 쓰이지 않는다** — 개찰구에 연결된 간선 16개가 전부 `walkway`다.
 
 ### 간선 구분 (`edgeClass`)
 
-재구축 데이터는 시설 관련 간선을 두 종류로 구분한다. **현재 DB 스키마에는 이 구분이 없다** — 재시드 시 컬럼 추가 또는 구분 없이 저장할지 결정해야 한다.
+원본 데이터는 시설 관련 간선을 두 종류로 구분한다. **DB에는 저장하지 않는다** — `route_edge`에 해당 컬럼이 없고, V8도 추가하지 않았다.
 
-| edgeClass | 의미 | 개수 |
-|---|---|---|
-| `facility_access` | 복도 노드 ↔ 시설 노드 접근 통로 | 87 |
-| `facility_link` | 시설 노드 ↔ 시설 노드 직결 | 33 |
+| edgeClass | 의미 | 개수 | DB |
+|---|---|---|---|
+| `facility_access` | 복도 노드 ↔ 시설 노드 접근 통로 | 87 | 일반 `route_edge` |
+| `facility_link` | 시설 노드 ↔ 시설 노드 직결 | 33 | 일반 `route_edge` |
 
-경로 탐색은 두 종류를 구분하지 않는다(둘 다 일반 간선으로 취급). 구분은 **호출·표시 단계**에서 "시설로 들어가는 통로"와 "시설 간 이동"을 나눠 안내하기 위한 것이다.
+**경로 탐색이 두 종류를 구분하지 않으므로 저장하지 않아도 라우팅은 정상 동작한다.** 구분이 필요한 곳은 호출·표시 단계 — "시설로 들어가는 통로"와 "시설 간 이동"을 나눠 안내하려는 경우다. 그런 요구가 생기면 그때 컬럼을 추가한다.
+
+구분이 필요해지면 원본 JSON의 `edgeKey` 접두사(`B{층}_FE###` = access, `B{층}_FL###` = link)로 복원할 수 있다.
 
 ---
 
 ## 5. 커버리지 & 미결
 
-### 현재 DB (V4·V5) 커버리지
+### 규모 변화 (V8 재시드)
 
-- **간선 연결 구간**: B2 = EVB→3번출구 브랜치 및 V5 화장실·안내센터 접근, B3 = 서쪽끝→계단(EVB). EV4·ESC4·NURS·EVA 등은 아직 전체지도 참고용이며 간선이 없다.
-- **접근성(`elevator_only`)**: 현재 커버 구간의 B3 승강장→EVB가 계단(STAIR)뿐이라 계단 없는 경로는 미지원.
-- **시설 연결 상태**: V5가 `facility` seed와 `linked_node_id`를 추가했다. 다만 연결 노드 자체가 그래프에서 분리된 시설은 경로 도달이 불가능하다.
-
-### 재구축(재시드) 데이터 규모
-
-| 항목 | 현재 DB | 재구축 |
+| 항목 | 이전 (V4·V5) | 현재 (V8) |
 |---|---|---|
 | 노드 | 18 | **142** (복도 65 + 시설 77) |
 | 간선 | 11 | **205** (복도 71 + `facility_access` 87 + `facility_link` 33 + 층간 14) |
 | 층 | B2·B3 | **B1·B2·B3** (+ B1 내 z=7.5 중간층) |
 | 연결 요소 | 다수 분리 | **1** (전체 연결) |
 
-`elevator_only` 도달 범위를 시뮬레이션한 결과, **재구축 데이터에서도 엘리베이터만으로는 3·4번 출구까지만 도달**한다. B0.5 중간층과 B1 북측 복도는 계단·에스컬레이터만 있어 도달할 수 없다. 이는 데이터 오류가 아니라 역삼역의 실제 시설 상태이므로, FR-U-009의 "도달 불가 시 안내" 요구사항으로 처리한다.
+### `elevator_only` 도달 범위 — 실측
+
+V8 적용 후 DB에서 직접 확인한 결과다. B3 승강장 서쪽 끝(`B3_R001`, node 201) 기준.
+
+| 경로 유형 | 도달 노드 | 도달 출구 |
+|---|---|---|
+| `fastest` | **142 / 142** | 출구 9곳 전부 |
+| `elevator_only` | **96 / 142** | **3번·4번 출구만** (둘 다 B2) |
+
+`elevator_only`가 B1 출구(1·2·5·6·7·8번, GFC 연결통로)에 도달하지 못하는 것은 **B1↔B2에 엘리베이터가 없기 때문**이다. 층간 간선 14개 중 B1↔B2 구간은 계단 2개 + 에스컬레이터 2개뿐이다. B0.5 중간층도 마찬가지다.
+
+**데이터 오류가 아니라 역삼역의 실제 시설 상태**이므로, FR-U-009의 "도달 불가 시 안내" 요구사항으로 처리한다.
+
+참고로 도달 가능한 출구에서도 `elevator_only`는 계단을 피해 우회하므로 더 길다 — 3번 출구 기준 `fastest` 190.7m / 173초 vs `elevator_only` 203.34m / 195초.
 
 ### 미결
 
@@ -434,15 +427,17 @@
 | ② | `northBearing` 확정 (방위·AR heading) | FE가 회전 지도/AR을 쓸지 결정 + 출구 2곳 GPS |
 | ③ | 축척(0.19 m/px) 확정 | COLMAP sim3 정합(277) 잔차 확인. 단일 측정 역산값이라 비균일 가능성 있음 |
 | ④ | **B1 원점 픽셀 확정** | COLMAP 제어점에 B1 포함 후 sim3 잔차 (§1 참고) |
-| ⑤ | `FacilityType`·`RouteNodeType` 코드값 추가 | §4 참고. **재시드를 막는 항목** — 없으면 노드 4개·시설 6개가 저장 실패 |
-| ⑥ | `edgeClass` 저장 여부 | §4 참고. 재시드 전 |
-| ⑦ | 기존 `node_id` 재사용 확정 | 계획은 **§2.3에 정리됨**. 수유실(110·203)만 미정 |
-| ⑧ | `FR-U-011` 출구 근접 임계값 재확인 | ESC3·ESC4 좌표가 10~14m 이동한다 (§2.3 참고) |
+| ⑤ | `edgeClass` 저장 여부 | `facility_access` 87 / `facility_link` 33. V8은 저장하지 않는다 — 경로 탐색이 구분하지 않으므로 라우팅은 정상 동작한다. 호출·표시 단계에서 구분이 필요해지면 그때 컬럼을 추가한다 (§4) |
+| ⑥ | `RouteNode`·`Facility` 엔티티에 `mapZ` 없음 | `route_node.map_z` 컬럼은 V4부터 있고 V8이 값을 넣지만 엔티티가 읽지 않는다. B0.5(같은 B1 안의 z=5와 7.5)를 구분하려면 필요하다. `facility` 에는 컬럼 자체가 없다 |
+| ⑦ | `FR-U-011` 출구 근접 임계값 재확인 | 출구가 별도 `exit` 노드로 새로 생겼다(9곳). 미터 임계값 기준으로 도착 판정이 동작하는지 검증 필요 |
 
 ### 결정된 항목
 
 | 항목 | 결정 |
 |---|---|
-| 엘리베이터 A·B 라벨 | **이 문서의 명명을 기준으로 한다** (§1 표). 재시드 때 DB를 맞춘다 |
-| 수유실 | 시설로 다루지 않는다. `FacilityType`에 코드를 두지 않고, 기존 노드 110·203은 재사용하거나 비활성 (§2.3) |
+| 엘리베이터 A·B 라벨 | **이 문서의 명명을 기준으로 한다** (§1 표). V8이 DB를 여기에 맞췄다 |
+| 수유실 | 시설로 다루지 않는다. `FacilityType`에 코드를 두지 않았고, V8이 그래프를 재삽입하면서 수유실 노드는 생성되지 않는다 |
 | B3 엘리베이터 B 좌표 | **수정 완료.** 수직 샤프트이므로 B2와 같은 (0, 0)으로 맞췄다 (기존 0.594/1.353에서 1.48m 이동). `V_B2_B3_001` 거리도 5.21m → 5.0m로 정정 |
+| `FacilityType`·`RouteNodeType` 코드값 | **추가 완료** (S15P11A206-311). §4 참고 |
+| 기존 `node_id` 재사용 | **하지 않는다.** V8이 DELETE 후 재삽입한다 (§2.3) |
+| 에스컬레이터 예상시간 | 0.75 m/s (provisional). V4·V5에 선례가 없어 새로 정했다. 계단 0.6보다 빠르고 도보 1.2보다 느리게 둔다 |
