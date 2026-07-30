@@ -1,8 +1,8 @@
 package com.pingo.backend.consultation.datachannel.dto;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.pingo.backend.consultation.datachannel.ConsultationDataChannelEventType;
 import java.time.Instant;
+import tools.jackson.databind.JsonNode;
 
 public record ConsultationDataChannelEventResponse(
         String consultationRequestId,
