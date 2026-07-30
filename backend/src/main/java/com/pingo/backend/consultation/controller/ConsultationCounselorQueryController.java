@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/counselor/consultations")
+@RequestMapping("/api/counselors/consultations")
 @RequiredArgsConstructor
 @Tag(name = "상담자 API", description = "상담자가 담당 역의 상담 요청을 조회하는 API")
 public class ConsultationCounselorQueryController {
