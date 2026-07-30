@@ -1,6 +1,6 @@
 package com.pingo.backend.signaling.validation;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -8,8 +8,18 @@ import org.springframework.context.annotation.Configuration;
 public class SignalingValidationConfig {
 
     @Bean
-    @ConditionalOnMissingBean(SignalingSessionValidator.class)
-    public SignalingSessionValidator signalingSessionValidator() {
-        return new NoopSignalingSessionValidator();
+    public SignalingSessionIdParser signalingSessionIdParser() {
+        return new SignalingSessionIdParser();
+    }
+
+    @Bean
+    public SignalingSessionValidator signalingSessionValidator(
+            ConsultationSessionRepository consultationSessionRepository,
+            SignalingSessionIdParser signalingSessionIdParser
+    ) {
+        return new ConsultationSignalingSessionValidator(
+                consultationSessionRepository,
+                signalingSessionIdParser
+        );
     }
 }
