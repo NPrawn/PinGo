@@ -1,6 +1,5 @@
 package com.pingo.backend.consultation.datachannel;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pingo.backend.global.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
