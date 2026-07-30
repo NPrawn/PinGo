@@ -13,6 +13,7 @@ import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
@@ -52,6 +53,8 @@ class ConsultationSessionServiceTest {
     private ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
     @Mock
     private ApplicationEventPublisher applicationEventPublisher;
+    @Mock
+    private SignalingAccessTokenProvider signalingAccessTokenProvider;
 
     @InjectMocks
     private ConsultationSessionService consultationSessionService;
@@ -167,6 +170,23 @@ class ConsultationSessionServiceTest {
                 consultationSessionService.get(session.getConsultationId(), USER_SESSION_ID);
 
         assertThat(response.consultationId()).isEqualTo(session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isNull();
+    }
+
+    @Test
+    void get_성공_수락된_상담이면_사용자_signaling_token을_반환한다() {
+        ConsultationSession session = newSession();
+        session.accept(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+        given(signalingAccessTokenProvider.createUserToken(session.getConsultationId(), USER_SESSION_ID))
+                .willReturn("user-signaling-token");
+
+        ConsultationResponse response =
+                consultationSessionService.get(session.getConsultationId(), USER_SESSION_ID);
+
+        assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isEqualTo("user-signaling-token");
     }
 
     @Test
@@ -260,6 +280,8 @@ class ConsultationSessionServiceTest {
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
         given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+        given(signalingAccessTokenProvider.createCounselorToken(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .willReturn("counselor-signaling-token");
 
         ConsultationAcceptResponse response =
                 consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
@@ -267,6 +289,7 @@ class ConsultationSessionServiceTest {
         assertThat(response.status()).isEqualTo(ConsultationStatus.ACCEPTED);
         assertThat(response.counselorId()).isEqualTo(COUNSELOR_ACCOUNT_ID);
         assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isEqualTo("counselor-signaling-token");
         verify(consultationWaitingEventPublisher)
                 .publishAccepted(session.getConsultationId(), "room_" + session.getConsultationId());
     }

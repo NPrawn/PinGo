@@ -82,6 +82,8 @@ MVP에서는 JWT Access Token을 HTTP Authorization Header로 전달한다.
 Authorization: Bearer {accessToken}
 ```
 
+WebRTC signaling 참여자 검증은 일반 HTTP 인증과 별도로 상담별 `signalingAccessToken`을 사용한다. 상담자는 상담 수락 응답으로 받은 토큰을 사용하고, 익명 사용자는 상담 상태 조회 응답으로 받은 토큰을 사용한다. signaling token은 `tokenType=SIGNALING` claim을 포함해야 하며, WebSocket handshake에서 토큰이 누락되었거나 만료·변조·형식 오류가 있으면 `401 Unauthorized`로 연결을 거절한다.
+
 ### 2.5 확정 구현 선택
 
 | 항목               | 확정안                                                              |
@@ -1263,7 +1265,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
     "consultationId": "cs_abc123",
     "status": "ACCEPTED",
     "counselorId": 7,
-    "signalingRoomId": "room_cs_abc123"
+    "signalingRoomId": "room_cs_abc123",
+    "signalingAccessToken": "signaling-token"
   },
   "message": null
 }
@@ -1588,7 +1591,8 @@ Authorization: Bearer {accessToken}
   "data": {
     "consultationId": "cs_abc123",
     "status": "ACCEPTED",
-    "signalingRoomId": "room_cs_abc123"
+    "signalingRoomId": "room_cs_abc123",
+    "signalingAccessToken": "signaling-token"
   },
   "message": null
 }
@@ -1763,12 +1767,35 @@ Backend는 `JOIN` 요청의 `sessionId`를 `room_{consultationId}` 형식으로 
 
 ## 12.1 WebSocket 연결
 
-### WS `/ws/signaling`
+### WS `/ws/signaling?token={signalingAccessToken}`
+
+#### 인증
+
+WebSocket handshake 시 상담별 signaling token을 전달한다.
+
+```text
+ws://localhost:8080/ws/signaling?token={signalingAccessToken}
+```
+
+브라우저 환경에서 header 지정이 가능한 클라이언트는 HTTP API와 동일하게 `Authorization` header를 사용할 수 있다.
+
+```http
+Authorization: Bearer {signalingAccessToken}
+```
+
+token payload와 JOIN message는 아래 조건을 만족해야 한다.
+
+| token senderType | 식별 기준 | JOIN 조건 |
+| --- | --- | --- |
+| `USER` | `consultationId`, `userSessionId` | token의 `consultationId`와 JOIN `sessionId`가 같은 상담을 가리켜야 하며, token의 senderType과 JOIN `senderType`이 `USER`로 일치해야 한다. |
+| `COUNSELOR` | `consultationId`, `accountId` | token의 `consultationId`와 JOIN `sessionId`가 같은 상담을 가리켜야 하며, token의 senderType과 JOIN `senderType`이 `COUNSELOR`로 일치해야 한다. |
+
+토큰이 없거나, 만료되었거나, JOIN message와 payload가 일치하지 않으면 Backend는 room에 등록하지 않고 `INVALID_SIGNALING_SESSION` 또는 `SIGNALING_INTERNAL_ERROR` 오류를 응답한다.
 
 #### 메시지 타입
 
 `JOIN`, `OFFER`, `ANSWER`, `ICE_CANDIDATE`, `LEAVE`, `ERROR`를 사용한다.
-room과 역할은 query parameter가 아니라 모든 메시지의 `sessionId`, `senderType`으로 전달한다.
+room과 역할은 query parameter가 아니라 모든 메시지의 `sessionId`, `senderType`으로 전달한다. query parameter의 `token`은 handshake 인증에만 사용한다.
 
 #### 예시 메시지
 

@@ -19,6 +19,10 @@ ai:
     read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
 
 signaling:
+  websocket:
+    allowed-origin-patterns: ${SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,https://jenkins.example.invalid}
+  access-token:
+    expiration-ms: ${SIGNALING_ACCESS_TOKEN_EXPIRATION_MS:600000}
   room:
     cleanup:
       expiration-minutes: ${SIGNALING_ROOM_EXPIRATION_MINUTES:30}
