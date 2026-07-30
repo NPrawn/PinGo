@@ -82,7 +82,7 @@ MVP에서는 JWT Access Token을 HTTP Authorization Header로 전달한다.
 Authorization: Bearer {accessToken}
 ```
 
-WebRTC signaling 참여자 검증은 일반 HTTP 인증과 별도로 상담별 `signalingAccessToken`을 사용한다. 상담자는 상담 수락 응답으로 받은 토큰을 사용하고, 익명 사용자는 상담 상태 조회 응답으로 받은 토큰을 사용한다. WebSocket handshake에서 토큰이 누락되었거나 만료·변조·형식 오류가 있으면 `401 Unauthorized`로 연결을 거절한다.
+WebRTC signaling 참여자 검증은 일반 HTTP 인증과 별도로 상담별 `signalingAccessToken`을 사용한다. 상담자는 상담 수락 응답으로 받은 토큰을 사용하고, 익명 사용자는 상담 상태 조회 응답으로 받은 토큰을 사용한다. signaling token은 `tokenType=SIGNALING` claim을 포함해야 하며, WebSocket handshake에서 토큰이 누락되었거나 만료·변조·형식 오류가 있으면 `401 Unauthorized`로 연결을 거절한다.
 
 ### 2.5 확정 구현 선택
 

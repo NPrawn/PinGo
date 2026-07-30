@@ -36,12 +36,15 @@ WebSocket handshake에는 상담별 `signalingAccessToken`을 전달한다. 브�
 | 필드 | 설명 |
 | --- | --- |
 | `consultationId` | 참여할 상담 ID |
+| `tokenType` | signaling 전용 토큰 식별값. 값은 `SIGNALING` |
 | `senderType` | `USER` 또는 `COUNSELOR` |
 | `userSessionId` | USER 토큰에 포함되는 익명 사용자 세션 ID |
 | `accountId` | COUNSELOR 토큰에 포함되는 상담자 계정 ID |
 | `exp` | 만료 시각 |
 
 Backend는 handshake에서 토큰을 검증해 WebSocket session attributes에 참여자 정보를 저장한다. 토큰이 누락되었거나 만료·변조·형식 오류가 있으면 `401 Unauthorized`로 handshake를 거절하고 WebSocket 연결을 수립하지 않는다. `JOIN` 시에는 token payload와 message의 `sessionId`, `senderType`, 상담 session의 `userSessionId` 또는 `counselorId`가 일치하는지 확인한 뒤 room에 등록한다.
+
+WebSocket handshake 허용 Origin은 `SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS` 환경변수로 설정한다. 기본값은 local 개발 origin과 운영 서비스 도메인만 허용한다.
 
 ---
 

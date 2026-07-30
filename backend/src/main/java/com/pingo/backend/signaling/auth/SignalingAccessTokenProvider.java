@@ -17,6 +17,8 @@ public class SignalingAccessTokenProvider {
     private static final String SENDER_TYPE_CLAIM = "senderType";
     private static final String USER_SESSION_ID_CLAIM = "userSessionId";
     private static final String ACCOUNT_ID_CLAIM = "accountId";
+    private static final String TOKEN_TYPE_CLAIM = "tokenType";
+    private static final String SIGNALING_TOKEN_TYPE = "SIGNALING";
 
     private final SecretKey key;
     private final long expirationMs;
@@ -33,6 +35,7 @@ public class SignalingAccessTokenProvider {
         Date now = new Date();
         return Jwts.builder()
                 .subject(consultationId)
+                .claim(TOKEN_TYPE_CLAIM, SIGNALING_TOKEN_TYPE)
                 .claim(SENDER_TYPE_CLAIM, SignalingSenderType.USER.name())
                 .claim(USER_SESSION_ID_CLAIM, userSessionId)
                 .issuedAt(now)
@@ -45,6 +48,7 @@ public class SignalingAccessTokenProvider {
         Date now = new Date();
         return Jwts.builder()
                 .subject(consultationId)
+                .claim(TOKEN_TYPE_CLAIM, SIGNALING_TOKEN_TYPE)
                 .claim(SENDER_TYPE_CLAIM, SignalingSenderType.COUNSELOR.name())
                 .claim(ACCOUNT_ID_CLAIM, accountId)
                 .issuedAt(now)
@@ -61,11 +65,19 @@ public class SignalingAccessTokenProvider {
                 .getPayload();
 
         String consultationId = claims.getSubject();
+        validateTokenType(claims);
         SignalingSenderType senderType = parseSenderType(claims);
         String userSessionId = claims.get(USER_SESSION_ID_CLAIM, String.class);
         Long accountId = parseAccountId(claims);
 
         return new SignalingPrincipal(consultationId, senderType, userSessionId, accountId);
+    }
+
+    private void validateTokenType(Claims claims) {
+        String tokenType = claims.get(TOKEN_TYPE_CLAIM, String.class);
+        if (!SIGNALING_TOKEN_TYPE.equals(tokenType)) {
+            throw new IllegalArgumentException("Invalid signaling tokenType claim.");
+        }
     }
 
     private SignalingSenderType parseSenderType(Claims claims) {

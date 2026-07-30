@@ -4,9 +4,14 @@ import com.pingo.backend.auth.domain.AccountType;
 import com.pingo.backend.global.security.JwtProvider;
 import com.pingo.backend.signaling.dto.SignalingSenderType;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -53,6 +58,39 @@ class SignalingAccessTokenProviderTest {
         String accountToken = jwtProvider.createAccountToken(100L, AccountType.COUNSELOR, 1L);
 
         assertThatThrownBy(() -> tokenProvider.parseToken(accountToken))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void parseTokenRejectsTokenWithoutSignalingTokenType() {
+        Date now = new Date();
+        String token = Jwts.builder()
+                .subject("cs_abc123")
+                .claim("senderType", SignalingSenderType.USER.name())
+                .claim("userSessionId", "usr_abc123")
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + EXPIRATION_MS))
+                .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        assertThatThrownBy(() -> tokenProvider.parseToken(token))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void parseTokenRejectsTokenWithDifferentTokenType() {
+        Date now = new Date();
+        String token = Jwts.builder()
+                .subject("cs_abc123")
+                .claim("tokenType", "ACCOUNT")
+                .claim("senderType", SignalingSenderType.USER.name())
+                .claim("userSessionId", "usr_abc123")
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + EXPIRATION_MS))
+                .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        assertThatThrownBy(() -> tokenProvider.parseToken(token))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
