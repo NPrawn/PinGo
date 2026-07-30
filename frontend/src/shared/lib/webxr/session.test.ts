@@ -149,7 +149,12 @@ describe('createXrSessionController', () => {
   });
 
   describe('세션 시작', () => {
-    it('dom-overlay와 camera-access를 optionalFeatures로 함께 요청한다', async () => {
+    /**
+     * DOM Overlay 명세는 `domOverlay`가 없으면 `dom-overlay`를 지원되지 않는 기능으로 처리한다.
+     * root 없이 요청하면 어차피 부여되지 않는데, 2차 검증에서 기능마다 각자 동의 프롬프트가
+     * 떴으므로(11.7) 얻을 수 없는 기능 때문에 프롬프트를 하나 더 띄우게 된다.
+     */
+    it('domOverlayRoot가 없으면 dom-overlay를 요청하지 않는다', async () => {
       const fake = createFakeSession();
       const xr = fakeXr(async () => fake.session);
       const controller = createXrSessionController({ xr });
@@ -157,7 +162,7 @@ describe('createXrSessionController', () => {
       await controller.start();
 
       expect(xr.requestSession).toHaveBeenCalledWith('immersive-ar', {
-        optionalFeatures: ['dom-overlay', 'camera-access'],
+        optionalFeatures: ['camera-access'],
       });
     });
 
@@ -173,6 +178,17 @@ describe('createXrSessionController', () => {
         optionalFeatures: ['dom-overlay', 'camera-access'],
         domOverlay: { root },
       });
+    });
+
+    it('camera-access는 root와 무관하게 항상 요청한다', async () => {
+      const fake = createFakeSession();
+      const xr = fakeXr(async () => fake.session);
+      const controller = createXrSessionController({ xr });
+
+      await controller.start();
+      const [, init] = vi.mocked(xr.requestSession).mock.calls[0];
+
+      expect(init?.optionalFeatures).toContain('camera-access');
     });
 
     /**
@@ -366,6 +382,89 @@ describe('createXrSessionController', () => {
 
       expect(xr.requestSession).toHaveBeenCalledTimes(2);
     });
+
+    /**
+     * stop이 진행 중인 start를 기다리는 동안 새 start가 시작된 경우.
+     * 그 세션은 이 stop이 끊으려던 대상이 아니다.
+     */
+    it('stop이 기다리는 동안 새로 시작된 세션은 끊지 않는다', async () => {
+      const abandoned = createFakeSession();
+      const fresh = createFakeSession();
+      let openFirst: ((session: XRSession) => void) | null = null;
+      const sessions = [
+        () =>
+          new Promise<XRSession>((resolve) => {
+            openFirst = resolve;
+          }),
+        async () => fresh.session,
+      ];
+      let call = 0;
+      const controller = createXrSessionController({
+        xr: fakeXr(() => sessions[call++]()),
+      });
+
+      const firstStart = controller.start();
+      const stopping = controller.stop();
+
+      await vi.waitFor(() => {
+        expect(openFirst).not.toBeNull();
+      });
+      openFirst!(abandoned.session);
+      await firstStart;
+
+      // stop이 재개되기 전에 새 start가 들어온다.
+      const secondStart = controller.start();
+      await Promise.all([stopping, secondStart]);
+
+      expect(abandoned.endCalls()).toBe(1);
+      expect(fresh.endCalls()).toBe(0);
+      expect(controller.getState().status).toBe('warming-up');
+    });
+  });
+
+  describe('세션 식별자', () => {
+    it('열려 있지 않으면 null이다', () => {
+      expect(createXrSessionController({ xr: undefined }).getSessionId()).toBeNull();
+    });
+
+    it('세션이 열리면 값을 부여하고 종료하면 null로 되돌린다', async () => {
+      const fake = createFakeSession();
+      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+
+      await controller.start();
+      expect(controller.getSessionId()).not.toBeNull();
+
+      await controller.stop();
+      expect(controller.getSessionId()).toBeNull();
+    });
+
+    /**
+     * 화면이 "지금 열려 있는 것이 내가 연 그 세션인지"를 판별할 수 있어야 한다.
+     * 값이 재사용되면 옛 화면이 새 세션을 자기 것으로 오인한다.
+     */
+    it('다시 시작하면 다른 값을 부여한다', async () => {
+      const xr = fakeXr(async () => createFakeSession().session);
+      const controller = createXrSessionController({ xr });
+
+      await controller.start();
+      const first = controller.getSessionId();
+      await controller.stop();
+      await controller.start();
+
+      expect(controller.getSessionId()).not.toBe(first);
+    });
+
+    it('시작에 실패하면 값을 부여하지 않는다', async () => {
+      const controller = createXrSessionController({
+        xr: fakeXr(async () => {
+          throw new Error('NotSupportedError');
+        }),
+      });
+
+      await controller.start();
+
+      expect(controller.getSessionId()).toBeNull();
+    });
   });
 
   describe('추적 루프', () => {
@@ -460,6 +559,45 @@ describe('createXrSessionController', () => {
 
       fake.emitFrame(9000, pose(0, -1));
       expect(controller.getState().status).toBe('tracking');
+    });
+
+    /**
+     * 상실 구간 동안 상대 좌표의 연속성이 끊긴다. 초기화하지 않으면 복구 첫 프레임이 상실
+     * 이전의 확정과 비교되어 `move`가 붙는데, 엘리베이터로 실려 간 경우 그 라벨의 의미가
+     * 틀린다. `first`로 나가야 "이전 확정과의 차이를 이동으로 해석하지 말라"가 전달된다.
+     */
+    it('추적 상실에서 복구되면 첫 스냅샷이 first로 나간다', async () => {
+      const { controller, fake, snapshots } = await startedController(1500);
+
+      fake.emitFrame(1000, pose(0, 0));
+      expect(snapshots.map((snapshot) => snapshot.trigger)).toEqual(['first']);
+
+      fake.emitFrame(3000, null);
+      expect(controller.getState().status).toBe('lost');
+
+      // 상실 구간 동안 8m 떨어진 곳에서 복구됐다. move로 해석해서는 안 된다.
+      fake.emitFrame(10000, pose(0, -8));
+
+      expect(controller.getState().status).toBe('tracking');
+      expect(snapshots.map((snapshot) => snapshot.trigger)).toEqual(['first', 'first']);
+      expect(snapshots[1].position.z).toBe(-8);
+    });
+
+    it('복구 이후의 확정은 복구 지점을 기준으로 삼는다', async () => {
+      const { fake, snapshots } = await startedController(1500);
+
+      fake.emitFrame(1000, pose(0, 0));
+      fake.emitFrame(3000, null);
+      fake.emitFrame(10000, pose(0, -8));
+
+      // 복구 지점(-8)에서 1m만 움직였으므로 확정되지 않는다.
+      expect(fake.hasPendingFrame()).toBe(true);
+      fake.emitFrame(12000, pose(0, -9));
+      expect(snapshots).toHaveLength(2);
+
+      // 복구 지점 대비 2m가 되면 move로 확정된다.
+      fake.emitFrame(13000, pose(0, -10));
+      expect(snapshots.map((snapshot) => snapshot.trigger)).toEqual(['first', 'first', 'move']);
     });
 
     it('추적 상실 임계값의 기본값은 임시 확정값이다', () => {

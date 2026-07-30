@@ -24,17 +24,22 @@ interface FakeController {
   stopCalls(): number;
   stateListenerCount(): number;
   snapshotListenerCount(): number;
+  /** 다른 화면이 새 세션을 연 것처럼 식별자만 바꾼다. */
+  replaceSession(): void;
 }
 
-function createFakeController(): FakeController {
+function createFakeController({ opensSession = true } = {}): FakeController {
   let state: XrSessionState = { status: 'idle' };
   const stateListeners = new Set<() => void>();
   const snapshotListeners = new Set<(snapshot: XrPoseSnapshot) => void>();
   const startCalls: XrStartOptions[] = [];
   let stopCalls = 0;
+  let sessionId: number | null = null;
+  let nextSessionId = 1;
 
   const controller: XrSessionController = {
     getState: () => state,
+    getSessionId: () => sessionId,
     subscribe(listener) {
       const notify = (): void => {
         listener(state);
@@ -56,15 +61,25 @@ function createFakeController(): FakeController {
     async start(options = {}) {
       startCalls.push(options);
 
+      if (opensSession) {
+        sessionId = nextSessionId;
+        nextSessionId += 1;
+      }
+
       return state;
     },
     async stop() {
       stopCalls += 1;
+      sessionId = null;
     },
   };
 
   return {
     controller,
+    replaceSession() {
+      sessionId = nextSessionId;
+      nextSessionId += 1;
+    },
     setState(next) {
       state = next;
       stateListeners.forEach((listener) => {
@@ -205,20 +220,81 @@ describe('useXrTracking', () => {
    * 11.4 중단 조건: 경로 안내 화면을 벗어나면 세션과 추적을 중단한다.
    * 세션이 남아 있으면 카메라를 붙잡아 다음 화면의 getUserMedia가 실패한다(11.8).
    */
-  it('언마운트 시 세션을 끊고 구독을 해제한다', () => {
+  it('언마운트 시 자기가 연 세션을 끊고 구독을 해제한다', async () => {
     const fake = createFakeController();
-    const { unmount } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useXrTracking({ controller: fake.controller, onSnapshot: vi.fn() }),
     );
 
     expect(fake.stateListenerCount()).toBe(1);
     expect(fake.snapshotListenerCount()).toBe(1);
 
+    await act(async () => {
+      await result.current.start();
+    });
     unmount();
 
     expect(fake.stopCalls()).toBe(1);
     expect(fake.stateListenerCount()).toBe(0);
     expect(fake.snapshotListenerCount()).toBe(0);
+  });
+
+  /**
+   * 컨트롤러가 앱 공용 싱글턴이므로, 언마운트에서 무조건 stop을 부르면 세션을 열지도 않은
+   * 화면이 다른 화면의 세션을 끊는다. 라우트 전환에서 새 화면이 먼저 마운트되고 옛 화면이
+   * 나중에 언마운트되는 순서, 그리고 세션이 살아 있는 중의 재마운트가 그 경우다.
+   */
+  describe('세션 소유권', () => {
+    it('세션을 열지 않은 화면의 언마운트는 아무 세션도 끊지 않는다', () => {
+      const fake = createFakeController();
+      const { unmount } = renderHook(() => useXrTracking({ controller: fake.controller }));
+
+      // 다른 화면이 이미 세션을 열어 둔 상태다.
+      fake.replaceSession();
+      unmount();
+
+      expect(fake.stopCalls()).toBe(0);
+    });
+
+    it('자기 세션이 이미 다른 세션으로 바뀌었으면 끊지 않는다', async () => {
+      const fake = createFakeController();
+      const { result, unmount } = renderHook(() => useXrTracking({ controller: fake.controller }));
+
+      await act(async () => {
+        await result.current.start();
+      });
+
+      // 옛 화면이 언마운트되기 전에 다른 화면이 새 세션을 열었다.
+      fake.replaceSession();
+      unmount();
+
+      expect(fake.stopCalls()).toBe(0);
+    });
+
+    it('start가 실패했으면 소유권이 생기지 않는다', async () => {
+      const fake = createFakeController({ opensSession: false });
+      const { result, unmount } = renderHook(() => useXrTracking({ controller: fake.controller }));
+
+      await act(async () => {
+        await result.current.start();
+      });
+      unmount();
+
+      expect(fake.stopCalls()).toBe(0);
+    });
+
+    it('직접 stop한 뒤의 언마운트는 다시 끊지 않는다', async () => {
+      const fake = createFakeController();
+      const { result, unmount } = renderHook(() => useXrTracking({ controller: fake.controller }));
+
+      await act(async () => {
+        await result.current.start();
+        await result.current.stop();
+      });
+      unmount();
+
+      expect(fake.stopCalls()).toBe(1);
+    });
   });
 
   describe('11.7 상태 분류', () => {

@@ -42,15 +42,22 @@ const PERMISSION_BLOCKED_MS = 500;
 const REFERENCE_SPACE_CANDIDATES: readonly XRReferenceSpaceType[] = ['local', 'local-floor'];
 
 /**
- * 세션 시작 시 함께 요청하는 기능.
+ * 세션 시작 시 함께 요청하는 기능을 정한다.
  *
  * - dom-overlay: 세션 중에도 앱 UI를 카메라 위에 얹는다(11.8).
  * - camera-access: 세션을 유지한 채 VPS 프레임을 확보한다. 세션 도중에 기능을 추가할 수
  *   없으므로 시작 시 함께 요청한다(11.7).
  *
- * 둘 다 optional이다. 부여되지 않아도 세션 자체는 열려야 하고, 추적은 계속 가능하다.
+ * 둘 다 optional이다. 부여되지 않아도 세션 자체는 열려야 하고 추적은 계속 가능하다.
+ *
+ * **`dom-overlay`는 root가 있을 때만 요청한다.** DOM Overlay 명세는 `domOverlay`가 없으면
+ * 이 기능을 지원되지 않는 것으로 처리하므로, root 없이 요청하면 어차피 부여되지 않는다.
+ * 그런데 2차 실기기 검증에서 **기능마다 각자 동의 프롬프트가 떴다**(11.7). 얻을 수도 없는
+ * 기능 때문에 사용자에게 프롬프트를 하나 더 보여줄 이유가 없다.
  */
-const OPTIONAL_FEATURES = ['dom-overlay', 'camera-access'];
+function optionalFeaturesFor(domOverlayRoot: HTMLElement | undefined): string[] {
+  return domOverlayRoot ? ['dom-overlay', 'camera-access'] : ['camera-access'];
+}
 
 /**
  * 화면에 노출되는 추적 상태. 직렬화 가능한 값만 담는다.
@@ -101,6 +108,14 @@ export interface XrStartOptions {
 export interface XrSessionController {
   /** 현재 상태. */
   getState(): XrSessionState;
+  /**
+   * 현재 열려 있는 세션의 식별자. 열려 있지 않으면 null이다.
+   *
+   * 세션을 연 화면이 "지금 열려 있는 것이 내가 연 그 세션인지"를 판별하는 데 쓴다.
+   * 컨트롤러가 앱 공용 싱글턴이므로, 이 확인 없이 언마운트에서 stop을 부르면 다른 화면이
+   * 새로 연 세션을 끊을 수 있다. 세션이 열릴 때마다 새 값이 부여된다.
+   */
+  getSessionId(): number | null;
   /** 상태가 바뀔 때만 호출된다. 매 프레임 호출되지 않는다. */
   subscribe(listener: (state: XrSessionState) => void): () => void;
   /** 11.4 확정 주기를 통과한 스냅샷만 전달된다. 받는 쪽에서 다시 throttle하지 않는다. */
@@ -162,6 +177,23 @@ export function createXrSessionController(
    */
   let stopRequested = false;
 
+  /**
+   * 현재 세션의 식별자와 다음에 부여할 값.
+   *
+   * 세션이 열릴 때마다 새 값을 받고 정리될 때 null이 된다. 화면이 자기가 연 세션만 끊도록
+   * 판별하는 데 쓴다.
+   */
+  let sessionId: number | null = null;
+  let nextSessionId = 1;
+
+  /**
+   * start 시도 횟수.
+   *
+   * stop이 진행 중인 start를 기다리는 동안 새 start가 시작되면, 그 세션은 이 stop의 대상이
+   * 아니다. 기다린 뒤 이 값이 바뀌었는지로 판별한다.
+   */
+  let startAttempt = 0;
+
   function setState(next: Partial<XrSessionState> & { status: XrTrackingStatus }): XrSessionState {
     const merged: XrSessionState = {
       status: next.status,
@@ -216,15 +248,30 @@ export function createXrSessionController(
       return;
     }
 
+    const recovered = state.status === 'lost';
+
     lastPoseAt = time;
     setState({ status: 'tracking' });
 
     /**
-     * 확정 주기 판정은 샘플러가 한다. 통과한 프레임만 바깥으로 나간다.
+     * 추적 상실에서 복구된 경우 샘플러를 초기화한다.
      *
-     * 추적이 상실됐다가 복구된 경우에도 샘플러를 초기화하지 않는다. 11.7이 "복구되면 자동
-     * 재개"로 정했고, 직전 확정 대비 이동량이 기준을 넘으면 그대로 확정되는 것이 맞다.
+     * 상실 구간 동안 상대 좌표의 연속성이 이미 끊겼다. 초기화하지 않으면 복구 첫 프레임이
+     * 상실 이전의 확정과 비교되어, 경과 시간이 heartbeat를 넘었으니 스냅샷이 하나 발화하고
+     * 이동량이 2m를 넘었으면 `move`가 붙는다. **position 값 자체는 현재 pose라 맞지만
+     * `move`라는 라벨의 의미가 틀린다** — 엘리베이터로 실려 갔거나 ARCore가 재측위하며
+     * 추정치를 갈아엎은 경우 "직전 확정 이후 2m를 걸었다"가 성립하지 않는다. 실측에서도
+     * blackout 사이에 반환된 pose는 값이 틀렸다(11.2).
+     *
+     * 초기화하면 복구 첫 스냅샷이 `first`가 되어 "연속성이 끊겼으니 이전 확정과의 차이를
+     * 이동으로 해석하지 말라"는 신호가 된다. 11.7의 "복구되면 자동 재개"와 충돌하지 않는다.
+     * 재개는 그대로 일어나고 라벨만 정확해진다.
      */
+    if (recovered) {
+      sampler.reset();
+    }
+
+    /** 확정 주기 판정은 샘플러가 한다. 통과한 프레임만 바깥으로 나간다. */
     const snapshot = sampler.consider(toPoseReading(viewerPose, time));
 
     if (snapshot) {
@@ -272,6 +319,7 @@ export function createXrSessionController(
 
     session?.removeEventListener('end', onSessionEnd);
     session = null;
+    sessionId = null;
     referenceSpace = null;
     lastPoseAt = null;
     sampler.reset();
@@ -294,6 +342,7 @@ export function createXrSessionController(
     const xr = options.xr ?? navigator.xr;
 
     stopRequested = false;
+    startAttempt += 1;
     setState({ status: 'starting', reason: undefined, referenceSpaceType: undefined });
 
     if (!xr) {
@@ -321,7 +370,7 @@ export function createXrSessionController(
 
     try {
       opened = await xr.requestSession('immersive-ar', {
-        optionalFeatures: OPTIONAL_FEATURES,
+        optionalFeatures: optionalFeaturesFor(startOptions.domOverlayRoot),
         ...(startOptions.domOverlayRoot
           ? { domOverlay: { root: startOptions.domOverlayRoot } }
           : {}),
@@ -377,6 +426,8 @@ export function createXrSessionController(
     }
 
     session = opened;
+    sessionId = nextSessionId;
+    nextSessionId += 1;
     referenceSpace = acquired;
     sampler = createPoseSampler(rule);
     lastPoseAt = null;
@@ -399,6 +450,8 @@ export function createXrSessionController(
   async function stop(): Promise<void> {
     stopRequested = true;
 
+    const attemptAtRequest = startAttempt;
+
     /**
      * 시작이 진행 중이면 그것이 끝나기를 기다린다. 세션 객체는 requestSession이 resolve된
      * 뒤에야 생기므로, 기다리지 않으면 닫을 대상이 없어 그냥 돌아가고 세션이 남는다.
@@ -406,6 +459,13 @@ export function createXrSessionController(
      */
     if (startInFlight) {
       await startInFlight.catch(() => undefined);
+    }
+
+    /**
+     * 기다리는 동안 새 start가 시작된 경우. 그 세션은 이 stop이 끊으려던 대상이 아니다.
+     */
+    if (startAttempt !== attemptAtRequest) {
+      return;
     }
 
     const current = session;
@@ -431,6 +491,10 @@ export function createXrSessionController(
   return {
     getState() {
       return state;
+    },
+
+    getSessionId() {
+      return sessionId;
     },
 
     subscribe(listener) {

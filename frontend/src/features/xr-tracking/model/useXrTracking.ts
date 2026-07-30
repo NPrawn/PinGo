@@ -52,12 +52,14 @@ export interface UseXrTrackingValue {
  * 화면은 이 훅만 쓰고 XRSession을 직접 다루지 않는다. 훅이 하는 일은 세 가지다.
  *
  * 1. 컨트롤러의 상태 변화를 리렌더로 잇는다. **상태 문자열이 바뀔 때만** 다시 그려진다.
- * 2. 컴포넌트가 사라질 때 세션을 끊는다. 세션이 남아 있으면 카메라를 계속 붙잡아, 위치
- *    재인식 화면 등에서 `getUserMedia`가 실패한다(11.8).
+ * 2. 컴포넌트가 사라질 때 **자기가 연 세션을** 끊는다. 세션이 남아 있으면 카메라를 계속
+ *    붙잡아, 위치 재인식 화면 등에서 `getUserMedia`가 실패한다(11.8).
  * 3. 확정 스냅샷을 콜백으로 흘린다. 화면 상태로 올리지 않는다.
  *
- * **한 화면에서만 쓴다.** 컨트롤러가 앱 공용 싱글턴이므로, 두 컴포넌트가 동시에 이 훅을
- * 쓰면 한쪽이 사라질 때 다른 쪽의 세션까지 끊긴다.
+ * 컨트롤러가 앱 공용 싱글턴이므로 언마운트에서 무조건 stop을 부르면 다른 화면이 새로 연
+ * 세션을 끊을 수 있다. 그래서 이 훅으로 start에 성공한 세션의 식별자를 기억해 두고, 언마운트
+ * 시점에 그것이 아직 열려 있는 세션일 때만 끊는다. 세션을 열지 않은 화면의 언마운트는 아무
+ * 세션도 건드리지 않는다.
  */
 export function useXrTracking({
   onSnapshot,
@@ -95,21 +97,46 @@ export function useXrTracking({
   );
 
   /**
-   * 화면을 떠날 때 세션과 추적을 중단한다(11.4 중단 조건).
+   * 이 훅이 연 세션의 식별자.
    *
-   * 세션이 열려 있지 않으면 stop은 아무 일도 하지 않으므로, 세션을 열지 않은 화면에서
-   * 훅을 써도 안전하다.
+   * 언마운트에서 남의 세션을 끊지 않기 위한 기준이다. start가 실패했으면 null로 남는다.
+   */
+  const ownedSessionIdRef = useRef<number | null>(null);
+
+  /**
+   * 화면을 떠날 때 자기가 연 세션을 중단한다(11.4 중단 조건).
+   *
+   * 라우트 전환에서 새 화면이 먼저 마운트되고 옛 화면이 나중에 언마운트되는 순서가 되면,
+   * 무조건 stop을 부르는 구조는 새로 열린 세션을 끊는다. 식별자가 지금 열려 있는 세션과
+   * 같을 때만 끊어 그 경우를 막는다. 세션이 살아 있는 중에 재마운트되는 경우도 같다.
    */
   useEffect(
     () => () => {
-      void controller.stop();
+      const owned = ownedSessionIdRef.current;
+
+      if (owned !== null && owned === controller.getSessionId()) {
+        void controller.stop();
+      }
     },
     [controller],
   );
 
-  const start = useCallback((options?: XrStartOptions) => controller.start(options), [controller]);
+  const start = useCallback(
+    async (options?: XrStartOptions) => {
+      const next = await controller.start(options);
 
-  const stop = useCallback(() => controller.stop(), [controller]);
+      // 시작에 실패했으면 getSessionId가 null이므로 소유권도 생기지 않는다.
+      ownedSessionIdRef.current = controller.getSessionId();
+
+      return next;
+    },
+    [controller],
+  );
+
+  const stop = useCallback(async () => {
+    await controller.stop();
+    ownedSessionIdRef.current = null;
+  }, [controller]);
 
   return {
     status: state.status,
