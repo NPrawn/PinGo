@@ -1,7 +1,9 @@
 package com.pingo.backend.signaling.room;
 
 import com.pingo.backend.signaling.dto.SignalingSenderType;
+import java.io.IOException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -13,6 +15,8 @@ import org.springframework.web.socket.WebSocketSession;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SignalingRoomRegistryTest {
@@ -173,6 +177,35 @@ class SignalingRoomRegistryTest {
 
         assertThat(registry.lastTouchedAt("consultation-1"))
                 .contains(Instant.parse("2026-07-30T00:01:00Z"));
+    }
+
+    @Test
+    void removeExpiredRoomsRemovesOldRoomAndClosesParticipants() throws IOException {
+        WebSocketSession userSession = webSocketSession("user-session");
+        WebSocketSession counselorSession = webSocketSession("counselor-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        registry.register("consultation-1", SignalingSenderType.COUNSELOR, counselorSession);
+        clock.setInstant(Instant.parse("2026-07-30T00:31:00Z"));
+
+        int removedCount = registry.removeExpiredRooms(Duration.ofMinutes(30));
+
+        assertThat(removedCount).isEqualTo(1);
+        assertThat(registry.containsRoom("consultation-1")).isFalse();
+        verify(userSession).close();
+        verify(counselorSession).close();
+    }
+
+    @Test
+    void removeExpiredRoomsKeepsRecentlyTouchedRoom() throws IOException {
+        WebSocketSession userSession = webSocketSession("user-session");
+        registry.register("consultation-1", SignalingSenderType.USER, userSession);
+        clock.setInstant(Instant.parse("2026-07-30T00:29:00Z"));
+
+        int removedCount = registry.removeExpiredRooms(Duration.ofMinutes(30));
+
+        assertThat(removedCount).isZero();
+        assertThat(registry.containsRoom("consultation-1")).isTrue();
+        verify(userSession, never()).close();
     }
 
     private WebSocketSession webSocketSession(String id) {

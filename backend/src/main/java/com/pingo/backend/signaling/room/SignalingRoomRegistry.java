@@ -1,8 +1,12 @@
 package com.pingo.backend.signaling.room;
 
 import com.pingo.backend.signaling.dto.SignalingSenderType;
+import java.io.IOException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -83,6 +87,27 @@ public class SignalingRoomRegistry {
                 && registeredSenderType == senderType;
     }
 
+    public int removeExpiredRooms(Duration expiration) {
+        Instant expiredBefore = clock.instant().minus(expiration);
+        List<SignalingRoom> expiredRooms = new ArrayList<>();
+
+        rooms.forEach((signalingSessionId, room) -> {
+            if (room.lastTouchedAt.isBefore(expiredBefore)) {
+                rooms.computeIfPresent(signalingSessionId, (id, currentRoom) -> {
+                    if (currentRoom.lastTouchedAt.isBefore(expiredBefore)) {
+                        expiredRooms.add(currentRoom);
+                        return null;
+                    }
+
+                    return currentRoom;
+                });
+            }
+        });
+
+        expiredRooms.forEach(this::closeParticipants);
+        return expiredRooms.size();
+    }
+
     boolean containsRoom(String signalingSessionId) {
         return rooms.containsKey(signalingSessionId);
     }
@@ -112,6 +137,21 @@ public class SignalingRoomRegistry {
         }
 
         return left != null && right != null && left.getId().equals(right.getId());
+    }
+
+    private void closeParticipants(SignalingRoom room) {
+        room.participants.values().forEach(this::closeQuietly);
+    }
+
+    private void closeQuietly(WebSocketSession session) {
+        if (!session.isOpen()) {
+            return;
+        }
+
+        try {
+            session.close();
+        } catch (IOException ignored) {
+        }
     }
 
     private static class SignalingRoom {
