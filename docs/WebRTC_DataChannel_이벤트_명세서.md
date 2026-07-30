@@ -420,12 +420,32 @@ DataChannel 연결이 실패하거나 중간에 끊기면 다음 순서로 처�
 1. Frontend가 DataChannel 재연결을 시도한다.
 2. 재연결 중에는 화면에 연결 복구 상태를 표시한다.
 3. 펜 그리기 이벤트는 재연결 성공 전까지 전송하지 않는다.
-4. 안내 메시지, 목적지 변경, 위치 수정처럼 상담 흐름에 중요한 이벤트는 WebSocket signaling 또는 REST API fallback을 사용할 수 있다.
-5. 재연결 실패가 지속되면 채팅 또는 상담 재요청 화면으로 전환한다.
+4. 영상 연결 실패, 음성 상담 전환 요청, 채팅 상담 전환 요청은 REST fallback API로 Backend에 신고한다.
+5. 안내 메시지, 목적지 변경, 위치 수정처럼 상담 흐름에 중요한 이벤트는 WebSocket signaling 또는 REST API fallback을 사용할 수 있다.
+6. 재연결 실패가 지속되면 음성 상담 또는 채팅 상담 화면으로 전환한다.
 
 펜 그리기 이벤트는 실시간성이 중요하고 누락 시 복구 비용이 크지 않으므로 서버 저장을 기본으로 하지 않는다.
 
 목적지 변경과 위치 수정은 상담 결과에 영향을 주므로 필요 시 서버 상태에도 반영한다.
+
+현재 Backend fallback 구현은 다음 REST API와 상담 대기 SSE 채널을 사용한다.
+
+```text
+POST /api/consultations/{consultationRequestId}/fallback-events
+GET  /api/consultations/{consultationRequestId}/waiting-events
+```
+
+Fallback 이벤트 타입은 다음 값을 사용한다.
+
+| 값 | 설명 |
+| --- | --- |
+| `VIDEO_FAILED` | 영상 연결 또는 화면 공유 연결 실패 |
+| `AUDIO_ONLY_REQUESTED` | 음성 상담으로 전환 요청 |
+| `AUDIO_FAILED` | 음성 연결 실패 |
+| `CHAT_ONLY_REQUESTED` | 채팅 상담으로 전환 요청 |
+| `FALLBACK_CONFIRMED` | fallback 상담 방식 전환 확정 |
+
+Backend는 fallback 이벤트를 수신하면 기존 상담 대기 SSE 구독자에게 전환 안내 메시지를 전달한다. 현재 SSE `type`은 기존 `WAITING` 값을 사용하고, 상세 fallback 상태는 `message`로 전달한다.
 
 ---
 

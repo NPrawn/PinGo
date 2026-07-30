@@ -1310,6 +1310,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 | `CANCELED` | 사용자가 상담 요청을 취소함 |
 | `NO_COUNSELOR` | 상담 가능한 상담자가 없음 |
 
+WebRTC fallback 이벤트는 별도 SSE endpoint를 만들지 않고 이 구독 채널로 전달한다. 현재 구현에서는 fallback 상세 상태를 `message`에 담고, `type`은 기존 대기 이벤트 타입인 `WAITING`으로 전달한다.
+
 #### Event Data
 
 ```json
@@ -1335,7 +1337,87 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 - 클라이언트는 상담 대기 화면 진입 시 이 SSE endpoint를 구독한다.
 - 서버는 구독 직후 연결 확인을 위해 `INIT` 이벤트와 `connected` 데이터를 전송한다.
 - `ACCEPTED` 이벤트를 받으면 `signalingRoomId`를 사용해 `/ws/signaling` WebSocket signaling에 참여한다.
+- WebRTC 영상·음성 연결 실패 또는 채팅 전환 요청은 `POST /api/consultations/{consultationRequestId}/fallback-events`로 신고하고, 구독 중인 클라이언트는 이 SSE endpoint에서 전환 안내 메시지를 수신한다.
 - 연결이 끊기면 클라이언트는 동일한 `consultationRequestId`로 재구독할 수 있다.
+
+---
+
+## 10.5 WebRTC Fallback 이벤트 발행
+
+### POST `/api/consultations/{consultationRequestId}/fallback-events`
+
+WebRTC 상담 중 영상 연결 실패, 음성 상담 전환, 채팅 상담 전환 같은 fallback 상태를 서버에 알린다.
+
+서버는 요청을 수신하면 내부 fallback 이벤트를 발행하고, 상담 대기 SSE 구독자에게 전환 상태 메시지를 전달한다.
+
+#### 인증
+
+비로그인 접근 허용
+
+#### Path Variables
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `consultationRequestId` | string | Y | 상담 요청 ID |
+
+#### Request
+
+```json
+{
+  "type": "VIDEO_FAILED",
+  "reason": "camera permission denied"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `type` | string | Y | fallback 이벤트 타입 |
+| `reason` | string | N | fallback 발생 사유 또는 클라이언트 진단 메시지 |
+
+#### Fallback Event Type
+
+| 값 | 설명 |
+| --- | --- |
+| `VIDEO_FAILED` | 영상 연결 또는 화면 공유 연결 실패 |
+| `AUDIO_ONLY_REQUESTED` | 음성 상담으로 전환 요청 |
+| `AUDIO_FAILED` | 음성 연결 실패 |
+| `CHAT_ONLY_REQUESTED` | 채팅 상담으로 전환 요청 |
+| `FALLBACK_CONFIRMED` | fallback 상담 방식 전환 확정 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": null,
+  "message": null
+}
+```
+
+#### 실패 응답
+
+`type` 누락 또는 지원하지 않는 enum 값은 `INVALID_REQUEST`로 응답한다.
+
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "요청 형식이 올바르지 않습니다.",
+  "code": "INVALID_REQUEST"
+}
+```
+
+#### SSE 전달 예시
+
+```json
+{
+  "consultationRequestId": "consultation-1",
+  "type": "WAITING",
+  "signalingRoomId": null,
+  "message": "영상 연결에 실패했습니다. 음성 상담으로 전환을 시도합니다.",
+  "timestamp": "2026-07-30T00:00:00Z"
+}
+```
 
 ---
 
