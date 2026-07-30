@@ -2,6 +2,7 @@ import type { IconName } from '@/shared/ui';
 
 /** A point of interest the user can navigate to. */
 export type Poi = {
+  id?: number;
   name: string;
   icon: IconName;
   /** Floor and walking-time note shown under the name. */
@@ -9,6 +10,7 @@ export type Poi = {
   /** Highlighted as a popular destination. */
   star?: boolean;
   kind: PoiKind;
+  destinationType?: string;
 };
 
 export type PoiKind = 'facility' | 'place';

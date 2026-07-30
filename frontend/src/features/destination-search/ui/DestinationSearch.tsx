@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
-import { PLACES, searchDestinations } from '@/entities/poi';
+import { PLACES, useDestinationSearch } from '@/entities/poi';
+import type { Poi } from '@/entities/poi';
+import { useStationStore } from '@/entities/station';
+import { useUserSessionStore } from '@/entities/user-session';
+import { getFacility, getRecommendedExits, updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Field, Icon3d, Kicker, SelectRow } from '@/shared/ui';
 import type { Icon3dTone, IconName } from '@/shared/ui';
@@ -32,8 +36,7 @@ type DestinationSearchProps = {
 /**
  * Destination search with quick-access tiles.
  *
- * TODO: `searchDestinations` filters a fixture list. Replace with the search
- * endpoint once its contract is agreed.
+ * 검색 결과는 선택된 역을 기준으로 목적지 검색 API에서 가져온다.
  */
 export function DestinationSearch({
   nextRoute = USER_ROUTES.ROUTE_OPTIONS,
@@ -43,14 +46,48 @@ export function DestinationSearch({
 }: DestinationSearchProps) {
   const navigate = useNavigate();
   const startNewJourney = useNavigationStore((state) => state.startNewJourney);
+  const stationId = useStationStore((state) => state.stationId);
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
 
-  const results = searchDestinations(query);
+  const destinationSearch = useDestinationSearch(stationId, query, searched);
+  const results = destinationSearch.data ?? [];
 
-  const choose = (name: string) => {
-    startNewJourney(name);
-    onSelect?.(name);
+  const choose = async (poi: Poi) => {
+    let targetNodeId: number | undefined;
+
+    try {
+      if (poi.id != null && poi.kind === 'facility') {
+        const facility = await getFacility(poi.id);
+        targetNodeId = facility.linkedNodeId;
+      }
+
+      if (poi.id != null && poi.kind === 'place') {
+        const exits = await getRecommendedExits(poi.id);
+        const primaryExit = exits.find((exit) => exit.isPrimary) ?? exits[0];
+        if (primaryExit?.exitFacilityId != null) {
+          const facility = await getFacility(primaryExit.exitFacilityId);
+          targetNodeId = facility.linkedNodeId;
+        }
+      }
+    } catch {
+      targetNodeId = undefined;
+    }
+
+    startNewJourney(poi.name, {
+      destinationId: poi.id,
+      destinationType: poi.destinationType ?? poi.kind,
+      targetNodeId,
+    });
+    if (userSessionId && poi.id != null) {
+      void updateUserSession(userSessionId, {
+        selectedStationId: stationId,
+        destinationId: poi.id,
+        destinationType: poi.destinationType?.toLowerCase() ?? poi.kind,
+      }).catch(() => undefined);
+    }
+    onSelect?.(poi.name);
     if (!deferNavigation) void navigate(nextRoute);
   };
 
@@ -100,7 +137,7 @@ export function DestinationSearch({
                 key={poi.name}
                 className={styles.result}
                 indicator="none"
-                onClick={() => choose(poi.name)}
+                onClick={() => void choose(poi)}
               >
                 <Icon3d
                   name={poi.icon}
@@ -116,7 +153,11 @@ export function DestinationSearch({
                 <span className={styles.chevron}>›</span>
               </SelectRow>
             ))}
-            {results.length === 0 && (
+            {destinationSearch.isPending && <div className={styles.empty}>검색하고 있어요…</div>}
+            {destinationSearch.isError && (
+              <div className={styles.empty}>목적지를 불러오지 못했어요.</div>
+            )}
+            {!destinationSearch.isPending && !destinationSearch.isError && results.length === 0 && (
               <div className={styles.empty}>
                 일치하는 목적지가 없어요. 다른 이름으로 검색해보세요.
               </div>
@@ -134,7 +175,10 @@ export function DestinationSearch({
                 key={tile.title}
                 type="button"
                 className={styles.tile}
-                onClick={() => choose(tile.title)}
+                onClick={() => {
+                  const poi = PLACES.find((place) => place.name === tile.title);
+                  if (poi) void choose(poi);
+                }}
               >
                 <Icon3d
                   name={tile.icon}
