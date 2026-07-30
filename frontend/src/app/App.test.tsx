@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNavigationStore } from '@/entities/navigation';
 import { usePermissionStore } from '@/entities/permission';
+import { setAuthSession } from '@/shared/api';
 import { App } from './App';
 
 type GeoSuccess = (position: GeolocationPosition) => void;
@@ -81,6 +82,16 @@ function renderAt(path: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+function authenticateAs(role: 'COUNSELOR' | 'ADMIN') {
+  setAuthSession({
+    accessToken: `${role.toLowerCase()}-access-token`,
+    accountType: role,
+    accountId: 1,
+    name: '테스트 계정',
+    stationId: role === 'COUNSELOR' ? 1 : undefined,
+  });
 }
 
 /**
@@ -380,20 +391,24 @@ describe('counselor routes', () => {
   // session marks the same request done. Each step re-renders the queue to
   // prove the status survived navigating away.
   it('marks a request in progress after it is accepted', async () => {
+    authenticateAs('COUNSELOR');
     await renderSection('/counselor/requests');
     fireEvent.click(await screen.findByRole('button', { name: '상담 수락' }));
     cleanup();
 
+    authenticateAs('COUNSELOR');
     await renderSection('/counselor/requests');
     expect(await screen.findByText('상담 진행 중')).toBeInTheDocument();
     expect(screen.getByText('상담중')).toBeInTheDocument();
   });
 
   it('marks a request complete after the session ends', async () => {
+    authenticateAs('COUNSELOR');
     await renderSection('/counselor/session');
     fireEvent.click(await screen.findByRole('button', { name: '상담 종료' }));
     cleanup();
 
+    authenticateAs('COUNSELOR');
     await renderSection('/counselor/requests');
     expect(await screen.findByText('상담 완료')).toBeInTheDocument();
     expect(screen.getByText('완료')).toBeInTheDocument();
@@ -415,11 +430,13 @@ describe('admin routes', () => {
   });
 
   it('redirects the console root to the facility tab', async () => {
+    authenticateAs('ADMIN');
     await renderSection('/admin/console');
     expect(await screen.findByRole('heading', { name: '시설 · 출구 관리' })).toBeInTheDocument();
   });
 
   it('renders the requested console tab', async () => {
+    authenticateAs('ADMIN');
     await renderSection('/admin/console/station');
     expect(await screen.findByRole('heading', { name: '역 관리' })).toBeInTheDocument();
   });

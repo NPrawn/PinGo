@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { RequireRole } from '@/features/console-auth';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { ConnectFailedPage } from './ConnectFailedPage/ConnectFailedPage';
 import { ConnectingPage } from './ConnectingPage/ConnectingPage';
@@ -12,12 +13,6 @@ import { StatsPage } from './StatsPage/StatsPage';
 
 const rel = (path: string) => path.slice('/counselor/'.length);
 
-/**
- * The counselor console.
- *
- * TODO: Add a route guard once the auth contract is agreed — every screen
- * below `login` should require a signed-in counselor.
- */
 export function CounselorRoutes() {
   return (
     <Routes>
@@ -25,12 +20,54 @@ export function CounselorRoutes() {
       <Route path={rel(COUNSELOR_ROUTES.LOGIN)} element={<LoginPage />} />
       <Route path={rel(COUNSELOR_ROUTES.SIGNUP)} element={<SignupPage />} />
       <Route path={rel(COUNSELOR_ROUTES.PENDING)} element={<PendingPage />} />
-      <Route path={rel(COUNSELOR_ROUTES.REQUESTS)} element={<RequestsPage />} />
-      <Route path={rel(COUNSELOR_ROUTES.CONNECTING)} element={<ConnectingPage />} />
-      <Route path={rel(COUNSELOR_ROUTES.CONNECT_FAILED)} element={<ConnectFailedPage />} />
-      <Route path={rel(COUNSELOR_ROUTES.SESSION)} element={<SessionPage />} />
-      <Route path={rel(COUNSELOR_ROUTES.HISTORY)} element={<HistoryPage />} />
-      <Route path={rel(COUNSELOR_ROUTES.STATS)} element={<StatsPage />} />
+      <Route
+        path={rel(COUNSELOR_ROUTES.REQUESTS)}
+        element={
+          <RequireRole role="COUNSELOR" loginPath={COUNSELOR_ROUTES.LOGIN}>
+            <RequestsPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path={rel(COUNSELOR_ROUTES.CONNECTING)}
+        element={
+          <RequireRole role="COUNSELOR" loginPath={COUNSELOR_ROUTES.LOGIN}>
+            <ConnectingPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path={rel(COUNSELOR_ROUTES.CONNECT_FAILED)}
+        element={
+          <RequireRole role="COUNSELOR" loginPath={COUNSELOR_ROUTES.LOGIN}>
+            <ConnectFailedPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path={rel(COUNSELOR_ROUTES.SESSION)}
+        element={
+          <RequireRole role="COUNSELOR" loginPath={COUNSELOR_ROUTES.LOGIN}>
+            <SessionPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path={rel(COUNSELOR_ROUTES.HISTORY)}
+        element={
+          <RequireRole role="COUNSELOR" loginPath={COUNSELOR_ROUTES.LOGIN}>
+            <HistoryPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path={rel(COUNSELOR_ROUTES.STATS)}
+        element={
+          <RequireRole role="COUNSELOR" loginPath={COUNSELOR_ROUTES.LOGIN}>
+            <StatsPage />
+          </RequireRole>
+        }
+      />
       <Route path="*" element={<Navigate to={COUNSELOR_ROUTES.LOGIN} replace />} />
     </Routes>
   );
