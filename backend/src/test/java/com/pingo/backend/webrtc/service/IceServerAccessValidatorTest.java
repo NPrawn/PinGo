@@ -57,7 +57,7 @@ class IceServerAccessValidatorTest {
         session.accept(100L);
         ReflectionTestUtils.setField(session, "status", ConsultationStatus.IN_PROGRESS);
         given(signalingAccessTokenProvider.parseToken("signaling-token"))
-                .willReturn(userPrincipal(session.getConsultationId()));
+                .willReturn(counselorPrincipal(session.getConsultationId(), 100L));
         given(consultationSessionRepository.findById(session.getConsultationId()))
                 .willReturn(Optional.of(session));
 
@@ -125,8 +125,64 @@ class IceServerAccessValidatorTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.UNAUTHENTICATED);
     }
 
+    @Test
+    void validateRejectsSystemPrincipal() {
+        ConsultationSession session = newSession();
+        session.accept(100L);
+        given(signalingAccessTokenProvider.parseToken("signaling-token"))
+                .willReturn(new SignalingPrincipal(
+                        session.getConsultationId(),
+                        SignalingSenderType.SYSTEM,
+                        null,
+                        null
+                ));
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> validator.validate("signaling-token"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.UNAUTHENTICATED);
+    }
+
+    @Test
+    void validateRejectsDifferentUserSession() {
+        ConsultationSession session = newSession();
+        session.accept(100L);
+        given(signalingAccessTokenProvider.parseToken("signaling-token"))
+                .willReturn(new SignalingPrincipal(
+                        session.getConsultationId(),
+                        SignalingSenderType.USER,
+                        "usr_other",
+                        null
+                ));
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> validator.validate("signaling-token"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.UNAUTHENTICATED);
+    }
+
+    @Test
+    void validateRejectsDifferentCounselor() {
+        ConsultationSession session = newSession();
+        session.accept(100L);
+        given(signalingAccessTokenProvider.parseToken("signaling-token"))
+                .willReturn(counselorPrincipal(session.getConsultationId(), 200L));
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> validator.validate("signaling-token"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.UNAUTHENTICATED);
+    }
+
     private SignalingPrincipal userPrincipal(String consultationId) {
         return new SignalingPrincipal(consultationId, SignalingSenderType.USER, "usr_abc123", null);
+    }
+
+    private SignalingPrincipal counselorPrincipal(String consultationId, Long accountId) {
+        return new SignalingPrincipal(consultationId, SignalingSenderType.COUNSELOR, null, accountId);
     }
 
     private ConsultationSession newSession() {

@@ -7,6 +7,7 @@ import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import com.pingo.backend.signaling.auth.SignalingPrincipal;
+import com.pingo.backend.signaling.dto.SignalingSenderType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,10 @@ public class IceServerAccessValidator {
         if (!ICE_SERVER_ACCESSIBLE_STATUSES.contains(session.getStatus())) {
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
         }
+
+        if (!isAuthorizedParticipant(session, principal)) {
+            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
+        }
     }
 
     private SignalingPrincipal parsePrincipal(String token) {
@@ -45,5 +50,18 @@ public class IceServerAccessValidator {
         } catch (RuntimeException exception) {
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
         }
+    }
+
+    private boolean isAuthorizedParticipant(ConsultationSession session, SignalingPrincipal principal) {
+        if (principal.senderType() == null || principal.senderType() == SignalingSenderType.SYSTEM) {
+            return false;
+        }
+
+        return switch (principal.senderType()) {
+            case USER -> session.getUserSessionId().equals(principal.userSessionId());
+            case COUNSELOR -> session.getCounselorId() != null
+                    && session.getCounselorId().equals(principal.accountId());
+            case SYSTEM -> false;
+        };
     }
 }
