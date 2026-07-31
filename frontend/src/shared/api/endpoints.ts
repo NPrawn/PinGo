@@ -26,6 +26,7 @@ export const ENDPOINTS = {
   },
   destinations: {
     search: '/api/destinations/search',
+    nearestExit: '/api/destinations/nearest-exit',
   },
   places: {
     recommendedExits: (placeId: number) => `/api/places/${placeId}/recommended-exits`,

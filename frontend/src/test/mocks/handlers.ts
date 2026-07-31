@@ -74,6 +74,68 @@ export const handlers = [
   http.get('http://localhost:8080/api/admin/stations', () =>
     HttpResponse.json({ success: true, data: [] }),
   ),
+  // 최단 경로 카드가 쓰는 "목적지에서 가장 가까운 출구".
+  http.post('http://localhost:8080/api/destinations/nearest-exit', () =>
+    HttpResponse.json({
+      success: true,
+      data: { exitFacilityId: 82, exitNumber: '3' },
+    }),
+  ),
+  http.get('http://localhost:8080/api/stations/nearby', () =>
+    HttpResponse.json({
+      success: true,
+      data: [
+        {
+          stationId: 1,
+          nameKo: '역삼역',
+          nameEn: 'Yeoksam Station',
+          lineInfo: '2호선',
+          distanceM: 89,
+        },
+      ],
+    }),
+  ),
+  // 등록된 역과 외부(카카오) 지하철역 결과를 함께 내려주는 실제 응답을 흉내낸다.
+  http.get('http://localhost:8080/api/stations/search', ({ request }) => {
+    const keyword = new URL(request.url).searchParams.get('keyword')?.trim() ?? '';
+    const registered = {
+      stationId: 1,
+      nameKo: '역삼역',
+      nameEn: 'Yeoksam Station',
+      lineInfo: '2호선',
+      provider: 'pingo',
+      externalId: null,
+      address: null,
+      latitude: 37.5007,
+      longitude: 127.0365,
+      serviceReady: true,
+    };
+
+    if (!keyword) {
+      return HttpResponse.json({ success: true, data: [registered] });
+    }
+
+    const data = [];
+    if (registered.nameKo.includes(keyword)) {
+      data.push(registered);
+    }
+    if ('선릉역'.includes(keyword)) {
+      data.push({
+        stationId: null,
+        nameKo: '선릉역',
+        nameEn: null,
+        lineInfo: '2호선·수인분당선',
+        provider: 'kakao',
+        externalId: '21160338',
+        address: '서울 강남구 테헤란로 340',
+        latitude: 37.50452,
+        longitude: 127.048913,
+        serviceReady: false,
+      });
+    }
+
+    return HttpResponse.json({ success: true, data });
+  }),
   http.post('http://localhost:8080/api/auth/login', async ({ request }) => {
     const credentials = (await request.json()) as {
       loginId?: string;

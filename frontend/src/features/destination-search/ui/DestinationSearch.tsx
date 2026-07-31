@@ -104,7 +104,7 @@ export function DestinationSearch({
   };
 
   return (
-    <div className={compact ? styles.compact : undefined}>
+    <div className={[styles.root, compact && styles.compact].filter(Boolean).join(' ')}>
       <div className={styles.searchWrap}>
         <Field
           big

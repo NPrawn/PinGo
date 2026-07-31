@@ -1873,6 +1873,12 @@ export interface components {
       nameKo?: string;
       nameEn?: string;
       lineInfo?: string;
+      provider?: string;
+      externalId?: string;
+      address?: string;
+      latitude?: number;
+      longitude?: number;
+      serviceReady?: boolean;
     };
     ApiResponseListStationNearbyResponse: {
       success?: boolean;

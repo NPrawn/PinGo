@@ -1,22 +1,8 @@
-import type { Station } from './types';
-
 /**
- * Stations offered on the "current station" screen.
+ * 역 선택 화면의 기본값.
  *
- * TODO: Replace with the station lookup API once the endpoint and GPS contract
- * are agreed. These are the prototype's fixtures.
+ * 역 목록·검색은 모두 역 API에서 가져온다. 여기 남은 값은 사용자가 아직 출발지를 고르지
+ * 않았을 때 쓰는 초기값뿐이다.
  */
-export const STATIONS: readonly Station[] = [
-  { id: 1, name: '역삼역', line: '2호선', dist: '현재 GPS 위치', here: true },
-  { id: 2, name: '선릉역', line: '2호선·수인분당', dist: '420m' },
-  { id: 3, name: '강남역', line: '2호선·신분당', dist: '1.1km' },
-];
-
 export const DEFAULT_STATION = '역삼역';
 export const DEFAULT_STATION_ID = 1;
-
-export function searchStations(query: string): readonly Station[] {
-  const trimmed = query.trim();
-  if (!trimmed) return [];
-  return STATIONS.filter((station) => station.name.includes(trimmed));
-}

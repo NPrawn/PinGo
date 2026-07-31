@@ -235,7 +235,7 @@ describe('user routes', () => {
     expect(screen.getByRole('heading', { name: '출발지 선택' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '목적지 선택' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /역삼역.*현재 GPS 위치/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /역삼역.*실내 안내 가능/ }));
     useNavigationStore.setState({ waypoints: ['화장실'] });
 
     expect(screen.getAllByText('출발지')).not.toHaveLength(0);
@@ -248,6 +248,24 @@ describe('user routes', () => {
     expect(await screen.findByRole('heading', { name: '출발지와 목적지' })).toBeInTheDocument();
     expect(screen.getByLabelText('역삼역에서 GS25 역삼역점까지')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /이 경로로 촬영 시작/ })).toBeInTheDocument();
+  });
+
+  it('lists stations found only by the external provider without letting them be picked', async () => {
+    await renderSection('/user/station');
+
+    expect(await screen.findByRole('heading', { name: '출발지 선택' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('역 이름 검색'), { target: { value: '선릉' } });
+    fireEvent.click(screen.getByRole('button', { name: '검색' }));
+
+    const externalRow = await screen.findByRole('button', { name: /선릉역/ });
+    expect(externalRow).toBeDisabled();
+    expect(within(externalRow).getByText('준비 중')).toBeInTheDocument();
+    expect(within(externalRow).getByText('2호선·수인분당선')).toBeInTheDocument();
+
+    // 선택이 막혀 있으니 다음 단계로 넘어가지 않는다.
+    fireEvent.click(externalRow);
+    expect(screen.queryByRole('heading', { name: '목적지 선택' })).toBeNull();
   });
 
   it('redirects the legacy analyzing route to the combined capture screen', async () => {
@@ -284,8 +302,32 @@ describe('user routes', () => {
     expect(screen.getByRole('button', { name: /다시 연결/ })).toBeInTheDocument();
   });
 
+  it('labels the shortest route with the nearest exit the server picked', async () => {
+    useNavigationStore.setState({
+      route: 'fast',
+      destination: '역삼전자담배멀티샵',
+      destinationLatitude: 37.5007,
+      destinationLongitude: 127.0365,
+    });
+    await renderSection('/user/route');
+
+    const shortestOption = await screen.findByRole('button', { name: /최단 경로/ });
+
+    // FALLBACK_OPTIONS 의 하드코딩된 '7번 출입구'가 아니라 API 가 고른 출구가 보인다.
+    expect(await within(shortestOption).findByText('3번 출입구')).toBeInTheDocument();
+    expect(within(shortestOption).queryByText('7번 출입구')).toBeNull();
+    expect(
+      await screen.findByRole('link', { name: '3번 출입구 길 안내 시작' }),
+    ).toBeInTheDocument();
+  });
+
   it('shows every route option in a list and updates the selected exit', async () => {
-    useNavigationStore.setState({ route: 'fast' });
+    // 좌표가 없으면 가장 가까운 출구를 물을 수 없어 기본 문구가 그대로 남는다.
+    useNavigationStore.setState({
+      route: 'fast',
+      destinationLatitude: null,
+      destinationLongitude: null,
+    });
     await renderSection('/user/route');
 
     const shortestOption = await screen.findByRole('button', {

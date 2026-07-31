@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigationStore, type RouteOptionId } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
-import { getIndoorRouteOptions, type RouteOptionResponse } from '@/shared/api';
+import { findNearestExit, getIndoorRouteOptions, type RouteOptionResponse } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink, Icon, SelectRow, type IconName } from '@/shared/ui';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -51,6 +51,17 @@ function routeId(routeType?: string): RouteOptionId {
   return routeType === 'elevator_only' ? 'elev' : 'fast';
 }
 
+/**
+ * 출구 번호를 최단 경로 카드에 쓸 문구로 바꾼다.
+ *
+ * `exitNumber`는 "7"처럼 번호만 오거나 연결 통로처럼 이름이 올 수 있다.
+ */
+function formatExitLabel(exitNumber?: string) {
+  const trimmed = exitNumber?.trim();
+  if (!trimmed) return undefined;
+  return /^\d+$/.test(trimmed) ? `${trimmed}번 출입구` : trimmed;
+}
+
 function formatTime(seconds?: number) {
   if (seconds == null) return '-';
   return `${Math.max(1, Math.ceil(seconds / 60))}분`;
@@ -88,6 +99,8 @@ export function RouteOptionsPage() {
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const destinationLatitude = useNavigationStore((state) => state.destinationLatitude);
+  const destinationLongitude = useNavigationStore((state) => state.destinationLongitude);
   const route = useNavigationStore((state) => state.route);
   const setRoute = useNavigationStore((state) => state.setRoute);
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -105,10 +118,31 @@ export function RouteOptionsPage() {
     retry: false,
   });
 
-  const options = useMemo(
-    () => (optionsQuery.data ? optionsQuery.data.map(toDisplayOption) : [...FALLBACK_OPTIONS]),
-    [optionsQuery.data],
-  );
+  // 최단 경로가 안내할 출입구는 목적지 좌표에서 가장 가까운 출구 API가 정한다.
+  const canFindNearestExit = destinationLatitude != null && destinationLongitude != null;
+  const nearestExitQuery = useQuery({
+    queryKey: ['nearest-exit', stationId, destinationLatitude, destinationLongitude],
+    queryFn: () =>
+      findNearestExit({
+        stationId,
+        destinationLatitude: destinationLatitude!,
+        destinationLongitude: destinationLongitude!,
+      }),
+    enabled: canFindNearestExit,
+    retry: false,
+  });
+  const nearestExitLabel = formatExitLabel(nearestExitQuery.data?.exitNumber);
+
+  const options = useMemo(() => {
+    const base = optionsQuery.data
+      ? optionsQuery.data.map(toDisplayOption)
+      : [...FALLBACK_OPTIONS];
+
+    if (!nearestExitLabel) return base;
+    return base.map((option) =>
+      option.id === 'fast' ? { ...option, exit: nearestExitLabel } : option,
+    );
+  }, [optionsQuery.data, nearestExitLabel]);
   const selectedOption = options.find((option) => option.id === route && option.available);
   const firstAvailable = options.find((option) => option.available);
 
@@ -195,6 +229,11 @@ export function RouteOptionsPage() {
           {optionsQuery.isError && (
             <p role="alert" className={styles.routeAlert}>
               경로 옵션을 불러오지 못했습니다.
+            </p>
+          )}
+          {nearestExitQuery.isError && (
+            <p role="alert" className={styles.routeAlert}>
+              목적지에서 가장 가까운 출구를 찾지 못했습니다.
             </p>
           )}
 

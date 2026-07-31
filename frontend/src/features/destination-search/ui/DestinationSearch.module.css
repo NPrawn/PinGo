@@ -1,5 +1,7 @@
+/* flex: none — 카드가 좁아질 때 검색창은 줄어들지 않고 결과 목록만 줄어든다. */
 .searchWrap {
   position: relative;
+  flex: none;
   margin-top: 28px;
 }
 
@@ -99,14 +101,32 @@
 }
 
 .resultsKicker {
+  flex: none;
   margin: 28px 0 8px;
 }
 
+/* 부모(단계 카드)가 세로 flex 일 때 결과 목록이 남은 높이만 쓰도록 잇는 고리. */
+.root {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/*
+ * 결과가 많아도 검색창과 단계 헤더가 화면에 남도록 목록 안에서만 스크롤한다.
+ * 남은 공간에 맞춰 줄어들고, 두 행도 못 넣을 만큼 좁아지면 화면 전체 스크롤에 맡긴다.
+ */
 .results {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 8px;
-  overflow: auto;
+  min-height: 148px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .result {

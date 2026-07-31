@@ -16,6 +16,8 @@ export type FloorMapResponse = Schemas['FloorMapResponse'];
 export type FacilityResponse = Schemas['FacilityResponse'];
 export type FacilityDetailResponse = Schemas['FacilityDetailResponse'];
 export type DestinationSearchResponse = Schemas['DestinationSearchResponse'];
+export type NearestExitRequest = Schemas['NearestExitRequest'];
+export type NearestExitResponse = Schemas['NearestExitResponse'];
 export type RecommendedExitResponse = Schemas['RecommendedExitResponse'];
 export type RouteOptionsRequest = Schemas['RouteOptionsRequest'];
 export type RouteOptionResponse = Schemas['RouteOptionResponse'];
@@ -97,6 +99,13 @@ export function searchDestinations(stationId: number, keyword: string, language?
     apiClient.get(ENDPOINTS.destinations.search, {
       params: { stationId, keyword, language },
     }),
+  );
+}
+
+/** 목적지 좌표에서 가장 가까운 출구를 찾는다. 최단 경로가 안내할 출입구다. */
+export function findNearestExit(request: NearestExitRequest) {
+  return unwrap<NearestExitResponse>(
+    apiClient.post(ENDPOINTS.destinations.nearestExit, request),
   );
 }
 
