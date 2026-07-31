@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { consultationProblemLabel, consultationStatusLabel } from '@/entities/consult';
 import { getCounselorConsultations } from '@/shared/api';
 import { Icon, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
@@ -32,7 +33,7 @@ export function HistoryPage() {
             return (
               <div key={entry.consultationId} className={styles.entry}>
                 <div className={styles.entryHead}>
-                  <span className={styles.agent}>상태 {entry.status}</span>
+                  <span className={styles.agent}>{consultationStatusLabel(entry.status)}</span>
                   <span className={styles.date}>
                     {new Date(entry.requestedAt).toLocaleString('ko-KR')}
                   </span>
@@ -41,7 +42,9 @@ export function HistoryPage() {
                   <span className={styles.summaryIcon}>
                     <Icon name="sparkle" size={14} />
                   </span>
-                  <b className={styles.summaryText}>{entry.problemType}</b>
+                  <b className={styles.summaryText}>
+                    {consultationProblemLabel(entry.problemType)}
+                  </b>
                 </div>
                 <div className={styles.facts}>
                   <span className={styles.factLabel}>출발 위치</span>

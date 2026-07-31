@@ -1,30 +1,35 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { useConsultStore } from '@/entities/consult';
 import {
-  acceptConsultation,
-  ApiError,
-  getCounselorConsultations,
-  rejectConsultation,
-} from '@/shared/api';
+  consultationProblemLabel,
+  consultationStatusLabel,
+  useConsultStore,
+} from '@/entities/consult';
+import { acceptConsultation, ApiError, getCounselorConsultations } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { Button, Icon, MapPreview } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import styles from './RequestsPage.module.css';
 
-function errorMessage(error: unknown) {
-  return error instanceof ApiError
-    ? error.message
-    : '요청 상태가 이미 변경됐거나 처리하지 못했습니다.';
-}
-
-const PROBLEM_LABELS: Record<string, string> = {
-  CANNOT_FIND_EXIT: '출구를 찾을 수 없어요',
-  LOST: '현재 위치를 모르겠어요',
-  ROUTE_HELP: '경로 안내가 필요해요',
-  OTHER: '기타 문의',
+const STATUS_CLASS: Record<string, string> = {
+  WAITING: styles.badgeWaiting,
+  ACCEPTED: styles.badgeLive,
+  IN_PROGRESS: styles.badgeLive,
+  ENDED: styles.badgeDone,
+  CANCELED: styles.badgeMuted,
+  REJECTED: styles.badgeMuted,
+  FAILED: styles.badgeMuted,
 };
+
+function errorMessage(error: unknown) {
+  if (!(error instanceof ApiError)) return '요청 상태가 이미 변경됐거나 처리하지 못했습니다.';
+  // 상태 때문에 막힌 경우에는 어디서 바꿔야 하는지까지 알려준다.
+  if (error.code === 'COUNSELOR_NOT_AVAILABLE') {
+    return '상담 상태가 “상담 가능”일 때만 수락할 수 있어요. 오른쪽 위에서 상태를 바꿔 주세요.';
+  }
+  return error.message;
+}
 
 function elapsedLabel(requestedAt: string) {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(requestedAt).getTime()) / 1000));
@@ -57,18 +62,11 @@ export function RequestsPage() {
       setConsultation(response.consultationId);
       setSignalingRoom(response.signalingRoomId, response.signalingAccessToken);
       void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
+      // 수락하면 서버가 상담자를 '상담 중'으로 바꾸므로 헤더 상태도 다시 읽는다.
+      void queryClient.invalidateQueries({ queryKey: ['counselor-me'] });
       void navigate(COUNSELOR_ROUTES.CONNECTING);
     },
     // 상담 상태가 '상담 가능'이 아니면 서버가 거절하므로 그 이유를 그대로 보여준다.
-    onError: (error) => setActionError(errorMessage(error)),
-  });
-  const rejectMutation = useMutation({
-    mutationFn: rejectConsultation,
-    onMutate: () => setActionError(''),
-    onSuccess: () => {
-      setSelectedId(null);
-      void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
-    },
     onError: (error) => setActionError(errorMessage(error)),
   });
 
@@ -94,11 +92,14 @@ export function RequestsPage() {
                   .join(' ')}
                 onClick={() => setSelectedId(request.consultationId)}
               >
-                <span className={styles.tag}>
-                  {PROBLEM_LABELS[request.problemType] ?? request.problemType}
+                <span className={styles.cardHead}>
+                  <span className={styles.tag}>
+                    {consultationProblemLabel(request.problemType)}
+                  </span>
+                  <span className={[styles.statusBadge, STATUS_CLASS[request.status]].join(' ')}>
+                    {consultationStatusLabel(request.status)}
+                  </span>
                 </span>
-                {request.status === 'ACCEPTED' && <span className={styles.liveBadge}>상담중</span>}
-                {request.status === 'ENDED' && <span className={styles.doneBadge}>완료</span>}
                 <div className={styles.meta}>대기 {elapsedLabel(request.requestedAt)}</div>
                 <div className={styles.loc}>{request.currentLocationLabel ?? '위치 미확정'}</div>
               </button>
@@ -115,33 +116,28 @@ export function RequestsPage() {
                     <Icon name="pin" size={13} />
                     사용자 정보
                   </div>
-                  <h2 className={styles.heading}>
-                    {PROBLEM_LABELS[selected.problemType] ?? selected.problemType}
-                  </h2>
+                  <div className={styles.headingRow}>
+                    <h2 className={styles.heading}>
+                      {consultationProblemLabel(selected.problemType)}
+                    </h2>
+                    <span className={[styles.statusBadge, STATUS_CLASS[selected.status]].join(' ')}>
+                      {consultationStatusLabel(selected.status)}
+                    </span>
+                  </div>
                   <div className={styles.route}>
                     {selected.currentLocationLabel ?? '현재 위치 미확정'} →{' '}
                     {selected.destinationLabel ?? '목적지 미지정'}
                   </div>
                 </div>
                 {selected.status === 'WAITING' && (
-                  <div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => rejectMutation.mutate(selected.consultationId)}
-                      disabled={rejectMutation.isPending}
-                    >
-                      거절
-                    </Button>
-                    <Button
-                      size="sm"
-                      className={styles.accept}
-                      onClick={() => acceptMutation.mutate(selected.consultationId)}
-                      disabled={acceptMutation.isPending}
-                    >
-                      상담 수락
-                    </Button>
-                  </div>
+                  <Button
+                    size="sm"
+                    className={styles.accept}
+                    onClick={() => acceptMutation.mutate(selected.consultationId)}
+                    disabled={acceptMutation.isPending}
+                  >
+                    상담 수락
+                  </Button>
                 )}
                 {selected.status === 'ACCEPTED' && (
                   <Button
@@ -188,7 +184,7 @@ export function RequestsPage() {
               <div className={`${styles.card} ${styles.issueCard}`}>
                 <div className={styles.cardLabel}>문제 유형</div>
                 <div className={styles.issueText}>
-                  {PROBLEM_LABELS[selected.problemType] ?? selected.problemType}
+                  {consultationProblemLabel(selected.problemType)}
                 </div>
               </div>
             </>

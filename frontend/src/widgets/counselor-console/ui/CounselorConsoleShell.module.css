@@ -23,6 +23,13 @@
   border-radius: 8px;
 }
 
+.statusError {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b42318;
+  white-space: nowrap;
+}
+
 .logout {
   display: inline-flex;
   align-items: center;

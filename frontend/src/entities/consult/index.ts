@@ -9,3 +9,9 @@ export type { ConsultRequest, ConsultHistoryEntry, ConsultLogEntry } from './mod
 export { useConsultStore } from './model/consultStore';
 export { useCounselorQueueStore } from './model/counselorQueueStore';
 export type { RequestStatus } from './model/counselorQueueStore';
+export {
+  CONSULTATION_STATUS_LABELS,
+  CONSULTATION_PROBLEM_LABELS,
+  consultationStatusLabel,
+  consultationProblemLabel,
+} from './model/statusLabels';

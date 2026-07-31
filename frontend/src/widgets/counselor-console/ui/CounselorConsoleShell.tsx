@@ -27,7 +27,8 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
   });
   const statusMutation = useMutation({
     mutationFn: (status: 'AVAILABLE' | 'BUSY' | 'OFFLINE') => updateCounselorMe({ status }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['counselor-me'] }),
+    // 성공이든 실패든 서버 값을 다시 읽어, 셀렉트가 반영되지 않은 값을 보여주지 않게 한다.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['counselor-me'] }),
   });
 
   return (
@@ -45,6 +46,7 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
               className={styles.status}
               aria-label="상담 상태"
               value={profileQuery.data?.status ?? 'OFFLINE'}
+              disabled={statusMutation.isPending}
               onChange={(event) =>
                 statusMutation.mutate(event.target.value as 'AVAILABLE' | 'BUSY' | 'OFFLINE')
               }
@@ -53,6 +55,11 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
               <option value="BUSY">상담 중</option>
               <option value="OFFLINE">오프라인</option>
             </select>
+            {statusMutation.isError && (
+              <span className={styles.statusError} role="alert">
+                상태를 바꾸지 못했어요
+              </span>
+            )}
             <Link to={COUNSELOR_ROUTES.LOGIN} className={styles.logout} onClick={clearAuthSession}>
               로그아웃
             </Link>

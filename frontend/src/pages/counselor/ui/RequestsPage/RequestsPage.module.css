@@ -53,10 +53,18 @@
   box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--color-mint-mid) 30%, transparent);
 }
 
+/* Problem type on the left, consultation status on the right. */
+.cardHead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
 .tag {
   display: inline-block;
   padding: 4px 9px;
-  margin-bottom: 8px;
   font-size: 11px;
   font-weight: 700;
   color: var(--color-mint-forest);
@@ -75,69 +83,42 @@
   font-weight: 600;
 }
 
-.liveBadge {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
+/* Consultation status. One badge for every status so ended, canceled and
+   waiting requests are never mistaken for one another. */
+.statusBadge {
+  flex: none;
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 800;
-  color: #0f5a3e;
-  background: #d9f0df;
+  white-space: nowrap;
   border-radius: var(--radius-pill);
 }
 
-.liveDot {
-  width: 6px;
-  height: 6px;
-  background: #0f5a3e;
-  border-radius: 50%;
-  animation: request-pulse 1.2s infinite;
+.badgeWaiting {
+  color: #8a6412;
+  background: #fbf0db;
 }
 
-.assigned {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  margin-top: 6px;
-  font-size: 11px;
-  font-weight: 700;
+.badgeLive {
   color: #0f5a3e;
+  background: #d9f0df;
 }
 
-/* Completed request — muted card with a check badge. */
+.badgeDone {
+  color: #4a3ba8;
+  background: #e4e0fb;
+}
+
+.badgeMuted {
+  color: var(--color-sub);
+  background: var(--color-line-soft);
+}
+
+/* Finished request — muted card. */
 .requestDone {
   background: rgb(255 255 255 / 55%);
   border-color: rgb(207 226 213 / 45%);
   opacity: 0.75;
-}
-
-.doneBadge {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  padding: 3px 8px;
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--color-sub);
-  background: var(--color-line-soft);
-  border-radius: var(--radius-pill);
-}
-
-.completed {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  margin-top: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--color-sub);
 }
 
 /* Prototype `.cmain` — the detail pane. */
@@ -167,8 +148,16 @@
   color: var(--color-mint-mid);
 }
 
-.heading {
+.headingRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
   margin: 6px 0 4px;
+}
+
+.heading {
+  margin: 0;
   font-size: 19px;
   font-weight: 800;
 }
