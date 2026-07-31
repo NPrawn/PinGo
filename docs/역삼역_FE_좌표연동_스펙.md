@@ -1,5 +1,8 @@
 # 역삼역 FE 좌표 연동 스펙 (S15P11A206-276)
 
+> 최신화: 2026-07-30
+> 구현 상태: 미터→픽셀 렌더링은 구현됨. 역변환·Spring 위치 anchor/node 매핑·실제 평면도 자산 연동은 미완료다.
+
 FE(김은지)가 2D 평면도 위에 **노드·경로·현재위치**를 렌더하기 위한 계약.
 좌표 정의 원본은 [`역삼역_route_node_naming.md`](역삼역_route_node_naming.md).
 
@@ -9,28 +12,35 @@ FE(김은지)가 2D 평면도 위에 **노드·경로·현재위치**를 렌더�
 
 ## 1. 자산 — 평면도 이미지 (정적)
 
-| 층 | 파일 | 크기(px) |
+| 층 | 목표 원본 파일 | 기준 크기(px) |
 |---|---|---|
+| B1 대합실(상층) | 역삼역_B1.png | 1626 × 967 |
 | B2 대합실 | 역삼역_B2.png | 1624 × 969 |
 | B3 승강장 | 역삼역_B3.png | 1659 × 948 |
 
 - 좌표 프레임은 **이 원본 픽셀 크기 기준**. FE가 다른 크기로 렌더하면 `표시크기/원본크기` 배율을 곱해 스케일할 것.
-- 이미지 제공 경로는 지도관리(`floor_map`/FR-A-002)에서 서빙. (호스팅 URL은 인프라와 협의)
+- 현재 저장소에는 위 PNG 원본이 없고 Frontend fixture가 같은 크기의 schematic SVG data URL을 생성한다.
+- `GET /api/stations/{stationId}/maps` 연동은 구현됐지만 실제 `floor_map` seed/업로드 자산은 배포 환경에서 별도 준비해야 한다.
 
 ## 2. 좌표 프레임 (변환 규칙) — 층별
 
 ```json
 {
+  "B1": { "imageWidth": 1626, "imageHeight": 967, "originPx": [594, 501], "angleDeg": -21.28, "mpp": 0.19, "z": 5 },
   "B2": { "imageWidth": 1624, "imageHeight": 969, "originPx": [622, 512], "angleDeg": -21.28, "mpp": 0.19, "z": 0 },
   "B3": { "imageWidth": 1659, "imageHeight": 948, "originPx": [597, 497], "angleDeg": -21.28, "mpp": 0.19, "z": -5 }
 }
 ```
-- `originPx`: 미터 원점(0,0)의 이미지 픽셀 위치 (= 층간 엘리베이터 EVA)
+- `originPx`: 미터 원점(0,0)의 이미지 픽셀 위치 (= B2-B3 층간 엘리베이터 B)
 - `angleDeg`: 이미지 기준 +X축(승강장·6번출구 방향) 각도
 - `mpp`: meter per pixel (provisional, 277 정합 후 확정)
 - `z`: 층 높이(명목값, 실제 층고 미확정)
 
-## 3. 변환 헬퍼 (그대로 사용 가능)
+> **B1의 `originPx`는 미검증 추정값이다.** B1에는 원점 기준 엘리베이터가 없어 추정으로 얹었고, 예비 이미지 정합에서 최대 4.4m 차이가 나왔다. **B1 좌표끼리는 일관되므로 B1 지도 표시·경로선 렌더링은 정상 동작한다.** 층 전환 위치 정합에만 영향이 있어 COLMAP 정합(277) 후 확정한다. 확정 시 이 값 1개만 바뀌므로 FE 코드 수정은 필요 없다 — **프레임을 하드코딩하지 말고 `GET /api/stations/{stationId}/maps` 응답의 `originPxX`·`originPxY`·`frameAngleDeg`·`scaleMPerPx`를 쓸 것.**
+
+> **B0.5 중간층**: B1 개찰구 위쪽 중간 레벨은 별도 층이 아니라 **`floorCode: "B1"` 안의 `mapZ = 7.5`**다. 평면도·프레임은 B1을 그대로 쓴다. 같은 층 안에 높이가 다른 노드가 섞이므로, 층 필터는 `floorCode`로 하고 `mapZ`로 나누지 말 것.
+
+## 3. 변환 헬퍼
 
 ```js
 const FRAME = {
@@ -45,7 +55,7 @@ function meterToPixel(x, y, floor) {
   return { px: f.ox + (c * x - s * y) / f.mpp, py: f.oy + (s * x + c * y) / f.mpp };
 }
 
-// 픽셀(px,py) → 미터(x,y)  [지도 클릭 → 좌표, 수동 위치 선택 등]
+// 픽셀(px,py) → 미터(x,y)  [계약 예시; 현재 Frontend에는 미구현]
 function pixelToMeter(px, py, floor) {
   const f = FRAME[floor];
   const t = (f.angleDeg * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
@@ -53,18 +63,22 @@ function pixelToMeter(px, py, floor) {
   return { x: (dx * c + dy * s) * f.mpp, y: (-dx * s + dy * c) * f.mpp };
 }
 ```
-검증: `meterToPixel(-0.4, 27.2, "B2")` → `(672, 646)` (EVB), `meterToPixel(0,0,"B2")` → `(622,512)` (EVA).
+검증: `meterToPixel(0, 0, "B2")` → `(622, 512)` = **B2-B3 엘리베이터 B**(원점), `meterToPixel(-0.4, 27.2, "B2")` → `(672, 646)` = **B2-B3 엘리베이터 A**.
+
+> 이 두 엘리베이터는 현재 DB(V4)에서 각각 `EVA`(node 101/201) · `EVB`(node 102/202)로 저장돼 있다. **A·B 라벨이 재구축 데이터와 반대**이며 좌표는 동일하다. 재시드 시 현장 표기로 통일한다 — 상세는 [`역삼역_route_node_naming.md`](역삼역_route_node_naming.md) §1.
+
+현재 `frontend/src/entities/floor-map/lib/coordinates.ts`에는 `meterToPixel`만 구현돼 있다. 수동 지도 선택을 연결할 때 `pixelToMeter`와 유효 범위 검증을 추가한다.
 
 ## 4. 데이터 계약 (API, 미터 좌표)
 
 **경로 조회/생성** (구현됨, `route/` 도메인):
-- `POST /api/routes/indoor/options` → 2종 경로 요약 `[{ routeType, available, totalDistanceM, totalTimeSec, unavailableReason }]`
+- `POST /api/routes/indoor/options` → 2종 경로 요약 `[{ routeType, available, totalDistanceM, estimatedTimeSec, unavailableReason }]`
   - `routeType`: `fastest` | `elevator_only`
 - `POST /api/routes/indoor` → 상세 경로
   - `steps[]`: `{ order, fromNodeId, toNodeId, distanceM, estimatedTimeSec, moveType, instruction }`
   - `pathNodes[]`: `{ nodeId, floorId, mapX, mapY }` ← **이 mapX/mapY(미터)를 `meterToPixel`로 변환해 경로선 그림**
 
-**현재위치**(위치추정, FR-U-004 / 이정우 담당)는 최종적으로 `{ x, y, floor, ... }` **미터**로 내려옴 → 같은 `meterToPixel`로 마커 표시.
+**현재위치 목표 계약**은 `{ x, y, floor, ... }` 미터 좌표이며 같은 `meterToPixel`로 표시한다. 현재 Spring VPS 응답에서 이 anchor/node 좌표로 변환하는 연동은 미완료다.
 
 노드 필드 의미: `nodeId`(안정 키), `name`(ASCII 코드 — 의미는 naming 문서 §2), `type`(node_type), `mapX/mapY`(미터), floor.
 
@@ -74,14 +88,14 @@ function pixelToMeter(px, py, floor) {
 2. 경로 API 호출 → `pathNodes` 미터좌표 수신
 3. 각 좌표 `meterToPixel(x,y,floor)` → (표시배율 곱해) 이미지 위 픽셀
 4. 노드·경로선·현재위치 마커 렌더
-5. 지도 클릭으로 위치 지정 시 `pixelToMeter`로 역변환
+5. 지도 클릭 위치 지정 기능을 구현할 때 `pixelToMeter`로 역변환
 
 ## 6. 주의 / 미결
 
 - **표시 스케일**: 프레임 픽셀은 원본 크기(§1) 기준. 렌더 크기가 다르면 배율 보정.
-- **z(높이)**: 현재 API 응답 미노출(엔티티에 `map_z` 필드 추가 필요). 우선 프레임의 층별 `z` 사용. AR 화살표 높이용.
+- **z(높이)**: DB `route_node.map_z`는 존재하지만 현재 경로 API 응답에는 노출되지 않는다. 우선 프레임의 층별 `z`를 사용한다.
 - **방위(동서남북)**: +X는 진북이 아니라 승강장 축. 나침반·북쪽정렬·AR heading이 필요하면 `northBearing`(프레임↔진북 오프셋) 확정 후 표시 레이어에서 회전. **좌표는 안 바뀜.**
-- **커버 구간만 라우팅**: 간선 연결된 노드만 경로 대상(B2 EVB~3번출구, B3 서쪽끝~계단). 나머지 시설 노드는 표시용.
+- **커버 구간만 라우팅**: V5에서 B2 화장실·안내센터 접근 간선은 추가됐지만 EV4·ESC4·NURS·EVA 등 일부 시설은 여전히 그래프와 분리돼 있다.
 - **provisional**: mpp(0.19)·z는 잠정. 277(COLMAP sim3) + 실측 층고 후 프레임 값만 갱신하면 FE 로직 변경 없이 반영됨.
 
 ## 7. 백엔드 결정 필요 (FE와 협의)
@@ -93,7 +107,8 @@ function pixelToMeter(px, py, floor) {
 
 ## 8. [제안] WebXR 상대 위치 추적 정렬 (S15P11A206-294)
 
-> **상태: 제안. 신재령·이정우 합의 필요.** 결정 배경은 `기술_의사결정_정리.md` 11장. 아래 변환식의 축·부호는 **실기기 검증 전이며 확정 값이 아니다.**
+> **상태: 제안. 신재령·이정우 합의 필요.** 결정 배경은 `기술_의사결정_정리.md` 11장.
+> 아래 변환식의 **축·부호는 2026-07-30 실기기 검증으로 확인**됐다(8.3). `forwardMap` 출처는 여전히 미결이다(8.5).
 
 ### 8.1 두 좌표계의 차이
 
@@ -117,7 +132,16 @@ function pixelToMeter(px, py, floor) {
 | `anchor.forwardXr` | 같은 시점 단말 전방의 XR 평면 단위벡터. `yawDegOf`가 반환하는 ψ에 대해 `(-sin ψ, -cos ψ)`. WebXR 뷰어의 전방이 `-Z`이기 때문이다 |
 | `anchor.forwardMap` | 같은 시점 단말 전방의 지도 미터 평면 단위벡터 — **출처 미정, §8.5 참고** |
 
-### 8.3 변환식 (검증 전)
+### 8.3 변환식 (실측 검증됨)
+
+**축·부호는 실측으로 확인됐다**(`WebXR_검증_결과.md` 3.4).
+
+| 확인 항목 | 실측 |
+|---|---|
+| 전방이 `-Z`인가 | 약 28.7m 직진 시 `Δz` 단조 감소 |
+| 우회전 후 `Δx`가 양수인가 | 90° 우회전 후 직진에서 `Δx` `-1.80 → +7.79` |
+
+따라서 아래 `dZ`의 부호 반전 없음이 맞고, **이 절 하단의 거울 보정은 적용하지 않는다.**
 
 ```js
 // 앵커 시점의 전방 벡터 두 개로 회전을 정한다.
@@ -143,12 +167,12 @@ function xrToMeter(pose, anchor) {
 
 `dZ`는 부호를 뒤집지 않는다. WebXR 뷰어의 전방이 `-Z`이므로 세션 시작 방향으로 걸으면 `dZ`가 음수가 되지만, 이는 그 방향이 지도 위에서 그려지는 방향일 뿐 오류가 아니다.
 
-반사(축 뒤집힘)를 넣지 않은 근거는 두 프레임의 방향성이 같다는 것이다. `meterToPixel`의 변환 행렬식이 `+1`이라 미터 프레임은 평면도 이미지와 같은 방향성이고, XR을 위에서 내려다본 `(X, Z)` 평면도 `오른쪽·아래` 방향성이다. **이 부분만은 계산상 추론이며 실측 전이다**(`WebXR_검증_결과.md` 체크리스트 16번).
+반사(축 뒤집힘)를 넣지 않은 근거는 두 프레임의 방향성이 같다는 것이다. `meterToPixel`의 변환 행렬식이 `+1`이라 미터 프레임은 평면도 이미지와 같은 방향성이고, XR을 위에서 내려다본 `(X, Z)` 평면도 `오른쪽·아래` 방향성이다. **3차 실기기 검증에서 우회전 후 `Δx`가 양수로 나와 이 추론이 확인됐다**(`WebXR_검증_결과.md` 체크리스트 16번).
 
-가정이 틀렸다면, 즉 두 평면이 거울 관계라면 보정은 다음과 같다. **`sinA` 부호만 뒤집는 것으로는 맞지 않는다.** 그 경우 대응은 `지도벡터 = 회전 × 반사 × XR벡터`이므로, 반사를 먼저 적용한 뒤 회전을 산출해야 한다.
+아래 거울 보정은 **적용하지 않는다.** 다른 역·다른 프레임 정의를 도입할 때 같은 검증이 실패하면 그때 참고하도록 남겨 둔다. **`sinA` 부호만 뒤집는 것으로는 맞지 않는다.** 대응은 `지도벡터 = 회전 × 반사 × XR벡터`이므로 반사를 먼저 적용한 뒤 회전을 산출해야 한다.
 
 ```js
-// parity 가정이 틀렸을 때만 적용한다
+// 현재 역삼역 프레임에는 적용하지 않는다. parity 가정이 깨진 경우에만 쓴다.
 const f1m = { x: f1.x, y: -f1.y }; // 반사 후의 XR 전방
 const cosA = f1m.x * f2.x + f1m.y * f2.y;
 const sinA = f1m.x * f2.y - f1m.y * f2.x;
@@ -175,7 +199,7 @@ const sinA = f1m.x * f2.y - f1m.y * f2.x;
 
 ΔY 단독으로는 "몇 층인지"를 정할 수 없고 "올라가는 중/내려가는 중"만 정할 수 있다.
 
-층 전환 구간은 추적이 가장 취약한 구간이므로 실측 결과(`WebXR_검증_결과.md` 3.3의 17~19번)에 따라 이 규칙을 다시 조정한다.
+**엘리베이터·에스컬레이터 구간은 이 규칙에서 제외한다.** 실측에서 엘리베이터 2개 층 상승 시 ΔY가 실제의 절반 이하에 그쳤고 값이 오르내렸다(`WebXR_검증_결과.md` 3.0 3차). 해당 `moveType` 구간에서는 ΔY를 판정에 넣지 않고 통과 후 위치 재인식으로 층을 확정한다. 계단은 정상 동작했다(ΔY 3.80m, 왕복 오차 0.135m).
 
 ### 8.5 미결 — 앵커 시점의 `forwardMap` 출처
 

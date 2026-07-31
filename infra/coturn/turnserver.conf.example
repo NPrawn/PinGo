@@ -1,22 +1,34 @@
+# Copy this file to infra/coturn/turnserver.conf on the server.
+# Do not commit the real turnserver.conf because it contains credentials.
+
 listening-port=3478
 tls-listening-port=5349
+
+# Use the same certificate paths mounted on the host.
+# If TLS termination is handled elsewhere and TURN/TLS is not used, keep these
+# values aligned with the server policy before opening 5349.
 cert=CHANGE_ME_TLS_CERT_FULLCHAIN_PATH
 pkey=CHANGE_ME_TLS_CERT_PRIVATE_KEY_PATH
 
 fingerprint
 lt-cred-mech
 
-realm=pingo.example.com
+realm=CHANGE_ME_TURN_REALM
 server-name=pingo-turn
 
-user=pingo:CHANGE_ME_TURN_PASSWORD
+# Long-term credential used by the backend WEBRTC_TURN_USERNAME and
+# WEBRTC_TURN_CREDENTIAL environment variables.
+user=CHANGE_ME_TURN_USERNAME:CHANGE_ME_TURN_PASSWORD
 
+# Public IP address of the VPS that receives WebRTC traffic.
 external-ip=CHANGE_ME_PUBLIC_SERVER_IP
 
+# Relay port range. Open this UDP range in the firewall/security group.
 min-port=49152
 max-port=65535
 
 no-cli
 
+# Prefer stdout so docker logs can collect coturn output.
 log-file=stdout
 simple-log

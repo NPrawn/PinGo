@@ -1,5 +1,7 @@
 # 외국인 관광객 대상 지하철 실내 내비게이션 ERD 초안
 
+> 최신화: 2026-07-30
+
 ## 1. 문서 목적
 
 본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 데이터 구조 초안을 정의한다.
@@ -171,10 +173,29 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | width | int | 원본 지도 너비 | nullable |
 | height | int | 원본 지도 높이 | nullable |
 | scale_m_per_px | decimal | 픽셀당 실제 거리 | nullable |
+| origin_px_x | decimal | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 x | nullable |
+| origin_px_y | decimal | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 y | nullable |
+| frame_angle_deg | decimal | 캐노니컬 +X축과 이미지 x축의 각도(도) | nullable |
 | version | varchar | 지도 버전 | nullable |
 | is_active | boolean | 사용 여부 | default true |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |
+
+**좌표 프레임 3필드**(`origin_px_x`, `origin_px_y`, `frame_angle_deg`)는 `scale_m_per_px`와 함께 **미터 좌표를 이미지 픽셀로 변환하는 데 필요한 전체 정보**다. 좌표는 캐노니컬 미터로 저장되므로(→ [`기술_의사결정_정리.md`](기술_의사결정_정리.md) §6.3), 지도에 노드·경로·현재위치를 그리려면 층별로 이 4개 값이 있어야 한다.
+
+- **층마다 값이 다르다.** 원점 픽셀은 층별 평면도 이미지가 서로 다른 크기·여백을 갖기 때문에 층마다 다르고(역삼역 B1 1626×967 / B2 1624×969 / B3 1659×948), `frame_angle_deg`·`scale_m_per_px`는 현재 전 층 공통이지만 평면도 교체 시 달라질 수 있어 층별로 둔다.
+- **nullable인 이유**: 프레임이 확정되지 않은 역의 지도도 등록할 수 있어야 한다. 값이 없으면 지도 표시는 되지만 좌표 오버레이는 불가하다.
+- 실제 마이그레이션(V6)과 엔티티 반영은 별도 작업이다.
+
+**역삼역 확정값** (원본 평면도 픽셀 기준):
+
+| floor_code | origin_px | frame_angle_deg | scale_m_per_px |
+| --- | --- | --- | --- |
+| B1 | (594, 501) — **미검증 추정값** | −21.28 | 0.19 |
+| B2 | (622, 512) | −21.28 | 0.19 |
+| B3 | (597, 497) | −21.28 | 0.19 |
+
+> B1에는 원점 기준 엘리베이터가 없어 추정으로 얹은 값이다. 상세는 [`기술_의사결정_정리.md`](기술_의사결정_정리.md) §6.3 참고.
 
 ---
 
@@ -189,7 +210,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | facility_id | bigint | 시설 ID | PK |
 | station_id | bigint | 역 ID | FK station.station_id |
 | floor_id | bigint | 층 ID | FK station_floor.floor_id |
-| facility_type | varchar | 시설 유형 | exit, gate, platform, elevator 등 |
+| facility_type | varchar | 시설 유형 | exit, gate, platform, elevator, info 등 |
 | name_ko | varchar | 시설명 한국어 | not null |
 | name_en | varchar | 시설명 영어 | nullable |
 | map_x | decimal | 지도 X 좌표 | not null |
@@ -245,7 +266,8 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 
 실내 경로 탐색에 사용하는 노드이다.
 
-지도 좌표는 이미지 좌상단을 `(0, 0)`으로 하는 `map_x`, `map_y` 값을 사용한다.
+`map_x`, `map_y`, `map_z`는 층별 EVA를 원점으로 하는 캐노니컬 미터 좌표를 사용한다.
+픽셀 변환은 Frontend의 층별 좌표 프레임에서 수행하며 DB에는 이미지 픽셀을 저장하지 않는다.
 
 | 컬럼 | 타입 예시 | 설명 | 제약 |
 | --- | --- | --- | --- |
@@ -256,6 +278,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | name | varchar | 노드 이름 | nullable |
 | map_x | decimal | 지도 X 좌표 | not null |
 | map_y | decimal | 지도 Y 좌표 | not null |
+| map_z | decimal | 층 높이를 포함한 지도 Z 좌표 | not null, default 0 |
 | is_landmark | boolean | 랜드마크 후보 여부 | default false |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |
@@ -803,7 +826,7 @@ AI 모델·VPS 구축 데이터는 강민수가 책임지고, AI 서버 호출·
 
 ## 12. 구현 중 검증할 사항
 
-1. 실제 배포 도메인 확정
+1. 운영 도메인 `jenkins.example.invalid`와 DB에 저장되는 공개 URL의 일치 검증
 2. 추후 일본어·중국어 확장 시 `translation` 테이블 적용 시점 검토
 
 다음 항목은 확정된 기준으로 설계한다.
@@ -811,7 +834,8 @@ AI 모델·VPS 구축 데이터는 강민수가 책임지고, AI 서버 호출·
 | 항목 | 확정 기준 |
 | --- | --- |
 | DBMS | MySQL |
-| 지도 좌표계 | 이미지 좌상단 `(0, 0)` 기준 `map_x`, `map_y` |
+| 지도 좌표계 | 캐노니컬 미터 `map_x`, `map_y`, `map_z` (원점 = B2↔B3 층간 엘리베이터, +X = 6번출구 방향). 픽셀 변환은 `floor_map` 좌표 프레임으로 FE에서 수행 |
+| 경로 거리 계산 | 3D 유클리드 (x, y, z) — 같은 층 안에서도 높이가 다른 노드가 있다 |
 | 지도 이미지 저장 | 서버 정적 파일 저장 + DB URL 관리 |
 | 경로 거리 | `route_edge.distance_m` 우선 |
 | 사용자 세션 만료 | 마지막 활동 기준 1시간 (정상 종료 시 즉시 만료, 진행 중 상담이 있으면 만료 안 함) |

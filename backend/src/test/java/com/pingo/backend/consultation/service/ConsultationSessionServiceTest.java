@@ -1,17 +1,20 @@
 package com.pingo.backend.consultation.service;
 
+import com.pingo.backend.auth.domain.Account;
+import com.pingo.backend.auth.domain.AccountType;
+import com.pingo.backend.auth.domain.CounselorStatus;
 import com.pingo.backend.auth.repository.AccountRepository;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.domain.ProblemType;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
-import com.pingo.backend.consultation.dto.response.ConsultationCancelResponse;
-import com.pingo.backend.consultation.dto.response.ConsultationCreateResponse;
-import com.pingo.backend.consultation.dto.response.ConsultationResponse;
-import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
+import com.pingo.backend.consultation.dto.response.*;
+import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
+import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.Optional;
 
@@ -38,15 +42,20 @@ import static org.mockito.Mockito.verify;
 class ConsultationSessionServiceTest {
 
     @Mock
+    private AccountRepository accountRepository;
+
+    @Mock
     private ConsultationSessionRepository consultationSessionRepository;
     @Mock
     private UserSessionRepository userSessionRepository;
     @Mock
     private StationRepository stationRepository;
     @Mock
-    private AccountRepository accountRepository;
+    private ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
     @Mock
-    private ConsultationWaitingEventPublisher waitingEventPublisher;
+    private ApplicationEventPublisher applicationEventPublisher;
+    @Mock
+    private SignalingAccessTokenProvider signalingAccessTokenProvider;
 
     @InjectMocks
     private ConsultationSessionService consultationSessionService;
@@ -54,6 +63,9 @@ class ConsultationSessionServiceTest {
     private static final String USER_SESSION_ID = "usr_9f3a2b";
     private static final String OTHER_USER_SESSION_ID = "usr_other0";
     private static final Long STATION_ID = 1L;
+    private static final Long COUNSELOR_ACCOUNT_ID = 100L;
+    private static final Long OTHER_COUNSELOR_ACCOUNT_ID = 101L;
+    private static final Long OTHER_STATION_ID = 2L;
 
     private ConsultationCreateRequest createRequest;
     private UserSession userSession;
@@ -159,6 +171,23 @@ class ConsultationSessionServiceTest {
                 consultationSessionService.get(session.getConsultationId(), USER_SESSION_ID);
 
         assertThat(response.consultationId()).isEqualTo(session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isNull();
+    }
+
+    @Test
+    void get_성공_수락된_상담이면_사용자_signaling_token을_반환한다() {
+        ConsultationSession session = newSession();
+        session.accept(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+        given(signalingAccessTokenProvider.createUserToken(session.getConsultationId(), USER_SESSION_ID))
+                .willReturn("user-signaling-token");
+
+        ConsultationResponse response =
+                consultationSessionService.get(session.getConsultationId(), USER_SESSION_ID);
+
+        assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isEqualTo("user-signaling-token");
     }
 
     @Test
@@ -237,5 +266,252 @@ class ConsultationSessionServiceTest {
         assertThatThrownBy(() -> consultationSessionService.cancel(session.getConsultationId(), OTHER_USER_SESSION_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
+    }
+    @Test
+    void accept_성공() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getStatus()).willReturn(CounselorStatus.AVAILABLE);
+        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+        given(signalingAccessTokenProvider.createCounselorToken(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .willReturn("counselor-signaling-token");
+
+        ConsultationAcceptResponse response =
+                consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
+
+        assertThat(response.status()).isEqualTo(ConsultationStatus.ACCEPTED);
+        assertThat(response.counselorId()).isEqualTo(COUNSELOR_ACCOUNT_ID);
+        assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isEqualTo("counselor-signaling-token");
+        verify(counselor).changeStatus(CounselorStatus.BUSY);
+        verify(consultationWaitingEventPublisher)
+                .publishAccepted(session.getConsultationId(), "room_" + session.getConsultationId());
+    }
+
+    @Test
+    void accept_실패_존재하지_않는_상담() {
+        given(consultationSessionRepository.findByIdForUpdate("cs_notfound")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> consultationSessionService.accept("cs_notfound", COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
+    }
+
+    @Test
+    void accept_실패_존재하지_않는_계정() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.ACCOUNT_NOT_FOUND);
+    }
+
+    @Test
+    void accept_실패_상담자_계정이_아님() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account adminAccount = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(adminAccount));
+        given(adminAccount.getAccountType()).willReturn(AccountType.ADMIN);
+
+        assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.ACCOUNT_NOT_FOUND);
+    }
+
+    @Test
+    void accept_실패_담당_역이_아님() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(OTHER_STATION_ID);
+
+        assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_STATION_MISMATCH);
+    }
+
+    @Test
+    void accept_실패_수락_불가능한_상태() {
+        ConsultationSession session = newSession();
+        session.accept(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+
+        assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_ACCEPTABLE);
+        verify(accountRepository, never()).findByIdForUpdate(COUNSELOR_ACCOUNT_ID);
+        verify(counselor, never()).changeStatus(CounselorStatus.BUSY);
+    }
+
+    @Test
+    void accept_실패_상담자가_상담_가능_상태가_아님() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getStatus()).willReturn(CounselorStatus.BUSY);
+
+        assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.COUNSELOR_NOT_AVAILABLE);
+        verify(counselor, never()).changeStatus(CounselorStatus.BUSY);
+    }
+
+    @Test
+    void accept_실패_비활성_계정() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(false);
+
+        assertThatThrownBy(() -> consultationSessionService.accept(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INACTIVE_ACCOUNT);
+    }
+
+    @Test
+    void reject_성공() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+
+        ConsultationRejectResponse response =
+                consultationSessionService.reject(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
+
+        assertThat(session.getCounselorId()).isNull();
+        assertThat(response.status()).isEqualTo(ConsultationStatus.REJECTED);
+        verify(consultationWaitingEventPublisher).publishRejected(session.getConsultationId());
+    }
+
+    @Test
+    void reject_실패_존재하지_않는_상담() {
+        given(consultationSessionRepository.findByIdForUpdate("cs_notfound")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> consultationSessionService.reject("cs_notfound", COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
+    }
+
+    @Test
+    void reject_실패_거절_불가능한_상태() {
+        ConsultationSession session = newSession();
+        session.reject();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+
+        assertThatThrownBy(() -> consultationSessionService.reject(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_REJECTABLE);
+        verify(accountRepository, never()).findById(COUNSELOR_ACCOUNT_ID);
+    }
+
+    @Test
+    void end_성공() {
+        ConsultationSession session = newSession();
+        session.accept(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+
+        ConsultationEndResponse response =
+                consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
+
+        assertThat(response.status()).isEqualTo(ConsultationStatus.ENDED);
+        assertThat(session.getEndedAt()).isNotNull();
+        assertThat(session.getSignalingRoomId()).isNull();
+        verify(counselor).changeStatus(CounselorStatus.AVAILABLE);
+        verify(applicationEventPublisher)
+                .publishEvent(new ConsultationEndedEvent(
+                        session.getConsultationId(),
+                        "room_" + session.getConsultationId()
+                ));
+    }
+
+    @Test
+    void end_실패_존재하지_않는_상담() {
+        given(consultationSessionRepository.findByIdForUpdate("cs_notfound")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> consultationSessionService.end("cs_notfound", COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_FOUND);
+    }
+
+    @Test
+    void end_실패_종료_불가능한_상태() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_ENDABLE);
+        verify(accountRepository, never()).findByIdForUpdate(COUNSELOR_ACCOUNT_ID);
+        verify(applicationEventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void end_실패_수락한_상담자가_아님() {
+        ConsultationSession session = newSession();
+        session.accept(OTHER_COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+
+        assertThatThrownBy(() -> consultationSessionService.end(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+        verify(counselor, never()).changeStatus(CounselorStatus.AVAILABLE);
+        verify(applicationEventPublisher, never()).publishEvent(any());
     }
 }

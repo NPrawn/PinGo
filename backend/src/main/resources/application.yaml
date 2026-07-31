@@ -10,6 +10,8 @@ app:
   file:
     upload-dir: uploads
     url-prefix: /uploads
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://jenkins.example.invalid}
 
 ai:
   localization:
@@ -17,3 +19,20 @@ ai:
     internal-token: ${AI_LOCALIZATION_INTERNAL_TOKEN:}
     connect-timeout-ms: ${AI_LOCALIZATION_CONNECT_TIMEOUT_MS:300}
     read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
+
+signaling:
+  websocket:
+    allowed-origin-patterns: ${SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,https://jenkins.example.invalid}
+  access-token:
+    expiration-ms: ${SIGNALING_ACCESS_TOKEN_EXPIRATION_MS:600000}
+  room:
+    cleanup:
+      expiration-minutes: ${SIGNALING_ROOM_EXPIRATION_MINUTES:30}
+      fixed-delay-ms: ${SIGNALING_ROOM_CLEANUP_FIXED_DELAY_MS:60000}
+
+webrtc:
+  ice:
+    stun-urls: ${WEBRTC_STUN_URLS:stun:stun.l.google.com:19302}
+    turn-urls: ${WEBRTC_TURN_URLS:}
+    turn-username: ${WEBRTC_TURN_USERNAME:}
+    turn-credential: ${WEBRTC_TURN_CREDENTIAL:}

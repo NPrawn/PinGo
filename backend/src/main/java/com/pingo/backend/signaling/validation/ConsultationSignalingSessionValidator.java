@@ -1,41 +1,86 @@
 package com.pingo.backend.signaling.validation;
 
+import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
+import com.pingo.backend.signaling.auth.SignalingPrincipal;
 import com.pingo.backend.signaling.dto.SignalingSenderType;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-@Component
+import java.util.Set;
+
 @RequiredArgsConstructor
 public class ConsultationSignalingSessionValidator implements SignalingSessionValidator {
 
-    private static final String ROOM_PREFIX = "room_";
+    private static final Set<ConsultationStatus> JOINABLE_STATUSES =
+            Set.of(ConsultationStatus.ACCEPTED, ConsultationStatus.IN_PROGRESS);
+    private static final Set<ConsultationStatus> CLOSED_STATUSES =
+            Set.of(
+                    ConsultationStatus.ENDED,
+                    ConsultationStatus.CANCELED,
+                    ConsultationStatus.REJECTED,
+                    ConsultationStatus.FAILED
+            );
+
     private final ConsultationSessionRepository consultationSessionRepository;
+    private final SignalingSessionIdParser signalingSessionIdParser;
 
     @Override
+    @Transactional(readOnly = true)
     public SignalingSessionValidationResult validateJoin(
             String signalingSessionId,
-            SignalingSenderType senderType
+            SignalingSenderType senderType,
+            SignalingPrincipal signalingPrincipal
     ) {
         if (senderType == null || senderType == SignalingSenderType.SYSTEM) {
             return SignalingSessionValidationResult.UNAUTHORIZED_PARTICIPANT;
         }
-        if (signalingSessionId == null || !signalingSessionId.startsWith(ROOM_PREFIX)) {
+
+        String consultationId = signalingSessionIdParser.parseConsultationId(signalingSessionId)
+                .orElse(null);
+        if (consultationId == null) {
             return SignalingSessionValidationResult.SESSION_NOT_FOUND;
         }
-        String consultationId = signalingSessionId.substring(ROOM_PREFIX.length());
-        return consultationSessionRepository.findById(consultationId)
-                .map(session -> {
-                    if (session.getStatus() == ConsultationStatus.ACCEPTED
-                            || session.getStatus() == ConsultationStatus.IN_PROGRESS) {
-                        return SignalingSessionValidationResult.VALID;
-                    }
-                    if (session.getStatus() == ConsultationStatus.WAITING) {
-                        return SignalingSessionValidationResult.SESSION_NOT_ACCEPTED;
-                    }
-                    return SignalingSessionValidationResult.SESSION_CLOSED;
-                })
-                .orElse(SignalingSessionValidationResult.SESSION_NOT_FOUND);
+
+        ConsultationSession session = consultationSessionRepository.findById(consultationId)
+                .orElse(null);
+        if (session == null) {
+            return SignalingSessionValidationResult.SESSION_NOT_FOUND;
+        }
+
+        if (!isAuthorizedParticipant(session, consultationId, senderType, signalingPrincipal)) {
+            return SignalingSessionValidationResult.UNAUTHORIZED_PARTICIPANT;
+        }
+
+        if (JOINABLE_STATUSES.contains(session.getStatus())) {
+            return SignalingSessionValidationResult.VALID;
+        }
+
+        if (CLOSED_STATUSES.contains(session.getStatus())) {
+            return SignalingSessionValidationResult.SESSION_CLOSED;
+        }
+
+        return SignalingSessionValidationResult.SESSION_NOT_ACCEPTED;
+    }
+
+    private boolean isAuthorizedParticipant(
+            ConsultationSession session,
+            String consultationId,
+            SignalingSenderType senderType,
+            SignalingPrincipal signalingPrincipal
+    ) {
+        if (signalingPrincipal == null
+                || !consultationId.equals(signalingPrincipal.consultationId())
+                || senderType != signalingPrincipal.senderType()) {
+            return false;
+        }
+
+        return switch (senderType) {
+            case USER -> session.getUserSessionId().equals(signalingPrincipal.userSessionId());
+            case COUNSELOR -> session.getCounselorId() != null
+                    && session.getCounselorId().equals(signalingPrincipal.accountId());
+            case SYSTEM -> false;
+        };
     }
 }

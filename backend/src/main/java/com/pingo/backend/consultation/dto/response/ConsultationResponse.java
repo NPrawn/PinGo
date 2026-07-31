@@ -7,18 +7,16 @@ public record ConsultationResponse (
         String consultationId,
         ConsultationStatus status,
         Long counselorId,
-        String signalingRoomId
+        String signalingRoomId,
+        String signalingAccessToken
 ){
-    public static ConsultationResponse from(ConsultationSession session){
-        boolean signalingReady = session.getStatus() == ConsultationStatus.ACCEPTED
-                || session.getStatus() == ConsultationStatus.IN_PROGRESS;
-        String signalingRoomId = signalingReady ? "room_" + session.getConsultationId() : null;
-
+    public static ConsultationResponse from(ConsultationSession session, String signalingAccessToken){
         return new ConsultationResponse(
                 session.getConsultationId(),
                 session.getStatus(),
                 session.getCounselorId(),
-                signalingRoomId
+                session.getSignalingRoomId(),
+                signalingAccessToken
         );
     }
 }

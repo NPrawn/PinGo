@@ -1,6 +1,8 @@
 package com.pingo.backend.signaling.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pingo.backend.signaling.auth.SignalingHandshakeInterceptor;
+import com.pingo.backend.signaling.auth.SignalingPrincipal;
 import com.pingo.backend.signaling.dto.SignalingMessage;
 import com.pingo.backend.signaling.dto.SignalingMessageType;
 import com.pingo.backend.signaling.dto.SignalingSenderType;
@@ -9,6 +11,9 @@ import com.pingo.backend.signaling.validation.SignalingSessionValidationResult;
 import com.pingo.backend.signaling.validation.SignalingSessionValidator;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,14 +22,14 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.time.Instant;
-
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 
 class SignalingWebSocketHandlerTest {
 
@@ -39,7 +44,7 @@ class SignalingWebSocketHandlerTest {
         Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
         signalingRoomRegistry = mock(SignalingRoomRegistry.class);
         signalingSessionValidator = mock(SignalingSessionValidator.class);
-        when(signalingSessionValidator.validateJoin(any(), any()))
+        when(signalingSessionValidator.validateJoin(any(), any(), any()))
                 .thenReturn(SignalingSessionValidationResult.VALID);
 
         handler = new SignalingWebSocketHandler(signalingRoomRegistry, validator, signalingSessionValidator);
@@ -51,7 +56,28 @@ class SignalingWebSocketHandlerTest {
 
         handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
 
-        verify(signalingSessionValidator).validateJoin("consultation-1", SignalingSenderType.USER);
+        verify(signalingSessionValidator).validateJoin("consultation-1", SignalingSenderType.USER, null);
+        verify(signalingRoomRegistry).register("consultation-1", SignalingSenderType.USER, webSocketSession);
+    }
+
+    @Test
+    void handleJoinPassesSignalingPrincipalToValidator() throws Exception {
+        SignalingPrincipal principal = new SignalingPrincipal(
+                "consultation-1",
+                SignalingSenderType.USER,
+                "usr_abc123",
+                null
+        );
+        WebSocketSession webSocketSession = webSocketSession("ws-user");
+        webSocketSession.getAttributes().put(
+                SignalingHandshakeInterceptor.SIGNALING_PRINCIPAL_ATTRIBUTE,
+                principal
+        );
+
+        handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
+
+        verify(signalingSessionValidator)
+                .validateJoin("consultation-1", SignalingSenderType.USER, principal);
         verify(signalingRoomRegistry).register("consultation-1", SignalingSenderType.USER, webSocketSession);
     }
 
@@ -260,7 +286,11 @@ class SignalingWebSocketHandlerTest {
 
     @Test
     void handleJoinReturnsErrorWhenSignalingSessionIsInvalid() throws Exception {
-        when(signalingSessionValidator.validateJoin("consultation-1", SignalingSenderType.USER))
+        when(signalingSessionValidator.validateJoin(
+                eq("consultation-1"),
+                eq(SignalingSenderType.USER),
+                isNull()
+        ))
                 .thenReturn(SignalingSessionValidationResult.SESSION_NOT_FOUND);
 
         WebSocketSession webSocketSession = webSocketSession("ws-user");
@@ -280,11 +310,71 @@ class SignalingWebSocketHandlerTest {
         assertThat(errorMessage.senderType()).isEqualTo(SignalingSenderType.SYSTEM);
         assertThat(errorMessage.type()).isEqualTo(SignalingMessageType.ERROR);
         assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_SESSION");
+        assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Signaling session does not exist.");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isFalse();
+    }
+
+    @Test
+    void handleJoinReturnsRetryableErrorWhenConsultationIsNotAcceptedYet() throws Exception {
+        when(signalingSessionValidator.validateJoin(
+                eq("consultation-1"),
+                eq(SignalingSenderType.USER),
+                isNull()
+        ))
+                .thenReturn(SignalingSessionValidationResult.SESSION_NOT_ACCEPTED);
+
+        WebSocketSession webSocketSession = webSocketSession("ws-user");
+
+        handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(webSocketSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_SESSION");
+        assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Consultation is not accepted yet.");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isTrue();
+    }
+
+    @Test
+    void handleJoinReturnsNonRetryableErrorWhenConsultationIsClosed() throws Exception {
+        when(signalingSessionValidator.validateJoin(
+                eq("consultation-1"),
+                eq(SignalingSenderType.USER),
+                isNull()
+        ))
+                .thenReturn(SignalingSessionValidationResult.SESSION_CLOSED);
+
+        WebSocketSession webSocketSession = webSocketSession("ws-user");
+
+        handler.handleTextMessage(webSocketSession, textMessage(SignalingMessageType.JOIN, SignalingSenderType.USER));
+
+        ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(webSocketSession).sendMessage(messageCaptor.capture());
+        verify(signalingRoomRegistry, never()).register(any(), any(), any());
+
+        SignalingMessage errorMessage = objectMapper.readValue(
+                messageCaptor.getValue().getPayload(),
+                SignalingMessage.class
+        );
+
+        assertThat(errorMessage.payload().get("code").asText()).isEqualTo("INVALID_SIGNALING_SESSION");
+        assertThat(errorMessage.payload().get("message").asText()).isEqualTo("Consultation signaling session is closed.");
+        assertThat(errorMessage.payload().get("retryable").asBoolean()).isFalse();
     }
 
     @Test
     void handleJoinReturnsInternalErrorWhenValidatorThrowsException() throws Exception {
-        when(signalingSessionValidator.validateJoin("consultation-1", SignalingSenderType.USER))
+        when(signalingSessionValidator.validateJoin(
+                eq("consultation-1"),
+                eq(SignalingSenderType.USER),
+                isNull()
+        ))
                 .thenThrow(new IllegalStateException("validator failed"));
 
         WebSocketSession webSocketSession = webSocketSession("ws-user");
@@ -339,7 +429,7 @@ class SignalingWebSocketHandlerTest {
 
         ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
         verify(webSocketSession).sendMessage(messageCaptor.capture());
-        verify(signalingSessionValidator, never()).validateJoin(any(), any());
+        verify(signalingSessionValidator, never()).validateJoin(any(), any(), any());
         verify(signalingRoomRegistry, never()).register(any(), any(), any());
 
         SignalingMessage errorMessage = objectMapper.readValue(
@@ -368,8 +458,10 @@ class SignalingWebSocketHandlerTest {
 
     private WebSocketSession webSocketSession(String id) {
         WebSocketSession session = mock(WebSocketSession.class);
+        Map<String, Object> attributes = new HashMap<>();
         when(session.getId()).thenReturn(id);
         when(session.isOpen()).thenReturn(true);
+        when(session.getAttributes()).thenReturn(attributes);
         return session;
     }
 }

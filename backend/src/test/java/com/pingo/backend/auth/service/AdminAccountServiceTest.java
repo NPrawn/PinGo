@@ -2,6 +2,7 @@ package com.pingo.backend.auth.service;
 
 import com.pingo.backend.auth.domain.Account;
 import com.pingo.backend.auth.domain.AccountType;
+import com.pingo.backend.auth.domain.CounselorStatus;
 import com.pingo.backend.auth.dto.request.AccountUpdateRequest;
 import com.pingo.backend.auth.dto.response.AccountDetailResponse;
 import com.pingo.backend.auth.dto.response.AccountListResponse;
@@ -112,6 +113,7 @@ class AdminAccountServiceTest {
         AccountDetailResponse response = adminAccountService.updateCounselor(1L, new AccountUpdateRequest(null, true));
 
         assertThat(response.isActive()).isTrue();
+        assertThat(response.status()).isEqualTo(CounselorStatus.AVAILABLE);
     }
 
     @Test

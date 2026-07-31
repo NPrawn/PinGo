@@ -1,10 +1,21 @@
 # 외국인 관광객 대상 지하철 실내 내비게이션 API 명세서
 
+> 최신화: 2026-07-30
+
 ## 1. 문서 목적
 
-본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 API 초안을 정의한다.
+본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 API 계약을 정의한다.
 
 본 문서는 프론트엔드, 백엔드, VPS, WebRTC, 관리자 기능 개발 시 요청/응답 구조를 맞추기 위한 기준 문서이다.
+
+### 현재 구현 범위
+
+| 상태 | API 영역 |
+| --- | --- |
+| 구현 | 인증·회원가입, 익명 사용자 세션, 역·층·지도·시설, 목적지 검색, 주변 장소·출구 추천, 실내 경로 2종, Kakao 외부 길찾기, 상담 생성·조회·취소·대기 SSE, 상담자 본인/관리자 계정 관리, VPS 위치추정, health, WebSocket signaling |
+| 계획 | 랜드마크 후보·수동 위치 지정, 경로 재탐색 전용 API, 역 주변 장소 목록, 상담자용 상담 큐/수락/거절/종료, 위치 공유, 교통카드 추천, 관리자 상담자 생성 |
+
+구현 여부와 최신 요청·응답 schema는 실행 중인 Swagger를 최종 확인 수단으로 사용한다.
 
 ---
 
@@ -13,9 +24,11 @@
 ### 2.1 Base URL
 
 ```text
-개발 환경: http://localhost:{port}/api
-배포 환경: https://{domain}/api
+개발 환경: http://localhost:{port}
+배포 환경: https://jenkins.example.invalid
 ```
+
+이 문서의 REST endpoint는 모두 `/api/...` 절대 경로로 표기한다.
 
 ### 2.2 응답 형식
 
@@ -69,12 +82,14 @@ MVP에서는 JWT Access Token을 HTTP Authorization Header로 전달한다.
 Authorization: Bearer {accessToken}
 ```
 
+WebRTC signaling 참여자 검증은 일반 HTTP 인증과 별도로 상담별 `signalingAccessToken`을 사용한다. 상담자는 상담 수락 응답으로 받은 토큰을 사용하고, 익명 사용자는 상담 상태 조회 응답으로 받은 토큰을 사용한다. signaling token은 `tokenType=SIGNALING` claim을 포함해야 하며, WebSocket handshake에서 토큰이 누락되었거나 만료·변조·형식 오류가 있으면 `401 Unauthorized`로 연결을 거절한다.
+
 ### 2.5 확정 구현 선택
 
 | 항목               | 확정안                                                              |
 | ------------------ | ------------------------------------------------------------------- |
 | 프론트엔드         | React + TypeScript + Vite                                           |
-| UI 스타일링        | Tailwind CSS                                                        |
+| UI 스타일링        | CSS Modules + CSS Variables                                        |
 | 아이콘             | lucide-react                                                        |
 | 백엔드 프레임워크  | Spring Boot 기준                                                    |
 | DBMS               | MySQL                                                               |
@@ -519,7 +534,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ### GET `/stations/{stationId}/maps`
 
-역의 층별 지도 정보를 조회한다.
+역의 층별 지도 정보를 조회한다. 응답에는 **좌표 프레임**이 포함된다 — 노드·경로·현재위치 좌표는 캐노니컬 미터로 내려가므로, 지도 위에 그리려면 이 값으로 픽셀로 변환해야 한다.
 
 #### Response
 
@@ -533,15 +548,65 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "floorCode": "B1",
       "mapType": "image",
       "mapUrl": "/uploads/maps/3f2a1b.png",
-      "width": 1200,
-      "height": 800,
-      "scaleMPerPx": 0.05,
+      "width": 1626,
+      "height": 967,
+      "scaleMPerPx": 0.19,
+      "originPxX": 594,
+      "originPxY": 501,
+      "frameAngleDeg": -21.28,
       "version": "v1"
     }
   ],
   "message": null
 }
 ```
+
+#### 좌표 프레임 필드
+
+| 이름 | 타입 | 필수 | 설명 |
+| ------------- | ------ | ---- | ---------------------------------------------- |
+| width | number | N | 원본 지도 이미지 너비(px) |
+| height | number | N | 원본 지도 이미지 높이(px) |
+| scaleMPerPx | number | N | 픽셀당 실제 거리(m) |
+| originPxX | number | N | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 x |
+| originPxY | number | N | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 y |
+| frameAngleDeg | number | N | 캐노니컬 +X축과 이미지 x축의 각도(도) |
+
+프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)가 **모두 있어야** 좌표 변환이 가능하다. 하나라도 `null`이면 지도 이미지는 표시할 수 있으나 좌표 오버레이는 할 수 없다. **층마다 값이 다르므로 층별로 사용해야 한다** — 원본 평면도 이미지의 크기·여백이 층마다 달라 원점 픽셀이 다르다.
+
+> **구현 상태: `originPxX`·`originPxY`·`frameAngleDeg`는 미구현이다.** 이 엔드포인트는 구현돼 있으나 세 필드는 아직 응답에 없다. `floor_map` 컬럼 추가(V6)·엔티티·DTO 반영이 필요하며 별도 작업이다. 또한 **`floor_map`에 시드 데이터가 없어 현재 이 엔드포인트는 빈 배열을 반환한다.**
+> 그때까지 FE는 [`역삼역_FE_좌표연동_스펙.md`](역삼역_FE_좌표연동_스펙.md) §2의 프레임 값을 사용한다.
+
+#### 좌표 변환식
+
+`px`/`py`는 **원본 이미지 픽셀**이다. 화면에 축소·확대해 그린다면 뷰 배율을 추가로 곱한다.
+
+```js
+// 미터(x, y) → 원본 이미지 픽셀(px, py)  [노드·경로·현재위치를 지도에 그릴 때]
+function meterToPixel(x, y, frame) {
+  const t = (frame.frameAngleDeg * Math.PI) / 180;
+  const c = Math.cos(t), s = Math.sin(t);
+  return {
+    px: frame.originPxX + (c * x - s * y) / frame.scaleMPerPx,
+    py: frame.originPxY + (s * x + c * y) / frame.scaleMPerPx,
+  };
+}
+
+// 원본 이미지 픽셀(px, py) → 미터(x, y)  [지도를 눌러 위치를 지정할 때]
+function pixelToMeter(px, py, frame) {
+  const t = (frame.frameAngleDeg * Math.PI) / 180;
+  const c = Math.cos(t), s = Math.sin(t);
+  const dx = px - frame.originPxX, dy = py - frame.originPxY;
+  return {
+    x: (dx * c + dy * s) * frame.scaleMPerPx,
+    y: (-dx * s + dy * c) * frame.scaleMPerPx,
+  };
+}
+```
+
+검증 예시 (역삼역 B2): `meterToPixel(0, 0, frameB2)` → `(622, 512)` = B2-B3 엘리베이터 B(원점), `meterToPixel(-0.4, 27.2, frameB2)` → `(672, 646)` = B2-B3 엘리베이터 A.
+
+> 좌표계 결정 배경은 [`기술_의사결정_정리.md`](기술_의사결정_정리.md) §6.3, FE 연동 계약은 [`역삼역_FE_좌표연동_스펙.md`](역삼역_FE_좌표연동_스펙.md)를 기준으로 한다.
 
 ---
 
@@ -572,15 +637,17 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "facilityType": "exit",
       "nameKo": "5번 출구",
       "nameEn": "Exit 5",
-      "mapX": 820.4,
-      "mapY": 120.7,
+      "mapX": 97.454,
+      "mapY": -19.34,
       "linkedNodeId": 44,
-      "isAccessible": true
+      "isAccessible": false
     }
   ],
   "message": null
 }
 ```
+
+`mapX`·`mapY`는 **캐노니컬 미터**다(픽셀이 아니다). 음수가 정상이며, 원점 기준 상대 위치다. 지도에 그릴 때는 §5.1의 좌표 프레임으로 변환한다.
 
 ---
 
@@ -1250,7 +1317,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
     "consultationId": "cs_abc123",
     "status": "ACCEPTED",
     "counselorId": 7,
-    "signalingRoomId": "room_cs_abc123"
+    "signalingRoomId": "room_cs_abc123",
+    "signalingAccessToken": "signaling-token"
   },
   "message": null
 }
@@ -1310,8 +1378,10 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 | `CANCELED` | 사용자가 상담 요청을 취소함 |
 | `NO_COUNSELOR` | 상담 가능한 상담자가 없음 |
 | `FALLBACK` | WebRTC 영상·음성·채팅 fallback 상태 변경 |
+| `DATA_CHANNEL` | DataChannel fallback 상담 이벤트 |
 
 WebRTC fallback 이벤트는 별도 SSE endpoint를 만들지 않고 이 구독 채널로 전달한다. 현재 구현에서는 fallback 상세 상태를 `message`에 담고, `type`은 `FALLBACK`으로 전달한다.
+DataChannel fallback 이벤트도 별도 SSE endpoint를 만들지 않고 이 구독 채널로 전달한다. 이 경우 SSE event name은 `DATA_CHANNEL`이고, event data는 DataChannel 이벤트 응답 구조를 따른다.
 
 #### Event Data
 
@@ -1339,6 +1409,7 @@ WebRTC fallback 이벤트는 별도 SSE endpoint를 만들지 않고 이 구독 
 - 서버는 구독 직후 연결 확인을 위해 `INIT` 이벤트와 `connected` 데이터를 전송한다.
 - `ACCEPTED` 이벤트를 받으면 `signalingRoomId`를 사용해 `/ws/signaling` WebSocket signaling에 참여한다.
 - WebRTC 영상·음성 연결 실패 또는 채팅 전환 요청은 `POST /api/consultations/{consultationRequestId}/fallback-events`로 신고하고, 구독 중인 클라이언트는 이 SSE endpoint에서 전환 안내 메시지를 수신한다.
+- DataChannel 실패 시 화살표, 안내 메시지, 목적지 변경 이벤트는 `POST /api/consultations/{consultationRequestId}/data-channel-events`로 신고하고, 구독 중인 클라이언트는 이 SSE endpoint에서 `DATA_CHANNEL` 이벤트로 수신한다.
 - 연결이 끊기면 클라이언트는 동일한 `consultationRequestId`로 재구독할 수 있다.
 
 ---
@@ -1422,6 +1493,88 @@ WebRTC 상담 중 영상 연결 실패, 음성 상담 전환, 채팅 상담 전�
 
 ---
 
+## 10.6 DataChannel Fallback 이벤트 발행
+
+### POST `/api/consultations/{consultationRequestId}/data-channel-events`
+
+DataChannel 연결 실패 또는 보조 전달이 필요한 경우 화살표, 안내 메시지, 목적지 변경 이벤트를 서버에 알린다.
+
+서버는 요청을 수신하면 내부 DataChannel fallback 이벤트를 발행하고, 상담 대기 SSE 구독자에게 `DATA_CHANNEL` 이벤트로 전달한다.
+
+#### 인증
+
+비로그인 접근 허용
+
+#### Path Variables
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `consultationRequestId` | string | Y | 상담 요청 ID |
+
+#### Request
+
+```json
+{
+  "type": "GUIDE_MESSAGE_SENT",
+  "payload": {
+    "message": "왼쪽으로 이동하세요."
+  }
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `type` | string | Y | DataChannel fallback 이벤트 타입 |
+| `payload` | object | N | 이벤트별 상세 데이터 |
+
+#### DataChannel Event Type
+
+| 값 | 설명 |
+| --- | --- |
+| `ARROW_POINTED` | 상담자가 특정 방향 또는 위치를 화살표로 지시함 |
+| `GUIDE_MESSAGE_SENT` | 상담자가 안내 메시지를 전송함 |
+| `DESTINATION_CHANGE_REQUESTED` | 상담자가 목적지 변경을 요청함 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": null,
+  "message": null
+}
+```
+
+#### 실패 응답
+
+`type` 누락 또는 지원하지 않는 enum 값은 `INVALID_REQUEST`로 응답한다.
+
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "요청 형식이 올바르지 않습니다.",
+  "code": "INVALID_REQUEST"
+}
+```
+
+#### SSE 전달 예시
+
+Event Name: `DATA_CHANNEL`
+
+```json
+{
+  "consultationRequestId": "consultation-1",
+  "type": "GUIDE_MESSAGE_SENT",
+  "payload": {
+    "message": "왼쪽으로 이동하세요."
+  },
+  "timestamp": "2026-07-30T00:00:00Z"
+}
+```
+
+---
+
 ## 11. 상담자 API
 
 ## 11.1 상담자 로그인
@@ -1490,11 +1643,14 @@ Authorization: Bearer {accessToken}
   "data": {
     "consultationId": "cs_abc123",
     "status": "ACCEPTED",
-    "signalingRoomId": "room_cs_abc123"
+    "signalingRoomId": "room_cs_abc123",
+    "signalingAccessToken": "signaling-token"
   },
   "message": null
 }
 ```
+
+상담 수락은 상담자 상태가 `AVAILABLE`일 때만 가능하다. 수락이 성공하면 Backend는 해당 상담자의 상태를 `BUSY`로 변경한다. 수락 실패 시 상담자 상태는 변경하지 않는다.
 
 ---
 
@@ -1523,15 +1679,15 @@ Authorization: Bearer {accessToken}
 
 ### POST `/consultations/{consultationId}/end`
 
-사용자 또는 상담자가 상담을 종료한다.
+상담자가 수락한 상담을 종료한다.
 
-#### Request
+#### Header
 
-```json
-{
-  "endedBy": "counselor"
-}
+```http
+Authorization: Bearer {accessToken}
 ```
+
+요청 본문은 사용하지 않는다.
 
 #### Response
 
@@ -1545,6 +1701,18 @@ Authorization: Bearer {accessToken}
   "message": null
 }
 ```
+
+#### Error
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
+| `ACCEPTED`, `IN_PROGRESS`가 아닌 상담 | 409 | `CONSULTATION_NOT_ENDABLE` |
+| 담당 역 상담자가 아님 | 403 | `CONSULTATION_STATION_MISMATCH` |
+| 수락한 상담자가 아님 | 403 | `CONSULTATION_COUNSELOR_MISMATCH` |
+
+상담 종료가 성공하면 Backend는 해당 `signalingRoomId`의 WebSocket room을 정리하고, 남아 있는 WebSocket session을 `4400 Signaling Room Closed`로 종료한다.
+상담 종료가 성공하면 Backend는 상담자의 상태를 `AVAILABLE`로 복귀시킨다. 종료 실패 시 상담자 상태는 변경하지 않는다.
 
 ---
 
@@ -1645,43 +1813,124 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 12. WebRTC Signaling API 초안
+## 12. WebRTC Signaling API
 
-WebRTC signaling은 WebSocket 기반으로 구현한다.
+WebRTC signaling은 WebSocket 기반으로 구현한다. 상세 계약의 단일 기준은
+[`WebRTC_Signaling_이벤트_명세서.md`](WebRTC_Signaling_이벤트_명세서.md)이다.
 
-## 12.1 WebSocket 연결
+Backend는 `JOIN` 요청의 `sessionId`를 `room_{consultationId}` 형식으로 해석하고, 해당 상담 session이 `ACCEPTED` 또는 `IN_PROGRESS` 상태일 때만 room 입장을 허용한다. 미수락, 종료, 취소, 거절, 실패 상태의 상담 session은 `INVALID_SIGNALING_SESSION` 오류로 응답한다.
 
-### WS `/ws/signaling?roomId={signalingRoomId}&role={user|counselor}`
+## 12.1 ICE 서버 설정 조회
+
+### GET `/api/webrtc/ice-servers?token={signalingAccessToken}`
+
+WebRTC `RTCPeerConnection` 생성에 필요한 ICE server 설정을 조회한다. 계정 JWT는 필요하지 않지만, 상담별 `signalingAccessToken`이 필요하다.
+
+브라우저 환경에서는 query parameter 전달을 기본 방식으로 사용한다.
+
+```text
+GET /api/webrtc/ice-servers?token={signalingAccessToken}
+```
+
+header 지정이 가능한 클라이언트는 HTTP API와 동일하게 `Authorization` header를 사용할 수 있다.
+
+```http
+Authorization: Bearer {signalingAccessToken}
+```
+
+TURN 서버 정보는 운영 환경변수로 설정하며, credential이 설정되지 않은 경우 STUN 서버만 응답한다. TURN credential은 코드와 문서에 하드코딩하지 않는다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "iceServers": [
+      {
+        "urls": ["stun:stun.l.google.com:19302"]
+      },
+      {
+        "urls": ["turn:turn.example.com:3478?transport=udp"],
+        "username": "turn-username",
+        "credential": "turn-credential"
+      }
+    ]
+  },
+  "message": null
+}
+```
+
+#### 환경변수
+
+| 변수 | 설명 | 기본값 |
+| --- | --- | --- |
+| `WEBRTC_STUN_URLS` | STUN URL 목록. 쉼표로 여러 값을 전달할 수 있다. | `stun:stun.l.google.com:19302` |
+| `WEBRTC_TURN_URLS` | TURN URL 목록. 쉼표로 여러 값을 전달할 수 있다. | 없음 |
+| `WEBRTC_TURN_USERNAME` | TURN username | 없음 |
+| `WEBRTC_TURN_CREDENTIAL` | TURN credential | 없음 |
+
+#### 실패 응답
+
+| 상태 코드 | 조건 |
+| --- | --- |
+| 401 | signaling token 누락, 만료, 변조, 형식 오류 |
+
+---
+
+## 12.2 WebSocket 연결
+
+### WS `/ws/signaling?token={signalingAccessToken}`
+
+#### 인증
+
+WebSocket handshake 시 상담별 signaling token을 전달한다.
+
+```text
+ws://localhost:8080/ws/signaling?token={signalingAccessToken}
+```
+
+브라우저 환경에서 header 지정이 가능한 클라이언트는 HTTP API와 동일하게 `Authorization` header를 사용할 수 있다.
+
+```http
+Authorization: Bearer {signalingAccessToken}
+```
+
+token payload와 JOIN message는 아래 조건을 만족해야 한다.
+
+| token senderType | 식별 기준 | JOIN 조건 |
+| --- | --- | --- |
+| `USER` | `consultationId`, `userSessionId` | token의 `consultationId`와 JOIN `sessionId`가 같은 상담을 가리켜야 하며, token의 senderType과 JOIN `senderType`이 `USER`로 일치해야 한다. |
+| `COUNSELOR` | `consultationId`, `accountId` | token의 `consultationId`와 JOIN `sessionId`가 같은 상담을 가리켜야 하며, token의 senderType과 JOIN `senderType`이 `COUNSELOR`로 일치해야 한다. |
+
+토큰이 없거나, 만료되었거나, JOIN message와 payload가 일치하지 않으면 Backend는 room에 등록하지 않고 `INVALID_SIGNALING_SESSION` 또는 `SIGNALING_INTERNAL_ERROR` 오류를 응답한다.
 
 #### 메시지 타입
 
-| type          | 설명          |
-| ------------- | ------------- |
-| offer         | WebRTC offer  |
-| answer        | WebRTC answer |
-| ice_candidate | ICE candidate |
-| join          | 방 입장       |
-| leave         | 방 퇴장       |
-| error         | 오류          |
+`JOIN`, `OFFER`, `ANSWER`, `ICE_CANDIDATE`, `LEAVE`, `ERROR`를 사용한다.
+room과 역할은 query parameter가 아니라 모든 메시지의 `sessionId`, `senderType`으로 전달한다. query parameter의 `token`은 handshake 인증에만 사용한다.
 
 #### 예시 메시지
 
 ```json
 {
-  "type": "offer",
-  "roomId": "room_cs_abc123",
-  "sender": "user",
+  "sessionId": "room_cs_abc123",
+  "senderType": "USER",
+  "type": "OFFER",
   "payload": {
     "sdp": "..."
-  }
+  },
+  "timestamp": "2026-07-30T00:00:00Z"
 }
 ```
 
 ---
 
-## 12.2 DataChannel 이벤트
+## 12.2 DataChannel 이벤트(계약, Frontend 미구현)
 
-WebRTC 연결 후 상담자 조작 정보는 DataChannel로 전달한다.
+WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 목표다. 현재 Frontend에는
+`RTCDataChannel` 송수신이 연결되지 않았으므로 상세 이벤트는
+[`WebRTC_DataChannel_이벤트_명세서.md`](WebRTC_DataChannel_이벤트_명세서.md)의 계획 계약으로 관리한다.
 
 | eventType       | 설명                      |
 | --------------- | ------------------------- |
@@ -1819,13 +2068,20 @@ multipart/form-data
 
 #### Request
 
-| 이름        | 타입   | 필수 | 설명             |
-| ----------- | ------ | ---- | ---------------- |
-| mapType     | string | Y    | image, svg       |
-| mapFile     | file   | Y    | 지도 파일        |
-| width       | number | N    | 지도 너비        |
-| height      | number | N    | 지도 높이        |
-| scaleMPerPx | number | N    | 픽셀당 실제 거리 |
+| 이름          | 타입   | 필수 | 설명                                           |
+| ------------- | ------ | ---- | ---------------------------------------------- |
+| mapType       | string | Y    | image, svg                                     |
+| mapFile       | file   | Y    | 지도 파일                                      |
+| width         | number | N    | 지도 너비                                      |
+| height        | number | N    | 지도 높이                                      |
+| scaleMPerPx   | number | N    | 픽셀당 실제 거리(m)                            |
+| originPxX     | number | N    | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 x |
+| originPxY     | number | N    | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 y |
+| frameAngleDeg | number | N    | 캐노니컬 +X축과 이미지 x축의 각도(도)          |
+
+프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)는 업로드하는 **이 이미지 기준**으로 넣는다. 같은 층의 지도를 다른 이미지로 교체하면 원점 픽셀과 축척이 달라지므로 새 이미지에 맞춰 다시 측정해야 한다. 값을 넣지 않으면 지도 표시는 되지만 좌표 오버레이는 동작하지 않는다. 의미와 변환식은 §5.1 참고.
+
+> **구현 상태: `originPxX`·`originPxY`·`frameAngleDeg`는 미구현이다.** §5.1 참고.
 
 #### Response
 
@@ -1857,9 +2113,12 @@ multipart/form-data
       "floorCode": "B2",
       "mapType": "image",
       "mapUrl": "/uploads/maps/3f2a1b.png",
-      "width": 1200,
-      "height": 800,
-      "scaleMPerPx": 0.05,
+      "width": 1624,
+      "height": 969,
+      "scaleMPerPx": 0.19,
+      "originPxX": 622,
+      "originPxY": 512,
+      "frameAngleDeg": -21.28,
       "version": "v1"
     }
   ],
@@ -2345,39 +2604,42 @@ multipart/form-data
 
 ## 16. 오류 코드 초안
 
-| 코드                          | 설명                                    |
-| ----------------------------- | --------------------------------------- |
-| INVALID_REQUEST               | 요청 형식이 잘못됨                      |
-| DUPLICATE_LOGIN_ID            | 이미 사용 중인 로그인 ID                |
-| STATION_NOT_FOUND             | 역을 찾을 수 없음                       |
-| FACILITY_NOT_FOUND            | 시설을 찾을 수 없음                     |
-| UNSUPPORTED_FACILITY_TYPE     | 지원하지 않는 시설 유형                 |
-| FLOOR_NOT_FOUND               | 층을 찾을 수 없음                       |
-| INVALID_MAP_FILE              | 지도 파일이 비어 있거나 올바르지 않음   |
-| UNSUPPORTED_MAP_TYPE          | 지원하지 않는 지도 유형                 |
-| FILE_STORAGE_FAILED           | 파일 저장 실패                          |
-| PLACE_NOT_FOUND               | 주변 장소를 찾을 수 없음                |
-| EXIT_RECOMMENDATION_NOT_FOUND | 장소-출구 추천을 찾을 수 없음           |
-| DUPLICATE_EXIT_RECOMMENDATION | 이미 등록된 장소-출구 추천              |
-| USER_SESSION_NOT_FOUND        | 사용자 세션을 찾을 수 없음              |
-| INVALID_DESTINATION           | 목적지 유형과 ID 중 하나만 전달됨       |
-| USER_SESSION_ALREADY_ENDED    | 이미 종료·만료된 세션                   |
-| USER_SESSION_IN_CONSULTATION  | 진행 중인 상담이 있어 세션을 종료할 수 없음 |
-| LOCALIZATION_FAILED           | 위치 인식 실패                          |
-| ROUTE_NOT_FOUND               | 경로를 찾을 수 없음                     |
-| ROUTE_NODE_NOT_FOUND          | 경로 노드를 찾을 수 없음                |
-| ROUTE_EDGE_NOT_FOUND          | 경로 간선을 찾을 수 없음                |
-| ROUTE_NODE_IN_USE             | 사용 중인 경로 노드는 삭제할 수 없음    |
-| UNSUPPORTED_NODE_TYPE         | 지원하지 않는 노드 유형                 |
-| UNSUPPORTED_MOVE_TYPE         | 지원하지 않는 이동 유형                 |
-| UNSUPPORTED_ROUTE_TYPE        | 지원하지 않는 경로 옵션 유형            |
-| CONSULTATION_NOT_FOUND        | 상담 세션을 찾을 수 없음                |
-| INVALID_CREDENTIALS           | 로그인 ID 또는 비밀번호가 올바르지 않음 |
-| INVALID_CURRENT_PASSWORD      | 현재 비밀번호가 올바르지 않음           |
-| ACCOUNT_NOT_FOUND             | 계정을 찾을 수 없음                     |
-| INACTIVE_ACCOUNT              | 비활성화된 계정으로 로그인 시도         |
-| WEBRTC_SIGNALING_FAILED       | WebRTC signaling 실패                   |
-| EXTERNAL_MAP_LINK_FAILED      | 외부 지도 링크 생성 실패                |
+| 코드                            | 설명                                    |
+| ------------------------------- | --------------------------------------- |
+| INVALID_REQUEST                 | 요청 형식이 잘못됨                      |
+| DUPLICATE_LOGIN_ID              | 이미 사용 중인 로그인 ID                |
+| STATION_NOT_FOUND               | 역을 찾을 수 없음                       |
+| FACILITY_NOT_FOUND              | 시설을 찾을 수 없음                     |
+| UNSUPPORTED_FACILITY_TYPE       | 지원하지 않는 시설 유형                 |
+| FLOOR_NOT_FOUND                 | 층을 찾을 수 없음                       |
+| INVALID_MAP_FILE                | 지도 파일이 비어 있거나 올바르지 않음   |
+| UNSUPPORTED_MAP_TYPE            | 지원하지 않는 지도 유형                 |
+| FILE_STORAGE_FAILED             | 파일 저장 실패                          |
+| PLACE_NOT_FOUND                 | 주변 장소를 찾을 수 없음                |
+| EXIT_RECOMMENDATION_NOT_FOUND   | 장소-출구 추천을 찾을 수 없음           |
+| DUPLICATE_EXIT_RECOMMENDATION   | 이미 등록된 장소-출구 추천              |
+| USER_SESSION_NOT_FOUND          | 사용자 세션을 찾을 수 없음              |
+| INVALID_DESTINATION             | 목적지 유형과 ID 중 하나만 전달됨       |
+| USER_SESSION_ALREADY_ENDED      | 이미 종료·만료된 세션                   |
+| USER_SESSION_IN_CONSULTATION    | 진행 중인 상담이 있어 세션을 종료할 수 없음 |
+| LOCALIZATION_FAILED             | 위치 인식 실패                          |
+| ROUTE_NOT_FOUND                 | 경로를 찾을 수 없음                     |
+| ROUTE_NODE_NOT_FOUND            | 경로 노드를 찾을 수 없음                |
+| ROUTE_EDGE_NOT_FOUND            | 경로 간선을 찾을 수 없음                |
+| ROUTE_NODE_IN_USE               | 사용 중인 경로 노드는 삭제할 수 없음    |
+| UNSUPPORTED_NODE_TYPE           | 지원하지 않는 노드 유형                 |
+| UNSUPPORTED_MOVE_TYPE           | 지원하지 않는 이동 유형                 |
+| UNSUPPORTED_ROUTE_TYPE          | 지원하지 않는 경로 옵션 유형            |
+| CONSULTATION_NOT_FOUND          | 상담 세션을 찾을 수 없음                |
+| CONSULTATION_NOT_ENDABLE        | 종료할 수 없는 상담 상태                |
+| CONSULTATION_COUNSELOR_MISMATCH | 담당 상담자가 아님                      |
+| COUNSELOR_NOT_AVAILABLE         | 상담자가 상담 가능한 상태가 아님        |
+| INVALID_CREDENTIALS             | 로그인 ID 또는 비밀번호가 올바르지 않음 |
+| INVALID_CURRENT_PASSWORD        | 현재 비밀번호가 올바르지 않음           |
+| ACCOUNT_NOT_FOUND               | 계정을 찾을 수 없음                     |
+| INACTIVE_ACCOUNT                | 비활성화된 계정으로 로그인 시도         |
+| WEBRTC_SIGNALING_FAILED         | WebRTC signaling 실패                   |
+| EXTERNAL_MAP_LINK_FAILED        | 외부 지도 링크 생성 실패                |
 
 ---
 
@@ -2407,7 +2669,7 @@ multipart/form-data
 | 항목                   | 결정                                                             |
 | ---------------------- | ---------------------------------------------------------------- |
 | 프론트엔드             | React + TypeScript + Vite                                        |
-| UI 스타일링            | Tailwind CSS                                                     |
+| UI 스타일링            | CSS Modules + CSS Variables                                     |
 | 아이콘                 | lucide-react                                                     |
 | 실제 백엔드 프레임워크 | Spring Boot                                                      |
 | DBMS                   | MySQL                                                            |
@@ -2438,5 +2700,5 @@ multipart/form-data
 ## 20. 구현 중 검증할 사항
 
 1. 카카오맵 URL Scheme 또는 웹 링크의 최종 형식 검증
-2. 실제 배포 도메인 확정
+2. 운영 도메인 `jenkins.example.invalid`의 배포별 HTTPS/WSS routing 검증
 3. 카메라 이미지 즉시 폐기 로그 검증

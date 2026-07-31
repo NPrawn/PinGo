@@ -22,7 +22,11 @@ public enum FacilityType {
     TICKET_MACHINE("ticket_machine"),
     CARD_CHARGER("card_charger"),
     LOCKER("locker"),
-    INFO("info");
+    INFO("info"),
+    PHARMACY("pharmacy"),
+    CONVENIENCE_STORE("convenience_store"),
+    CURRENCY_EXCHANGE_MACHINE("currency_exchange_machine"),
+    CLAW_MACHINE_ARCADE("claw_machine_arcade");
 
     private final String code;
 
