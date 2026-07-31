@@ -54,13 +54,19 @@ public class StationService {
                 .toList();
     }
 
+    /**
+     * 서비스 중인 역을 검색한다.
+     *
+     * keyword가 없으면 전체 목록을 반환한다. 상담자 회원가입처럼 담당 역을 고르는 화면은
+     * 검색어 없이 선택 목록만 필요하다.
+     */
     public List<StationSearchResponse> searchStations(String keyword) {
         String normalizedKeyword = trimToNull(keyword);
-        if (normalizedKeyword == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST);
-        }
+        List<Station> stations = normalizedKeyword == null
+                ? stationRepository.findAllByActiveTrueOrderByNameKoAsc()
+                : stationRepository.searchActiveByKeyword(normalizedKeyword);
 
-        return stationRepository.searchActiveByKeyword(normalizedKeyword).stream()
+        return stations.stream()
                 .map(StationSearchResponse::from)
                 .toList();
     }

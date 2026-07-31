@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { checkLoginId, useSignup } from '@/features/console-auth';
-import { ApiError } from '@/shared/api';
+import { ApiError, searchStations } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { BackLink, Button, DesktopWindow, Field, PasswordField } from '@/shared/ui';
+import { BackLink, Button, DesktopWindow, Field, PasswordField, SelectField } from '@/shared/ui';
 import styles from './SignupPage.module.css';
 
 /** Mirrors the server-side rule in `SignupRequest.password`. */
@@ -22,6 +23,13 @@ export function SignupPage() {
   /** null before the id has been checked. */
   const [loginIdAvailable, setLoginIdAvailable] = useState<boolean | null>(null);
   const [passwordError, setPasswordError] = useState('');
+
+  // 담당 역은 ID를 외울 수 없으니 서비스 중인 역 목록에서 고르게 한다.
+  const stationsQuery = useQuery({
+    queryKey: ['signup-stations'],
+    queryFn: () => searchStations(),
+  });
+  const stations = stationsQuery.data ?? [];
 
   function validatePassword() {
     if (!PASSWORD_PATTERN.test(password)) {
@@ -61,7 +69,7 @@ export function SignupPage() {
 
     const parsedStationId = Number(stationId);
     if (!name.trim() || !loginId.trim() || !password || !Number.isInteger(parsedStationId)) {
-      setErrorMessage('이름, 아이디, 비밀번호, 역 ID를 모두 확인해 주세요.');
+      setErrorMessage('이름, 아이디, 비밀번호, 담당 역을 모두 확인해 주세요.');
       return;
     }
 
@@ -162,18 +170,29 @@ export function SignupPage() {
           </p>
 
           <label className={styles.label} htmlFor="signup-station">
-            담당 역 ID
+            담당 역
           </label>
-          <Field
+          <SelectField
             id="signup-station"
             className={styles.field}
-            type="number"
-            min={1}
-            placeholder="예: 1"
             value={stationId}
             onChange={(event) => setStationId(event.target.value)}
+            disabled={stationsQuery.isPending || stations.length === 0}
             required
-          />
+          >
+            <option value="" disabled>
+              {stationsQuery.isPending ? '역 목록을 불러오는 중…' : '담당 역을 선택해 주세요'}
+            </option>
+            {stations.map((station) => (
+              <option key={station.stationId} value={String(station.stationId ?? '')}>
+                {station.nameKo}
+                {station.lineInfo ? ` · ${station.lineInfo}` : ''}
+              </option>
+            ))}
+          </SelectField>
+          {stationsQuery.isError && (
+            <p className={styles.fieldError}>역 목록을 불러오지 못했습니다.</p>
+          )}
 
           {errorMessage && (
             <p className={styles.error} role="alert">

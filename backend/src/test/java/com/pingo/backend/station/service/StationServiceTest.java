@@ -85,18 +85,26 @@ class StationServiceTest {
     }
 
     @Test
-    void searchStationsThrowsWhenKeywordIsBlank() {
-        assertThatThrownBy(() -> stationService.searchStations("   "))
-                .isInstanceOfSatisfying(BusinessException.class, exception ->
-                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    void searchStationsReturnsAllActiveStationsWhenKeywordIsBlank() {
+        Station station = createStation(1L);
+        when(stationRepository.findAllByActiveTrueOrderByNameKoAsc()).thenReturn(List.of(station));
+
+        List<StationSearchResponse> responses = stationService.searchStations("   ");
+
+        assertThat(responses)
+                .extracting(StationSearchResponse::stationId, StationSearchResponse::nameKo)
+                .containsExactly(tuple(1L, "역삼역"));
         verify(stationRepository, never()).searchActiveByKeyword(any());
     }
 
     @Test
-    void searchStationsThrowsWhenKeywordIsNull() {
-        assertThatThrownBy(() -> stationService.searchStations(null))
-                .isInstanceOfSatisfying(BusinessException.class, exception ->
-                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    void searchStationsReturnsAllActiveStationsWhenKeywordIsNull() {
+        Station station = createStation(1L);
+        when(stationRepository.findAllByActiveTrueOrderByNameKoAsc()).thenReturn(List.of(station));
+
+        List<StationSearchResponse> responses = stationService.searchStations(null);
+
+        assertThat(responses).hasSize(1);
         verify(stationRepository, never()).searchActiveByKeyword(any());
     }
 
