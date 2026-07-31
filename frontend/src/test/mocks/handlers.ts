@@ -31,6 +31,31 @@ const FACILITIES = [
     linkedNodeId: 123,
     isAccessible: true,
   },
+  /** 출구는 B1(floorId 3)에 있다. B2를 보고 있을 때 목적지 마커가 없는 것이 정상이다. */
+  {
+    facilityId: 25,
+    stationId: 1,
+    floorId: 3,
+    facilityType: 'exit',
+    nameKo: '7번 출구',
+    nameEn: 'Exit 7',
+    mapX: 149.166,
+    mapY: -33.989,
+    linkedNodeId: 44,
+    isAccessible: false,
+  },
+  {
+    facilityId: 41,
+    stationId: 1,
+    floorId: 3,
+    facilityType: 'exit',
+    nameKo: '2번 출구',
+    nameEn: 'Exit 2',
+    mapX: 99.725,
+    mapY: 48.451,
+    linkedNodeId: 60,
+    isAccessible: false,
+  },
 ];
 
 /**

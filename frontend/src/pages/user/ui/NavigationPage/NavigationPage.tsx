@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { facilityIconOf, type Facility } from '@/entities/facility';
+import { facilityIconOf, useStationFacilities, type Facility } from '@/entities/facility';
 import { floorCodeOf, floorIdOf, MOCK_FLOOR_ID, useStationFloorMaps } from '@/entities/floor-map';
 import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
@@ -54,6 +54,19 @@ const MOCK_CONFIRMED_LOCATION: IndoorPoint = {
   mapX: 0,
   mapY: 0,
 };
+
+/**
+ * 화면이 들고 있는 출구 이름으로 실제 출구 시설을 찾는다.
+ *
+ * 화면은 `7번 출입구`, 응답은 `7번 출구`로 표기가 다르다. 출구 번호만 뽑아 맞춘다.
+ * 번호가 없는 이름(`강남파이낸스센터(GFC몰) 연결 출입구` 등)은 대조하지 않는다.
+ */
+function matchExitByName(exits: readonly Facility[], name: string): Facility | null {
+  const number = /^(\d+)번/.exec(name)?.[1];
+  if (!number) return null;
+
+  return exits.find((exit) => exit.nameKo.startsWith(`${number}번`)) ?? null;
+}
 
 /** Camera guidance with an interactive indoor map and up to two stops. */
 export function NavigationPage() {
@@ -126,6 +139,25 @@ export function NavigationPage() {
     (pickedFloorCode === null ? undefined : floorIdOf(floorMaps, pickedFloorCode)) ??
     followedFloorId;
   const displayedFloorCode = floorCodeOf(floorMaps, displayedFloorId);
+
+  /**
+   * 목적지 마커. **이름과 좌표가 같은 곳을 가리켜야 한다.**
+   *
+   * 이전에는 좌표가 목업 상수(3번출구 엘리베이터)이고 이름은 경로 옵션 화면에서 온 문자열
+   * (`7번 출입구`)이라, 3번 출구 자리에 7번이라고 적힌 마커가 그려졌다. 두 목업이 서로 다른
+   * 곳에서 와서 맞춰진 적이 없었다.
+   *
+   * 이제 출구 이름으로 실제 시설을 찾아 그 좌표를 쓴다. 찾지 못하면 그리지 않는다 — 틀린
+   * 자리에 표시하는 것보다 없는 편이 낫다. 사용자가 시설을 새 목적지로 지정한 경우에는 그
+   * 시설을 그대로 쓴다.
+   *
+   * TODO(297): 경로 조회가 붙으면 목적지는 경로 응답의 마지막 노드에서 온다. 그때 이 조회와
+   * 이름 대조를 지운다.
+   */
+  const exitsQuery = useStationFacilities(1, { facilityType: 'exit' });
+  const [pickedDestination, setPickedDestination] = useState<Facility | null>(null);
+  const destinationFacility =
+    pickedDestination ?? matchExitByName(exitsQuery.data ?? [], activeDestination);
 
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
@@ -206,6 +238,8 @@ export function NavigationPage() {
                   if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
                   setDestination(selectedFacility.nameKo);
                   setActiveDestination(selectedFacility.nameKo);
+                  // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
+                  setPickedDestination(selectedFacility);
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -279,6 +313,7 @@ export function NavigationPage() {
                   onClick={() => {
                     setDestination(initialDestination.current);
                     setActiveDestination(exit);
+                    setPickedDestination(null);
                     setRecalculated(true);
                   }}
                   aria-label={`목적지를 ${exit}로 되돌리기`}
@@ -330,10 +365,24 @@ export function NavigationPage() {
                   floorId={displayedFloorId}
                   currentLocation={currentLocation}
                   currentHeadingDeg={headingDeg}
-                  /* 목적지 이름은 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
+                  /* 실제 시설 좌표를 넘긴다. 목업 목적지를 쓰지 않는다 — 좌표와 이름이
+                     다른 곳을 가리키던 원인이다. 다른 층의 목적지는 오버레이가 걸러낸다. */
+                  destination={
+                    destinationFacility
+                      ? {
+                          floorId: destinationFacility.floorId,
+                          mapX: destinationFacility.mapX,
+                          mapY: destinationFacility.mapY,
+                        }
+                      : null
+                  }
+                  /* 이름은 응답의 것을 쓴다. 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
                      시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
                   destinationLabel={
-                    facilityFilter == null || facilityFilter === 'exit' ? exit : null
+                    (facilityFilter == null || facilityFilter === 'exit') &&
+                    destinationFacility !== null
+                      ? destinationFacility.nameKo
+                      : null
                   }
                   facilityType={facilityFilter}
                   selectedFacilityId={selectedFacility?.facilityId}

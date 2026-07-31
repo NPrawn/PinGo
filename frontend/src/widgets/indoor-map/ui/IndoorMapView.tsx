@@ -55,6 +55,17 @@ interface IndoorMapViewProps {
   useMockData?: boolean;
 }
 
+/**
+ * 넘겨받지 않은 값만 목업으로 채운다.
+ *
+ * `undefined`는 "안 넘겼다", `null`은 "표시할 것이 없다"로 구분한다. `??`로 묶으면 둘이 같아져
+ * 호출부가 목업을 끌 수 없다.
+ */
+function mockable<T>(value: T | null | undefined, mock: T, useMockData: boolean): T | null {
+  if (value !== undefined) return value;
+  return useMockData ? mock : null;
+}
+
 function selectFloorMap(maps: readonly FloorMap[], floorId?: number): FloorMap | undefined {
   if (floorId === undefined) return maps[0];
   return maps.find((map) => map.floorId === floorId);
@@ -136,18 +147,20 @@ export function IndoorMapView({
             height={floorMap.height}
           />
         )}
+        {/* 목업은 **넘겨받지 않은 것만** 채운다. `null`을 넘긴 것은 "표시할 것이 없다"는 뜻이라
+            목업으로 대신하지 않는다 — 그러지 않으면 호출부가 목적지 없음을 표현할 수 없고,
+            좌표를 모르는 목적지가 목업 자리에 그려져 이름과 다른 곳을 가리킨다. */}
         <MapOverlay
           floorMap={floorMap}
-          currentLocation={currentLocation ?? (useMockData ? MOCK_CURRENT_LOCATION : null)}
+          currentLocation={mockable(currentLocation, MOCK_CURRENT_LOCATION, useMockData)}
           currentHeadingDeg={currentHeadingDeg}
-          destination={destination ?? (useMockData ? MOCK_DESTINATION : null)}
+          destination={mockable(destination, MOCK_DESTINATION, useMockData)}
           destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
           facilities={facilityQuery.data}
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
         />
-        {/* 시설·출구 마커(281)가 이 stage 위에 추가된다. */}
       </div>
     </div>
   );
