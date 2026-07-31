@@ -9,7 +9,6 @@ import { PendingPage } from './PendingPage/PendingPage';
 import { RequestsPage } from './RequestsPage/RequestsPage';
 import { SessionPage } from './SessionPage/SessionPage';
 import { SignupPage } from './SignupPage/SignupPage';
-import { StatsPage } from './StatsPage/StatsPage';
 
 const rel = (path: string) => path.slice('/counselor/'.length);
 
@@ -57,14 +56,6 @@ export function CounselorRoutes() {
         element={
           <RequireRole role="COUNSELOR" loginPath={COUNSELOR_ROUTES.LOGIN}>
             <HistoryPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path={rel(COUNSELOR_ROUTES.STATS)}
-        element={
-          <RequireRole role="COUNSELOR" loginPath={COUNSELOR_ROUTES.LOGIN}>
-            <StatsPage />
           </RequireRole>
         }
       />

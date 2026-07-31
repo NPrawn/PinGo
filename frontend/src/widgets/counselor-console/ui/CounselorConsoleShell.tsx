@@ -10,7 +10,6 @@ import styles from './CounselorConsoleShell.module.css';
 const TABS: readonly WindowTab[] = [
   { to: COUNSELOR_ROUTES.REQUESTS, label: '상담 요청 목록', icon: 'list' },
   { to: COUNSELOR_ROUTES.HISTORY, label: '상담 이력', icon: 'clock' },
-  { to: COUNSELOR_ROUTES.STATS, label: '통계', icon: 'chart' },
 ];
 
 type CounselorConsoleShellProps = {

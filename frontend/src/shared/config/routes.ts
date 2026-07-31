@@ -57,7 +57,6 @@ export const COUNSELOR_ROUTES = {
   CONNECT_FAILED: `${COUNSELOR}/session/failed`, // c-failed
   SESSION: `${COUNSELOR}/session`, // c-rtc
   HISTORY: `${COUNSELOR}/history`, // c-history
-  STATS: `${COUNSELOR}/stats`, // c-stats
 } as const;
 
 /** Admin console. Prototype id `a-console`, one screen with six tabs. */
