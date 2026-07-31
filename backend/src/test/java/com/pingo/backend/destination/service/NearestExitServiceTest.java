@@ -56,7 +56,7 @@ class NearestExitServiceTest {
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(station()));
         when(facilityRepository.searchActive(1L, null, "exit"))
                 .thenReturn(List.of(exitOne, exitFive));
-        when(exitDetailRepository.findByFacilityId(10L)).thenReturn(Optional.of(
+        when(exitDetailRepository.findAllByFacilityIdIn(List.of(10L, 50L))).thenReturn(List.of(
                 ExitDetail.create(
                         10L,
                         "1",
@@ -64,9 +64,7 @@ class NearestExitServiceTest {
                         new BigDecimal("127.020000"),
                         null,
                         null
-                )
-        ));
-        when(exitDetailRepository.findByFacilityId(50L)).thenReturn(Optional.of(
+                ),
                 ExitDetail.create(
                         50L,
                         "5",
@@ -92,10 +90,8 @@ class NearestExitServiceTest {
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(station()));
         when(facilityRepository.searchActive(1L, null, "exit"))
                 .thenReturn(List.of(incompleteExit, completeExit));
-        when(exitDetailRepository.findByFacilityId(10L)).thenReturn(Optional.of(
-                ExitDetail.create(10L, "1", new BigDecimal("37.500000"), null, null, null)
-        ));
-        when(exitDetailRepository.findByFacilityId(50L)).thenReturn(Optional.of(
+        when(exitDetailRepository.findAllByFacilityIdIn(List.of(10L, 50L))).thenReturn(List.of(
+                ExitDetail.create(10L, "1", new BigDecimal("37.500000"), null, null, null),
                 ExitDetail.create(
                         50L,
                         "5",
@@ -115,6 +111,7 @@ class NearestExitServiceTest {
     void findNearestExitThrowsWhenNoExitHasOutsideCoordinates() {
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(station()));
         when(facilityRepository.searchActive(1L, null, "exit")).thenReturn(List.of());
+        when(exitDetailRepository.findAllByFacilityIdIn(List.of())).thenReturn(List.of());
 
         assertThatThrownBy(() -> nearestExitService.findNearestExit(request()))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->

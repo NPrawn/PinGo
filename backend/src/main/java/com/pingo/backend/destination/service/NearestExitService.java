@@ -10,6 +10,7 @@ import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.global.geo.GeoDistanceCalculator;
 import com.pingo.backend.station.repository.StationRepository;
 import java.util.Comparator;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,16 +29,17 @@ public class NearestExitService {
     public NearestExitResponse findNearestExit(NearestExitRequest request) {
         validateStation(request.stationId());
 
-        return facilityRepository.searchActive(request.stationId(), null, EXIT_TYPE).stream()
-                .map(facility -> exitDetailRepository.findByFacilityId(facility.getId())
-                        .filter(this::hasOutsideLocation)
-                        .map(exitDetail -> new ExitCandidate(
-                                facility.getId(),
-                                exitDetail.getExitNumber(),
-                                distanceFromDestination(exitDetail, request)
-                        ))
-                        .orElse(null))
-                .filter(candidate -> candidate != null)
+        List<Long> exitFacilityIds = facilityRepository.searchActive(request.stationId(), null, EXIT_TYPE).stream()
+                .map(facility -> facility.getId())
+                .toList();
+
+        return exitDetailRepository.findAllByFacilityIdIn(exitFacilityIds).stream()
+                .filter(this::hasOutsideLocation)
+                .map(exitDetail -> new ExitCandidate(
+                        exitDetail.getFacilityId(),
+                        exitDetail.getExitNumber(),
+                        distanceFromDestination(exitDetail, request)
+                ))
                 .min(Comparator.comparingLong(ExitCandidate::distanceMeters)
                         .thenComparing(ExitCandidate::exitFacilityId))
                 .map(candidate -> new NearestExitResponse(candidate.exitFacilityId(), candidate.exitNumber()))
