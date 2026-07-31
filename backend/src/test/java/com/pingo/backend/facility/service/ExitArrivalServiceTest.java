@@ -108,6 +108,18 @@ class ExitArrivalServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FACILITY_NOT_FOUND));
     }
 
+    @Test
+    void throwsWhenExitHasNoCoordinates() {
+        // DB NOT NULL 로 막혀 있어 실제로는 나올 수 없는 상태다. 방어 분기가 도는지만 확인한다.
+        Facility exit = exitAt(B1, "100.000", "-40.000");
+        ReflectionTestUtils.setField(exit, "mapX", null);
+        givenExit(exit);
+
+        assertThatThrownBy(() -> check(B1, "100.000", "-40.000"))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
     private void givenExit(Facility exit) {
         when(facilityRepository.findByIdAndActiveTrue(EXIT_ID)).thenReturn(Optional.of(exit));
     }
