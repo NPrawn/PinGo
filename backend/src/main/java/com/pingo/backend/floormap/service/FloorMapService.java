@@ -17,10 +17,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +31,8 @@ public class FloorMapService {
 
     private static final String MAP_SUB_DIRECTORY = "maps";
     private static final Set<String> SUPPORTED_MAP_TYPES = Set.of("image", "svg");
+    /** 좌표 프레임을 이루는 필드 수: scaleMPerPx · originPxX · originPxY · frameAngleDeg */
+    private static final int FRAME_FIELD_COUNT = 4;
 
     private final FloorMapRepository floorMapRepository;
     private final StationFloorRepository stationFloorRepository;
@@ -40,8 +44,11 @@ public class FloorMapService {
         getFloor(floorId);
         String mapType = normalizeMapType(request.mapType());
 
+        List<FloorMap> existingMaps = floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(floorId);
+        validateCoordinateFrame(request, existingMaps);
+
         String mapUrl = fileStorageService.store(mapFile, MAP_SUB_DIRECTORY);
-        deactivateExistingMaps(floorId);
+        existingMaps.forEach(FloorMap::deactivate);
 
         FloorMap floorMap = FloorMap.create(
                 floorId,
@@ -100,9 +107,43 @@ public class FloorMapService {
         return floor;
     }
 
-    private void deactivateExistingMaps(Long floorId) {
-        floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(floorId)
-                .forEach(FloorMap::deactivate);
+    /**
+     * 업로드 요청의 좌표 프레임을 검증한다.
+     *
+     * <p>새 지도가 활성화되면 기존 지도는 비활성화되므로, 요청에 프레임이 없으면 그대로
+     * 프레임이 사라진다. 그러면 좌표 오버레이가 조용히 멈춘다. 두 가지를 막는다.
+     *
+     * <ol>
+     *     <li><b>부분 입력</b> — 넷 중 일부만 보내면 프레임이 성립하지 않는데 오류 없이 저장된다.
+     *         넷 다 있거나 넷 다 없어야 한다.</li>
+     *     <li><b>유실</b> — 기존 활성 지도에 프레임이 있는데 요청에 없으면 거부한다.</li>
+     * </ol>
+     *
+     * <p>기존 값을 자동으로 물려주지 않는 이유는 <b>프레임이 특정 이미지에 대한 값</b>이기 때문이다.
+     * 원점 픽셀은 그 이미지의 픽셀 위치이고, 새 이미지는 크기·여백·회전이 다르다.
+     * 물려주면 오버레이가 켜진 채로 틀린 위치에 그려져 아무도 알아채지 못한다.
+     * 프레임이 없어 오버레이가 꺼지는 편이 낫고, 그보다 나은 것은 관리자가 새 이미지 기준으로
+     * 다시 재서 함께 올리는 것이다.
+     */
+    private void validateCoordinateFrame(FloorMapUploadRequest request, List<FloorMap> existingMaps) {
+        int provided = countProvidedFrameFields(request);
+        if (provided != 0 && provided != FRAME_FIELD_COUNT) {
+            throw new BusinessException(ErrorCode.INCOMPLETE_COORDINATE_FRAME);
+        }
+
+        if (provided == 0 && existingMaps.stream().anyMatch(FloorMap::hasCoordinateFrame)) {
+            throw new BusinessException(ErrorCode.COORDINATE_FRAME_WOULD_BE_LOST);
+        }
+    }
+
+    private int countProvidedFrameFields(FloorMapUploadRequest request) {
+        return (int) Stream.of(
+                        request.scaleMPerPx(),
+                        request.originPxX(),
+                        request.originPxY(),
+                        request.frameAngleDeg())
+                .filter(Objects::nonNull)
+                .count();
     }
 
     private String nextVersion(Long floorId) {

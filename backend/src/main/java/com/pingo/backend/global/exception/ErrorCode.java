@@ -50,6 +50,8 @@ public enum ErrorCode {
     // 지도,파일
     INVALID_MAP_FILE(HttpStatus.BAD_REQUEST, "INVALID_MAP_FILE", "지도 파일이 비어 있거나 올바르지 않습니다."),
     UNSUPPORTED_MAP_TYPE(HttpStatus.BAD_REQUEST, "UNSUPPORTED_MAP_TYPE", "지원하지 않는 지도 유형입니다."),
+    INCOMPLETE_COORDINATE_FRAME(HttpStatus.BAD_REQUEST, "INCOMPLETE_COORDINATE_FRAME", "좌표 프레임은 축척·원점 X·원점 Y·회전각을 모두 함께 지정해야 합니다."),
+    COORDINATE_FRAME_WOULD_BE_LOST(HttpStatus.BAD_REQUEST, "COORDINATE_FRAME_WOULD_BE_LOST", "기존 지도에 좌표 프레임이 있습니다. 새 이미지 기준으로 좌표 프레임을 함께 지정해 주세요."),
     FILE_STORAGE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_STORAGE_FAILED", "파일 저장에 실패했습니다."),
 
 
