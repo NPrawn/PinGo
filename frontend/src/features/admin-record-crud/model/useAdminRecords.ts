@@ -252,10 +252,6 @@ export function useAdminRecords(tab: AdminTableTab) {
   }, [query, rows]);
 
   const startCreate = () => {
-    if (tab === 'counselor') {
-      flash('상담원 계정 생성은 회원가입 후 승인 방식입니다.');
-      return;
-    }
     setDraft({ id: null, values: { ...schema.blank } });
     setInvalid(false);
   };
@@ -436,6 +432,17 @@ export function useAdminRecords(tab: AdminTableTab) {
     }
   };
 
+  /** 승인 대기 상담원 계정을 활성화한다. */
+  const approve = async (id: number) => {
+    try {
+      await updateAdminCounselor(id, { isActive: true });
+      flash('계정을 승인했습니다.');
+      await queryClient.invalidateQueries({ queryKey: ['admin-records', tab] });
+    } catch {
+      flash('계정을 승인하지 못했습니다.');
+    }
+  };
+
   const deletingName =
     deletingId == null ? '' : String(rows.find((row) => row.id === deletingId)?.name ?? '');
 
@@ -459,6 +466,8 @@ export function useAdminRecords(tab: AdminTableTab) {
     askDelete: setDeletingId,
     cancelDelete: () => setDeletingId(null),
     confirmDelete,
+    approve,
+    isApprovable: tab === 'counselor' ? (row: AdminRecord) => row.active === 'false' : undefined,
     toast,
     flash,
   };

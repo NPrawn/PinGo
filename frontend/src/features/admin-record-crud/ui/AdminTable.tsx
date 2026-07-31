@@ -11,6 +11,9 @@ type AdminTableProps = {
   onCreate: () => void;
   onEdit: (id: number) => void;
   onDelete: (id: number) => void;
+  /** Rows this returns true for get an extra approve action. */
+  isApprovable?: (row: AdminRecord) => boolean;
+  onApprove?: (id: number) => void;
 };
 
 /** The searchable CRUD table shared by five of the six admin tabs. */
@@ -22,6 +25,8 @@ export function AdminTable({
   onCreate,
   onEdit,
   onDelete,
+  isApprovable,
+  onApprove,
 }: AdminTableProps) {
   return (
     <>
@@ -30,9 +35,11 @@ export function AdminTable({
           <h2 className={styles.title}>{schema.title}</h2>
           <p className={styles.desc}>{schema.desc}</p>
         </div>
-        <Button size="sm" className={styles.newButton} onClick={onCreate}>
-          ＋ {schema.newLabel}
-        </Button>
+        {schema.newLabel && (
+          <Button size="sm" className={styles.newButton} onClick={onCreate}>
+            ＋ {schema.newLabel}
+          </Button>
+        )}
       </div>
 
       <div className={styles.toolbar}>
@@ -91,6 +98,11 @@ export function AdminTable({
               );
             })}
             <span className={styles.actions}>
+              {onApprove && isApprovable?.(row) && (
+                <button type="button" className={styles.approve} onClick={() => onApprove(row.id)}>
+                  수락
+                </button>
+              )}
               <button type="button" className={styles.edit} onClick={() => onEdit(row.id)}>
                 수정
               </button>

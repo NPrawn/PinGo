@@ -43,6 +43,8 @@ export function ConsolePage() {
           onCreate={records.startCreate}
           onEdit={records.startEdit}
           onDelete={records.askDelete}
+          isApprovable={records.isApprovable}
+          onApprove={(id) => void records.approve(id)}
         />
       ) : (
         <IndoorMapPanel onFlash={records.flash} />

@@ -17,7 +17,8 @@ export type AdminField =
 export type AdminTableSchema = {
   title: string;
   desc: string;
-  newLabel: string;
+  /** Omitted on tabs where records are not created from the console. */
+  newLabel?: string;
   cols: readonly AdminColumn[];
   fields: readonly AdminField[];
   blank: Record<string, string>;
@@ -191,7 +192,6 @@ export const ADMIN_SCHEMA: Record<AdminTableTab, AdminTableSchema> = {
   counselor: {
     title: '상담원 계정 관리',
     desc: '가입한 상담원의 담당 역과 활성 상태를 관리합니다.',
-    newLabel: '가입은 회원가입에서 진행',
     cols: [
       { k: 'name', label: '이름', flex: 1, weight: 700 },
       { k: 'account', label: '계정', flex: 1.4 },
