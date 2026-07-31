@@ -152,6 +152,118 @@ describe('useXrMapPosition', () => {
 
       expect(result.current.currentLocation).toBeNull();
     });
+
+    it('앵커가 없는 동안에는 확정 위치 변경이 그대로 반영된다', () => {
+      const fake = createFakeController();
+      const moved = { floorId: 2, mapX: 500, mapY: 600 };
+      const { result, rerender } = renderHook(
+        ({ location }) =>
+          useXrMapPosition({ controller: fake.controller, currentIndoorLocation: location }),
+        { initialProps: { location: CONFIRMED } },
+      );
+
+      rerender({ location: moved });
+
+      expect(result.current.currentLocation).toEqual(moved);
+    });
+  });
+
+  /**
+   * `currentIndoorLocation`은 안내 화면 진입 시점에 고정되는 입력이다.
+   *
+   * 앵커가 생긴 뒤 이 값이 바뀌어도 표시에 반영되지 않는 것은 **의도된 동작**이며,
+   * 이 테스트가 그것을 고정한다. 근거는 11.2가 사전 확정과 세션 안 VPS를 분리했다는 점,
+   * 그리고 화면 정의서 U-07의 진입 경로가 위치 인식 실패와 카메라 권한 거부뿐이라
+   * 안내 중에는 열리지 않는다는 점이다.
+   *
+   * 안내 중 절대 위치가 다시 확정되는 흐름이 생기면(12장 3번 확정 후) 이 테스트를 바꾸고
+   * 무효화 규칙을 함께 정한다. 그때 `trackedLocation`만 지우면 안 된다 — 앵커가 남아
+   * 있으면 다음 스냅샷이 낡은 앵커로 좌표를 다시 만든다. 마지막 단언이 그 함정을 보여준다.
+   */
+  describe('앵커가 있을 때의 확정 위치 변경', () => {
+    function renderWithLocation(fake: FakeController) {
+      return renderHook(
+        ({ location }) =>
+          useXrMapPosition({
+            controller: fake.controller,
+            currentIndoorLocation: location,
+            smoothing: NO_SMOOTHING,
+          }),
+        { initialProps: { location: CONFIRMED } },
+      );
+    }
+
+    it('앵커가 있으면 확정 위치가 바뀌어도 추적 좌표를 유지한다', () => {
+      const fake = createFakeController();
+      const { result, rerender } = renderWithLocation(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+      act(() => {
+        fake.emitSnapshot(snapshot(0, -10));
+      });
+
+      rerender({ location: { floorId: 2, mapX: 500, mapY: 600 } });
+
+      expect(result.current.currentLocation?.mapY).toBeCloseTo(190, 6);
+      expect(result.current.source).toBe('anchored');
+    });
+
+    /** 안내 중 위치 갱신은 setAnchor가 담당한다. 이 경로는 즉시 반영된다. */
+    it('setAnchor로 넘기면 즉시 반영된다', () => {
+      const fake = createFakeController();
+      const { result } = renderWithLocation(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+      act(() => {
+        fake.emitSnapshot(snapshot(0, -10));
+      });
+
+      fake.setReading(reading(0, -10));
+      act(() => {
+        result.current.setAnchor({ floorId: 2, mapX: 500, mapY: 600 }, FORWARD_IDENTITY);
+      });
+
+      expect(result.current.currentLocation).toEqual({ floorId: 2, mapX: 500, mapY: 600 });
+    });
+
+    /**
+     * 앵커를 버리면 확정 위치 표시로 돌아가고, 그 뒤로는 변경이 다시 반영된다.
+     * 무효화 규칙이 필요해질 때 쓸 수 있는 경로가 이미 있다는 뜻이다.
+     */
+    it('clearAnchor 후에는 확정 위치 변경이 다시 반영된다', () => {
+      const fake = createFakeController();
+      const moved = { floorId: 2, mapX: 500, mapY: 600 };
+      const { result, rerender } = renderWithLocation(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+      act(() => {
+        fake.emitSnapshot(snapshot(0, -10));
+      });
+      act(() => {
+        result.current.clearAnchor();
+      });
+
+      rerender({ location: moved });
+
+      expect(result.current.currentLocation).toEqual(moved);
+      expect(result.current.source).toBe('confirmed');
+
+      // clearAnchor가 앵커까지 지우므로 이후 스냅샷이 옛 좌표를 되살리지 않는다.
+      act(() => {
+        fake.emitSnapshot(snapshot(0, -20));
+      });
+
+      expect(result.current.currentLocation).toEqual(moved);
+    });
   });
 
   describe('앵커 생성', () => {

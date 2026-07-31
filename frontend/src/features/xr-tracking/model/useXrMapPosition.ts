@@ -26,6 +26,19 @@ export interface UseXrMapPositionOptions {
    *
    * **앵커가 아니다.** 이 시점에는 XR 세션이 없어 짝지을 pose가 없다(11.2). 표시용으로만
    * 쓰이며, 앵커가 생기기 전과 추적을 쓸 수 없을 때 지도에 그려진다.
+   *
+   * **안내 화면 진입 시점에 고정되는 입력이다.** 앵커가 생긴 뒤 이 값을 바꾸면 표시에
+   * 반영되지 않고 조용히 무시된다. 안내 중 위치 갱신은 `setAnchor`로 한다 — 11.2가
+   * 사전 확정과 세션 안 VPS를 분리했고, 화면 정의서 U-07(지도 수동 위치 선택)도 진입
+   * 경로가 위치 인식 실패와 카메라 권한 거부뿐이라 안내 중에는 열리지 않는다.
+   *
+   * 무시하는 대신 앵커를 무효화하지 않는 이유는, 그러려면 "안내 중 절대 위치가 다시
+   * 확정되는 흐름"이 있어야 하는데 그 흐름이 아직 없기 때문이다. 안내 중 재인식의 화면
+   * 처리가 미결이다(`docs/기술_의사결정_정리.md` 12장 3번). 화면을 벗어나는 쪽으로
+   * 정해지면 이 훅이 언마운트되어 상태가 통째로 초기화되므로 무효화 규칙 자체가 필요 없다.
+   *
+   * 그 흐름이 생기면 무효화 규칙을 함께 정한다. 그때 `trackedLocation`만 지우면 안 된다 —
+   * 앵커가 남아 있으면 다음 스냅샷이 낡은 앵커로 좌표를 다시 만들어 옛 위치로 돌아간다.
    */
   currentIndoorLocation?: IndoorPoint | null;
   /** 표시 평활 기준값. 생략하면 provisional 기본값을 쓴다. */
@@ -196,6 +209,13 @@ export function useXrMapPosition({
    */
   const isLive = tracking.status === 'tracking' || tracking.status === 'warming-up';
 
+  /**
+   * 추적 좌표가 있으면 그것이 사전 확정 좌표보다 우선한다.
+   *
+   * 앵커가 생긴 뒤에는 `currentIndoorLocation`이 바뀌어도 반영되지 않는다. 그 값은 안내
+   * 화면 진입 시점에 고정되는 입력이며, 안내 중 위치 갱신은 `setAnchor`가 담당한다.
+   * 배경과 조건은 `UseXrMapPositionOptions.currentIndoorLocation` 주석에 있다.
+   */
   const { currentLocation, source } = useMemo(() => {
     if (!trackedLocation) {
       return { currentLocation: currentIndoorLocation, source: 'confirmed' as const };
