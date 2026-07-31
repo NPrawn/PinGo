@@ -134,7 +134,8 @@ public class ConsultationSessionService {
     @Transactional(readOnly = true)
     public List<ConsultationListResponse> getConsultationsForCounselor(Long counselorAccountId, ConsultationStatus status){
         Account counselor = findActiveCounselor(counselorAccountId);
-        return consultationSessionRepository.findByStationId(counselor.getStationId(), status).stream()
+        List<ConsultationStatus> statuses = status != null ? List.of(status) : ACTIVE_STATUSES;
+        return consultationSessionRepository.findByStationIdAndStatusIn(counselor.getStationId(), statuses).stream()
                 .map(ConsultationListResponse::from)
                 .toList();
     }
@@ -144,7 +145,10 @@ public class ConsultationSessionService {
         ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
         findStationCounselor(counselorAccountId, session.getStationId());
-        return ConsultationDetailResponse.from(session, createCounselorSignalingAccessToken(session));
+
+        boolean isAssignedCounselor = counselorAccountId.equals(session.getCounselorId());
+        String token = isAssignedCounselor ? createCounselorSignalingAccessToken(session) : null;
+        return ConsultationDetailResponse.from(session, token);
     }
 
     @Transactional

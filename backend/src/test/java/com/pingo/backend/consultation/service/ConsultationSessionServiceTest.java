@@ -68,6 +68,8 @@ class ConsultationSessionServiceTest {
     private static final Long COUNSELOR_ACCOUNT_ID = 100L;
     private static final Long OTHER_COUNSELOR_ACCOUNT_ID = 101L;
     private static final Long OTHER_STATION_ID = 2L;
+    private static final List<ConsultationStatus> ACTIVE_STATUSES =
+            List.of(ConsultationStatus.WAITING, ConsultationStatus.ACCEPTED, ConsultationStatus.IN_PROGRESS);
 
     private ConsultationCreateRequest createRequest;
     private UserSession userSession;
@@ -454,7 +456,7 @@ class ConsultationSessionServiceTest {
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
-        given(consultationSessionRepository.findByStationId(STATION_ID, null))
+        given(consultationSessionRepository.findByStationIdAndStatusIn(STATION_ID, ACTIVE_STATUSES))
                 .willReturn(List.of(session));
 
         List<ConsultationListResponse> responses =
@@ -471,12 +473,12 @@ class ConsultationSessionServiceTest {
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
-        given(consultationSessionRepository.findByStationId(STATION_ID, ConsultationStatus.WAITING))
+        given(consultationSessionRepository.findByStationIdAndStatusIn(STATION_ID, List.of(ConsultationStatus.WAITING)))
                 .willReturn(List.of());
 
         consultationSessionService.getConsultationsForCounselor(COUNSELOR_ACCOUNT_ID, ConsultationStatus.WAITING);
 
-        verify(consultationSessionRepository).findByStationId(STATION_ID, ConsultationStatus.WAITING);
+        verify(consultationSessionRepository).findByStationIdAndStatusIn(STATION_ID, List.of(ConsultationStatus.WAITING));
     }
 
     @Test
@@ -546,6 +548,28 @@ class ConsultationSessionServiceTest {
 
         assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
         assertThat(response.signalingAccessToken()).isEqualTo("counselor-signaling-token");
+    }
+
+    @Test
+    void getConsultationDetailForCounselor_배정된_상담자가_아니면_토큰없이_반환한다() {
+        ConsultationSession session = newSession();
+        session.accept(OTHER_COUNSELOR_ACCOUNT_ID); // 배정된 상담자는 내가 아님
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+
+        ConsultationDetailResponse response =
+                consultationSessionService.getConsultationDetailForCounselor(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
+
+        assertThat(response.status()).isEqualTo(ConsultationStatus.ACCEPTED);
+        assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isNull();
+        verify(signalingAccessTokenProvider, never()).createCounselorToken(any(), any());
     }
 
     @Test

@@ -22,8 +22,9 @@ public interface ConsultationSessionRepository extends JpaRepository<Consultatio
     @Query("""
         SELECT cs FROM ConsultationSession cs
         WHERE cs.stationId = :stationId
-          AND (:status IS NULL OR cs.status = :status)
+          AND cs.status IN :statuses
         ORDER BY cs.requestedAt ASC
         """)
-    List<ConsultationSession> findByStationId(@Param("stationId") Long stationId, @Param("status") ConsultationStatus status);
+    List<ConsultationSession> findByStationIdAndStatusIn(@Param("stationId") Long stationId,
+                                                           @Param("statuses") Collection<ConsultationStatus> statuses);
 }
