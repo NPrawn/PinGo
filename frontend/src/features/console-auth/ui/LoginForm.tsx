@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ADMIN_ROUTES, COUNSELOR_ROUTES } from '@/shared/config';
 import { ApiError, setAuthSession } from '@/shared/api';
-import { Blob, Button, Field } from '@/shared/ui';
+import { Blob, Button, Field, PasswordField } from '@/shared/ui';
 import { useLogin } from '../api/useAuthMutations';
 import styles from './LoginForm.module.css';
 
@@ -93,8 +93,7 @@ export function LoginForm() {
             setErrorMessage('');
           }}
         />
-        <Field
-          type="password"
+        <PasswordField
           placeholder="비밀번호"
           value={pw}
           aria-label="비밀번호"
