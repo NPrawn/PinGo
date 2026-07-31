@@ -128,14 +128,29 @@ describe('IndoorMapView 오버레이 연결', () => {
     expect(screen.queryByRole('img', { name: '현재 위치' })).not.toBeInTheDocument();
   });
 
-  /** 도면 이미지 업로드(FR-A-002) 전에도 마커 좌표는 프레임만으로 정해진다. */
-  it('도면 이미지가 없어도 오버레이는 그린다', () => {
+  /** 백엔드에 도면이 없으면 FE가 들고 있는 평면도로 떨어진다(localPlans). */
+  it('mapUrl이 없으면 자체 평면도로 떨어진다', () => {
     const withoutImage: FloorMap = { ...framedMap, mapUrl: null };
 
     mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [withoutImage] }));
     render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
 
-    expect(screen.queryByRole('img', { name: 'B2 실내 지도' })).not.toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'B2 실내 지도' }).getAttribute('src')).toContain(
+      '/maps/yeoksam_B2.png',
+    );
+  });
+
+  /**
+   * 자체 평면도가 없는 층. 빈 src로 img를 만들면 깨진 이미지가 보이므로 만들지 않는다.
+   * 좌표는 프레임만으로 정해지므로 오버레이는 그대로 남는다.
+   */
+  it('도면 이미지가 어느 쪽에도 없으면 오버레이만 그린다', () => {
+    const noPlan: FloorMap = { ...framedMap, mapUrl: null, floorCode: '1F' };
+
+    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [noPlan] }));
+    render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
+
+    expect(screen.queryByRole('img', { name: '1F 실내 지도' })).not.toBeInTheDocument();
     expect(screen.getByRole('img', { name: '현재 위치' })).toBeInTheDocument();
   });
 

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import {
   coordinateFrameOf,
+  floorPlanImageUrl,
   meterToPixel,
   MOCK_FLOOR_MAPS,
   useStationFloorMaps,
@@ -90,16 +91,18 @@ export function IndoorMapView({
     return <p className={styles.status}>{t('indoorMap.floorNotFound')}</p>;
   }
 
+  const planImageUrl = floorPlanImageUrl(floorMap);
+
   return (
     <div className={styles.viewport}>
       <div className={styles.stage}>
-        {/* 도면 이미지가 아직 업로드되지 않은 층은 mapUrl이 null이다(FR-A-002 대기).
-            그 경우 img를 만들지 않는다 — 빈 src는 깨진 이미지로 보이고, 좌표 오버레이는
+        {/* 백엔드에 등록된 도면이 없으면 FE가 들고 있는 평면도로 떨어진다(localPlans).
+            둘 다 없으면 img를 만들지 않는다 — 빈 src는 깨진 이미지로 보이고, 좌표 오버레이는
             프레임만으로 그려지므로 도면 그림이 없어도 마커 위치는 맞다. */}
-        {floorMap.mapUrl !== null && (
+        {planImageUrl !== null && (
           <img
             className={styles.image}
-            src={resolveAssetUrl(floorMap.mapUrl)}
+            src={resolveAssetUrl(planImageUrl)}
             alt={t('indoorMap.imageAlt', { floorCode: floorMap.floorCode })}
             width={floorMap.width}
             height={floorMap.height}
