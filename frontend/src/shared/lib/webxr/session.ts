@@ -1,4 +1,4 @@
-import { toPoseReading } from './pose';
+import { angleDiffDeg, toPoseReading } from './pose';
 import { createPoseSampler, DEFAULT_SAMPLING_RULE } from './sampler';
 import { detectXrSupport } from './support';
 import type {
@@ -32,6 +32,28 @@ export const PROVISIONAL_TRACKING_LOST_MS = 1500;
  * 잡되 **표본이 적어 보조 신호로만 쓰고 단독 판단 근거로 삼지 않는다**고 정한다.
  */
 const PERMISSION_BLOCKED_MS = 500;
+
+/**
+ * 방향 표시 갱신 기준. **확정값이 아니다.** (S15P11A206-141)
+ *
+ * 11.4는 회전을 **위치 확정** 트리거에서 제외했다. 1차 실측에서 회전 15도 기준이 상시 참이 되어
+ * 확정의 79%가 회전으로 발화했고, 규칙이 "1초마다 갱신"으로 퇴화했기 때문이다. 그러면서
+ * "회전량은 계속 기록해 **표시 갱신 기준을 따로 정하는 데 쓴다**"고 남겼다.
+ *
+ * 이 두 값이 그 기준이다. 위치와 **별도 채널**로 흘리는 것이 핵심이다 — 회전을 위치 확정에
+ * 되돌려 넣으면 11.4가 제거한 문제가 그대로 돌아온다. 여기서 나가는 것은 각도 하나뿐이라
+ * 위치 확정 주기는 손대지 않는다.
+ *
+ * | 값 | 근거 |
+ * | --- | --- |
+ * | 데드밴드 5도 | 손에 든 단말의 흔들림을 걸러야 하는데 실측에 평면 yaw 지터 값이 없다. 15도(1초 창에서 상시 참)보다 훨씬 작게 두어 의도한 회전이 곧 반영되게 했다 |
+ * | 최소 간격 120ms | 30fps 세션에서 프레임 3~4개당 한 번이다. 매 프레임 리렌더는 11.4가 제거한 것이므로 상한을 둔다 |
+ *
+ * 정지 상태에서 부채꼴이 떨리면 데드밴드를 올리고, 몸을 돌렸을 때 따라오는 것이 늦으면 간격을
+ * 내린다. 실기기 확정 항목이다(`docs/기술_의사결정_정리.md` 13장).
+ */
+export const PROVISIONAL_HEADING_DEADBAND_DEG = 5;
+export const PROVISIONAL_HEADING_MIN_INTERVAL_MS = 120;
 
 /**
  * reference space 후보. `local`을 우선한다.
@@ -87,6 +109,8 @@ export interface XrSessionControllerOptions {
   now?: () => DOMHighResTimeStamp;
   /** 추적 상실 판정 임계값(ms). */
   trackingLostAfterMs?: number;
+  /** 방향 표시 갱신 기준. 생략하면 provisional 기본값을 쓴다. */
+  headingRule?: { deadbandDeg: number; minIntervalMs: number };
   /**
    * 세션에 렌더 레이어를 붙인다. 성공하면 true.
    *
@@ -135,6 +159,16 @@ export interface XrSessionController {
   /** 11.4 확정 주기를 통과한 스냅샷만 전달된다. 받는 쪽에서 다시 throttle하지 않는다. */
   subscribeSnapshots(listener: (snapshot: XrPoseSnapshot) => void): () => void;
   /**
+   * 방향 표시용 yaw만 전달한다. 위치 확정과 **별도 주기**다.
+   *
+   * 11.4가 회전을 위치 확정 트리거에서 뺀 대신 "표시 갱신 기준을 따로 정한다"로 남긴 자리다.
+   * 위치 스냅샷 주기(정지 시 5초 heartbeat)로 방향을 갱신하면 제자리에서 몸만 돌렸을 때
+   * 화면이 최대 5초 늦는다. 이 채널은 각도 하나만 흘리므로 위치 확정 주기에 영향이 없다.
+   *
+   * 데드밴드와 최소 간격을 통과한 값만 온다. 받는 쪽에서 다시 throttle하지 않는다.
+   */
+  subscribeHeading(listener: (yawDeg: number) => void): () => void;
+  /**
    * 마지막 프레임의 pose. 추적 중이 아니면 null이다.
    *
    * **위치 갱신에 쓰지 않는다.** 위치 갱신은 `subscribeSnapshots`가 담당하며, 이 값을
@@ -173,11 +207,20 @@ export function createXrSessionController(
     rule = DEFAULT_SAMPLING_RULE,
     now = () => performance.now(),
     trackingLostAfterMs = PROVISIONAL_TRACKING_LOST_MS,
+    headingRule = {
+      deadbandDeg: PROVISIONAL_HEADING_DEADBAND_DEG,
+      minIntervalMs: PROVISIONAL_HEADING_MIN_INTERVAL_MS,
+    },
   } = options;
 
   let state: XrSessionState = { status: 'idle' };
   const stateListeners = new Set<(state: XrSessionState) => void>();
   const snapshotListeners = new Set<(snapshot: XrPoseSnapshot) => void>();
+  const headingListeners = new Set<(yawDeg: number) => void>();
+
+  /** 마지막으로 내보낸 방향과 그 시각. 데드밴드·간격 판정 기준이다. */
+  let lastHeadingYawDeg: number | null = null;
+  let lastHeadingAt: DOMHighResTimeStamp | null = null;
 
   let session: XRSession | null = null;
   let referenceSpace: XRReferenceSpace | null = null;
@@ -333,6 +376,8 @@ export function createXrSessionController(
 
     latestReading = reading;
 
+    maybeEmitHeading(reading.yawDeg, time);
+
     /** 확정 주기 판정은 샘플러가 한다. 통과한 프레임만 바깥으로 나간다. */
     const snapshot = sampler.consider(reading);
 
@@ -408,6 +453,27 @@ export function createXrSessionController(
     gl = null;
   }
 
+  /**
+   * 방향이 눈에 보일 만큼 바뀌었으면 내보낸다.
+   *
+   * 첫 pose는 기준이 없으므로 무조건 내보낸다 — 그 값이 이후 판정의 기준점이 된다.
+   * 최소 간격을 먼저 보고 데드밴드를 본다. 순서를 뒤집으면 큰 회전이 매 프레임 통과한다.
+   */
+  function maybeEmitHeading(yawDeg: number, time: DOMHighResTimeStamp): void {
+    if (!Number.isFinite(yawDeg)) return;
+
+    if (lastHeadingYawDeg !== null && lastHeadingAt !== null) {
+      if (time - lastHeadingAt < headingRule.minIntervalMs) return;
+      if (angleDiffDeg(yawDeg, lastHeadingYawDeg) < headingRule.deadbandDeg) return;
+    }
+
+    lastHeadingYawDeg = yawDeg;
+    lastHeadingAt = time;
+    headingListeners.forEach((listener) => {
+      listener(yawDeg);
+    });
+  }
+
   function onSessionEnd(): void {
     teardown();
     setState({ status: 'ended', reason: undefined });
@@ -450,6 +516,9 @@ export function createXrSessionController(
     referenceSpace = null;
     lastPoseAt = null;
     latestReading = null;
+    // 다음 세션의 첫 pose가 기준점을 새로 잡아야 한다. 남기면 옛 방향과 비교된다.
+    lastHeadingYawDeg = null;
+    lastHeadingAt = null;
     releaseRenderLayer();
     sampler.reset();
   }
@@ -671,6 +740,14 @@ export function createXrSessionController(
 
       return () => {
         snapshotListeners.delete(listener);
+      };
+    },
+
+    subscribeHeading(listener) {
+      headingListeners.add(listener);
+
+      return () => {
+        headingListeners.delete(listener);
       };
     },
 

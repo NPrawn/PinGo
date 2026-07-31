@@ -55,6 +55,9 @@ function createFakeController() {
       // 이 훅은 스냅샷을 296이 처리하므로 게이트 검증에서는 발화시키지 않는다.
       return () => undefined;
     },
+    subscribeHeading() {
+      return () => undefined;
+    },
     async start(options = {}) {
       startCalls.push(options);
       state = startResult;

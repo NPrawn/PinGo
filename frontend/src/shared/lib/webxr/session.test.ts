@@ -121,6 +121,18 @@ function pose(x: number, z: number, y = 0): XRViewerPose {
   } as unknown as XRViewerPose;
 }
 
+/** +Y축 기준으로 회전한 pose. 방향 채널 검증용이다. */
+function poseYaw(yawDeg: number): XRViewerPose {
+  const half = (yawDeg * Math.PI) / 360;
+
+  return {
+    transform: {
+      position: { x: 0, y: 0, z: 0 },
+      orientation: { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) },
+    },
+  } as unknown as XRViewerPose;
+}
+
 describe('createXrSessionController', () => {
   it('처음 상태는 idle이다', () => {
     expect(createController({ xr: undefined }).getState()).toEqual({
@@ -513,8 +525,11 @@ describe('createXrSessionController', () => {
         ...(trackingLostAfterMs === undefined ? {} : { trackingLostAfterMs }),
       });
 
+      const headings: number[] = [];
+
       controller.subscribe((state) => states.push(state));
       controller.subscribeSnapshots((snapshot) => snapshots.push(snapshot));
+      controller.subscribeHeading((yawDeg) => headings.push(yawDeg));
       await controller.start();
 
       /**
@@ -523,7 +538,7 @@ describe('createXrSessionController', () => {
        */
       states.length = 0;
 
-      return { controller, fake, snapshots, states };
+      return { controller, fake, snapshots, states, headings };
     }
 
     /**
@@ -568,6 +583,87 @@ describe('createXrSessionController', () => {
 
       expect(states).toHaveLength(1);
       expect(snapshots).toHaveLength(1);
+    });
+
+    /**
+     * 방향 표시는 위치 확정과 **별도 주기**다. (S15P11A206-141)
+     *
+     * 11.4가 회전을 위치 확정 트리거에서 뺀 대신 "표시 갱신 기준을 따로 정한다"로 남긴 자리다.
+     * 위치 주기(정지 시 5초 heartbeat)로 방향을 갱신하면 제자리에서 몸만 돌렸을 때 최대 5초
+     * 늦는다. 이 채널은 각도만 흘리므로 위치 확정 주기에 영향이 없다.
+     */
+    describe('방향 채널', () => {
+      it('첫 pose의 방향을 기준점으로 내보낸다', async () => {
+        const { fake, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+
+        expect(headings).toHaveLength(1);
+      });
+
+      it('데드밴드 미만 회전은 내보내지 않는다', async () => {
+        const { fake, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+        // 기본 데드밴드는 5도다. 간격은 충분히 벌린다.
+        fake.emitFrame(1600, poseYaw(3));
+
+        expect(headings).toHaveLength(1);
+      });
+
+      it('데드밴드 이상 회전하면 내보낸다', async () => {
+        const { fake, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+        fake.emitFrame(1600, poseYaw(20));
+
+        expect(headings).toHaveLength(2);
+      });
+
+      /** 매 프레임 리렌더는 11.4가 제거한 것이므로 큰 회전에도 상한을 둔다. */
+      it('최소 간격 안에서는 큰 회전도 내보내지 않는다', async () => {
+        const { fake, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+        // 기본 최소 간격은 120ms다. 30fps 프레임 하나(16ms) 뒤에 90도를 돌아도 참지 않는다.
+        fake.emitFrame(1216, poseYaw(90));
+
+        expect(headings).toHaveLength(1);
+      });
+
+      /** 방향 채널이 위치 확정을 늘리지 않아야 한다. 그게 이 분리의 목적이다. */
+      it('제자리 회전은 위치 스냅샷을 만들지 않는다', async () => {
+        const { fake, snapshots, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+
+        const positionCount = snapshots.length;
+
+        for (let index = 1; index <= 10; index += 1) {
+          fake.emitFrame(1200 + index * 200, poseYaw(index * 20));
+        }
+
+        expect(headings.length).toBeGreaterThan(positionCount);
+        expect(snapshots).toHaveLength(positionCount);
+      });
+
+      it('주입한 기준값을 쓴다', async () => {
+        const fake = createFakeSession();
+        const headings: number[] = [];
+        const controller = createController({
+          xr: fakeXr(async () => fake.session),
+          headingRule: { deadbandDeg: 30, minIntervalMs: 0 },
+        });
+
+        controller.subscribeHeading((yawDeg) => headings.push(yawDeg));
+        await controller.start();
+
+        fake.emitFrame(1200, poseYaw(0));
+        fake.emitFrame(1216, poseYaw(20));
+        fake.emitFrame(1232, poseYaw(40));
+
+        expect(headings).toHaveLength(2);
+      });
     });
 
     it('2m 이상 이동하면 move 스냅샷이 나온다', async () => {

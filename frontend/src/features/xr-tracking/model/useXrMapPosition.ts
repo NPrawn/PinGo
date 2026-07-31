@@ -66,10 +66,10 @@ export interface UseXrMapPositionValue extends UseXrTrackingValue {
    * 각도 기준은 지도 `+X`축, 증가 방향은 `+Y`쪽이다. 이미지 위에 그릴 때는 좌표 프레임의
    * `angleDeg`를 더한다(`mapHeadingDegOf` 주석).
    *
-   * **위치와 같은 주기로 갱신된다.** 11.4가 회전을 확정 트리거에서 제외했으므로(손에 든 단말의
-   * yaw 흔들림만으로 상시 참이 되어 규칙이 "1초마다 갱신"으로 퇴화했다) 방향은 위치가 확정될
-   * 때 함께 갱신된다. 즉 **제자리에서 몸만 돌리면 최대 heartbeat 간격(5초)까지 늦는다.**
-   * 회전의 표시 갱신 기준은 11.4가 "따로 정한다"로 남긴 미결 항목이다.
+   * **위치와 다른 주기로 갱신된다.** 11.4가 회전을 위치 확정 트리거에서 제외했으므로 위치
+   * 스냅샷에 방향을 묶으면 제자리에서 몸만 돌렸을 때 최대 5초 늦는다. 컨트롤러의
+   * `subscribeHeading`이 회전 전용 데드밴드·최소 간격으로 각도만 흘려준다. 그 기준값은
+   * 아직 provisional이며 실기기 확정 항목이다(`PROVISIONAL_HEADING_DEADBAND_DEG`).
    *
    * 평활을 걸지 않는다. 표시 평활은 위치의 데드밴드·추종 비율로 정의돼 있고(296) 각도에는
    * 그 규칙을 그대로 쓸 수 없다 — 179°와 -179°가 이웃이라 선형 보간이 한 바퀴 돌아간다.
@@ -168,14 +168,29 @@ export function useXrMapPosition({
 
       smoothedRef.current = smoothed;
       setTrackedLocation(smoothed);
-
-      /**
-       * 방향은 같은 스냅샷의 yaw에서 낸다. 위치와 한 시점에서 나오므로 마커의 점과 방향이
-       * 서로 다른 순간을 가리키지 않는다.
-       */
-      setHeadingDeg(mapHeadingDegOf(snapshot.yawDeg, anchor));
     }, []),
   });
+
+  /**
+   * 방향은 위치와 별도 채널로 받는다.
+   *
+   * 위치 스냅샷 주기로 갱신하면 제자리에서 몸만 돌렸을 때 화면이 최대 5초 늦는다 — 11.4가
+   * 회전을 위치 확정 트리거에서 뺐기 때문이다. 컨트롤러가 회전 전용 데드밴드·최소 간격을
+   * 적용해 각도만 흘려주므로, 위치 확정 주기는 그대로 두고 방향만 자주 갱신할 수 있다.
+   *
+   * 앵커가 없으면 각도를 지도 프레임으로 옮길 기준이 없어 그냥 버린다.
+   */
+  useEffect(
+    () =>
+      controller.subscribeHeading((yawDeg) => {
+        const anchor = anchorRef.current;
+
+        if (!anchor) return;
+
+        setHeadingDeg(mapHeadingDegOf(yawDeg, anchor));
+      }),
+    [controller],
+  );
 
   const setAnchor = useCallback(
     (map: IndoorPoint, forwardMap: PlanarVector | null) => {

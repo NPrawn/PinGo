@@ -53,6 +53,10 @@ function createFakeController({ opensSession = true } = {}): FakeController {
         stateListeners.delete(notify);
       };
     },
+    subscribeHeading() {
+      // 방향 채널은 useXrMapPosition이 쓴다. 이 훅은 상태와 스냅샷만 다룬다.
+      return () => undefined;
+    },
     subscribeSnapshots(listener) {
       snapshotListeners.add(listener);
 

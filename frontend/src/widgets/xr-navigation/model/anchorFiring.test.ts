@@ -32,6 +32,7 @@ function createFakeController(initial: XrSessionState) {
   };
   const stateListeners = new Set<() => void>();
   const snapshotListeners = new Set<(snapshot: XrPoseSnapshot) => void>();
+  const headingListeners = new Set<(yawDeg: number) => void>();
 
   const controller: XrSessionController = {
     getState: () => state,
@@ -55,6 +56,13 @@ function createFakeController(initial: XrSessionState) {
         snapshotListeners.delete(listener);
       };
     },
+    subscribeHeading(listener) {
+      headingListeners.add(listener);
+
+      return () => {
+        headingListeners.delete(listener);
+      };
+    },
     async start() {
       return state;
     },
@@ -74,6 +82,11 @@ function createFakeController(initial: XrSessionState) {
     /** warming-up 구간을 흉내낸다. 그 구간에는 읽을 pose가 없다. */
     clearReading() {
       latestReading = null;
+    },
+    emitHeading(yawDeg: number) {
+      headingListeners.forEach((listener) => {
+        listener(yawDeg);
+      });
     },
     emitSnapshot(x: number, z: number) {
       snapshotListeners.forEach((listener) => {
