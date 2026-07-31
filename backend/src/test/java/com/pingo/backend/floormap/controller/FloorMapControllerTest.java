@@ -39,7 +39,7 @@ class FloorMapControllerTest {
     @Test
     void getStationMapsReturnsMaps() throws Exception {
         when(floorMapService.getMapsByStation(1L)).thenReturn(List.of(
-                new FloorMapResponse(10L, 2L, "B2", "image", "/uploads/maps/b2.png", 1200, 800, null, "v1")));
+                new FloorMapResponse(10L, 2L, "B2", "image", "/uploads/maps/b2.png", 1200, 800, null, null, null, null, "v1")));
 
         mockMvc.perform(get("/api/stations/1/maps"))
                 .andExpect(status().isOk())

@@ -15,6 +15,7 @@ FE(김은지)가 2D 평면도 위에 **노드·경로·현재위치**를 렌더�
 
 | 층 | 목표 원본 파일 | 기준 크기(px) |
 |---|---|---|
+| B1 대합실(상층) | 역삼역_B1.png | 1626 × 967 |
 | B2 대합실 | 역삼역_B2.png | 1624 × 969 |
 | B3 승강장 | 역삼역_B3.png | 1659 × 948 |
 
@@ -26,16 +27,21 @@ FE(김은지)가 2D 평면도 위에 **노드·경로·현재위치**를 렌더�
 
 ```json
 {
+  "B1": { "imageWidth": 1626, "imageHeight": 967, "originPx": [594, 501], "angleDeg": -21.28, "mpp": 0.19, "z": 5 },
   "B2": { "imageWidth": 1624, "imageHeight": 969, "originPx": [622, 512], "angleDeg": -21.28, "mpp": 0.19, "z": 0 },
   "B3": { "imageWidth": 1659, "imageHeight": 948, "originPx": [597, 497], "angleDeg": -21.28, "mpp": 0.19, "z": -5 }
 }
 ```
 이 문서에서 "미터 좌표"라고 부르는 프레임이 `ERD_초안.md`가 말하는 **캐노니컬 미터 좌표**다(같은 것). BE·AI와 이야기할 때는 "캐노니컬"이라는 용어를 쓴다. 2026-07-31 협의에서 이 용어 차이로 혼선이 있었다.
 
-- `originPx`: 미터 원점(0,0)의 이미지 픽셀 위치 (= 층간 엘리베이터 EVA)
+- `originPx`: 미터 원점(0,0)의 이미지 픽셀 위치 (= B2-B3 층간 엘리베이터 B)
 - `angleDeg`: 이미지 기준 +X축(승강장·6번출구 방향) 각도
 - `mpp`: meter per pixel (provisional, 277 정합 후 확정)
 - `z`: 층 높이(명목값, 실제 층고 미확정)
+
+> **B1의 `originPx`는 미검증 추정값이다.** B1에는 원점 기준 엘리베이터가 없어 추정으로 얹었고, 예비 이미지 정합에서 최대 4.4m 차이가 나왔다. **B1 좌표끼리는 일관되므로 B1 지도 표시·경로선 렌더링은 정상 동작한다.** 층 전환 위치 정합에만 영향이 있어 COLMAP 정합(277) 후 확정한다. 확정 시 이 값 1개만 바뀌므로 FE 코드 수정은 필요 없다 — **프레임을 하드코딩하지 말고 `GET /api/stations/{stationId}/maps` 응답의 `originPxX`·`originPxY`·`frameAngleDeg`·`scaleMPerPx`를 쓸 것.**
+
+> **B0.5 중간층**: B1 개찰구 위쪽 중간 레벨은 별도 층이 아니라 **`floorCode: "B1"` 안의 `mapZ = 7.5`**다. 평면도·프레임은 B1을 그대로 쓴다. 같은 층 안에 높이가 다른 노드가 섞이므로, 층 필터는 `floorCode`로 하고 `mapZ`로 나누지 말 것.
 
 ## 3. 변환 헬퍼
 
@@ -60,7 +66,9 @@ function pixelToMeter(px, py, floor) {
   return { x: (dx * c + dy * s) * f.mpp, y: (-dx * s + dy * c) * f.mpp };
 }
 ```
-검증: `meterToPixel(-0.4, 27.2, "B2")` → `(672, 646)` (EVB), `meterToPixel(0,0,"B2")` → `(622,512)` (EVA).
+검증: `meterToPixel(0, 0, "B2")` → `(622, 512)` = **B2-B3 엘리베이터 B**(원점), `meterToPixel(-0.4, 27.2, "B2")` → `(672, 646)` = **B2-B3 엘리베이터 A**.
+
+> 이 두 엘리베이터는 현재 DB(V4)에서 각각 `EVA`(node 101/201) · `EVB`(node 102/202)로 저장돼 있다. **A·B 라벨이 재구축 데이터와 반대**이며 좌표는 동일하다. 재시드 시 현장 표기로 통일한다 — 상세는 [`역삼역_route_node_naming.md`](역삼역_route_node_naming.md) §1.
 
 현재 `frontend/src/entities/floor-map/lib/coordinates.ts`에는 `meterToPixel`만 구현돼 있다. 수동 지도 선택을 연결할 때 `pixelToMeter`와 유효 범위 검증을 추가한다.
 

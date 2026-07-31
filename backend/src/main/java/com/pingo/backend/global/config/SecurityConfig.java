@@ -5,7 +5,7 @@ import com.pingo.backend.global.response.ApiResponse;
 import com.pingo.backend.global.security.JwtAuthenticationFilter;
 import com.pingo.backend.global.security.JwtProvider;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -16,6 +16,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -25,11 +26,24 @@ import java.io.IOException;
 import java.util.List;
 
 @Configuration
-@RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtProvider jwtProvider;
     private final ObjectMapper objectMapper;
+    private final List<String> corsAllowedOrigins;
+
+    public SecurityConfig(
+            JwtProvider jwtProvider,
+            ObjectMapper objectMapper,
+            @Value("${app.cors.allowed-origins}") List<String> corsAllowedOrigins
+    ) {
+        this.jwtProvider = jwtProvider;
+        this.objectMapper = objectMapper;
+        this.corsAllowedOrigins = corsAllowedOrigins.stream()
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList();
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource)
@@ -42,13 +56,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/signup", "/api/auth/check-login-id").permitAll()
                         .requestMatchers("/api/user-sessions", "/api/user-sessions/**").permitAll()
-                .requestMatchers(
-                        HttpMethod.POST,
-                        "/api/consultations/*/accept",
-                        "/api/consultations/*/reject",
-                        "/api/consultations/*/end"
-                )
-                .hasRole("COUNSELOR")
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/consultations/*/accept",
+                                "/api/consultations/*/reject"
+                        )
+                        .hasRole("COUNSELOR")
                         .requestMatchers("/api/consultations/*/waiting-events").permitAll()
                         .requestMatchers(
                                 "/api/stations/**",
@@ -90,10 +103,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(List.of(
-                "http://localhost:5173",
-                "http://127.0.0.1:5173"
-        ));
+        configuration.setAllowedOrigins(corsAllowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

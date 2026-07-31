@@ -534,7 +534,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ### GET `/stations/{stationId}/maps`
 
-역의 층별 지도 정보를 조회한다.
+역의 층별 지도 정보를 조회한다. 응답에는 **좌표 프레임**이 포함된다 — 노드·경로·현재위치 좌표는 캐노니컬 미터로 내려가므로, 지도 위에 그리려면 이 값으로 픽셀로 변환해야 한다.
 
 #### Response
 
@@ -548,15 +548,65 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "floorCode": "B1",
       "mapType": "image",
       "mapUrl": "/uploads/maps/3f2a1b.png",
-      "width": 1200,
-      "height": 800,
-      "scaleMPerPx": 0.05,
+      "width": 1626,
+      "height": 967,
+      "scaleMPerPx": 0.19,
+      "originPxX": 594,
+      "originPxY": 501,
+      "frameAngleDeg": -21.28,
       "version": "v1"
     }
   ],
   "message": null
 }
 ```
+
+#### 좌표 프레임 필드
+
+| 이름 | 타입 | 필수 | 설명 |
+| ------------- | ------ | ---- | ---------------------------------------------- |
+| width | number | N | 원본 지도 이미지 너비(px) |
+| height | number | N | 원본 지도 이미지 높이(px) |
+| scaleMPerPx | number | N | 픽셀당 실제 거리(m) |
+| originPxX | number | N | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 x |
+| originPxY | number | N | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 y |
+| frameAngleDeg | number | N | 캐노니컬 +X축과 이미지 x축의 각도(도) |
+
+프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)가 **모두 있어야** 좌표 변환이 가능하다. 하나라도 `null`이면 지도 이미지는 표시할 수 있으나 좌표 오버레이는 할 수 없다. **층마다 값이 다르므로 층별로 사용해야 한다** — 원본 평면도 이미지의 크기·여백이 층마다 달라 원점 픽셀이 다르다.
+
+> 역삼역(`stationId = 1`)은 B1·B2·B3 세 층의 지도가 프레임 값과 함께 시드돼 있다.
+> **B1의 `originPxX`·`originPxY`는 미검증 추정값**이며 COLMAP 정합 후 확정한다(→ [`역삼역_route_node_naming.md`](역삼역_route_node_naming.md) §1). 확정 시 이 테이블만 갱신하면 되고 클라이언트 코드는 바뀌지 않는다.
+
+#### 좌표 변환식
+
+`px`/`py`는 **원본 이미지 픽셀**이다. 화면에 축소·확대해 그린다면 뷰 배율을 추가로 곱한다.
+
+```js
+// 미터(x, y) → 원본 이미지 픽셀(px, py)  [노드·경로·현재위치를 지도에 그릴 때]
+function meterToPixel(x, y, frame) {
+  const t = (frame.frameAngleDeg * Math.PI) / 180;
+  const c = Math.cos(t), s = Math.sin(t);
+  return {
+    px: frame.originPxX + (c * x - s * y) / frame.scaleMPerPx,
+    py: frame.originPxY + (s * x + c * y) / frame.scaleMPerPx,
+  };
+}
+
+// 원본 이미지 픽셀(px, py) → 미터(x, y)  [지도를 눌러 위치를 지정할 때]
+function pixelToMeter(px, py, frame) {
+  const t = (frame.frameAngleDeg * Math.PI) / 180;
+  const c = Math.cos(t), s = Math.sin(t);
+  const dx = px - frame.originPxX, dy = py - frame.originPxY;
+  return {
+    x: (dx * c + dy * s) * frame.scaleMPerPx,
+    y: (-dx * s + dy * c) * frame.scaleMPerPx,
+  };
+}
+```
+
+검증 예시 (역삼역 B2): `meterToPixel(0, 0, frameB2)` → `(622, 512)` = B2-B3 엘리베이터 B(원점), `meterToPixel(-0.4, 27.2, frameB2)` → `(672, 646)` = B2-B3 엘리베이터 A.
+
+> 좌표계 결정 배경은 [`기술_의사결정_정리.md`](기술_의사결정_정리.md) §6.3, FE 연동 계약은 [`역삼역_FE_좌표연동_스펙.md`](역삼역_FE_좌표연동_스펙.md)를 기준으로 한다.
 
 ---
 
@@ -587,15 +637,17 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "facilityType": "exit",
       "nameKo": "5번 출구",
       "nameEn": "Exit 5",
-      "mapX": 820.4,
-      "mapY": 120.7,
+      "mapX": 97.454,
+      "mapY": -19.34,
       "linkedNodeId": 44,
-      "isAccessible": true
+      "isAccessible": false
     }
   ],
   "message": null
 }
 ```
+
+`mapX`·`mapY`는 **캐노니컬 미터**다(픽셀이 아니다). 음수가 정상이며, 원점 기준 상대 위치다. 지도에 그릴 때는 §5.1의 좌표 프레임으로 변환한다.
 
 ---
 
@@ -634,6 +686,93 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 ```
 
 출구가 아닌 시설은 `exitDetail`이 `null`이다.
+
+---
+
+## 5.4 출구 도착 판정
+
+### POST `/facilities/{facilityId}/arrival-check`
+
+사용자가 목적지로 정한 출구에 도착했는지 판정한다 (FR-U-011).
+
+주변 출구를 훑지 않고 **요청받은 출구 하나만** 확인한다. 경로 안내의 끝에서 목적지가 이미 정해져 있는 상황을 전제하므로, 가까이 붙은 출구끼리 서로 오검출되지 않는다.
+
+조회성 요청이지만 현재 위치를 본문으로 받으므로 POST를 쓴다.
+
+#### Request
+
+| 이름 | 타입 | 필수 | 설명 |
+| ------- | ------ | ---- | ------------------------------ |
+| floorId | number | Y | 현재 층 ID |
+| mapX | number | Y | 현재 위치 X (캐노니컬 미터) |
+| mapY | number | Y | 현재 위치 Y (캐노니컬 미터) |
+
+```json
+{
+  "floorId": 3,
+  "mapX": 100.354,
+  "mapY": -39.875
+}
+```
+
+좌표는 WebXR 상대 추적 결과나 위치 인식(VPS) 결과에서 온다. 층은 좌표로 유도하지 않고 현재 확정된 층을 그대로 보낸다.
+
+**높이(z)는 받지 않는다.** 판정이 같은 층 안의 평면 거리로 이루어지고, 클라이언트가 높이를 추적하지 않기 때문이다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "facilityId": 42,
+    "nameKo": "6번 출구",
+    "nameEn": "Exit 6",
+    "floorId": 3,
+    "arrived": true,
+    "sameFloor": true,
+    "distanceM": 4.12,
+    "thresholdM": 10.0
+  },
+  "message": null
+}
+```
+
+| 이름 | 타입 | 설명 |
+| ---------- | ------- | ------------------------------------------------ |
+| arrived | boolean | 도착 여부. **같은 층이고 거리가 임계값 이하**일 때만 true |
+| sameFloor | boolean | 현재 위치와 출구가 같은 층인지 |
+| distanceM | number | 출구까지의 평면 거리(m). 층이 다르면 `null` |
+| thresholdM | number | 도착으로 판정하는 거리 임계값(m) |
+
+#### 판정 규칙
+
+```
+층이 다르면            -> arrived = false (평면 거리와 무관)
+같은 층이면 거리 = √((내X − 출구X)² + (내Y − 출구Y)²)
+거리 ≤ thresholdM     -> arrived = true
+```
+
+층을 먼저 거르는 이유는 B1 출구 바로 아래 B2 지점이 평면상 가깝게 나오기 때문이다.
+
+#### 임계값
+
+기본 10m이며 `exit.arrival.threshold-m` 설정으로 바꿀 수 있다(환경변수 `EXIT_ARRIVAL_THRESHOLD_M`).
+
+값의 범위가 좁다. **아래로는 위치 오차보다 커야 하고**(역삼역 B1 좌표 프레임이 미검증이라 최대 4.4m, provisional 축척에서 1~1.6m가 더해진다), **위로는 가장 가까운 출구 쌍의 절반보다 작아야 한다**(7번·8번 출구가 18.3m). 임계값이 오차보다 작으면 출구 앞에 서 있어도 도착이 뜨지 않는다.
+
+B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
+
+#### 오류
+
+| 코드 | 상태 | 설명 |
+| ------------------ | ---- | ------------------------ |
+| FACILITY_NOT_FOUND | 404 | 시설이 없거나 비활성 |
+| NOT_EXIT_FACILITY | 400 | 출구가 아닌 시설 |
+
+#### 범위 밖
+
+자동 판정이 어려울 때 사용자가 직접 `출구에 도착했어요`를 누르는 흐름은 클라이언트가 처리한다. 이 API는 판단만 제공하고 세션 상태를 바꾸지 않는다. 도착 후 외부 지도 연계는 §12(FR-U-012)를 쓴다.
 
 ---
 
@@ -2016,13 +2155,33 @@ multipart/form-data
 
 #### Request
 
-| 이름        | 타입   | 필수 | 설명             |
-| ----------- | ------ | ---- | ---------------- |
-| mapType     | string | Y    | image, svg       |
-| mapFile     | file   | Y    | 지도 파일        |
-| width       | number | N    | 지도 너비        |
-| height      | number | N    | 지도 높이        |
-| scaleMPerPx | number | N    | 픽셀당 실제 거리 |
+| 이름          | 타입   | 필수 | 설명                                           |
+| ------------- | ------ | ---- | ---------------------------------------------- |
+| mapType       | string | Y    | image, svg                                     |
+| mapFile       | file   | Y    | 지도 파일                                      |
+| width         | number | N    | 지도 너비                                      |
+| height        | number | N    | 지도 높이                                      |
+| scaleMPerPx   | number | N    | 픽셀당 실제 거리(m)                            |
+| originPxX     | number | N    | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 x |
+| originPxY     | number | N    | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 y |
+| frameAngleDeg | number | N    | 캐노니컬 +X축과 이미지 x축의 각도(도)          |
+
+프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)는 업로드하는 **이 이미지 기준**으로 넣는다. 같은 층의 지도를 다른 이미지로 교체하면 원점 픽셀과 축척이 달라지므로 새 이미지에 맞춰 다시 측정해야 한다. 의미와 변환식은 §5.1 참고.
+
+`originPxX`·`originPxY`는 이미지 좌상단 기준이라 0이나 음수도 유효하고, `frameAngleDeg`도 음수가 정상이다(역삼역 −21.28).
+
+#### 좌표 프레임 규칙
+
+새 지도를 올리면 그 층의 기존 활성 지도는 비활성화된다. 프레임이 조용히 사라지는 것을 막기 위해 두 가지를 검증한다.
+
+| 상황 | 결과 |
+| --- | --- |
+| 4필드 전부 지정 | 통과 |
+| 4필드 전부 생략 + 기존 지도에도 프레임 없음 | 통과 (오버레이 없는 지도) |
+| **4필드 중 일부만 지정** | **`400 INCOMPLETE_COORDINATE_FRAME`** |
+| **4필드 전부 생략 + 기존 활성 지도에 프레임 있음** | **`400 COORDINATE_FRAME_WOULD_BE_LOST`** |
+
+**기존 프레임을 자동으로 물려주지 않는다.** 프레임은 특정 이미지에 대한 값이라, 다른 이미지에 그대로 적용하면 오버레이가 켜진 채로 틀린 위치에 그려진다. 조용히 틀린 좌표가 조용히 꺼진 기능보다 나쁘다. 이미지를 교체할 때는 새 이미지 기준으로 프레임을 다시 재서 함께 보내야 한다.
 
 #### Response
 
@@ -2035,6 +2194,16 @@ multipart/form-data
   "message": null
 }
 ```
+
+#### 오류
+
+| 코드 | 상태 | 설명 |
+| ----------------------------- | ---- | -------------------------------------------- |
+| FLOOR_NOT_FOUND | 404 | 층이 없거나 역이 비활성 |
+| UNSUPPORTED_MAP_TYPE | 400 | `image`·`svg` 외의 유형 |
+| INVALID_MAP_FILE | 400 | 파일이 비어 있거나 올바르지 않음 |
+| INCOMPLETE_COORDINATE_FRAME | 400 | 프레임 4필드 중 일부만 지정 |
+| COORDINATE_FRAME_WOULD_BE_LOST | 400 | 기존 프레임이 있는데 새 요청에 프레임이 없음 |
 
 ---
 
@@ -2054,9 +2223,12 @@ multipart/form-data
       "floorCode": "B2",
       "mapType": "image",
       "mapUrl": "/uploads/maps/3f2a1b.png",
-      "width": 1200,
-      "height": 800,
-      "scaleMPerPx": 0.05,
+      "width": 1624,
+      "height": 969,
+      "scaleMPerPx": 0.19,
+      "originPxX": 622,
+      "originPxY": 512,
+      "frameAngleDeg": -21.28,
       "version": "v1"
     }
   ],

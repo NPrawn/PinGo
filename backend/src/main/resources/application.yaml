@@ -10,6 +10,16 @@ app:
   file:
     upload-dir: uploads
     url-prefix: /uploads
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,https://jenkins.example.invalid}
+
+exit:
+  arrival:
+    # 출구 도착으로 판정하는 평면 거리(m). FR-U-011.
+    # 위치 오차(역삼역 B1 프레임 미검증 최대 4.4m + provisional 축척 1~1.6m)보다 커야 하고,
+    # 가장 가까운 출구 쌍(7번·8번, 18.3m)의 절반보다는 작아야 한다.
+    # B1 프레임 확정(S15P11A206-314)과 sim3 정합 후 5~6m 로 조일 수 있다.
+    threshold-m: ${EXIT_ARRIVAL_THRESHOLD_M:10.0}
 
 ai:
   localization:
@@ -17,6 +27,13 @@ ai:
     internal-token: ${AI_LOCALIZATION_INTERNAL_TOKEN:}
     connect-timeout-ms: ${AI_LOCALIZATION_CONNECT_TIMEOUT_MS:300}
     read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
+
+kakao:
+  local:
+    base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
+    rest-api-key: ${KAKAO_REST_API_KEY:}
+    connect-timeout-ms: ${KAKAO_LOCAL_CONNECT_TIMEOUT_MS:1000}
+    read-timeout-ms: ${KAKAO_LOCAL_READ_TIMEOUT_MS:3000}
 
 signaling:
   websocket:

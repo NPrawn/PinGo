@@ -14,6 +14,7 @@ import com.pingo.backend.station.repository.StationRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
@@ -68,7 +69,9 @@ class FloorMapServiceTest {
             ReflectionTestUtils.setField(saved, "id", 11L);
             return saved;
         });
-        FloorMapUploadRequest request = new FloorMapUploadRequest(" Image ", 1200, 800, new BigDecimal("0.05"));
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                " Image ", 1200, 800, new BigDecimal("0.05"),
+                new BigDecimal("622.000"), new BigDecimal("512.000"), new BigDecimal("-21.2800"));
 
         FloorMapIdResponse response = floorMapService.uploadMap(2L, request, mapFile());
 
@@ -77,9 +80,104 @@ class FloorMapServiceTest {
     }
 
     @Test
+    void uploadMapStoresCoordinateFrame() {
+        StationFloor floor = createFloor(2L, true);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+        when(fileStorageService.store(any(MultipartFile.class), eq("maps"))).thenReturn("/uploads/maps/new.png");
+        when(floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(2L)).thenReturn(List.of());
+        when(floorMapRepository.countByFloorId(2L)).thenReturn(0L);
+        when(floorMapRepository.save(any(FloorMap.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                "image", 1624, 969, new BigDecimal("0.190000"),
+                new BigDecimal("622.000"), new BigDecimal("512.000"), new BigDecimal("-21.2800"));
+
+        floorMapService.uploadMap(2L, request, mapFile());
+
+        ArgumentCaptor<FloorMap> captor = ArgumentCaptor.forClass(FloorMap.class);
+        verify(floorMapRepository).save(captor.capture());
+        FloorMap saved = captor.getValue();
+        assertThat(saved.getOriginPxX()).isEqualByComparingTo("622.000");
+        assertThat(saved.getOriginPxY()).isEqualByComparingTo("512.000");
+        assertThat(saved.getFrameAngleDeg()).isEqualByComparingTo("-21.2800");
+        assertThat(saved.hasCoordinateFrame()).isTrue();
+    }
+
+    @Test
+    void uploadMapWithoutCoordinateFrameIsAllowedButCannotOverlay() {
+        StationFloor floor = createFloor(2L, true);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+        when(fileStorageService.store(any(MultipartFile.class), eq("maps"))).thenReturn("/uploads/maps/new.png");
+        when(floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(2L)).thenReturn(List.of());
+        when(floorMapRepository.countByFloorId(2L)).thenReturn(0L);
+        when(floorMapRepository.save(any(FloorMap.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // 프레임 없이 올린다. 기존 활성 지도에도 프레임이 없으므로 허용된다.
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                "image", 1624, 969, null, null, null, null);
+
+        floorMapService.uploadMap(2L, request, mapFile());
+
+        ArgumentCaptor<FloorMap> captor = ArgumentCaptor.forClass(FloorMap.class);
+        verify(floorMapRepository).save(captor.capture());
+        assertThat(captor.getValue().hasCoordinateFrame()).isFalse();
+    }
+
+    @Test
+    void rejectsPartialCoordinateFrame() {
+        StationFloor floor = createFloor(2L, true);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+        when(floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(2L)).thenReturn(List.of());
+        // 축척만 있고 원점·회전각이 없다. 프레임은 네 값이 다 있어야 성립한다.
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                "image", 1624, 969, new BigDecimal("0.190000"), null, null, null);
+
+        assertThatThrownBy(() -> floorMapService.uploadMap(2L, request, mapFile()))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INCOMPLETE_COORDINATE_FRAME));
+        verify(fileStorageService, never()).store(any(), any());
+    }
+
+    @Test
+    void rejectsUploadThatWouldLoseExistingCoordinateFrame() {
+        StationFloor floor = createFloor(2L, true);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+        when(floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(2L))
+                .thenReturn(List.of(createFloorMapWithFrame(10L, 2L)));
+        // 이미지만 교체하고 프레임을 비워 보낸다. 그대로 두면 기존 프레임이 사라진다.
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                "image", 1624, 969, null, null, null, null);
+
+        assertThatThrownBy(() -> floorMapService.uploadMap(2L, request, mapFile()))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.COORDINATE_FRAME_WOULD_BE_LOST));
+        verify(fileStorageService, never()).store(any(), any());
+    }
+
+    @Test
+    void allowsReplacingExistingCoordinateFrameWhenNewFrameIsProvided() {
+        StationFloor floor = createFloor(2L, true);
+        FloorMap existing = createFloorMapWithFrame(10L, 2L);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+        when(fileStorageService.store(any(MultipartFile.class), eq("maps"))).thenReturn("/uploads/maps/new.png");
+        when(floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(2L)).thenReturn(List.of(existing));
+        when(floorMapRepository.countByFloorId(2L)).thenReturn(1L);
+        when(floorMapRepository.save(any(FloorMap.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // 새 이미지 기준으로 다시 잰 프레임을 함께 보낸다.
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                "image", 3248, 1938, new BigDecimal("0.095000"),
+                new BigDecimal("1244.000"), new BigDecimal("1024.000"), new BigDecimal("-21.2800"));
+
+        floorMapService.uploadMap(2L, request, mapFile());
+
+        ArgumentCaptor<FloorMap> captor = ArgumentCaptor.forClass(FloorMap.class);
+        verify(floorMapRepository).save(captor.capture());
+        assertThat(captor.getValue().getOriginPxX()).isEqualByComparingTo("1244.000");
+        assertThat(existing.isActive()).isFalse();
+    }
+
+    @Test
     void uploadMapThrowsWhenFloorDoesNotExist() {
         when(stationFloorRepository.findById(99L)).thenReturn(Optional.empty());
-        FloorMapUploadRequest request = new FloorMapUploadRequest("image", null, null, null);
+        FloorMapUploadRequest request = new FloorMapUploadRequest("image", null, null, null, null, null, null);
 
         assertThatThrownBy(() -> floorMapService.uploadMap(99L, request, mapFile()))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -91,7 +189,7 @@ class FloorMapServiceTest {
     void uploadMapThrowsWhenStationIsInactive() {
         StationFloor floor = createFloor(2L, false);
         when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
-        FloorMapUploadRequest request = new FloorMapUploadRequest("image", null, null, null);
+        FloorMapUploadRequest request = new FloorMapUploadRequest("image", null, null, null, null, null, null);
 
         assertThatThrownBy(() -> floorMapService.uploadMap(2L, request, mapFile()))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -103,7 +201,7 @@ class FloorMapServiceTest {
     void uploadMapThrowsForUnsupportedMapType() {
         StationFloor floor = createFloor(2L, true);
         when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
-        FloorMapUploadRequest request = new FloorMapUploadRequest("pdf", null, null, null);
+        FloorMapUploadRequest request = new FloorMapUploadRequest("pdf", null, null, null, null, null, null);
 
         assertThatThrownBy(() -> floorMapService.uploadMap(2L, request, mapFile()))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -192,7 +290,17 @@ class FloorMapServiceTest {
 
     private FloorMap createFloorMap(Long mapId, Long floorId) {
         FloorMap floorMap = FloorMap.create(
-                floorId, "image", "/uploads/maps/old.png", 1200, 800, null, "v1");
+                floorId, "image", "/uploads/maps/old.png", 1200, 800, null, null, null, null, "v1");
+        ReflectionTestUtils.setField(floorMap, "id", mapId);
+        return floorMap;
+    }
+
+    /** 좌표 프레임이 설정된 기존 지도. 역삼역 B2 시드와 같은 값이다. */
+    private FloorMap createFloorMapWithFrame(Long mapId, Long floorId) {
+        FloorMap floorMap = FloorMap.create(
+                floorId, "image", null, 1624, 969,
+                new BigDecimal("0.190000"), new BigDecimal("622.000"),
+                new BigDecimal("512.000"), new BigDecimal("-21.2800"), "v1");
         ReflectionTestUtils.setField(floorMap, "id", mapId);
         return floorMap;
     }

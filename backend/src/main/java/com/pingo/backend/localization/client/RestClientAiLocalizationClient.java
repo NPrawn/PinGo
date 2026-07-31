@@ -3,6 +3,7 @@ package com.pingo.backend.localization.client;
 import com.pingo.backend.localization.client.dto.AiLocalizationRequestMetadata;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
 import java.net.SocketTimeoutException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -25,7 +26,7 @@ public class RestClientAiLocalizationClient implements AiLocalizationClient {
     private final AiLocalizationProperties properties;
 
     public RestClientAiLocalizationClient(
-            RestClient ailocalizationRestClient,
+            @Qualifier("aiLocalizationRestClient") RestClient ailocalizationRestClient,
             AiLocalizationProperties properties
     ) {
         this.restClient = ailocalizationRestClient;
