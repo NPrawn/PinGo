@@ -12,6 +12,13 @@ export function IconSprite() {
   return (
     <svg width={0} height={0} aria-hidden focusable="false" style={{ position: 'absolute' }}>
       <defs>
+        {/* 인형뽑기 기계. 집게만 그리면 램프로 읽혀서 기계 몸통까지 그린다. */}
+        <symbol id="i-arcade" viewBox="0 0 24 24">
+          <path
+            fillRule="evenodd"
+            d="M3.4 2.6h17.2v18.8H3.4V2.6Zm2.2 2.2v14.4h12.8V4.8H5.6Zm5.3 0h2.2v3.6h-2.2V4.8ZM8.4 8.4h7.2l-1.4 2.8H9.8L8.4 8.4Zm3.6 4.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6Z"
+          />
+        </symbol>
         <symbol id="i-arrow-right" viewBox="0 0 24 24">
           <path
             d="M3.4 12h16.2M13.6 5.8 20 12l-6.4 6.2"
@@ -125,8 +132,34 @@ export function IconSprite() {
             d="M14 4.2 3 15.2l5.6 5.6h2.6L22.2 9.8 14 4.2Zm-3.6 14.4-4-4 1.8-1.8 4 4-1.8 1.8Zm-2 2.2H22v2.2H8.4v-2.2Z"
           />
         </symbol>
+        {/* 에스컬레이터. 계단(i-stairs)이 단면 계단이므로 발판이 있는 경사면으로 구분한다.
+            홈이 없으면 그냥 화살표로 읽힌다. */}
+        <symbol id="i-escalator" viewBox="0 0 24 24">
+          <path
+            d="M3.2 20.8h4L18 8.4M5.6 16.2l2.4 2.4M9.4 12.4l2.4 2.4M13.2 8.6l2.4 2.4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="butt"
+            strokeLinejoin="miter"
+          />
+        </symbol>
+        {/* 환전기. 서로 반대로 향하는 두 화살표. i-swap은 세로 교환이라 층 이동에 쓰인다. */}
+        <symbol id="i-exchange" viewBox="0 0 24 24">
+          <path
+            fillRule="evenodd"
+            d="M2.8 6.4H15V3.4l6.2 4L15 11.4V8.6H2.8V6.4Zm18.4 9H9v-3l-6.2 4 6.2 4v-2.8h12.2v-2.2Z"
+          />
+        </symbol>
         <symbol id="i-flag" viewBox="0 0 24 24">
           <path fillRule="evenodd" d="M4.4 1.8h14.8l-3.4 5.2 3.4 5.2H6.6v10H4.4V1.8Z" />
+        </symbol>
+        {/* 개찰구. 양쪽 기둥과 사이를 막는 차단바. */}
+        <symbol id="i-gate" viewBox="0 0 24 24">
+          <path
+            fillRule="evenodd"
+            d="M2.6 5.4h6v13.2h-6V5.4Zm12.8 0h6v13.2h-6V5.4ZM9.8 10.6h4.4v2.8H9.8v-2.8Z"
+          />
         </symbol>
         <symbol id="i-gear" viewBox="0 0 24 24">
           <path
