@@ -491,7 +491,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    get: operations['get'];
     put?: never;
     post?: never;
     delete: operations['deactivate'];
@@ -1185,10 +1185,7 @@ export interface components {
       number?: boolean;
       container?: boolean;
       floatingPointNumber?: boolean;
-      valueNode?: boolean;
-      missingNode?: boolean;
-      integralNumber?: boolean;
-      object?: boolean;
+      string?: boolean;
       /** @enum {string} */
       nodeType?:
         | 'ARRAY'
@@ -1200,18 +1197,21 @@ export interface components {
         | 'OBJECT'
         | 'POJO'
         | 'STRING';
-      string?: boolean;
-      long?: boolean;
+      pojo?: boolean;
+      valueNode?: boolean;
+      short?: boolean;
       double?: boolean;
+      bigDecimal?: boolean;
+      object?: boolean;
+      int?: boolean;
+      long?: boolean;
+      bigInteger?: boolean;
+      boolean?: boolean;
+      integralNumber?: boolean;
       /** @deprecated */
       textual?: boolean;
-      boolean?: boolean;
-      bigInteger?: boolean;
-      int?: boolean;
-      bigDecimal?: boolean;
-      pojo?: boolean;
+      missingNode?: boolean;
       binary?: boolean;
-      short?: boolean;
       embeddedValue?: boolean;
     };
     SignupRequest: {
@@ -3225,6 +3225,28 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseFacilityDetailResponse'];
+        };
+      };
+    };
+  };
+  get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        accountId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAccountDetailResponse'];
         };
       };
     };
