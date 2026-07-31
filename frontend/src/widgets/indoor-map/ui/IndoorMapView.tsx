@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import {
-  findCoordinateFrame,
+  coordinateFrameOf,
   meterToPixel,
   MOCK_FLOOR_MAPS,
   useStationFloorMaps,
@@ -82,13 +82,18 @@ export function IndoorMapView({
   return (
     <div className={styles.viewport}>
       <div className={styles.stage}>
-        <img
-          className={styles.image}
-          src={resolveAssetUrl(floorMap.mapUrl)}
-          alt={t('indoorMap.imageAlt', { floorCode: floorMap.floorCode })}
-          width={floorMap.width}
-          height={floorMap.height}
-        />
+        {/* 도면 이미지가 아직 업로드되지 않은 층은 mapUrl이 null이다(FR-A-002 대기).
+            그 경우 img를 만들지 않는다 — 빈 src는 깨진 이미지로 보이고, 좌표 오버레이는
+            프레임만으로 그려지므로 도면 그림이 없어도 마커 위치는 맞다. */}
+        {floorMap.mapUrl !== null && (
+          <img
+            className={styles.image}
+            src={resolveAssetUrl(floorMap.mapUrl)}
+            alt={t('indoorMap.imageAlt', { floorCode: floorMap.floorCode })}
+            width={floorMap.width}
+            height={floorMap.height}
+          />
+        )}
         <MapOverlay
           floorMap={floorMap}
           currentLocation={currentLocation ?? (useMockData ? MOCK_CURRENT_LOCATION : null)}
@@ -102,7 +107,7 @@ export function IndoorMapView({
 }
 
 /**
- * 표시 중인 층의 좌표 프레임을 찾아 오버레이에 변환 함수를 넘긴다.
+ * 표시 중인 층의 좌표 프레임을 읽어 오버레이에 변환 함수를 넘긴다.
  * 프레임이 없는 층은 좌표를 이미지 위 어디에 놓아야 할지 알 수 없으므로 오버레이를 생략한다.
  */
 function MapOverlay({
@@ -116,8 +121,7 @@ function MapOverlay({
   destination: IndoorPoint | null;
   pathNodes?: readonly RoutePathNode[];
 }) {
-  // TODO: 프레임이 층별 지도 응답에 포함되면 FloorMap에서 바로 읽는다. (현재 API 미노출)
-  const frame = findCoordinateFrame(floorMap.floorCode);
+  const frame = coordinateFrameOf(floorMap);
   if (!frame) return null;
 
   return (

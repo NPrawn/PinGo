@@ -25,6 +25,9 @@ const sampleMap: FloorMap = {
   mapUrl: '/uploads/maps/3f2a1b.png',
   width: 1200,
   height: 800,
+  originPxX: 600,
+  originPxY: 400,
+  frameAngleDeg: 0,
   scaleMPerPx: 0.05,
   version: 'v1',
 };
@@ -65,8 +68,21 @@ describe('IndoorMapView', () => {
   });
 });
 
-/** 좌표 프레임이 등록된 층. 프레임이 없으면 좌표를 찍을 수 없어 오버레이가 생략된다. */
-const framedMap: FloorMap = { ...sampleMap, floorId: 1, floorCode: 'B2' };
+/**
+ * 역삼역 B2의 실제 프레임 값을 가진 층. (층별 지도 조회 응답 그대로)
+ *
+ * 프레임은 응답에 담겨 오므로 층 코드로 찾지 않는다. 값이 온전하지 않은 층은 좌표를 이미지
+ * 어디에 놓아야 할지 알 수 없어 오버레이가 생략된다.
+ */
+const framedMap: FloorMap = {
+  ...sampleMap,
+  floorId: 1,
+  floorCode: 'B2',
+  originPxX: 622,
+  originPxY: 512,
+  frameAngleDeg: -21.28,
+  scaleMPerPx: 0.19,
+};
 
 describe('IndoorMapView 오버레이 연결', () => {
   beforeEach(() => {
@@ -99,12 +115,28 @@ describe('IndoorMapView 오버레이 연결', () => {
     expect(screen.queryByRole('img', { name: '이동 경로' })).not.toBeInTheDocument();
   });
 
-  it('좌표 프레임이 없는 층에서는 오버레이를 생략한다', () => {
-    // sampleMap의 B1은 프레임 미등록 층이다.
-    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [sampleMap] }));
+  /**
+   * 프레임 값은 백엔드 BigDecimal에서 내려오므로 JSON 파싱 결과가 null·NaN일 수 있다.
+   * 0으로 채워 그리면 마커가 이미지 좌상단에 붙어 조용히 틀린 위치를 보여준다.
+   */
+  it('좌표 프레임 값이 온전하지 않으면 오버레이를 생략한다', () => {
+    const brokenFrame: FloorMap = { ...framedMap, originPxX: Number.NaN };
+
+    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [brokenFrame] }));
     render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
 
     expect(screen.queryByRole('img', { name: '현재 위치' })).not.toBeInTheDocument();
+  });
+
+  /** 도면 이미지 업로드(FR-A-002) 전에도 마커 좌표는 프레임만으로 정해진다. */
+  it('도면 이미지가 없어도 오버레이는 그린다', () => {
+    const withoutImage: FloorMap = { ...framedMap, mapUrl: null };
+
+    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [withoutImage] }));
+    render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
+
+    expect(screen.queryByRole('img', { name: 'B2 실내 지도' })).not.toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '현재 위치' })).toBeInTheDocument();
   });
 
   it('현재 위치의 좌표를 프레임 원점 기준으로 변환해 찍는다', () => {

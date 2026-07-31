@@ -1,4 +1,4 @@
-import type { CoordinateFrame, FloorMap } from './types';
+import type { FloorMap } from './types';
 
 /**
  * 역삼역(stationId=1) 목업 지도 데이터.
@@ -50,20 +50,6 @@ function schematicPlan(options: {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-/**
- * 층별 좌표 프레임. (docs/역삼역_FE_좌표연동_스펙.md §2)
- * mpp·z는 잠정값이며, COLMAP sim3 정합 후 이 상수만 갱신하면 렌더 로직은 그대로다.
- */
-export const MOCK_COORDINATE_FRAMES: Readonly<Record<string, CoordinateFrame>> = {
-  B2: { originPx: [622, 512], angleDeg: -21.28, mpp: 0.19 },
-  B3: { originPx: [597, 497], angleDeg: -21.28, mpp: 0.19 },
-};
-
-/** 층 코드로 좌표 프레임을 찾는다. 등록되지 않은 층이면 undefined. */
-export function findCoordinateFrame(floorCode: string): CoordinateFrame | undefined {
-  return MOCK_COORDINATE_FRAMES[floorCode];
-}
-
 export const MOCK_FLOOR_MAPS: readonly FloorMap[] = [
   {
     mapId: 1,
@@ -81,7 +67,9 @@ export const MOCK_FLOOR_MAPS: readonly FloorMap[] = [
     }),
     width: 1624,
     height: 969,
-    // TODO: 프레임의 mpp와 중복 개념이다. floor_map에 프레임이 들어오면 한쪽으로 통일한다.
+    originPxX: 622,
+    originPxY: 512,
+    frameAngleDeg: -21.28,
     scaleMPerPx: 0.19,
     version: 'mock',
   },
@@ -101,6 +89,9 @@ export const MOCK_FLOOR_MAPS: readonly FloorMap[] = [
     }),
     width: 1659,
     height: 948,
+    originPxX: 597,
+    originPxY: 497,
+    frameAngleDeg: -21.28,
     scaleMPerPx: 0.19,
     version: 'mock',
   },
