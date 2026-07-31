@@ -34,7 +34,12 @@ import {
   updateAdminRouteNode,
   updateAdminStation,
 } from '@/shared/api';
-import { ADMIN_SCHEMA, type AdminRecord, type AdminTableTab } from './schema';
+import {
+  ADMIN_SCHEMA,
+  COUNSELOR_STATUS_LABELS,
+  type AdminRecord,
+  type AdminTableTab,
+} from './schema';
 
 type Draft = {
   id: number | null;
@@ -232,6 +237,7 @@ export function useAdminRecords(tab: AdminTableTab) {
         stationId: account.stationId ?? '',
         active: String(account.isActive ?? false),
         status: account.isActive ? '활성' : '승인 대기',
+        consultStatus: account.status ? COUNSELOR_STATUS_LABELS[account.status] : '상담 가능',
       }));
   }, [tab]);
 

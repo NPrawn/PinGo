@@ -194,9 +194,10 @@ export const ADMIN_SCHEMA: Record<AdminTableTab, AdminTableSchema> = {
     desc: '가입한 상담원의 담당 역과 활성 상태를 관리합니다.',
     cols: [
       { k: 'name', label: '이름', flex: 1, weight: 700 },
-      { k: 'account', label: '계정', flex: 1.4 },
-      { k: 'stationId', label: '역 ID', flex: 0.7 },
-      { k: 'status', label: '상태', flex: 0.8, badge: true },
+      { k: 'account', label: '계정', flex: 1.2 },
+      { k: 'stationId', label: '역 ID', flex: 0.6 },
+      { k: 'status', label: '승인', flex: 0.8, badge: true },
+      { k: 'consultStatus', label: '상담 상태', flex: 0.9, badge: true },
     ],
     fields: [
       { k: 'name', label: '이름(읽기 전용)', type: 'text' },
@@ -209,7 +210,15 @@ export const ADMIN_SCHEMA: Record<AdminTableTab, AdminTableSchema> = {
 };
 
 export function badgeTone(value: string): { bg: string; fg: string } {
+  if (/상담 중/.test(value)) return { bg: '#e4e0fb', fg: '#4a3ba8' };
   if (/운영|활성|가능|true/i.test(value)) return { bg: '#d9f0df', fg: '#0f5a3e' };
   if (/대기|준비|false/i.test(value)) return { bg: '#fbf0db', fg: '#8a6412' };
   return { bg: '#f1f3f7', fg: '#6b7a72' };
 }
+
+/** 상담자 계정 목록에 표시할 상담 상태 라벨. */
+export const COUNSELOR_STATUS_LABELS: Record<string, string> = {
+  AVAILABLE: '상담 가능',
+  BUSY: '상담 중',
+  OFFLINE: '오프라인',
+};
