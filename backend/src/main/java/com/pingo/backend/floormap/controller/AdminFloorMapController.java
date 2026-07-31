@@ -5,6 +5,7 @@ import com.pingo.backend.floormap.dto.response.FloorMapIdResponse;
 import com.pingo.backend.floormap.dto.response.FloorMapResponse;
 import com.pingo.backend.floormap.service.FloorMapService;
 import com.pingo.backend.global.response.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/floors")
 @RequiredArgsConstructor
+@Tag(name = "관리자 - 층별 지도 관리 API", description = "관리자가 층별 도면과 좌표 프레임을 업로드·조회하는 API")
 public class AdminFloorMapController {
 
     private final FloorMapService floorMapService;

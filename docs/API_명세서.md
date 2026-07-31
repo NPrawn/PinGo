@@ -649,6 +649,14 @@ function pixelToMeter(px, py, frame) {
 
 `mapX`·`mapY`는 **캐노니컬 미터**다(픽셀이 아니다). 음수가 정상이며, 원점 기준 상대 위치다. 지도에 그릴 때는 §5.1의 좌표 프레임으로 변환한다.
 
+#### 출구의 `isAccessible`
+
+출구 시설의 `isAccessible`은 **역 안에서 계단·에스컬레이터 없이 그 출구까지 갈 수 있는지**를 뜻한다. `elevator_only` 경로 옵션(§8.1)의 도달 가능 여부와 같은 기준이며, 두 값은 항상 일치해야 한다.
+
+역삼역은 B1↔B2 구간에 엘리베이터가 없어 **3번·4번 출구(B2)만 `true`**이고, B1 출구 7개(1·2·5·6·7·8번·GFC몰 연결통로)는 `false`다.
+
+이 값은 장소-출구 추천에서 "엘리베이터로 갈 수 있는 최근접 출구"를 고르는 후보 필터로 쓴다. 그래프에서 파생된 사실을 컬럼에 담은 것이므로, **간선을 바꾸는 마이그레이션에서는 이 플래그도 함께 다시 봐야 한다.**
+
 ---
 
 ## 5.3 시설 상세 조회
@@ -1191,7 +1199,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
       "available": true,
       "unavailableReason": null,
       "totalDistanceM": 180,
-      "estimatedTimeSec": 240
+      "estimatedTimeSec": 240,
+      "hasStairsOrEscalator": true
     },
     {
       "routeType": "elevator_only",
@@ -1199,7 +1208,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
       "available": false,
       "unavailableReason": "NO_ACCESSIBLE_ROUTE",
       "totalDistanceM": null,
-      "estimatedTimeSec": null
+      "estimatedTimeSec": null,
+      "hasStairsOrEscalator": false
     }
   ],
   "message": null
@@ -1207,6 +1217,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 ```
 
 이용 불가한 옵션도 목록에서 제외하지 않고 `available=false`와 `unavailableReason`으로 표현한다. `unavailableReason`은 `NO_ROUTE`(연결된 경로 없음) 또는 `NO_ACCESSIBLE_ROUTE`(계단·에스컬레이터 제외 시 도달 불가)이다. `estimatedTimeSec`은 경로상 모든 간선에 예상 시간이 있을 때만 채워지며, 하나라도 없으면 `null`이다.
+
+`hasStairsOrEscalator`는 그 경로가 계단이나 에스컬레이터를 지나는지다(FR-U-009 "계단 포함 여부"). 상세 조회와 달리 옵션 조회에는 `steps`가 없어 클라이언트가 스스로 판단할 수 없으므로 함께 내려준다. `elevator_only`는 정의상 항상 `false`이고, `available=false`인 옵션도 `false`다. 실질적으로는 **`fastest`가 왜 `elevator_only`보다 짧은지를 설명하는 값**이다. 휠체어·유모차 기준으로는 에스컬레이터도 계단과 같은 장벽이라 하나로 묶는다.
 
 ---
 
@@ -2190,6 +2202,8 @@ WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 
 
 층별 지도 이미지를 업로드한다. 파일은 서버 정적 디렉토리에 저장하고 DB에는 상대 URL(`/uploads/maps/{fileName}`)을 저장한다. 같은 층에 이미 활성 지도가 있으면 자동으로 비활성화하고 새 지도를 활성 지도로 등록한다. `version`은 `v1`, `v2` 순으로 자동 부여한다.
 
+**`mapFile`은 선택 사항이다.** `map_url`이 nullable이므로(§5.1) 백엔드가 좌표 프레임만 내려주고 도면 이미지는 클라이언트 자산을 쓰는 구성이 가능하다. 역삼역 B1·B2·B3가 그렇게 등록돼 있다. 파일을 생략하면 `mapUrl`은 `null`로 저장한다. 다만 **파일과 좌표 프레임이 모두 없으면 `400 EMPTY_FLOOR_MAP`으로 거부한다.** 아무 내용 없는 행이 생기면서 기존 활성 지도만 비활성화되기 때문이다.
+
 #### Content-Type
 
 ```text
@@ -2201,7 +2215,7 @@ multipart/form-data
 | 이름          | 타입   | 필수 | 설명                                           |
 | ------------- | ------ | ---- | ---------------------------------------------- |
 | mapType       | string | Y    | image, svg                                     |
-| mapFile       | file   | Y    | 지도 파일                                      |
+| mapFile       | file   | N    | 지도 파일. 생략하면 `mapUrl`이 `null`인 프레임 전용 행 |
 | width         | number | N    | 지도 너비                                      |
 | height        | number | N    | 지도 높이                                      |
 | scaleMPerPx   | number | N    | 픽셀당 실제 거리(m)                            |
@@ -2223,6 +2237,7 @@ multipart/form-data
 | 4필드 전부 생략 + 기존 지도에도 프레임 없음 | 통과 (오버레이 없는 지도) |
 | **4필드 중 일부만 지정** | **`400 INCOMPLETE_COORDINATE_FRAME`** |
 | **4필드 전부 생략 + 기존 활성 지도에 프레임 있음** | **`400 COORDINATE_FRAME_WOULD_BE_LOST`** |
+| **4필드 전부 생략 + `mapFile`도 없음** | **`400 EMPTY_FLOOR_MAP`** |
 
 **기존 프레임을 자동으로 물려주지 않는다.** 프레임은 특정 이미지에 대한 값이라, 다른 이미지에 그대로 적용하면 오버레이가 켜진 채로 틀린 위치에 그려진다. 조용히 틀린 좌표가 조용히 꺼진 기능보다 나쁘다. 이미지를 교체할 때는 새 이미지 기준으로 프레임을 다시 재서 함께 보내야 한다.
 
@@ -2247,6 +2262,7 @@ multipart/form-data
 | INVALID_MAP_FILE | 400 | 파일이 비어 있거나 올바르지 않음 |
 | INCOMPLETE_COORDINATE_FRAME | 400 | 프레임 4필드 중 일부만 지정 |
 | COORDINATE_FRAME_WOULD_BE_LOST | 400 | 기존 프레임이 있는데 새 요청에 프레임이 없음 |
+| EMPTY_FLOOR_MAP | 400 | `mapFile`과 프레임 4필드가 모두 없음 |
 
 ---
 

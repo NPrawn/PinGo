@@ -6,6 +6,7 @@ import com.pingo.backend.route.dto.request.RouteEdgeUpdateRequest;
 import com.pingo.backend.route.dto.response.RouteEdgeIdResponse;
 import com.pingo.backend.route.dto.response.RouteEdgeResponse;
 import com.pingo.backend.route.service.RouteService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,6 +26,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/route-edges")
 @RequiredArgsConstructor
+@Tag(name = "관리자 - 경로 간선 관리 API", description = "관리자가 노드 간 간선과 이동 수단·거리를 등록·조회·수정·삭제하는 API")
 public class AdminRouteEdgeController {
 
     private final RouteService routeService;

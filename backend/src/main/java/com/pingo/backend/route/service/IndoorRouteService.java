@@ -54,7 +54,8 @@ public class IndoorRouteService {
         for (RouteType routeType : RouteType.values()) {
             RoutePath path = routeFinder.find(data.edges(), request.startNodeId(), request.targetNodeId(), routeType);
             if (path.isReachable()) {
-                options.add(RouteOptionResponse.available(routeType, path.totalDistanceM(), path.totalTimeSec()));
+                options.add(RouteOptionResponse.available(
+                        routeType, path.totalDistanceM(), path.totalTimeSec(), hasStairsOrEscalator(path)));
             } else {
                 options.add(RouteOptionResponse.unavailable(routeType, reasonFor(routeType)));
             }
@@ -151,6 +152,18 @@ public class IndoorRouteService {
 
     private String formatDistance(BigDecimal distanceM) {
         return distanceM.setScale(0, RoundingMode.HALF_UP).toPlainString() + "m";
+    }
+
+    /**
+     * 경로가 계단이나 에스컬레이터를 지나는지 여부(FR-U-009 "계단 포함 여부").
+     *
+     * <p>{@link RouteType#ELEVATOR_ONLY} 가 제외하는 두 이동 수단과 같은 기준이다.
+     * 휠체어·유모차 기준으로는 에스컬레이터도 계단과 같은 장벽이라 함께 본다.
+     */
+    private boolean hasStairsOrEscalator(RoutePath path) {
+        return path.segments().stream()
+                .map(Segment::moveType)
+                .anyMatch(moveType -> moveType == RouteMoveType.STAIR || moveType == RouteMoveType.ESCALATOR);
     }
 
     private RouteUnavailableReason reasonFor(RouteType routeType) {
