@@ -1,6 +1,15 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { useUserSessionStore } from '@/entities/user-session';
 import { CapturePortraitPage } from './CapturePortraitPage';
+
+const apiMocks = vi.hoisted(() => ({
+  getStationMaps: vi.fn(),
+  localize: vi.fn(),
+  updateUserSession: vi.fn(),
+}));
+
+vi.mock('@/shared/api', () => apiMocks);
 
 describe('CapturePortraitPage', () => {
   it('shows the location matching exception only after 15 seconds', () => {
@@ -70,6 +79,72 @@ describe('CapturePortraitPage', () => {
 
       expect(directionAfterTimeout).toBe(directionAtTimeout);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps capturing after an early no-match response and opens the modal at 15 seconds', async () => {
+    vi.useFakeTimers();
+    const originalMediaDevices = navigator.mediaDevices;
+    const stop = vi.fn();
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop }],
+        }),
+      },
+    });
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(640);
+    vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(480);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
+      callback(new Blob(['frame'], { type: 'image/jpeg' }));
+    });
+    apiMocks.getStationMaps.mockResolvedValue([{ version: 'map-v1' }]);
+    apiMocks.localize.mockResolvedValue({ resultStatus: 'no_match', candidates: [] });
+    useUserSessionStore.setState({ userSessionId: 'session-1' });
+
+    try {
+      render(
+        <MemoryRouter>
+          <CapturePortraitPage />
+        </MemoryRouter>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1200);
+      });
+
+      expect(apiMocks.localize).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(13_700);
+      });
+      expect(apiMocks.localize.mock.calls.length).toBeGreaterThan(1);
+      expect(screen.queryByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(screen.getByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeInTheDocument();
+      expect(stop).toHaveBeenCalled();
+    } finally {
+      useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: originalMediaDevices,
+      });
+      vi.restoreAllMocks();
       vi.useRealTimers();
     }
   });

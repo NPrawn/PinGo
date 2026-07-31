@@ -12,6 +12,7 @@ import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './CapturePortraitPage.module.css';
 
 const CAPTURE_SECONDS = 15;
+const CAPTURE_RETRY_DELAY_MS = 1200;
 
 const DIRECTIONS = [
   {
@@ -37,8 +38,8 @@ const DIRECTIONS = [
 /**
  * Camera capture and VPS matching happen together on this screen.
  *
- * TODO: Replace the elapsed-time phases with real camera capture progress and
- * navigate to `LOCATE_SUCCESS` as soon as the VPS matching response succeeds.
+ * Samples camera frames until the 15-second deadline and navigates to
+ * `LOCATE_SUCCESS` as soon as one VPS matching response succeeds.
  */
 export function CapturePortraitPage() {
   const navigate = useNavigate();
@@ -49,6 +50,7 @@ export function CapturePortraitPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const captureInFlight = useRef(false);
+  const timedOutRef = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
@@ -60,12 +62,26 @@ export function CapturePortraitPage() {
     let disposed = false;
     let captureTimer: number | undefined;
 
+    function scheduleNextCapture(delay = CAPTURE_RETRY_DELAY_MS) {
+      if (disposed || timedOutRef.current) return;
+      captureTimer = window.setTimeout(() => void captureAndLocalize(), delay);
+    }
+
     async function captureAndLocalize() {
-      if (captureInFlight.current || !userSessionId) return;
+      if (disposed || timedOutRef.current || !userSessionId) return;
+      if (captureInFlight.current) {
+        scheduleNextCapture();
+        return;
+      }
+
       const video = videoRef.current;
-      if (!video || video.videoWidth === 0 || video.videoHeight === 0) return;
+      if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+        scheduleNextCapture();
+        return;
+      }
 
       captureInFlight.current = true;
+      let localized = false;
       try {
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
@@ -94,12 +110,13 @@ export function CapturePortraitPage() {
         });
         const candidate = result.candidates?.[0];
 
-        if (disposed) return;
+        if (disposed || timedOutRef.current) return;
         if (
           result.resultStatus === 'success' &&
           candidate?.nodeId != null &&
           candidate.floorId != null
         ) {
+          localized = true;
           setCurrentLocation({
             nodeId: candidate.nodeId,
             floorId: candidate.floorId,
@@ -120,12 +137,12 @@ export function CapturePortraitPage() {
           navigate(USER_ROUTES.LOCATE_SUCCESS, { replace: true });
           return;
         }
-
-        setTimeoutOpen(true);
       } catch {
-        if (!disposed) setTimeoutOpen(true);
+        // A single frame can fail while the user is still turning the camera.
+        // Keep sampling until the shared 15-second deadline expires.
       } finally {
         captureInFlight.current = false;
+        if (!localized) scheduleNextCapture();
       }
     }
 
@@ -144,10 +161,13 @@ export function CapturePortraitPage() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
-          captureTimer = window.setTimeout(() => void captureAndLocalize(), 1200);
+          scheduleNextCapture();
         }
       } catch {
-        if (!disposed) setTimeoutOpen(true);
+        if (!disposed) {
+          timedOutRef.current = true;
+          setTimeoutOpen(true);
+        }
       }
     }
 
@@ -161,12 +181,17 @@ export function CapturePortraitPage() {
   }, [attempt, navigate, setCurrentLocation, setFloor, stationId, userSessionId]);
 
   useEffect(() => {
+    timedOutRef.current = false;
+
     const timer = window.setInterval(() => {
       setElapsed((value) => {
         const next = value + 1;
 
         if (next >= CAPTURE_SECONDS) {
           window.clearInterval(timer);
+          timedOutRef.current = true;
+          streamRef.current?.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
           setTimeoutOpen(true);
           return CAPTURE_SECONDS;
         }
@@ -189,6 +214,7 @@ export function CapturePortraitPage() {
   }, [currentDirection, timeoutOpen]);
 
   const retryCapture = () => {
+    timedOutRef.current = false;
     setTimeoutOpen(false);
     setElapsed(0);
     setCurrentDirection(1);
