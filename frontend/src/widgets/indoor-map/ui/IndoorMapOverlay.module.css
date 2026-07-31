@@ -46,6 +46,44 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* 시설 마커 — 프로토타입 `.facpin`. 흰 원에 민트 테두리, 안에 유형 아이콘. */
+.facilityPin {
+  fill: #fff;
+  stroke: var(--color-mint-mid);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.facilityPinOn {
+  fill: var(--color-mint-mid);
+  stroke: #fff;
+}
+
+.facilityIcon {
+  fill: var(--color-mint-forest);
+}
+
+.facilityIconOn {
+  fill: #fff;
+}
+
+/* 탭을 받는 마커. 오버레이 전체는 pointer-events: none이라 여기서만 되살린다. */
+.facilityTappable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* 고른 시설의 이름. 목적지 라벨과 같은 방식으로 흰 외곽선을 깔아 도면 위에서 읽히게 한다. */
+.facilityLabel {
+  font-weight: 800;
+  fill: var(--color-mint-forest);
+  stroke: #fff;
+  stroke-width: 5;
+  stroke-linejoin: round;
+  paint-order: stroke;
+  vector-effect: non-scaling-stroke;
+}
+
 /* 현재 위치 — 프로토타입 `.heading`의 세 겹(ping · beam · dot)을 옮겼다. */
 
 /* 살아 있는 위치임을 알리는 맥박. 원본과 같은 주기로 퍼진다. */

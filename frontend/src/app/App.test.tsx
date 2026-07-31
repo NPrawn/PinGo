@@ -361,7 +361,13 @@ describe('user routes', () => {
     expect(within(routeHeader).getByText('경유 2')).toBeInTheDocument();
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '승차권 충전 경로 옵션 열기' }));
+    /**
+     * 시설 마커는 유형 필터를 켠 뒤에 나타난다. 기본으로 전부 그리지 않는 이유는 밀도다 —
+     * 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가 시설 36개를 모두 그리면 마커가
+     * 서로를 덮는다(FR-U-006 점진적 공개). 좌표는 시설 조회 응답에서 온다.
+     */
+    fireEvent.click(screen.getByRole('button', { name: '승차권 충전 필터 적용' }));
+    fireEvent.click(await screen.findByRole('button', { name: '승차권 충전' }));
     const duplicateDestinationButton = await screen.findByRole('button', {
       name: '경유지로 등록된 장소',
     });
@@ -375,7 +381,8 @@ describe('user routes', () => {
       ).not.toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '엘리베이터 경로 옵션 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: '엘리베이터 필터 적용' }));
+    fireEvent.click(await screen.findByRole('button', { name: '엘리베이터' }));
     fireEvent.click(await screen.findByRole('button', { name: '새 목적지로 설정' }));
     expect(useNavigationStore.getState().destination).toBe('엘리베이터');
     expect(useNavigationStore.getState().waypoints).toEqual(['화장실', '승차권 충전']);

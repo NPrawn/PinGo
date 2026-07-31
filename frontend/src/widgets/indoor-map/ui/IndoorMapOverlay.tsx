@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
+import { facilityIconOf, type Facility } from '@/entities/facility';
 import { type PixelPoint } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
 import styles from './IndoorMapOverlay.module.css';
@@ -37,6 +38,18 @@ interface IndoorMapOverlayProps {
    */
   destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
+  /**
+   * 지도에 표시할 시설. 표시 층에 속한 것만 그린다.
+   *
+   * **호출부가 이미 걸러서 넘긴다.** 역 하나의 시설이 층당 30여 개인데 안내 화면의 지도는
+   * 1m가 1.2px이라(역삼역 B2는 240m 폭이 287px에 들어간다) 전부 그리면 마커가 서로를 덮는다.
+   * 어떤 유형을 보여줄지는 화면이 정한다(FR-U-006 점진적 공개).
+   */
+  facilities?: readonly Facility[];
+  /** 이름을 함께 표시할 시설. 기본은 아이콘만 그린다 — 라벨을 다 붙이면 도면이 가려진다. */
+  selectedFacilityId?: number | null;
+  /** 시설 마커를 눌렀을 때. 넘기지 않으면 마커가 탭을 받지 않는다. */
+  onSelectFacility?: (facility: Facility) => void;
 }
 
 /**
@@ -58,6 +71,9 @@ export function IndoorMapOverlay({
   destination,
   destinationLabel,
   pathNodes,
+  facilities,
+  selectedFacilityId,
+  onSelectFacility,
 }: IndoorMapOverlayProps) {
   const { t } = useTranslation();
   /**
@@ -73,9 +89,15 @@ export function IndoorMapOverlay({
   const routeSegments = floorSegments(pathNodes ?? [], floorId, project);
   const currentPoint = pointOnFloor(currentLocation, floorId, project);
   const destinationPoint = pointOnFloor(destination, floorId, project);
+  const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project);
 
   // 그릴 것이 하나도 없으면 오버레이 자체를 만들지 않는다.
-  if (routeSegments.length === 0 && currentPoint === null && destinationPoint === null) {
+  if (
+    routeSegments.length === 0 &&
+    currentPoint === null &&
+    destinationPoint === null &&
+    facilityPins.length === 0
+  ) {
     return null;
   }
 
@@ -98,6 +120,54 @@ export function IndoorMapOverlay({
           ))}
         </g>
       )}
+
+      {/* 시설은 경로·현재위치보다 아래에 둔다. 안내에 필요한 표시가 시설에 가리면 안 된다. */}
+      {facilityPins.map(({ facility, point }) => {
+        const selected = facility.facilityId === selectedFacilityId;
+
+        return (
+          <g
+            key={facility.facilityId}
+            className={onSelectFacility ? styles.facilityTappable : undefined}
+            role={onSelectFacility ? 'button' : 'img'}
+            aria-label={facility.nameKo}
+            aria-pressed={onSelectFacility ? selected : undefined}
+            onClick={onSelectFacility ? () => onSelectFacility(facility) : undefined}
+          >
+            <circle
+              className={[styles.facilityPin, selected && styles.facilityPinOn]
+                .filter(Boolean)
+                .join(' ')}
+              cx={point.px}
+              cy={point.py}
+              r={FACILITY_RADIUS}
+            />
+            {/* 스프라이트 심볼을 그대로 참조한다. 아이콘 모양은 entities/facility가 정한다. */}
+            <use
+              className={[styles.facilityIcon, selected && styles.facilityIconOn]
+                .filter(Boolean)
+                .join(' ')}
+              href={`#i-${facilityIconOf(facility.facilityType)}`}
+              x={point.px - FACILITY_RADIUS / 2}
+              y={point.py - FACILITY_RADIUS / 2}
+              width={FACILITY_RADIUS}
+              height={FACILITY_RADIUS}
+            />
+            {/* 이름은 고른 것에만 붙인다. 층당 30여 개를 모두 붙이면 도면이 글자로 덮인다. */}
+            {selected && (
+              <text
+                className={styles.facilityLabel}
+                x={point.px}
+                y={point.py + FACILITY_RADIUS + LABEL_FONT_SIZE}
+                fontSize={LABEL_FONT_SIZE}
+                textAnchor="middle"
+              >
+                {facility.nameKo}
+              </text>
+            )}
+          </g>
+        );
+      })}
 
       {destinationPoint && (
         <g role="img" aria-label={t('indoorMap.overlay.destination')}>
@@ -191,6 +261,12 @@ const DESTINATION_RADIUS = 35;
 const LABEL_FONT_SIZE = 44;
 const LABEL_GAP = 14;
 
+/**
+ * 시설 마커 반지름. 프로토타입 `.facpin`의 아이콘 원이 26px이므로 같은 크기가 되도록 잡았다.
+ * 안쪽 아이콘 글리프는 원 지름의 절반이며, 이 역시 프로토타입과 같다.
+ */
+const FACILITY_RADIUS = 65;
+
 /** 방향 부채꼴. 원본의 conic-gradient가 60도를 덮었으므로 반각은 30도다. */
 const BEAM_LENGTH = MARKER_RADIUS * 3.375;
 const BEAM_HALF_ANGLE_DEG = 30;
@@ -253,6 +329,24 @@ function floorSegments(
 
   // 점이 하나뿐인 구간은 이을 선이 없다.
   return segments.filter((segment) => segment.length >= 2);
+}
+
+/** 표시 층에 속한 시설만 픽셀 좌표와 함께 남긴다. 좌표를 변환할 수 없는 시설은 건너뛴다. */
+function facilitiesOnFloor(
+  facilities: readonly Facility[],
+  floorId: number,
+  project: (mapX: number, mapY: number) => PixelPoint | null,
+): { facility: Facility; point: PixelPoint }[] {
+  const pins: { facility: Facility; point: PixelPoint }[] = [];
+
+  for (const facility of facilities) {
+    if (facility.floorId !== floorId) continue;
+    const point = project(facility.mapX, facility.mapY);
+    if (point === null) continue;
+    pins.push({ facility, point });
+  }
+
+  return pins;
 }
 
 /** 표시 층에 속한 지점만 픽셀 좌표로 바꾼다. 다른 층이거나 좌표가 잘못되면 null. */

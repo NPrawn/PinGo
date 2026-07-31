@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { useStationFacilities, type Facility } from '@/entities/facility';
 import {
   coordinateFrameOf,
   floorPlanImageUrl,
@@ -33,6 +34,18 @@ interface IndoorMapViewProps {
   /** 경로가 지나는 노드. 경로 응답의 pathNodes를 그대로 받는다. */
   pathNodes?: readonly RoutePathNode[];
   /**
+   * 지도에 표시할 시설 유형. 넘기지 않으면 **아무 시설도 그리지 않는다.**
+   *
+   * 기본을 비워 두는 이유는 밀도다. 역삼역 B2는 실제 240m 폭이 안내 화면에서 287px에 들어가
+   * 1m가 1.2px이고, 그 층의 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px이 되어 서로를
+   * 덮는다. 유형을 하나 고르면 많아도 13개(계단)라 겹치지 않는다 — FR-U-006의 점진적 공개다.
+   */
+  facilityType?: string | null;
+  /** 이름을 함께 보여줄 시설. */
+  selectedFacilityId?: number | null;
+  /** 시설 마커를 눌렀을 때. */
+  onSelectFacility?: (facility: Facility) => void;
+  /**
    * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
    * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
    *
@@ -62,11 +75,26 @@ export function IndoorMapView({
   destination,
   destinationLabel,
   pathNodes,
+  facilityType,
+  selectedFacilityId,
+  onSelectFacility,
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
   // 목업 모드에서는 목업 지도를 쓰므로 조회하지 않는다.
   const query = useStationFloorMaps(stationId, { enabled: !useMockData });
+
+  /**
+   * 유형을 고르기 전에는 조회하지 않는다. 그릴 것이 없는데 77건을 받아 둘 이유가 없다.
+   *
+   * 목업 모드에서도 조회한다 — 시설은 실제 API에만 있고 목업이 없다. 역삼역은 목업 floorId와
+   * 실제 floorId가 우연히 같아(B2=1·B3=2·B1=3) 목업 도면 위에도 제 위치에 얹힌다. 목업이
+   * 제거되면(297) 이 우연에 의존하지 않는다.
+   */
+  const facilityQuery = useStationFacilities(stationId, {
+    facilityType: facilityType ?? undefined,
+    enabled: facilityType != null,
+  });
 
   if (!useMockData) {
     if (query.isPending) {
@@ -115,6 +143,9 @@ export function IndoorMapView({
           destination={destination ?? (useMockData ? MOCK_DESTINATION : null)}
           destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
+          facilities={facilityQuery.data}
+          selectedFacilityId={selectedFacilityId}
+          onSelectFacility={onSelectFacility}
         />
         {/* 시설·출구 마커(281)가 이 stage 위에 추가된다. */}
       </div>
@@ -133,6 +164,9 @@ function MapOverlay({
   destination,
   destinationLabel,
   pathNodes,
+  facilities,
+  selectedFacilityId,
+  onSelectFacility,
 }: {
   floorMap: FloorMap;
   currentLocation: IndoorPoint | null;
@@ -140,6 +174,9 @@ function MapOverlay({
   destination: IndoorPoint | null;
   destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
+  facilities?: readonly Facility[];
+  selectedFacilityId?: number | null;
+  onSelectFacility?: (facility: Facility) => void;
 }) {
   const frame = coordinateFrameOf(floorMap);
   if (!frame) return null;
@@ -164,6 +201,9 @@ function MapOverlay({
       destination={destination}
       destinationLabel={destinationLabel}
       pathNodes={pathNodes}
+      facilities={facilities}
+      selectedFacilityId={selectedFacilityId}
+      onSelectFacility={onSelectFacility}
     />
   );
 }

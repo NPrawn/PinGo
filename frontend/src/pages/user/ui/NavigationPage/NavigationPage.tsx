@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { facilityIconOf, type Facility } from '@/entities/facility';
 import { MOCK_FLOOR_ID } from '@/entities/floor-map';
 import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
@@ -15,22 +16,25 @@ import styles from './NavigationPage.module.css';
 
 const FLOORS = ['1F', 'B1', 'B2', 'B3'] as const;
 
-const MAP_FACILITIES: readonly {
-  name: string;
-  detail: string;
-  icon: IconName;
-  left: string;
-  top: string;
-}[] = [
-  { name: '화장실', detail: 'B1 대합실 · 약 80m', icon: 'restroom', left: '21%', top: '25%' },
-  { name: '승차권 충전', detail: '2번 개찰구 옆 · 약 45m', icon: 'card', left: '73%', top: '73%' },
-  { name: '엘리베이터', detail: 'B1 ↔ 1F · 약 110m', icon: 'elevator', left: '76%', top: '25%' },
-  { name: '내린 위치', detail: 'B2 승강장 · 3-2 탑승칸', icon: 'train', left: '23%', top: '66%' },
-];
-
-const MAP_FILTERS: readonly { name: string; icon: IconName }[] = [
-  ...MAP_FACILITIES.map(({ name, icon }) => ({ name, icon })),
-  { name: '출구', icon: 'door' },
+/**
+ * 지도 위 시설 필터.
+ *
+ * **기본은 아무것도 켜지 않는다.** 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가
+ * 1m가 1.2px이고, 그 층 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px이 되어 서로를
+ * 덮는다. 유형 하나를 켜면 많아도 13개(계단)라 겹치지 않는다 — FR-U-006의 점진적 공개다.
+ *
+ * 이름과 아이콘은 프로토타입(`#s-nav`)의 칩 다섯 개를 그대로 유지하고, 각 칩이 실제
+ * `facilityType`을 켜도록만 연결했다.
+ *
+ * TODO: `platform`은 역삼역에 등록된 시설이 없어 눌러도 표시할 것이 없다. 승강장 시설이
+ * 시드되면 그대로 동작한다(백엔드 요청 예정).
+ */
+const MAP_FILTERS: readonly { name: string; icon: IconName; facilityType: string }[] = [
+  { name: '화장실', icon: 'restroom', facilityType: 'restroom' },
+  { name: '승차권 충전', icon: 'card', facilityType: 'card_charger' },
+  { name: '엘리베이터', icon: 'elevator', facilityType: 'elevator' },
+  { name: '내린 위치', icon: 'train', facilityType: 'platform' },
+  { name: '출구', icon: 'door', facilityType: 'exit' },
 ];
 
 /**
@@ -79,9 +83,8 @@ export function NavigationPage() {
   }, [endRelocalize]);
   const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
   const initialDestination = useRef(destination);
-  const [selectedFacility, setSelectedFacility] = useState<(typeof MAP_FACILITIES)[number] | null>(
-    null,
-  );
+  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
+  /** 켜 둔 시설 유형(`facilityType`). null이면 시설을 그리지 않는다. */
   const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
@@ -109,10 +112,10 @@ export function NavigationPage() {
   } = useXrNavigationSession({ currentIndoorLocation: MOCK_CONFIRMED_LOCATION });
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
-    ? waypoints.includes(selectedFacility.name)
+    ? waypoints.includes(selectedFacility.nameKo)
     : false;
   const selectedFacilityIsDestination = selectedFacility
-    ? selectedFacility.name === activeDestination
+    ? selectedFacility.nameKo === activeDestination
     : false;
 
   return (
@@ -135,17 +138,23 @@ export function NavigationPage() {
           />
         ) : selectedFacility ? (
           <Sheet
-            label={`${selectedFacility.name} 경로 설정`}
+            label={`${selectedFacility.nameKo} 경로 설정`}
             onDismiss={() => setSelectedFacility(null)}
           >
             <div className={styles.sheetHandle} aria-hidden />
             <div className={styles.sheetHead}>
               <span className={styles.sheetIcon}>
-                <Icon name={selectedFacility.icon} size={20} />
+                <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
               </span>
               <div>
-                <h2>{selectedFacility.name}</h2>
-                <p>{selectedFacility.detail}</p>
+                <h2>{selectedFacility.nameKo}</h2>
+                {/* 목업이던 거리·층 설명 대신 응답에 있는 값을 쓴다. 거리는 경로 계산(297)이
+                    붙으면 넣는다 — 지금 임의로 만들면 틀린 숫자를 보여주게 된다. */}
+                <p>
+                  {selectedFacility.isAccessible
+                    ? '계단 없이 갈 수 있어요'
+                    : '계단 구간이 있을 수 있어요'}
+                </p>
               </div>
             </div>
             <p className={styles.sheetNote}>
@@ -160,7 +169,7 @@ export function NavigationPage() {
                 }
                 onClick={() => {
                   if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  addWaypoint(selectedFacility.name);
+                  addWaypoint(selectedFacility.nameKo);
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -178,8 +187,8 @@ export function NavigationPage() {
                 disabled={selectedFacilityIsWaypoint || selectedFacilityIsDestination}
                 onClick={() => {
                   if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  setDestination(selectedFacility.name);
-                  setActiveDestination(selectedFacility.name);
+                  setDestination(selectedFacility.nameKo);
+                  setActiveDestination(selectedFacility.nameKo);
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -307,8 +316,11 @@ export function NavigationPage() {
                   /* 목적지 이름은 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
                      시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
                   destinationLabel={
-                    facilityFilter == null || facilityFilter === '출구' ? exit : null
+                    facilityFilter == null || facilityFilter === 'exit' ? exit : null
                   }
+                  facilityType={facilityFilter}
+                  selectedFacilityId={selectedFacility?.facilityId}
+                  onSelectFacility={setSelectedFacility}
                   useMockData
                 />
               </div>
@@ -360,7 +372,7 @@ export function NavigationPage() {
 
               <div className={styles.facilityFilters} role="group" aria-label="시설 필터">
                 {MAP_FILTERS.map((filter) => {
-                  const active = facilityFilter === filter.name;
+                  const active = facilityFilter === filter.facilityType;
 
                   return (
                     <button
@@ -372,7 +384,11 @@ export function NavigationPage() {
                       aria-label={`${filter.name} ${active ? '필터 해제' : '필터 적용'}`}
                       aria-pressed={active}
                       title={filter.name}
-                      onClick={() => setFacilityFilter(active ? null : filter.name)}
+                      onClick={() => {
+                        setFacilityFilter(active ? null : filter.facilityType);
+                        // 다른 유형으로 넘어가면 이전에 고른 시설의 이름표가 남지 않게 한다.
+                        setSelectedFacility(null);
+                      }}
                     >
                       <Icon name={filter.icon} size={14} />
                     </button>
@@ -380,25 +396,9 @@ export function NavigationPage() {
                 })}
               </div>
 
-              {/* 현재 위치·방향·목적지와 그 이름은 모두 IndoorMapView가 실제 좌표로 그린다.
-                  퍼센트로 고정돼 있던 HeadingMarker와 목적지 라벨을 남겨 두면 마커가 둘이 되어
-                  어느 쪽이 실제인지 구분할 수 없다. */}
-
-              {MAP_FACILITIES.filter(
-                (facility) => facilityFilter == null || facility.name === facilityFilter,
-              ).map((facility) => (
-                <button
-                  key={facility.name}
-                  type="button"
-                  className={styles.facility}
-                  style={{ left: facility.left, top: facility.top }}
-                  onClick={() => setSelectedFacility(facility)}
-                  aria-label={`${facility.name} 경로 옵션 열기`}
-                >
-                  <Icon name={facility.icon} size={13} />
-                  <span>{facility.name}</span>
-                </button>
-              ))}
+              {/* 현재 위치·방향·목적지·시설은 모두 IndoorMapView가 실제 좌표로 그린다.
+                  퍼센트로 고정돼 있던 마커들을 남겨 두면 표시가 둘이 되어 어느 쪽이 실제인지
+                  구분할 수 없다. */}
             </MapPreview>
 
             <div className={styles.mapLegend}>

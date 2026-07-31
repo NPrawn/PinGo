@@ -2,6 +2,15 @@ import { render, screen } from '@testing-library/react';
 import { useStationFloorMaps, type FloorMap } from '@/entities/floor-map';
 import { IndoorMapView } from './IndoorMapView';
 
+/**
+ * 시설 조회는 이 테스트의 관심사가 아니다. QueryClient 없이 렌더하므로 훅만 비워 둔다.
+ * 시설 마커 렌더링은 IndoorMapOverlay 테스트가 검사한다.
+ */
+vi.mock('@/entities/facility', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/facility')>()),
+  useStationFacilities: vi.fn(() => ({ data: undefined })),
+}));
+
 // 렌더링 로직에만 집중하기 위해 데이터 조회 훅만 목으로 대체하고,
 // 좌표 변환·프레임·목업 지도는 실제 구현을 그대로 쓴다.
 vi.mock('@/entities/floor-map', async (importOriginal) => ({

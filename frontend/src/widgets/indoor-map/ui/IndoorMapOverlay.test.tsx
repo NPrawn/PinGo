@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import type { Facility } from '@/entities/facility';
 import type { PixelPoint } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
 import { IndoorMapOverlay } from './IndoorMapOverlay';
@@ -21,6 +22,9 @@ function renderOverlay(props: {
   currentHeadingImageDeg?: number | null;
   destination?: IndoorPoint | null;
   destinationLabel?: string | null;
+  facilities?: readonly Facility[];
+  selectedFacilityId?: number | null;
+  onSelectFacility?: (facility: Facility) => void;
   pathNodes?: readonly RoutePathNode[];
   project?: (mapX: number, mapY: number) => PixelPoint | null;
 }) {
@@ -34,6 +38,9 @@ function renderOverlay(props: {
       currentHeadingImageDeg={props.currentHeadingImageDeg}
       destination={props.destination}
       destinationLabel={props.destinationLabel}
+      facilities={props.facilities}
+      selectedFacilityId={props.selectedFacilityId}
+      onSelectFacility={props.onSelectFacility}
       pathNodes={props.pathNodes}
     />,
   );
@@ -83,6 +90,76 @@ describe('IndoorMapOverlay', () => {
     renderOverlay({ destination: { floorId: FLOOR_B2, mapX: 400, mapY: 500 } });
 
     expect(screen.getByRole('img', { name: '목적지' }).querySelector('text')).toBeNull();
+  });
+
+  describe('시설 마커', () => {
+    const RESTROOM: Facility = {
+      facilityId: 59,
+      stationId: 1,
+      floorId: FLOOR_B2,
+      facilityType: 'restroom',
+      nameKo: '화장실',
+      nameEn: 'Restroom',
+      mapX: 300,
+      mapY: 400,
+      linkedNodeId: 130,
+      isAccessible: true,
+    };
+    const OTHER_FLOOR: Facility = { ...RESTROOM, facilityId: 60, floorId: FLOOR_B3 };
+
+    it('표시 층의 시설만 그린다', () => {
+      renderOverlay({ facilities: [RESTROOM, OTHER_FLOOR] });
+
+      expect(screen.getAllByRole('img', { name: '화장실' })).toHaveLength(1);
+    });
+
+    it('유형에 맞는 아이콘 심볼을 참조한다', () => {
+      renderOverlay({ facilities: [RESTROOM] });
+
+      const marker = screen.getByRole('img', { name: '화장실' });
+
+      expect(marker.querySelector('use')).toHaveAttribute('href', '#i-restroom');
+      expect(marker.querySelector('circle')).toHaveAttribute('cx', '300');
+    });
+
+    /** 층당 30여 개에 모두 이름을 붙이면 도면이 글자로 덮인다. */
+    it('이름은 고른 시설에만 붙인다', () => {
+      const { rerender } = renderOverlay({ facilities: [RESTROOM] });
+
+      expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toBeNull();
+
+      rerender(
+        <IndoorMapOverlay
+          floorId={FLOOR_B2}
+          imageWidth={1624}
+          imageHeight={969}
+          project={identityProject}
+          facilities={[RESTROOM]}
+          selectedFacilityId={RESTROOM.facilityId}
+        />,
+      );
+
+      expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toHaveTextContent(
+        '화장실',
+      );
+    });
+
+    it('콜백을 넘기면 마커가 탭을 받는다', () => {
+      const onSelect = vi.fn();
+      renderOverlay({ facilities: [RESTROOM], onSelectFacility: onSelect });
+
+      const marker = screen.getByRole('button', { name: '화장실' });
+      marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(onSelect).toHaveBeenCalledWith(RESTROOM);
+    });
+
+    /** 시설만 있어도 오버레이를 만들어야 한다. 필터만 켠 상태가 그렇다. */
+    it('시설만 있어도 오버레이를 그린다', () => {
+      const { container } = renderOverlay({ facilities: [RESTROOM] });
+
+      expect(container.querySelector('svg')).not.toBeNull();
+    });
   });
 
   it('경로 노드를 순서대로 이은 선을 그린다', () => {
