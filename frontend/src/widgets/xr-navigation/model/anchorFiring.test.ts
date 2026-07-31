@@ -24,6 +24,8 @@ const CONFIRMED: IndoorPoint = { floorId: 1, mapX: 0, mapY: 0 };
 
 function createFakeController(initial: XrSessionState) {
   let state = initial;
+  /** 세션 식별자. 세션이 다시 열릴 때마다 새 값이 부여된다. */
+  let sessionId: number | null = 1;
   let latestReading: XrPoseReading | null = {
     position: { x: 0, y: 0, z: 0 },
     orientation: { x: 0, y: 0, z: 0, w: 1 },
@@ -36,7 +38,7 @@ function createFakeController(initial: XrSessionState) {
 
   const controller: XrSessionController = {
     getState: () => state,
-    getSessionId: () => 1,
+    getSessionId: () => sessionId,
     getLatestReading: () => latestReading,
     subscribe(listener) {
       const notify = (): void => {
@@ -74,6 +76,14 @@ function createFakeController(initial: XrSessionState) {
   return {
     controller,
     setState(next: XrSessionState) {
+      state = next;
+      stateListeners.forEach((listener) => {
+        listener();
+      });
+    },
+    /** 세션을 다시 연다. reference space 원점이 새로 잡히므로 식별자도 새 값이 된다. */
+    restartSession(next: XrSessionState) {
+      sessionId = sessionId === null ? 1 : sessionId + 1;
       state = next;
       stateListeners.forEach((listener) => {
         listener();
@@ -199,5 +209,59 @@ describe('첫 위치 인식 발화', () => {
 
     expect(result.current.anchorStatus).toBe('established');
     expect(result.current.currentLocation).toEqual(moved);
+  });
+
+  /**
+   * 세션이 다시 열리면 reference space 원점이 새로 잡힌다. 옛 앵커로 새 세션의 pose를 변환하면
+   * 오류 없이 조용히 틀린 위치가 나오므로, 앵커를 버리고 새로 만들어야 한다.
+   */
+  it('세션이 다시 열리면 앵커를 버리고 새로 만든다', () => {
+    const fake = createFakeController(TRACKING);
+    const { result } = renderSession(fake.controller);
+
+    act(() => {
+      fake.emitSnapshot(0, -10);
+    });
+
+    const moved = result.current.currentLocation;
+
+    expect(moved).not.toEqual(CONFIRMED);
+
+    // 세션 종료 → 재시작. 실제 흐름과 같은 순서를 밟는다.
+    act(() => {
+      fake.setState({ status: 'ended' });
+    });
+    act(() => {
+      fake.restartSession(WARMING_UP);
+    });
+    act(() => {
+      fake.setState(TRACKING);
+    });
+
+    /**
+     * 새 세션의 앵커다. `established`(revision 0)이며 `refreshed`가 아니다 — 갱신이 아니라
+     * 새로 만든 것이다. 좌표는 진입 확정 위치에서 다시 시작한다.
+     */
+    expect(result.current.anchorStatus).toBe('established');
+    expect(result.current.currentLocation).toEqual(CONFIRMED);
+  });
+
+  /** 세션이 끝난 구간에서는 마지막 유효 위치를 그대로 보여준다(11.7). */
+  it('세션이 끝나도 마지막 위치를 지우지 않는다', () => {
+    const fake = createFakeController(TRACKING);
+    const { result } = renderSession(fake.controller);
+
+    act(() => {
+      fake.emitSnapshot(0, -10);
+    });
+
+    const moved = result.current.currentLocation;
+
+    act(() => {
+      fake.setState({ status: 'ended' });
+    });
+
+    expect(result.current.currentLocation).toEqual(moved);
+    expect(result.current.isStale).toBe(true);
   });
 });

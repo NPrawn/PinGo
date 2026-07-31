@@ -7,6 +7,7 @@ import {
 } from '@/features/xr-tracking';
 import {
   detectXrSupport,
+  xrSessionController,
   type XrSessionController,
   type XrStartOptions,
   type XrSupport,
@@ -87,7 +88,7 @@ export interface UseXrNavigationSessionValue extends UseXrMapPositionValue {
  */
 export function useXrNavigationSession({
   currentIndoorLocation = null,
-  controller,
+  controller = xrSessionController,
 }: UseXrNavigationSessionOptions = {}): UseXrNavigationSessionValue {
   const tracking = useXrMapPosition({ currentIndoorLocation, controller });
 
@@ -142,7 +143,38 @@ export function useXrNavigationSession({
     setPhase('without-tracking');
   }, []);
 
-  const { isTracking, setAnchor } = tracking;
+  const { isTracking, setAnchor, clearAnchor, status } = tracking;
+
+  /** 이 세션에서 첫 위치 인식을 이미 발화했는지. 세션이 다시 열리면 되돌린다. */
+  const anchorFiredRef = useRef(false);
+
+  /**
+   * 세션이 새로 열리면 옛 앵커를 버리고 발화를 다시 연다.
+   *
+   * **앵커는 세션의 reference space 원점을 기준으로 한다.** 세션이 다시 열리면 그 원점이 새로
+   * 잡히므로, 옛 앵커로 새 세션의 pose를 변환하면 오류 없이 조용히 틀린 위치가 나온다. 새 앵커를
+   * 만들기 전에 도착한 첫 스냅샷이 이미 옛 앵커로 변환되므로 발화를 여는 것만으로는 부족하고
+   * 앵커 자체를 버려야 한다.
+   *
+   * **추적 상실(`lost`)로는 초기화하지 않는다.** 상실 임계값이 1500ms인데 실측에서 평지·계단
+   * 보행 중에도 약 1초씩 pose가 끊긴다. 즉 정상 보행에서 `lost`가 발생한다. 그때 앵커를 다시
+   * 만들면 좌표가 진입 시점 확정 위치로 되돌아가 걸어온 거리가 사라진다. 세션이 살아 있는 동안
+   * XR 원점은 그대로이므로 기존 앵커가 여전히 유효하다.
+   *
+   * 세션이 끝나 식별자가 `null`이 되는 것으로도 초기화하지 않는다. 그 구간에는 마지막 유효
+   * 위치를 그대로 보여주는 것이 11.7의 처리이며, 앵커를 버리면 마커가 진입 위치로 되돌아간다.
+   */
+  const sessionIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const sessionId = controller.getSessionId();
+
+    if (sessionId === null || sessionId === sessionIdRef.current) return;
+
+    sessionIdRef.current = sessionId;
+    anchorFiredRef.current = false;
+    clearAnchor();
+  }, [controller, clearAnchor, status]);
 
   /**
    * 첫 위치 인식 발화. 추적이 잡히는 순간 한 번만 앵커를 만든다.
@@ -158,8 +190,6 @@ export function useXrNavigationSession({
    * `MOCK_ANCHOR_FORWARD_MAP` 목업이다. 즉 이 앵커는 실제 위치 인식 결과가 아니며, 사용자가
    * 세션을 여는 사이 움직인 만큼 어긋난다. 응답이 붙으면 그 좌표와 방향을 넣는다.
    */
-  const anchorFiredRef = useRef(false);
-
   useEffect(() => {
     if (!isTracking || anchorFiredRef.current || !currentIndoorLocation) return;
 
