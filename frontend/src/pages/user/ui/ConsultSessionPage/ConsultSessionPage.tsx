@@ -12,8 +12,9 @@ import styles from './ConsultSessionPage.module.css';
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
+  const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
   const { localVideoRef, remoteVideoRef, status, error, remoteCaption, captionsSupported } =
-    useConsultSignaling(signalingRoomId, 'USER');
+    useConsultSignaling(signalingRoomId, 'USER', signalingAccessToken);
   const station = useStationStore((state) => state.station);
   const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
   const waypoints = useNavigationStore((state) => state.waypoints);

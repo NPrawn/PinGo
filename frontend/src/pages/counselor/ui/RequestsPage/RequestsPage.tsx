@@ -42,7 +42,7 @@ export function RequestsPage() {
     onSuccess: (response) => {
       if (!response.consultationId || !response.signalingRoomId) return;
       setConsultation(response.consultationId);
-      setSignalingRoom(response.signalingRoomId);
+      setSignalingRoom(response.signalingRoomId, response.signalingAccessToken);
       void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
       void navigate(COUNSELOR_ROUTES.CONNECTING);
     },

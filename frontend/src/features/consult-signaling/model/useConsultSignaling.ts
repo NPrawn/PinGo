@@ -63,7 +63,11 @@ function rtcConfiguration(): RTCConfiguration {
  * 상담 signaling WebSocket과 WebRTC peer를 한 생명주기로 관리한다.
  * 상담자는 offer를 만들고 사용자는 answer로 응답한다.
  */
-export function useConsultSignaling(roomId: string | null, role: SignalingRole) {
+export function useConsultSignaling(
+  roomId: string | null,
+  role: SignalingRole,
+  accessToken?: string | null,
+) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<RTCPeerConnectionState | 'idle' | 'signaling'>('idle');
@@ -82,7 +86,9 @@ export function useConsultSignaling(roomId: string | null, role: SignalingRole) 
     let shouldRecognize = true;
     const peer = new RTCPeerConnection(rtcConfiguration());
     const wsBase = env.VITE_WS_BASE_URL.replace(/\/$/, '');
-    const socket = new WebSocket(`${wsBase}/ws/signaling`);
+    // The server rejects the handshake without the token issued alongside the room.
+    const query = accessToken ? `?token=${encodeURIComponent(accessToken)}` : '';
+    const socket = new WebSocket(`${wsBase}/ws/signaling${query}`);
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
     const publishVideoFailure = (reason: string) => {
       void publishConsultationFallbackEvent(consultationId, {
@@ -233,7 +239,7 @@ export function useConsultSignaling(roomId: string | null, role: SignalingRole) 
       peer.close();
       localStream?.getTracks().forEach((track) => track.stop());
     };
-  }, [role, roomId]);
+  }, [accessToken, role, roomId]);
 
   return {
     localVideoRef,

@@ -40,7 +40,7 @@ export function ConsultWaitingPage() {
 
     void getConsultation(consultationId, userSessionId).then((consultation) => {
       if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
-        setSignalingRoom(consultation.signalingRoomId);
+        setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
         void navigate(USER_ROUTES.CONSULT_SESSION);
       }
     });
@@ -50,6 +50,15 @@ export function ConsultWaitingPage() {
       try {
         const payload = JSON.parse(event.data) as { signalingRoomId?: string };
         if (payload.signalingRoomId) setSignalingRoom(payload.signalingRoomId);
+        // The SSE payload carries no handshake token, so re-read the consultation
+        // to pick it up before the session screen opens its WebSocket.
+        void getConsultation(consultationId, userSessionId)
+          .then((consultation) => {
+            if (consultation.signalingRoomId) {
+              setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
+            }
+          })
+          .catch(() => undefined);
         void navigate(USER_ROUTES.CONSULT_SESSION);
       } catch {
         setStatusMessage('상담 연결 정보를 읽지 못했습니다.');

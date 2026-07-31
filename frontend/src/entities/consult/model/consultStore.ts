@@ -8,10 +8,12 @@ type ConsultStore = {
   satisfaction: number;
   consultationId: string | null;
   signalingRoomId: string | null;
+  /** Signaling WebSocket handshake token issued with the room. */
+  signalingAccessToken: string | null;
   selectIssue: (index: number) => void;
   rate: (score: number) => void;
   setConsultation: (consultationId: string) => void;
-  setSignalingRoom: (signalingRoomId: string) => void;
+  setSignalingRoom: (signalingRoomId: string, signalingAccessToken?: string | null) => void;
   reset: () => void;
 };
 
@@ -31,16 +33,19 @@ export const useConsultStore = create<ConsultStore>()(
       satisfaction: 0,
       consultationId: null,
       signalingRoomId: null,
+      signalingAccessToken: null,
       selectIssue: (issue) => set({ issue }),
       rate: (satisfaction) => set({ satisfaction }),
       setConsultation: (consultationId) => set({ consultationId }),
-      setSignalingRoom: (signalingRoomId) => set({ signalingRoomId }),
+      setSignalingRoom: (signalingRoomId, signalingAccessToken = null) =>
+        set({ signalingRoomId, signalingAccessToken }),
       reset: () =>
         set({
           issue: null,
           satisfaction: 0,
           consultationId: null,
           signalingRoomId: null,
+          signalingAccessToken: null,
         }),
     }),
     {

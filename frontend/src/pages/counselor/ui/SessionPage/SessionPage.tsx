@@ -31,6 +31,7 @@ const FLOORS: readonly { value: FloorId; label: string }[] = [
 export function SessionPage() {
   const navigate = useNavigate();
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
+  const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
   const consultationId = useConsultStore((state) => state.consultationId);
   const {
     localVideoRef,
@@ -40,7 +41,7 @@ export function SessionPage() {
     localCaption,
     remoteCaption,
     captionsSupported,
-  } = useConsultSignaling(signalingRoomId, 'COUNSELOR');
+  } = useConsultSignaling(signalingRoomId, 'COUNSELOR', signalingAccessToken);
   const selected = useCounselorQueueStore((state) => state.selected);
   const complete = useCounselorQueueStore((state) => state.complete);
   const [floor, setFloor] = useState<FloorId>('B1');
