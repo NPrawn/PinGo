@@ -68,7 +68,9 @@ class FloorMapServiceTest {
             ReflectionTestUtils.setField(saved, "id", 11L);
             return saved;
         });
-        FloorMapUploadRequest request = new FloorMapUploadRequest(" Image ", 1200, 800, new BigDecimal("0.05"));
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                " Image ", 1200, 800, new BigDecimal("0.05"),
+                new BigDecimal("622.000"), new BigDecimal("512.000"), new BigDecimal("-21.2800"));
 
         FloorMapIdResponse response = floorMapService.uploadMap(2L, request, mapFile());
 
@@ -79,7 +81,7 @@ class FloorMapServiceTest {
     @Test
     void uploadMapThrowsWhenFloorDoesNotExist() {
         when(stationFloorRepository.findById(99L)).thenReturn(Optional.empty());
-        FloorMapUploadRequest request = new FloorMapUploadRequest("image", null, null, null);
+        FloorMapUploadRequest request = new FloorMapUploadRequest("image", null, null, null, null, null, null);
 
         assertThatThrownBy(() -> floorMapService.uploadMap(99L, request, mapFile()))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -91,7 +93,7 @@ class FloorMapServiceTest {
     void uploadMapThrowsWhenStationIsInactive() {
         StationFloor floor = createFloor(2L, false);
         when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
-        FloorMapUploadRequest request = new FloorMapUploadRequest("image", null, null, null);
+        FloorMapUploadRequest request = new FloorMapUploadRequest("image", null, null, null, null, null, null);
 
         assertThatThrownBy(() -> floorMapService.uploadMap(2L, request, mapFile()))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -103,7 +105,7 @@ class FloorMapServiceTest {
     void uploadMapThrowsForUnsupportedMapType() {
         StationFloor floor = createFloor(2L, true);
         when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
-        FloorMapUploadRequest request = new FloorMapUploadRequest("pdf", null, null, null);
+        FloorMapUploadRequest request = new FloorMapUploadRequest("pdf", null, null, null, null, null, null);
 
         assertThatThrownBy(() -> floorMapService.uploadMap(2L, request, mapFile()))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
