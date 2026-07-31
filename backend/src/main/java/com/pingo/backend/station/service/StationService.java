@@ -2,6 +2,7 @@ package com.pingo.backend.station.service;
 
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.global.geo.GeoDistanceCalculator;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.domain.StationFloor;
 import com.pingo.backend.station.dto.request.FloorCreateRequest;
@@ -71,25 +72,17 @@ public class StationService {
         }
 
         return stationRepository.findAllByActiveTrueAndLatitudeIsNotNullAndLongitudeIsNotNull().stream()
-                .map(station -> StationNearbyResponse.of(station, distanceMeters(latitude, longitude, station)))
+                .map(station -> StationNearbyResponse.of(
+                        station,
+                        GeoDistanceCalculator.distanceMeters(
+                                java.math.BigDecimal.valueOf(latitude),
+                                java.math.BigDecimal.valueOf(longitude),
+                                station.getLatitude(),
+                                station.getLongitude()
+                        )
+                ))
                 .sorted(Comparator.comparingLong(StationNearbyResponse::distanceM))
                 .toList();
-    }
-
-    // 두 좌표 사이의 대권 거리를 Haversine 공식으로 계산해 미터 단위로 반환한다.
-    private long distanceMeters(double latitude, double longitude, Station station) {
-        double earthRadiusMeters = 6_371_000.0;
-        double stationLatitude = station.getLatitude().doubleValue();
-        double stationLongitude = station.getLongitude().doubleValue();
-
-        double latitudeDelta = Math.toRadians(stationLatitude - latitude);
-        double longitudeDelta = Math.toRadians(stationLongitude - longitude);
-        double a = Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2)
-                + Math.cos(Math.toRadians(latitude)) * Math.cos(Math.toRadians(stationLatitude))
-                * Math.sin(longitudeDelta / 2) * Math.sin(longitudeDelta / 2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-        return Math.round(earthRadiusMeters * c);
     }
 
     public StationDetailResponse getStation(Long stationId) {
