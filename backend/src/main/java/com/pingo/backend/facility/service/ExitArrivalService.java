@@ -69,6 +69,12 @@ public class ExitArrivalService {
                     false, false, null, thresholdM);
         }
 
+        // 좌표는 DB NOT NULL 이고 시설 생성 DTO 에도 @NotNull 이라 여기서 비어 있을 수 없다.
+        // 그래도 비어 있다면 사용자 잘못이 아니라 데이터 결함이므로 500 으로 드러낸다.
+        if (exit.getMapX() == null || exit.getMapY() == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
+        }
+
         BigDecimal distance = planarDistance(
                 request.mapX(), request.mapY(), exit.getMapX(), exit.getMapY());
 
