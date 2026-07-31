@@ -19,6 +19,8 @@ export function SignupPage() {
   const [stationId, setStationId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loginIdMessage, setLoginIdMessage] = useState('');
+  /** null before the id has been checked. */
+  const [loginIdAvailable, setLoginIdAvailable] = useState<boolean | null>(null);
   const [passwordError, setPasswordError] = useState('');
 
   function validatePassword() {
@@ -35,17 +37,20 @@ export function SignupPage() {
     const normalizedLoginId = loginId.trim();
     if (!/^[a-zA-Z0-9_]{4,20}$/.test(normalizedLoginId)) {
       setLoginIdMessage('영문·숫자·밑줄 4~20자로 입력해 주세요.');
+      setLoginIdAvailable(false);
       return false;
     }
 
     try {
       const available = await checkLoginId(normalizedLoginId);
       setLoginIdMessage(available ? '사용 가능한 아이디예요.' : '이미 사용 중인 아이디예요.');
+      setLoginIdAvailable(available);
       return available;
     } catch (error) {
       setLoginIdMessage(
         error instanceof ApiError ? error.message : '아이디 중복 확인에 실패했습니다.',
       );
+      setLoginIdAvailable(false);
       return false;
     }
   }
@@ -60,8 +65,15 @@ export function SignupPage() {
       return;
     }
 
-    if (!validatePassword()) return;
-    if (!(await validateLoginId())) return;
+    if (!validatePassword()) {
+      setErrorMessage('비밀번호 형식을 확인해 주세요.');
+      return;
+    }
+
+    if (!(await validateLoginId())) {
+      setErrorMessage('아이디를 확인해 주세요.');
+      return;
+    }
 
     try {
       await signup.mutateAsync({
@@ -111,11 +123,17 @@ export function SignupPage() {
             onChange={(event) => {
               setLoginId(event.target.value);
               setLoginIdMessage('');
+              setLoginIdAvailable(null);
             }}
             onBlur={() => void validateLoginId()}
+            invalid={loginIdAvailable === false}
             required
           />
-          {loginIdMessage && <p className={styles.fieldMessage}>{loginIdMessage}</p>}
+          {loginIdMessage && (
+            <p className={loginIdAvailable === false ? styles.fieldError : styles.fieldMessage}>
+              {loginIdMessage}
+            </p>
+          )}
 
           <label className={styles.label} htmlFor="signup-pw">
             비밀번호
