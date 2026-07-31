@@ -2798,22 +2798,22 @@ multipart/form-data
 
 ## 17. MVP 필수 API 요약
 
-| 구분        | API                                                                                                     |
-| ----------- | ------------------------------------------------------------------------------------------------------- |
+| 구분        | API                                                                                                                                  |
+| ----------- |--------------------------------------------------------------------------------------------------------------------------------------|
 | 사용자 세션 | POST /user-sessions, GET /user-sessions/{userSessionId}, PATCH /user-sessions/{userSessionId}, DELETE /user-sessions/{userSessionId} |
-| 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                   |
-| 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                    |
-| 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits     |
-| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                       |
-| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                       |
-| 외부 지도   | POST /external-maps/directions                                                                          |
-| 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                   |
-| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}        |
-| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                           |
-| 상담자      | GET /counselor/consultations, POST /consultations/{id}/accept, GET /counselors/me, PATCH /counselors/me |
-| WebRTC      | WS /ws/signaling                                                                                        |
-| 교통카드    | POST /transport-cards/recommend                                                                         |
-| 관리자      | 관리자 데이터 등록 API 전체 구현                                                                        |
+| 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                                                |
+| 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                                                 |
+| 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits                                  |
+| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                                                    |
+| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                                                    |
+| 외부 지도   | POST /external-maps/directions                                                                                                       |
+| 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                                                |
+| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}                                     |
+| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                                                        |
+| 상담자      | GET /counselors/consultations, POST /consultations/{id}/accept, GET /counselors/me, PATCH /counselors/me                             |
+| WebRTC      | WS /ws/signaling                                                                                                                     |
+| 교통카드    | POST /transport-cards/recommend                                                                                                      |
+| 관리자      | 관리자 데이터 등록 API 전체 구현                                                                                                                 |
 
 ---
 
