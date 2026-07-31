@@ -1,7 +1,7 @@
 # WebRTC Signaling 이벤트 명세서
 
 > 최신화: 2026-07-30
-> 구현 상태: Backend WebSocket relay와 envelope 검증은 구현됨. Frontend PeerConnection 연동과 상담 도메인 기반 session 권한 검증은 미완료다.
+> 구현 상태: Backend WebSocket relay, envelope 검증, 상담 상태 기반 JOIN 검증은 구현됨. Frontend PeerConnection 연동과 WebSocket 참여자 본인 검증은 진행 중이다.
 
 ## 1. 목적
 
@@ -16,16 +16,49 @@ REST API는 Swagger와 `docs/API_명세서.md`를 기준으로 관리하고, Web
 ### Local
 
 ```text
-ws://localhost:8080/ws/signaling
+ws://localhost:8080/ws/signaling?token={signalingAccessToken}
 ```
 
 ### Production
 
 ```text
-wss://{service-domain}/ws/signaling
+wss://{service-domain}/ws/signaling?token={signalingAccessToken}
 ```
 
 운영 환경에서는 HTTPS reverse proxy를 통해 `/ws/` 요청이 backend로 전달된다.
+
+### ICE 서버 설정
+
+Frontend는 `RTCPeerConnection` 생성 전에 `GET /api/webrtc/ice-servers?token={signalingAccessToken}`를 호출해 ICE server 설정을 조회한다. Backend는 STUN 기본값을 제공하며, TURN URL과 credential은 운영 환경변수로 주입된 경우에만 응답에 포함한다. ICE 설정 조회에는 계정 JWT 대신 상담별 `signalingAccessToken`이 필요하다.
+
+```json
+{
+  "iceServers": [
+    {
+      "urls": ["stun:stun.l.google.com:19302"]
+    }
+  ]
+}
+```
+
+### 인증
+
+WebSocket handshake에는 상담별 `signalingAccessToken`을 전달한다. 브라우저 표준 `WebSocket` API는 커스텀 header 지정이 제한되므로 query parameter 전달을 기본 방식으로 사용한다. header 지정이 가능한 클라이언트는 `Authorization: Bearer {signalingAccessToken}`도 사용할 수 있다.
+
+`signalingAccessToken`은 상담별 단기 토큰이며, payload는 아래 정보를 포함한다.
+
+| 필드 | 설명 |
+| --- | --- |
+| `consultationId` | 참여할 상담 ID |
+| `tokenType` | signaling 전용 토큰 식별값. 값은 `SIGNALING` |
+| `senderType` | `USER` 또는 `COUNSELOR` |
+| `userSessionId` | USER 토큰에 포함되는 익명 사용자 세션 ID |
+| `accountId` | COUNSELOR 토큰에 포함되는 상담자 계정 ID |
+| `exp` | 만료 시각 |
+
+Backend는 handshake에서 토큰을 검증해 WebSocket session attributes에 참여자 정보를 저장한다. 토큰이 누락되었거나 만료·변조·형식 오류가 있으면 `401 Unauthorized`로 handshake를 거절하고 WebSocket 연결을 수립하지 않는다. `JOIN` 시에는 token payload와 message의 `sessionId`, `senderType`, 상담 session의 `userSessionId` 또는 `counselorId`가 일치하는지 확인한 뒤 room에 등록한다.
+
+WebSocket handshake 허용 Origin은 `SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS` 환경변수로 설정한다. 기본값은 local 개발 origin과 운영 서비스 도메인만 허용한다.
 
 ---
 
@@ -96,7 +129,7 @@ Backend는 SDP와 ICE candidate 내용을 해석하거나 수정하지 않는다
 
 room에 입장할 때 전송한다.
 
-Backend는 `JOIN` 요청을 받은 뒤 signaling session 검증을 먼저 수행한다. 검증에 실패하면 room에 등록하지 않고 `ERROR` 메시지를 응답한다.
+Backend는 `JOIN` 요청을 받은 뒤 signaling session 검증을 먼저 수행한다. `sessionId`는 `room_{consultationId}` 형식이어야 하며, 해당 상담이 `ACCEPTED` 또는 `IN_PROGRESS` 상태일 때만 room에 등록된다. 검증에 실패하면 room에 등록하지 않고 `ERROR` 메시지를 응답한다.
 
 ```json
 {
@@ -247,11 +280,9 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 | 코드 | 설명 | retryable | 현재 구현 |
 | --- | --- | --- | --- |
 | `INVALID_SIGNALING_MESSAGE` | JSON 형식, 필수 필드, enum 값이 잘못됨 | false | Y |
-| `INVALID_SIGNALING_SESSION` | signaling session 검증에 실패함 | false | Y |
+| `INVALID_SIGNALING_SESSION` | signaling session 검증에 실패함. `SESSION_NOT_ACCEPTED` 성격의 오류만 retryable=true로 응답한다. | false 또는 true | Y |
 | `SIGNALING_SESSION_NOT_JOINED` | `JOIN`하지 않은 WebSocket session이 relay 메시지를 보냄 | false | Y |
 | `SIGNALING_PEER_NOT_CONNECTED` | 상대방이 아직 연결되지 않음 | true | Y |
-| `SIGNALING_SESSION_NOT_FOUND` | 존재하지 않는 sessionId | false | N |
-| `SIGNALING_SESSION_CLOSED` | 이미 종료된 session | false | N |
 | `SIGNALING_ROOM_FULL` | 사용자와 상담자가 이미 모두 입장한 room | false | N |
 | `SIGNALING_INTERNAL_ERROR` | 서버 내부 오류 | true | Y |
 
@@ -260,17 +291,24 @@ Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한�
 ## 9. Session 규칙
 
 - `sessionId`는 상담 요청이 수락되거나 상담 room이 생성될 때 서버가 발급한다.
+- `sessionId`는 `room_{consultationId}` 형식이어야 한다.
 - `JOIN`은 signaling session 검증을 통과한 경우에만 room 등록으로 이어진다.
+- 존재하지 않는 상담 session은 `INVALID_SIGNALING_SESSION` 오류를 응답한다.
+- `WAITING` 상태의 상담 session은 아직 수락되지 않았으므로 `INVALID_SIGNALING_SESSION` 오류와 `retryable=true`를 응답한다.
+- `ENDED`, `CANCELED`, `REJECTED`, `FAILED` 상태의 상담 session은 닫힌 session으로 판단하여 `INVALID_SIGNALING_SESSION` 오류와 `retryable=false`를 응답한다.
 - 하나의 `sessionId`에는 기본적으로 `USER` 1명과 `COUNSELOR` 1명만 입장할 수 있다.
 - 동일 `sessionId`에서 같은 `senderType`이 다시 `JOIN`하면 현재 WebSocket session으로 교체된다.
 - `OFFER`, `ANSWER`, `ICE_CANDIDATE`는 동일한 `sessionId`와 `senderType`으로 `JOIN`된 WebSocket session에서 보낸 경우에만 relay된다.
 - `LEAVE` 또는 비정상 연결 종료 시 Backend는 room cleanup을 수행한다.
+- 상담 종료 API가 성공하면 Backend는 해당 signaling room을 즉시 제거하고, room에 남아 있는 WebSocket session을 `4400 Signaling Room Closed`로 종료한다.
+- 상담 수락 API가 성공하면 상담자 상태는 `BUSY`가 되며, 상담 종료 API가 성공하면 `AVAILABLE`로 복귀한다.
 - `JOIN`, `OFFER`, `ANSWER`, `ICE_CANDIDATE` relay 과정에서 room의 마지막 활동 시각을 갱신한다.
 - 마지막 활동 시각 기준으로 만료 시간이 지난 room은 Backend scheduler가 주기적으로 제거한다.
-- 만료 room 제거 시 room에 남아 있는 WebSocket session은 서버에서 close 처리한다.
+- 만료 room 제거 시 room에 남아 있는 WebSocket session은 `4408 Signaling Room Expired`로 종료한다.
 - 현재 구현은 인메모리 room registry 기준이다. 서버 재시작 시 room 정보는 유지되지 않는다.
-- 현재 signaling session validator 기본 구현은 모든 session을 허용한다. 상담 session 존재 여부, 수락 상태, 종료 session, 참여자 권한 검증은 상담 상태 도메인 연동 시 구체 구현으로 교체한다.
-- Backend의 현재 검증 범위는 공통 envelope와 enum·JOIN 상태까지다. SDP와 ICE candidate payload 내부 값은 relay 서버가 검증하지 않는다.
+- Backend의 현재 JOIN 검증 범위는 session ID 형식, 상담 session 존재 여부, 상담 상태, `SYSTEM` sender 차단이다.
+- USER의 `userSessionId`와 COUNSELOR의 `accountId`는 WebSocket handshake에서 검증한 `signalingAccessToken` payload와 상담 session 정보를 대조해 검증한다.
+- SDP와 ICE candidate payload 내부 값은 relay 서버가 검증하지 않는다.
 
 ---
 

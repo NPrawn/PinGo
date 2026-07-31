@@ -2,21 +2,25 @@ package com.pingo.backend.consultation.service;
 
 import com.pingo.backend.auth.domain.Account;
 import com.pingo.backend.auth.domain.AccountType;
+import com.pingo.backend.auth.domain.CounselorStatus;
 import com.pingo.backend.auth.repository.AccountRepository;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
+import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
 import com.pingo.backend.usersession.repository.UserSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +36,8 @@ public class ConsultationSessionService {
     private final StationRepository stationRepository;
     private final AccountRepository accountRepository;
     private final ConsultationWaitingEventPublisher consultationWaitingEventPublisher;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final SignalingAccessTokenProvider signalingAccessTokenProvider;
     private static final List<ConsultationStatus> ACTIVE_STATUSES =
             List.of(ConsultationStatus.WAITING, ConsultationStatus.ACCEPTED, ConsultationStatus.IN_PROGRESS);
 
@@ -73,7 +79,7 @@ public class ConsultationSessionService {
         ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
         validateOwner(session, userSessionId);
-        return ConsultationResponse.from(session);
+        return ConsultationResponse.from(session, createUserSignalingAccessToken(session));
     }
 
     @Transactional
@@ -90,11 +96,6 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationAcceptResponse accept(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
-
-        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
-
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
@@ -102,24 +103,27 @@ public class ConsultationSessionService {
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_ACCEPTABLE);
         }
 
+        Account counselor = findStationCounselorForUpdate(counselorAccountId, session.getStationId());
+        if(counselor.getStatus() != CounselorStatus.AVAILABLE){
+            throw new BusinessException(ErrorCode.COUNSELOR_NOT_AVAILABLE);
+        }
+
         session.accept(counselor.getAccountId());
+        counselor.changeStatus(CounselorStatus.BUSY);
         consultationWaitingEventPublisher.publishAccepted(session.getConsultationId(), session.getSignalingRoomId());
-        return ConsultationAcceptResponse.from(session);
+        return ConsultationAcceptResponse.from(session, createCounselorSignalingAccessToken(session));
     }
 
     @Transactional
     public ConsultationRejectResponse reject(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession existingSession = consultationSessionRepository.findById(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
-
-        Account counselor = findStationCounselor(counselorAccountId, existingSession.getStationId());
-
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
         if(session.getStatus() != ConsultationStatus.WAITING){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_REJECTABLE);
         }
+
+        Account counselor = findStationCounselor(counselorAccountId, session.getStationId());
 
         session.reject();
         log.info("상담 거절 처리 - consultationId={}, rejectedBy={}", session.getConsultationId(), counselor.getAccountId());
@@ -149,20 +153,29 @@ public class ConsultationSessionService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 
-        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
+        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
-
-        if ("counselor".equals(request.endedBy())) {
-            findStationCounselor(accountId, session.getStationId());
-        } else {
-            validateOwner(session, request.userSessionId());
-        }
 
         if (session.getStatus() != ConsultationStatus.ACCEPTED && session.getStatus() != ConsultationStatus.IN_PROGRESS) {
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
         }
 
+        if ("counselor".equals(request.endedBy())) {
+            Account counselor = findStationCounselorForUpdate(accountId, session.getStationId());
+            if (!counselor.getAccountId().equals(session.getCounselorId())) {
+                throw new BusinessException(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+            }
+            counselor.changeStatus(CounselorStatus.AVAILABLE);
+        } else {
+            validateOwner(session, request.userSessionId());
+            accountRepository.findByIdForUpdate(session.getCounselorId())
+                    .ifPresent(counselor -> counselor.changeStatus(CounselorStatus.AVAILABLE));
+        }
+
+        String signalingRoomId = session.getSignalingRoomId();
         session.end();
+        applicationEventPublisher.publishEvent(new ConsultationEndedEvent(session.getConsultationId(), signalingRoomId));
+        log.info("상담 종료 처리 - consultationId={}, endedBy={}", session.getConsultationId(), request.endedBy());
         return ConsultationEndResponse.from(session);
     }
 
@@ -187,6 +200,46 @@ public class ConsultationSessionService {
             throw new BusinessException(ErrorCode.CONSULTATION_STATION_MISMATCH);
         }
         return counselor;
+    }
+
+    private Account findStationCounselorForUpdate(Long counselorAccountId, Long stationId){
+        Account counselor = accountRepository.findByIdForUpdate(counselorAccountId)
+                .filter(account -> account.getAccountType() == AccountType.COUNSELOR)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
+
+        validateStationCounselor(counselor, stationId);
+        return counselor;
+    }
+
+    private void validateStationCounselor(Account counselor, Long stationId){
+        if(!counselor.isActive()){
+            throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
+        }
+        if(!stationId.equals(counselor.getStationId())){
+            throw new BusinessException(ErrorCode.CONSULTATION_STATION_MISMATCH);
+        }
+    }
+
+    private String createUserSignalingAccessToken(ConsultationSession session) {
+        if (session.getSignalingRoomId() == null) {
+            return null;
+        }
+
+        return signalingAccessTokenProvider.createUserToken(
+                session.getConsultationId(),
+                session.getUserSessionId()
+        );
+    }
+
+    private String createCounselorSignalingAccessToken(ConsultationSession session) {
+        if (session.getSignalingRoomId() == null || session.getCounselorId() == null) {
+            return null;
+        }
+
+        return signalingAccessTokenProvider.createCounselorToken(
+                session.getConsultationId(),
+                session.getCounselorId()
+        );
     }
 
     private void validateDestination(String destinationType, Long destinationId){

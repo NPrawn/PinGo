@@ -81,6 +81,9 @@ public class Account {
 
     public void approve(){
         this.isActive = true;
+        if (this.accountType == AccountType.COUNSELOR && this.status == null) {
+            this.status = CounselorStatus.AVAILABLE;
+        }
     }
 
     public void deactivate(){
