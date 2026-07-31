@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { RouteOptionId } from './routeOptions';
 import type { RouteResponse } from '@/shared/api';
 
@@ -63,44 +64,10 @@ type NavigationStore = {
  * Crosses pages: destination search sets the target, the route screen picks a
  * strategy, and the navigation and arrival screens read both.
  */
-export const useNavigationStore = create<NavigationStore>((set) => ({
-  destination: null,
-  destinationId: null,
-  destinationType: null,
-  destinationLatitude: null,
-  destinationLongitude: null,
-  destinationAddress: null,
-  externalOriginName: null,
-  externalOriginLatitude: null,
-  externalOriginLongitude: null,
-  targetNodeId: null,
-  currentNodeId: null,
-  currentFloorId: null,
-  currentLocationLabel: null,
-  currentMapX: null,
-  currentMapY: null,
-  routeResult: null,
-  route: 'fast',
-  stepsOpen: false,
-  waypoints: [],
-  startNewJourney: (destination, details) =>
-    set({
-      destination,
-      destinationId: details?.destinationId ?? null,
-      destinationType: details?.destinationType ?? null,
-      destinationLatitude: details?.destinationLatitude ?? null,
-      destinationLongitude: details?.destinationLongitude ?? null,
-      destinationAddress: details?.destinationAddress ?? null,
-      externalOriginName: details?.externalOriginName ?? null,
-      externalOriginLatitude: details?.externalOriginLatitude ?? null,
-      externalOriginLongitude: details?.externalOriginLongitude ?? null,
-      targetNodeId: details?.targetNodeId ?? null,
-      routeResult: null,
-      waypoints: [],
-    }),
-  setDestination: (destination) =>
-    set({
-      destination,
+export const useNavigationStore = create<NavigationStore>()(
+  persist(
+    (set) => ({
+      destination: null,
       destinationId: null,
       destinationType: null,
       destinationLatitude: null,
@@ -110,29 +77,71 @@ export const useNavigationStore = create<NavigationStore>((set) => ({
       externalOriginLatitude: null,
       externalOriginLongitude: null,
       targetNodeId: null,
+      currentNodeId: null,
+      currentFloorId: null,
+      currentLocationLabel: null,
+      currentMapX: null,
+      currentMapY: null,
       routeResult: null,
-    }),
-  setCurrentLocation: (location) =>
-    set({
-      currentNodeId: location.nodeId,
-      currentFloorId: location.floorId,
-      currentLocationLabel: location.label ?? null,
-      currentMapX: location.mapX ?? null,
-      currentMapY: location.mapY ?? null,
-      routeResult: null,
-    }),
-  setRoute: (route) => set({ route }),
-  setRouteResult: (routeResult) => set({ routeResult }),
-  addWaypoint: (waypoint) =>
-    set((state) => {
-      if (state.waypoints.includes(waypoint) || state.waypoints.length >= 2) {
-        return state;
-      }
+      route: 'fast',
+      stepsOpen: false,
+      waypoints: [],
+      startNewJourney: (destination, details) =>
+        set({
+          destination,
+          destinationId: details?.destinationId ?? null,
+          destinationType: details?.destinationType ?? null,
+          destinationLatitude: details?.destinationLatitude ?? null,
+          destinationLongitude: details?.destinationLongitude ?? null,
+          destinationAddress: details?.destinationAddress ?? null,
+          externalOriginName: details?.externalOriginName ?? null,
+          externalOriginLatitude: details?.externalOriginLatitude ?? null,
+          externalOriginLongitude: details?.externalOriginLongitude ?? null,
+          targetNodeId: details?.targetNodeId ?? null,
+          routeResult: null,
+          waypoints: [],
+        }),
+      setDestination: (destination) =>
+        set({
+          destination,
+          destinationId: null,
+          destinationType: null,
+          destinationLatitude: null,
+          destinationLongitude: null,
+          destinationAddress: null,
+          externalOriginName: null,
+          externalOriginLatitude: null,
+          externalOriginLongitude: null,
+          targetNodeId: null,
+          routeResult: null,
+        }),
+      setCurrentLocation: (location) =>
+        set({
+          currentNodeId: location.nodeId,
+          currentFloorId: location.floorId,
+          currentLocationLabel: location.label ?? null,
+          currentMapX: location.mapX ?? null,
+          currentMapY: location.mapY ?? null,
+          routeResult: null,
+        }),
+      setRoute: (route) => set({ route }),
+      setRouteResult: (routeResult) => set({ routeResult }),
+      addWaypoint: (waypoint) =>
+        set((state) => {
+          if (state.waypoints.includes(waypoint) || state.waypoints.length >= 2) {
+            return state;
+          }
 
-      return { waypoints: [...state.waypoints, waypoint] };
+          return { waypoints: [...state.waypoints, waypoint] };
+        }),
+      removeWaypoint: (waypoint) =>
+        set((state) => ({ waypoints: state.waypoints.filter((item) => item !== waypoint) })),
+      clearWaypoints: () => set({ waypoints: [] }),
+      toggleSteps: () => set((state) => ({ stepsOpen: !state.stepsOpen })),
     }),
-  removeWaypoint: (waypoint) =>
-    set((state) => ({ waypoints: state.waypoints.filter((item) => item !== waypoint) })),
-  clearWaypoints: () => set({ waypoints: [] }),
-  toggleSteps: () => set((state) => ({ stepsOpen: !state.stepsOpen })),
-}));
+    {
+      name: 'pingo.navigation',
+      storage: createJSONStorage(() => sessionStorage),
+    },
+  ),
+);

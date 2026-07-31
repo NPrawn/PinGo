@@ -84,7 +84,7 @@ function toDisplayOption(option: RouteOptionResponse): DisplayOption {
 export function RouteOptionsPage() {
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
-  const destination = useNavigationStore((state) => state.destination) ?? '목적지';
+  const destination = useNavigationStore((state) => state.destination);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
@@ -147,7 +147,7 @@ export function RouteOptionsPage() {
                 <span className={`${styles.pointDot} ${styles.pointDotDestination}`} aria-hidden />
                 <small>목적지</small>
               </span>
-              <strong>{destination}</strong>
+              <strong>{destination ?? '미선택'}</strong>
             </div>
           </div>
 
@@ -186,11 +186,17 @@ export function RouteOptionsPage() {
           </div>
 
           {!canCalculate && (
-            <p role="alert">
-              현재 위치 또는 목적지의 경로 노드가 없습니다. 위치를 다시 지정해 주세요.
+            <p role="alert" className={styles.routeAlert}>
+              {destination
+                ? '경로 노드가 없어 위치를 다시 지정해 주세요.'
+                : '목적지를 먼저 선택해 주세요.'}
             </p>
           )}
-          {optionsQuery.isError && <p role="alert">경로 옵션을 불러오지 못했습니다.</p>}
+          {optionsQuery.isError && (
+            <p role="alert" className={styles.routeAlert}>
+              경로 옵션을 불러오지 못했습니다.
+            </p>
+          )}
 
           <div className={styles.optionList} aria-label="경로 선택 목록">
             {options.map((option) => {
@@ -223,7 +229,9 @@ export function RouteOptionsPage() {
                     <span className={styles.optionRoute}>
                       <strong className={styles.optionExit}>{option.exit}</strong>
                       <Icon name="arrow-right" size={14} className={styles.optionArrow} />
-                      <strong className={styles.optionDestination}>{destination}</strong>
+                      <strong className={styles.optionDestination}>
+                        {destination ?? '목적지 미선택'}
+                      </strong>
                     </span>
                   </span>
                 </SelectRow>
@@ -232,7 +240,9 @@ export function RouteOptionsPage() {
           </div>
 
           <div className={styles.cta}>
-            {selectedOption ? (
+            {!destination ? (
+              <ButtonLink to={USER_ROUTES.STATION}>출발지·목적지 다시 선택</ButtonLink>
+            ) : selectedOption ? (
               <ButtonLink to={USER_ROUTES.NAVIGATION}>
                 {selectedOption.exit} 길 안내 시작
               </ButtonLink>
