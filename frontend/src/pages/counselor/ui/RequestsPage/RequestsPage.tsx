@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,6 +20,17 @@ const STATUS_CLASS: Record<string, string> = {
   CANCELED: styles.badgeMuted,
   REJECTED: styles.badgeMuted,
   FAILED: styles.badgeMuted,
+};
+
+/** 대기 중 → 상담 중 → 종료 → 취소·거절 순으로 목록을 정렬한다. */
+const STATUS_ORDER: Record<string, number> = {
+  WAITING: 0,
+  ACCEPTED: 1,
+  IN_PROGRESS: 1,
+  ENDED: 2,
+  CANCELED: 3,
+  REJECTED: 3,
+  FAILED: 3,
 };
 
 function errorMessage(error: unknown) {
@@ -51,7 +62,15 @@ export function RequestsPage() {
     queryFn: () => getCounselorConsultations(),
     refetchInterval: 5000,
   });
-  const requests = queueQuery.data ?? [];
+  // 서버는 요청 시각 순으로 주므로, 상태별로만 다시 묶는다. sort는 안정 정렬이라
+  // 같은 상태 안에서는 오래 기다린 요청이 위에 남는다.
+  const requests = useMemo(
+    () =>
+      [...(queueQuery.data ?? [])].sort(
+        (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9),
+      ),
+    [queueQuery.data],
+  );
   const selected = requests.find((request) => request.consultationId === selectedId) ?? requests[0];
 
   const acceptMutation = useMutation({
