@@ -46,6 +46,7 @@ public enum ErrorCode {
     PLACE_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_NOT_FOUND", "주변 장소를 찾을 수 없습니다."),
     EXIT_RECOMMENDATION_NOT_FOUND(HttpStatus.NOT_FOUND, "EXIT_RECOMMENDATION_NOT_FOUND", "장소-출구 추천을 찾을 수 없습니다."),
     DUPLICATE_EXIT_RECOMMENDATION(HttpStatus.CONFLICT, "DUPLICATE_EXIT_RECOMMENDATION", "이미 등록된 장소-출구 추천입니다."),
+    EXIT_LOCATION_NOT_FOUND(HttpStatus.NOT_FOUND, "EXIT_LOCATION_NOT_FOUND", "외부 좌표가 등록된 출구를 찾을 수 없습니다."),
 
     // 지도,파일
     INVALID_MAP_FILE(HttpStatus.BAD_REQUEST, "INVALID_MAP_FILE", "지도 파일이 비어 있거나 올바르지 않습니다."),
@@ -53,6 +54,7 @@ public enum ErrorCode {
     INCOMPLETE_COORDINATE_FRAME(HttpStatus.BAD_REQUEST, "INCOMPLETE_COORDINATE_FRAME", "좌표 프레임은 축척·원점 X·원점 Y·회전각을 모두 함께 지정해야 합니다."),
     COORDINATE_FRAME_WOULD_BE_LOST(HttpStatus.BAD_REQUEST, "COORDINATE_FRAME_WOULD_BE_LOST", "기존 지도에 좌표 프레임이 있습니다. 새 이미지 기준으로 좌표 프레임을 함께 지정해 주세요."),
     FILE_STORAGE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_STORAGE_FAILED", "파일 저장에 실패했습니다."),
+    EXTERNAL_PLACE_SEARCH_FAILED(HttpStatus.BAD_GATEWAY, "EXTERNAL_PLACE_SEARCH_FAILED", "외부 장소 검색에 실패했습니다."),
 
 
     // 경로 
