@@ -1672,7 +1672,7 @@ Event Name: `DATA_CHANNEL`
 
 ## 11.2 상담 요청 목록 조회
 
-### GET `/counselor/consultations`
+### GET `/counselors/consultations`
 
 상담자가 담당 역의 상담 요청 목록을 조회한다.
 
@@ -1709,8 +1709,51 @@ Authorization: Bearer {accessToken}
 ```
 
 ---
+## 11.3 상담 요청 상세 조회
 
-## 11.3 상담 수락
+### GET `/counselors/consultations/{consultationId}`
+
+상담자가 담당 역의 상담 요청 상세를 조회한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+#### Response
+
+```json
+{
+"success": true,
+"data": {
+"consultationId": "cs_abc123",
+"stationId": 1,
+"problemType": "CANNOT_FIND_EXIT",
+"status": "ACCEPTED",
+"currentLocationLabel": "B2 개찰구 앞",
+"destinationLabel": "COEX Mall",
+"videoConsent": true,
+"audioConsent": true,
+"requestedAt": "2026-07-16T03:00:00Z",
+"signalingRoomId": "room_cs_abc123",
+"signalingAccessToken": "signaling-token"
+},
+"message": null
+}
+```
+
+`signalingRoomId`/`signalingAccessToken`은 상담이 `ACCEPTED`/`IN_PROGRESS`이고 **조회한 상담자가 실제로 배정된 상담자 본인일 때만** 값이 채워진다. 같은 역의 다른 상담자가 조회하면 나머지 필드(상태·문제유형 등)는 그대로 보이되 두 필드는 `null`로 반환된다 — 통화 참여 자격증명을 배정자 본인에게만 한정하기 위함이다.
+
+#### Error
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
+| 담당 역 상담자가 아님 | 403 | `CONSULTATION_STATION_MISMATCH` |
+
+--- 
+## 11.4 상담 수락
 
 ### POST `/consultations/{consultationId}/accept`
 
@@ -1741,7 +1784,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.4 상담 거절
+## 11.5 상담 거절
 
 ### POST `/consultations/{consultationId}/reject`
 
@@ -1762,7 +1805,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.5 상담 종료
+## 11.6 상담 종료
 
 ### POST `/consultations/{consultationId}/end`
 
@@ -1803,7 +1846,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.6 상담자 본인 계정 조회
+## 11.7 상담자 본인 계정 조회
 
 ### GET `/counselors/me`
 
@@ -1835,7 +1878,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.7 상담자 본인 계정 수정
+## 11.8 상담자 본인 계정 수정
 
 ### PATCH `/counselors/me`
 
@@ -2755,22 +2798,22 @@ multipart/form-data
 
 ## 17. MVP 필수 API 요약
 
-| 구분        | API                                                                                                     |
-| ----------- | ------------------------------------------------------------------------------------------------------- |
+| 구분        | API                                                                                                                                  |
+| ----------- |--------------------------------------------------------------------------------------------------------------------------------------|
 | 사용자 세션 | POST /user-sessions, GET /user-sessions/{userSessionId}, PATCH /user-sessions/{userSessionId}, DELETE /user-sessions/{userSessionId} |
-| 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                   |
-| 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                    |
-| 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits     |
-| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                       |
-| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                       |
-| 외부 지도   | POST /external-maps/directions                                                                          |
-| 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                   |
-| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}        |
-| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                           |
-| 상담자      | GET /counselor/consultations, POST /consultations/{id}/accept, GET /counselors/me, PATCH /counselors/me |
-| WebRTC      | WS /ws/signaling                                                                                        |
-| 교통카드    | POST /transport-cards/recommend                                                                         |
-| 관리자      | 관리자 데이터 등록 API 전체 구현                                                                        |
+| 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                                                |
+| 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                                                 |
+| 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits                                  |
+| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                                                    |
+| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                                                    |
+| 외부 지도   | POST /external-maps/directions                                                                                                       |
+| 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                                                |
+| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}                                     |
+| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                                                        |
+| 상담자      | GET /counselors/consultations, POST /consultations/{id}/accept, GET /counselors/me, PATCH /counselors/me                             |
+| WebRTC      | WS /ws/signaling                                                                                                                     |
+| 교통카드    | POST /transport-cards/recommend                                                                                                      |
+| 관리자      | 관리자 데이터 등록 API 전체 구현                                                                                                                 |
 
 ---
 
