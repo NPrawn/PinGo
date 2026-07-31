@@ -23,6 +23,8 @@ export const ICON_NAMES = [
   'door',
   'elevator',
   'eraser',
+  'eye',
+  'eye-off',
   'flag',
   'gear',
   'globe',
