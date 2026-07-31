@@ -50,6 +50,9 @@ public class FloorMapService {
                 request.width(),
                 request.height(),
                 request.scaleMPerPx(),
+                request.originPxX(),
+                request.originPxY(),
+                request.frameAngleDeg(),
                 nextVersion(floorId)
         );
 

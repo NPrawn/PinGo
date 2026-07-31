@@ -169,7 +169,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | map_id | bigint | 지도 ID | PK |
 | floor_id | bigint | 층 ID | FK station_floor.floor_id |
 | map_type | varchar | 지도 유형 | image, svg 등 |
-| map_url | varchar | 지도 파일 URL | not null |
+| map_url | varchar | 지도 파일 URL. NULL이면 클라이언트가 자체 이미지 사용 | nullable |
 | width | int | 원본 지도 너비 | nullable |
 | height | int | 원본 지도 높이 | nullable |
 | scale_m_per_px | decimal | 픽셀당 실제 거리 | nullable |
