@@ -61,3 +61,8 @@
   font-size: 11px;
   color: var(--color-sub);
 }
+
+.fieldError {
+  composes: fieldMessage;
+  color: #b42318;
+}

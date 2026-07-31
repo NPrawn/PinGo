@@ -3,8 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { checkLoginId, useSignup } from '@/features/console-auth';
 import { ApiError } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { BackLink, Button, DesktopWindow, Field } from '@/shared/ui';
+import { BackLink, Button, DesktopWindow, Field, PasswordField } from '@/shared/ui';
 import styles from './SignupPage.module.css';
+
+/** Mirrors the server-side rule in `SignupRequest.password`. */
+const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,20}$/;
+const PASSWORD_HINT = '영문·숫자·특수문자를 각각 포함해 8~20자로 입력해 주세요.';
 
 export function SignupPage() {
   const navigate = useNavigate();
@@ -15,6 +19,17 @@ export function SignupPage() {
   const [stationId, setStationId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loginIdMessage, setLoginIdMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  function validatePassword() {
+    if (!PASSWORD_PATTERN.test(password)) {
+      setPasswordError(PASSWORD_HINT);
+      return false;
+    }
+
+    setPasswordError('');
+    return true;
+  }
 
   async function validateLoginId() {
     const normalizedLoginId = loginId.trim();
@@ -45,6 +60,7 @@ export function SignupPage() {
       return;
     }
 
+    if (!validatePassword()) return;
     if (!(await validateLoginId())) return;
 
     try {
@@ -104,15 +120,28 @@ export function SignupPage() {
           <label className={styles.label} htmlFor="signup-pw">
             비밀번호
           </label>
-          <Field
+          <PasswordField
             id="signup-pw"
             className={styles.field}
-            type="password"
             placeholder="비밀번호"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              setPasswordError('');
+            }}
+            onBlur={() => {
+              validatePassword();
+            }}
+            aria-describedby="signup-pw-hint"
+            invalid={Boolean(passwordError)}
             required
           />
+          <p
+            id="signup-pw-hint"
+            className={passwordError ? styles.fieldError : styles.fieldMessage}
+          >
+            {passwordError || PASSWORD_HINT}
+          </p>
 
           <label className={styles.label} htmlFor="signup-station">
             담당 역 ID
