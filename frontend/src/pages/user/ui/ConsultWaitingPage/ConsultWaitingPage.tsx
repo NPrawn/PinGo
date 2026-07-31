@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
 import {
+  ApiError,
   cancelConsultation,
   getConsultation,
   subscribeToConsultationWaitingEvents,
@@ -32,18 +33,30 @@ export function ConsultWaitingPage() {
   const navigate = useNavigate();
   const consultationId = useConsultStore((state) => state.consultationId);
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const clearConsultation = useConsultStore((state) => state.clearConsultation);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const [statusMessage, setStatusMessage] = useState('잠시만 기다려 주세요 · 평균 30초 소요');
 
   useEffect(() => {
     if (!consultationId || !userSessionId) return;
 
-    void getConsultation(consultationId, userSessionId).then((consultation) => {
-      if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
-        setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
-        void navigate(USER_ROUTES.CONSULT_SESSION);
-      }
-    });
+    void getConsultation(consultationId, userSessionId)
+      .then((consultation) => {
+        if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
+          setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
+          void navigate(USER_ROUTES.CONSULT_SESSION);
+          return;
+        }
+        // 세션에 남아 있던 옛 요청이면 대기할 것이 없다.
+        if (consultation.status && consultation.status !== 'WAITING') {
+          clearConsultation();
+          void navigate(USER_ROUTES.CONSULT_REQUEST);
+        }
+      })
+      .catch(() => {
+        clearConsultation();
+        void navigate(USER_ROUTES.CONSULT_REQUEST);
+      });
 
     const events = subscribeToConsultationWaitingEvents(consultationId);
     const handleAccepted = (event: MessageEvent<string>) => {
@@ -78,17 +91,35 @@ export function ConsultWaitingPage() {
     events.addEventListener('NO_COUNSELOR', handleUnavailable as EventListener);
 
     return () => events.close();
-  }, [consultationId, navigate, setSignalingRoom, userSessionId]);
+  }, [clearConsultation, consultationId, navigate, setSignalingRoom, userSessionId]);
+
+  const leaveWaiting = () => {
+    clearConsultation();
+    void navigate(USER_ROUTES.CONSULT_REQUEST);
+  };
 
   const cancel = async () => {
-    try {
-      if (consultationId && userSessionId) {
-        await cancelConsultation(consultationId, userSessionId);
-      }
-      void navigate(USER_ROUTES.CONSULT_REQUEST);
-    } catch {
-      setStatusMessage('상담 요청을 취소하지 못했습니다.');
+    if (!consultationId || !userSessionId) {
+      leaveWaiting();
+      return;
     }
+
+    try {
+      await cancelConsultation(consultationId, userSessionId);
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : undefined;
+      // 이미 취소·종료됐거나 찾을 수 없는 요청이면 대기 화면에 남을 이유가 없다.
+      const alreadyGone =
+        code === 'CONSULTATION_NOT_CANCELABLE' || code === 'CONSULTATION_NOT_FOUND';
+      if (!alreadyGone) {
+        setStatusMessage(
+          error instanceof ApiError ? error.message : '상담 요청을 취소하지 못했습니다.',
+        );
+        return;
+      }
+    }
+
+    leaveWaiting();
   };
 
   return (

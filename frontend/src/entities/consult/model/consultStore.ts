@@ -14,6 +14,8 @@ type ConsultStore = {
   rate: (score: number) => void;
   setConsultation: (consultationId: string) => void;
   setSignalingRoom: (signalingRoomId: string, signalingAccessToken?: string | null) => void;
+  /** 진행 중인 상담 정보만 비운다. 선택한 문의 유형은 유지한다. */
+  clearConsultation: () => void;
   reset: () => void;
 };
 
@@ -39,6 +41,8 @@ export const useConsultStore = create<ConsultStore>()(
       setConsultation: (consultationId) => set({ consultationId }),
       setSignalingRoom: (signalingRoomId, signalingAccessToken = null) =>
         set({ signalingRoomId, signalingAccessToken }),
+      clearConsultation: () =>
+        set({ consultationId: null, signalingRoomId: null, signalingAccessToken: null }),
       reset: () =>
         set({
           issue: null,
