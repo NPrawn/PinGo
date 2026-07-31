@@ -11,6 +11,7 @@ import {
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
 import { resolveAssetUrl } from '@/shared/config';
 import { MOCK_CURRENT_LOCATION, MOCK_DESTINATION, MOCK_PATH_NODES } from '../model/fixtures';
+import { useMapGestures } from '../model/useMapGestures';
 import { IndoorMapOverlay } from './IndoorMapOverlay';
 import styles from './IndoorMapView.module.css';
 
@@ -92,6 +93,14 @@ export function IndoorMapView({
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
+  // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
+  const {
+    ref: mapRef,
+    view: mapView,
+    reset: resetMapView,
+    isTransformed: mapTransformed,
+    handlers: mapHandlers,
+  } = useMapGestures();
   // 목업 모드에서는 목업 지도를 쓰므로 조회하지 않는다.
   const query = useStationFloorMaps(stationId, { enabled: !useMockData });
 
@@ -133,8 +142,17 @@ export function IndoorMapView({
   const planImageUrl = floorPlanImageUrl(floorMap);
 
   return (
-    <div className={styles.viewport}>
-      <div className={styles.stage}>
+    <div
+      className={styles.viewport}
+      ref={mapRef}
+      {...mapHandlers}
+    >
+      <div
+        className={styles.stage}
+        style={{
+          transform: `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.scale})`,
+        }}
+      >
         {/* 백엔드에 등록된 도면이 없으면 FE가 들고 있는 평면도로 떨어진다(localPlans).
             둘 다 없으면 img를 만들지 않는다 — 빈 src는 깨진 이미지로 보이고, 좌표 오버레이는
             프레임만으로 그려지므로 도면 그림이 없어도 마커 위치는 맞다. */}
@@ -162,6 +180,11 @@ export function IndoorMapView({
           onSelectFacility={onSelectFacility}
         />
       </div>
+      {mapTransformed && (
+        <button type="button" className={styles.resetView} onClick={resetMapView}>
+          {t('indoorMap.resetView')}
+        </button>
+      )}
     </div>
   );
 }
