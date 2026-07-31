@@ -89,6 +89,41 @@ proxy_set_header Connection $connection_upgrade;
 
 운영 환경에서 HTTPS 인증서가 적용되면 브라우저는 `wss://` 주소로 WebSocket에 연결한다.
 
+## 운영 CORS 설정
+
+백엔드는 API CORS 허용 Origin을 `APP_CORS_ALLOWED_ORIGINS` 환경변수로 설정한다. WebSocket handshake 허용 Origin은 `SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS`로 별도 관리한다. 여러 Origin은 쉼표로 구분한다.
+
+```bash
+APP_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://jenkins.example.invalid
+SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS=http://localhost:5173,http://127.0.0.1:5173,https://jenkins.example.invalid
+```
+
+운영 서버에서는 `/opt/pingo/backend/config/pingo-backend.env`에 값을 반영한 뒤 백엔드 서비스를 재시작한다.
+
+```bash
+sudo vi /opt/pingo/backend/config/pingo-backend.env
+sudo systemctl restart pingo-backend
+sudo systemctl status pingo-backend --no-pager
+```
+
+배포 후에는 브라우저 호출 전에 preflight 응답을 먼저 확인한다.
+
+```bash
+curl -i -X OPTIONS "https://jenkins.example.invalid/api/webrtc/ice-servers" \
+  -H "Origin: https://jenkins.example.invalid" \
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: Authorization"
+```
+
+응답 헤더에 아래 값이 포함되면 운영 Origin이 허용된 상태다.
+
+```text
+Access-Control-Allow-Origin: https://jenkins.example.invalid
+Access-Control-Allow-Credentials: true
+```
+
+인증 쿠키나 Authorization 헤더를 포함하는 요청을 허용하므로 운영 설정에서는 `*` 대신 실제 Frontend Origin을 명시한다.
+
 ## HTTPS 적용 기준
 
 운영 도메인은 `jenkins.example.invalid`이며 HTTPS/WSS를 사용한다. 인증서의 실제 서버 경로와 갱신 상태는 저장소 밖 운영 설정에서 확인한다.
@@ -158,5 +193,6 @@ curl -H "Authorization: Bearer ${SIGNALING_ACCESS_TOKEN}" \
 
 - 운영 인증서 경로·자동 갱신 상태 점검
 - 정적 Frontend를 제공하는 service Nginx 설정과 Jenkins 배포 경로 일치 확인
+- 운영 CORS 허용 Origin과 실제 Frontend 배포 Origin 일치 확인
 - coturn secret·external IP·relay port 운영 설정 확인
 - WebRTC 기능 연동 후 `typ relay` candidate 생성 여부 확인
