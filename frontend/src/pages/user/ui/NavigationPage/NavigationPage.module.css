@@ -1,3 +1,13 @@
+/* dom-overlay root. XR 세션이 그리는 카메라 영상 위에 이 요소가 통째로 얹힌다.
+   root는 세션을 열 때 한 번 정해지고 도중에 바꿀 수 없어, 세션 전부터 DOM에 있어야 한다.
+   PhoneFrame의 .body가 flex column이므로 그 배치를 그대로 이어받는다. */
+.overlayRoot {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .cam {
   position: relative;
   display: flex;
@@ -7,6 +17,16 @@
   min-height: 0;
   overflow: hidden;
   background: radial-gradient(120% 100% at 50% 20%, #2b3833, #08120e);
+}
+
+/* 세션이 열린 동안만 카메라 영상이 보이게 비운다.
+   레이아웃으로 화면을 자르는 것이 아니라 가리는 방식이므로(294 실측) 상단은 투명하게 두고
+   하단 지도 패널이 불투명하게 덮는다. 배경만 지우고 위에 얹힌 카드들은 그대로 둔다 —
+   .topBar·.journeyHeader·.instructionCard가 이미 반투명 + text-shadow로 되어 있다.
+
+   `starting` 구간은 제외한다. 컴포지터가 아직 카메라를 그리지 않아 검은 화면이 보인다. */
+.camLive {
+  background: transparent;
 }
 
 .topBar {
@@ -330,11 +350,11 @@
   border: 1px solid #dfe3e8;
 }
 
-.mapSvg {
+/* 실제 실내 지도가 들어가는 자리. 목업 SVG가 쓰던 것과 같은 박스다.
+   IndoorMapView의 .viewport가 width/height 100%라 이 박스를 그대로 채운다. */
+.mapCanvas {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
 }
 
 .floorButtons {

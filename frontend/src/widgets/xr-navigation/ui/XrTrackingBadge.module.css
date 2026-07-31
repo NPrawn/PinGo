@@ -1,0 +1,53 @@
+/* 카메라 영상 위에 얹히는 칩. CapturePortraitPage의 촬영 배지와 같은 자리·같은 어휘다 —
+   같은 흐름에서 연달아 보이므로 모양이 어긋나면 다른 화면처럼 읽힌다.
+   농도는 실기기에서 맞춘다(카메라 밝기에 따라 흰 글자 가독성이 달라진다). */
+
+.badge {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  background: rgb(6 19 16 / 82%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 999px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* 추적이 살아 있고 앵커가 있다. */
+.live .dot {
+  background: var(--color-mint);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+/* 갱신이 곧 이어질 수 있는 상태. 실패와 구분해야 한다(11.7). */
+.waiting .dot {
+  background: var(--color-gold);
+}
+
+/* 세션이 없거나 쓸 수 없다. */
+.off .dot {
+  background: var(--color-mute);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* 움직임을 줄이는 설정에서는 깜빡이지 않는다. */
+@media (prefers-reduced-motion: reduce) {
+  .live .dot {
+    animation: none;
+  }
+}
