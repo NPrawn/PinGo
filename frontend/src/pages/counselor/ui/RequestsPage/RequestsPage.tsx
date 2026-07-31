@@ -2,11 +2,22 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
-import { acceptConsultation, getCounselorConsultations, rejectConsultation } from '@/shared/api';
+import {
+  acceptConsultation,
+  ApiError,
+  getCounselorConsultations,
+  rejectConsultation,
+} from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { Button, Icon, MapPreview } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import styles from './RequestsPage.module.css';
+
+function errorMessage(error: unknown) {
+  return error instanceof ApiError
+    ? error.message
+    : '요청 상태가 이미 변경됐거나 처리하지 못했습니다.';
+}
 
 const PROBLEM_LABELS: Record<string, string> = {
   CANNOT_FIND_EXIT: '출구를 찾을 수 없어요',
@@ -28,6 +39,7 @@ export function RequestsPage() {
   const setConsultation = useConsultStore((state) => state.setConsultation);
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   const queueQuery = useQuery({
     queryKey: ['counselor-consultations'],
@@ -39,6 +51,7 @@ export function RequestsPage() {
 
   const acceptMutation = useMutation({
     mutationFn: acceptConsultation,
+    onMutate: () => setActionError(''),
     onSuccess: (response) => {
       if (!response.consultationId || !response.signalingRoomId) return;
       setConsultation(response.consultationId);
@@ -46,13 +59,17 @@ export function RequestsPage() {
       void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
       void navigate(COUNSELOR_ROUTES.CONNECTING);
     },
+    // 상담 상태가 '상담 가능'이 아니면 서버가 거절하므로 그 이유를 그대로 보여준다.
+    onError: (error) => setActionError(errorMessage(error)),
   });
   const rejectMutation = useMutation({
     mutationFn: rejectConsultation,
+    onMutate: () => setActionError(''),
     onSuccess: () => {
       setSelectedId(null);
       void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
     },
+    onError: (error) => setActionError(errorMessage(error)),
   });
 
   return (
@@ -140,8 +157,10 @@ export function RequestsPage() {
                 )}
               </div>
 
-              {(acceptMutation.isError || rejectMutation.isError) && (
-                <p role="alert">요청 상태가 이미 변경됐거나 처리하지 못했습니다.</p>
+              {actionError && (
+                <p className={styles.actionError} role="alert">
+                  {actionError}
+                </p>
               )}
 
               <div className={styles.cards}>
