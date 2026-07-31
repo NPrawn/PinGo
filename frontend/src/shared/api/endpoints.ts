@@ -45,6 +45,8 @@ export const ENDPOINTS = {
     accept: (consultationId: string) => `/api/consultations/${consultationId}/accept`,
     reject: (consultationId: string) => `/api/consultations/${consultationId}/reject`,
     end: (consultationId: string) => `/api/consultations/${consultationId}/end`,
+    signalingToken: (consultationId: string) =>
+      `/api/consultations/${consultationId}/signaling-token`,
     waitingEvents: (consultationId: string) =>
       `/api/consultations/${consultationId}/waiting-events`,
     fallbackEvents: (consultationId: string) =>

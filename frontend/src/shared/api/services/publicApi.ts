@@ -56,7 +56,8 @@ export function getNearbyStations(latitude: number, longitude: number) {
   );
 }
 
-export function searchStations(keyword: string, language?: string) {
+/** keyword를 비우면 서비스 중인 역 전체를 반환한다. */
+export function searchStations(keyword?: string, language?: string) {
   return unwrap<StationSearchResponse[]>(
     apiClient.get(ENDPOINTS.stations.search, {
       params: { keyword, language },

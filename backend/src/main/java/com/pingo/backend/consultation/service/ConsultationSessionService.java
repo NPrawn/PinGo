@@ -181,6 +181,35 @@ public class ConsultationSessionService {
         return ConsultationEndResponse.from(session);
     }
 
+    /**
+     * 진행 중인 상담의 signaling 토큰을 다시 발급한다.
+     *
+     * 수락 응답으로 받은 토큰은 만료되고, 상담자가 목록에서 상담 화면으로 다시 들어올 때는
+     * 수락을 거칠 수 없으므로 별도 발급 경로가 필요하다.
+     */
+    @Transactional(readOnly = true)
+    public ConsultationSignalingTokenResponse issueCounselorSignalingToken(
+            String consultationSessionId,
+            Long counselorAccountId
+    ){
+        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+
+        if(session.getSignalingRoomId() == null){
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ACCEPTED);
+        }
+
+        Account counselor = findStationCounselor(counselorAccountId, session.getStationId());
+        if(!counselor.getAccountId().equals(session.getCounselorId())){
+            throw new BusinessException(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+        }
+
+        return ConsultationSignalingTokenResponse.from(
+                session,
+                createCounselorSignalingAccessToken(session)
+        );
+    }
+
     private Account findStationCounselor(Long counselorAccountId, Long stationId){
         Account counselor = accountRepository.findById(counselorAccountId)
                 .filter(account -> account.getAccountType() == AccountType.COUNSELOR)

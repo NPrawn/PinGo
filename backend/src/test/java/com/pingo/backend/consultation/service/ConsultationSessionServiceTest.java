@@ -514,4 +514,60 @@ class ConsultationSessionServiceTest {
         verify(counselor, never()).changeStatus(CounselorStatus.AVAILABLE);
         verify(applicationEventPublisher, never()).publishEvent(any());
     }
+
+    @Test
+    void issueCounselorSignalingToken_성공() {
+        ConsultationSession session = newSession();
+        session.accept(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+        given(signalingAccessTokenProvider.createCounselorToken(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .willReturn("counselor-signaling-token");
+
+        ConsultationSignalingTokenResponse response = consultationSessionService
+                .issueCounselorSignalingToken(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
+
+        assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isEqualTo("counselor-signaling-token");
+    }
+
+    @Test
+    void issueCounselorSignalingToken_실패_수락되지_않은_상담() {
+        ConsultationSession session = newSession();
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> consultationSessionService
+                .issueCounselorSignalingToken(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_NOT_ACCEPTED);
+        verify(accountRepository, never()).findById(COUNSELOR_ACCOUNT_ID);
+    }
+
+    @Test
+    void issueCounselorSignalingToken_실패_수락한_상담자가_아님() {
+        ConsultationSession session = newSession();
+        session.accept(OTHER_COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+
+        assertThatThrownBy(() -> consultationSessionService
+                .issueCounselorSignalingToken(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+    }
 }

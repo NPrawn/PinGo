@@ -1716,7 +1716,49 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.6 상담자 본인 계정 조회
+## 11.6 상담 signaling 토큰 재발급
+
+### POST `/consultations/{consultationId}/signaling-token`
+
+상담자가 이미 수락한 상담의 signaling access token을 다시 발급받는다.
+
+수락 응답으로 받은 토큰은 `signaling.access-token.expiration-ms`(기본 10분)가 지나면 만료되고, 상담자가 요청 목록에서 상담 화면으로 다시 들어올 때는 수락 API를 거칠 수 없다. 이때 이 API로 토큰을 새로 받아 WebSocket에 접속한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+요청 본문은 사용하지 않는다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "ACCEPTED",
+    "signalingRoomId": "room_cs_abc123",
+    "signalingAccessToken": "eyJhbGciOiJIUzM4NCJ9..."
+  },
+  "message": null
+}
+```
+
+#### Error
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
+| 아직 수락되지 않았거나 이미 종료된 상담 | 409 | `CONSULTATION_NOT_ACCEPTED` |
+| 담당 역 상담자가 아님 | 403 | `CONSULTATION_STATION_MISMATCH` |
+| 수락한 상담자가 아님 | 403 | `CONSULTATION_COUNSELOR_MISMATCH` |
+
+---
+
+## 11.7 상담자 본인 계정 조회
 
 ### GET `/counselors/me`
 
@@ -1748,7 +1790,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.7 상담자 본인 계정 수정
+## 11.8 상담자 본인 계정 수정
 
 ### PATCH `/counselors/me`
 

@@ -38,6 +38,13 @@ export function rejectConsultation(consultationId: string) {
   );
 }
 
+/** 이미 수락한 상담에 다시 들어갈 때 signaling 토큰을 재발급받는다. */
+export function issueConsultationSignalingToken(consultationId: string) {
+  return unwrap<Schemas['ConsultationSignalingTokenResponse']>(
+    apiClient.post(ENDPOINTS.consultations.signalingToken(consultationId)),
+  );
+}
+
 export function endConsultation(consultationId: string) {
   return unwrap<Schemas['ConsultationResponse']>(
     apiClient.post(ENDPOINTS.consultations.end(consultationId)),

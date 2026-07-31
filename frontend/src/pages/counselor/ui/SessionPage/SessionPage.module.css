@@ -7,7 +7,10 @@
   background: #faf9fb;
 }
 
+/* Positioned so the video, local preview and connection status anchor inside
+   this pane instead of escaping to the page corner. */
 .main {
+  position: relative;
   flex: 1;
   padding: 22px 26px;
   overflow: auto;

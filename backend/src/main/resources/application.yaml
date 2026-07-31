@@ -22,7 +22,7 @@ ai:
 
 signaling:
   websocket:
-    allowed-origin-patterns: ${SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,https://jenkins.example.invalid}
+    allowed-origin-patterns: ${SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://jenkins.example.invalid}
   access-token:
     expiration-ms: ${SIGNALING_ACCESS_TOKEN_EXPIRATION_MS:600000}
   room:

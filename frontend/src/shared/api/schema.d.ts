@@ -108,6 +108,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/consultations/{consultationSessionId}/signaling-token': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['issueSignalingToken'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/consultations/{consultationSessionId}/reject': {
     parameters: {
       query?: never;
@@ -1122,6 +1138,20 @@ export interface components {
       /** Format: date-time */
       requestedAt?: string;
     };
+    ApiResponseConsultationSignalingTokenResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['ConsultationSignalingTokenResponse'];
+    };
+    ConsultationSignalingTokenResponse: {
+      consultationId?: string;
+      /** @enum {string} */
+      status?:
+        'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+      signalingRoomId?: string;
+      signalingAccessToken?: string;
+    };
     ApiResponseConsultationRejectResponse: {
       success?: boolean;
       code?: string;
@@ -1185,7 +1215,6 @@ export interface components {
       number?: boolean;
       container?: boolean;
       floatingPointNumber?: boolean;
-      string?: boolean;
       /** @enum {string} */
       nodeType?:
         | 'ARRAY'
@@ -1197,21 +1226,22 @@ export interface components {
         | 'OBJECT'
         | 'POJO'
         | 'STRING';
-      pojo?: boolean;
-      valueNode?: boolean;
-      short?: boolean;
-      double?: boolean;
-      bigDecimal?: boolean;
-      object?: boolean;
-      int?: boolean;
-      long?: boolean;
-      bigInteger?: boolean;
-      boolean?: boolean;
       integralNumber?: boolean;
+      object?: boolean;
+      long?: boolean;
+      int?: boolean;
+      double?: boolean;
+      short?: boolean;
+      missingNode?: boolean;
+      bigInteger?: boolean;
+      bigDecimal?: boolean;
+      string?: boolean;
+      valueNode?: boolean;
+      pojo?: boolean;
+      binary?: boolean;
+      boolean?: boolean;
       /** @deprecated */
       textual?: boolean;
-      missingNode?: boolean;
-      binary?: boolean;
       embeddedValue?: boolean;
     };
     SignupRequest: {
@@ -2123,6 +2153,28 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseConsultationCreateResponse'];
+        };
+      };
+    };
+  };
+  issueSignalingToken: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationSessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseConsultationSignalingTokenResponse'];
         };
       };
     };

@@ -6,7 +6,12 @@ import {
   consultationStatusLabel,
   useConsultStore,
 } from '@/entities/consult';
-import { acceptConsultation, ApiError, getCounselorConsultations } from '@/shared/api';
+import {
+  acceptConsultation,
+  ApiError,
+  getCounselorConsultations,
+  issueConsultationSignalingToken,
+} from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { Button, Icon, MapPreview } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
@@ -100,6 +105,19 @@ export function RequestsPage() {
     onError: (error) => setActionError(errorMessage(error)),
   });
 
+  // 이미 수락한 상담으로 다시 들어갈 때는 signaling 토큰을 새로 받아야 접속된다.
+  const reenterMutation = useMutation({
+    mutationFn: issueConsultationSignalingToken,
+    onMutate: () => setActionError(''),
+    onSuccess: (response) => {
+      if (!response.consultationId || !response.signalingRoomId) return;
+      setConsultation(response.consultationId);
+      setSignalingRoom(response.signalingRoomId, response.signalingAccessToken);
+      void navigate(COUNSELOR_ROUTES.SESSION);
+    },
+    onError: (error) => setActionError(errorMessage(error)),
+  });
+
   return (
     <CounselorConsoleShell>
       <div className={styles.wrap}>
@@ -173,13 +191,10 @@ export function RequestsPage() {
                   <Button
                     size="sm"
                     className={styles.openSession}
-                    onClick={() => {
-                      setConsultation(selected.consultationId);
-                      setSignalingRoom(`room_${selected.consultationId}`);
-                      void navigate(COUNSELOR_ROUTES.SESSION);
-                    }}
+                    onClick={() => reenterMutation.mutate(selected.consultationId)}
+                    disabled={reenterMutation.isPending}
                   >
-                    상담 화면 열기
+                    {reenterMutation.isPending ? '연결 준비 중…' : '상담 화면 열기'}
                   </Button>
                 )}
               </div>
