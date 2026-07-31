@@ -23,7 +23,7 @@ public class ExitDetail {
     @Column(name = "exit_id")
     private Long id;
 
-    @Column(name = "facility_id", nullable = false)
+    @Column(name = "facility_id", nullable = false, unique = true)
     private Long facilityId;
 
     @Column(name = "exit_number", nullable = false, length = 20)
