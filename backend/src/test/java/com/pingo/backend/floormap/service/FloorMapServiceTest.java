@@ -122,6 +122,43 @@ class FloorMapServiceTest {
     }
 
     @Test
+    void uploadMapWithoutFileStoresCoordinateFrameOnly() {
+        StationFloor floor = createFloor(2L, true);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+        when(floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(2L)).thenReturn(List.of());
+        when(floorMapRepository.countByFloorId(2L)).thenReturn(0L);
+        when(floorMapRepository.save(any(FloorMap.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // 도면 이미지는 클라이언트 자산을 쓰고 백엔드는 좌표 프레임만 내려주는 구성(역삼역 B1~B3)
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                "image", 1624, 969, new BigDecimal("0.190000"),
+                new BigDecimal("622.000"), new BigDecimal("512.000"), new BigDecimal("-21.2800"));
+
+        floorMapService.uploadMap(2L, request, null);
+
+        ArgumentCaptor<FloorMap> captor = ArgumentCaptor.forClass(FloorMap.class);
+        verify(floorMapRepository).save(captor.capture());
+        FloorMap saved = captor.getValue();
+        assertThat(saved.getMapUrl()).isNull();
+        assertThat(saved.hasCoordinateFrame()).isTrue();
+        verify(fileStorageService, never()).store(any(), any());
+    }
+
+    @Test
+    void rejectsUploadWithNeitherFileNorCoordinateFrame() {
+        StationFloor floor = createFloor(2L, true);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+        // 파일도 프레임도 없으면 빈 행만 생기고 기존 활성 지도만 비활성화된다.
+        FloorMapUploadRequest request = new FloorMapUploadRequest(
+                "image", 1624, 969, null, null, null, null);
+
+        assertThatThrownBy(() -> floorMapService.uploadMap(2L, request, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.EMPTY_FLOOR_MAP));
+        verify(floorMapRepository, never()).save(any());
+        verify(fileStorageService, never()).store(any(), any());
+    }
+
+    @Test
     void rejectsPartialCoordinateFrame() {
         StationFloor floor = createFloor(2L, true);
         when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));

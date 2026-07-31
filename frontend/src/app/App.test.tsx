@@ -255,6 +255,37 @@ describe('user routes', () => {
     expect(screen.getByRole('link', { name: '이 위치에서 경로 선택하기 →' })).toBeInTheDocument();
   });
 
+  /**
+   * 안내 중 위치 재인식. (S15P11A206-141)
+   *
+   * U-10 → U-04(촬영·매칭) → U-05(위치 확인) → **U-10** 으로 돌아와야 한다. 표시가 없으면
+   * U-05의 기본 CTA가 경로 옵션 선택이라 목적지를 다시 고르는 화면부터 밟게 된다.
+   */
+  it('안내 중 재인식은 경로 옵션이 아니라 안내로 돌아온다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치 다시 인식' }));
+    expect(await screen.findByText('세 방향을 자유롭게 비춰주세요')).toBeInTheDocument();
+    expect(useNavigationStore.getState().relocalizing).toBe(true);
+
+    // 촬영·매칭 화면에서 위치 확인 화면으로 넘어가는 것은 FR-U-004의 범위다.
+    await renderSection('/user/locate/success');
+
+    expect(
+      await screen.findByRole('link', { name: '이 위치에서 안내 계속하기 →' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '이 위치에서 경로 선택하기 →' })).toBeNull();
+  });
+
+  it('안내 화면에 돌아오면 재인식 표시가 사라진다', async () => {
+    useNavigationStore.setState({ relocalizing: true });
+
+    await renderSection('/user/navigation');
+
+    expect(useNavigationStore.getState().relocalizing).toBe(false);
+  });
+
   it('starts portrait recapture from the reroute modal', async () => {
     await renderSection('/user/navigation/reroute');
 
@@ -310,6 +341,14 @@ describe('user routes', () => {
       waypoints: ['화장실', '승차권 충전'],
     });
     await renderSection('/user/navigation');
+
+    /**
+     * 경로 안내는 XR 세션 안내부터 시작한다. 11.7이 "세션을 자동으로 열지 않고 안내 후
+     * 사용자가 확인을 누르면 연다"로 확정했으므로, 지도 조작을 확인하려면 먼저 이 안내를
+     * 지나야 한다. 여기서는 추적 없이 계속하는 쪽을 고른다 — 세션을 열지 않아도 경로 안내가
+     * 완결되어야 한다는 것이 11.7의 원칙이고, 그 경로를 이 테스트가 함께 고정한다.
+     */
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
 
     expect(await screen.findByRole('link', { name: '이전 화면으로 돌아가기' })).toBeInTheDocument();
     expect(await screen.findByText('출발지')).toBeInTheDocument();

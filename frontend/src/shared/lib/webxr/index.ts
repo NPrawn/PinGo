@@ -3,6 +3,8 @@ export { createPoseSampler, DEFAULT_SAMPLING_RULE } from './sampler';
 export type { XrPoseSampler } from './sampler';
 export {
   createXrSessionController,
+  PROVISIONAL_HEADING_DEADBAND_DEG,
+  PROVISIONAL_HEADING_MIN_INTERVAL_MS,
   PROVISIONAL_TRACKING_LOST_MS,
   xrSessionController,
 } from './session';

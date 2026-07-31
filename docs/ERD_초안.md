@@ -216,7 +216,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | map_x | decimal | 지도 X 좌표 | not null |
 | map_y | decimal | 지도 Y 좌표 | not null |
 | linked_node_id | bigint | 연결 경로 노드 | FK route_node.node_id, nullable |
-| is_accessible | boolean | 접근성 이용 가능 여부 | default false |
+| is_accessible | boolean | 접근성 이용 가능 여부. 출구는 계단·에스컬레이터 없이 도달 가능한지를 뜻하며 `elevator_only` 도달 여부와 일치시킨다 | default false |
 | is_active | boolean | 사용 여부 | default true |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |

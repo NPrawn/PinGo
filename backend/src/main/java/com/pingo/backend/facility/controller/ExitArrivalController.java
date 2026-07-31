@@ -4,6 +4,7 @@ import com.pingo.backend.facility.dto.request.ExitArrivalCheckRequest;
 import com.pingo.backend.facility.dto.response.ExitArrivalResponse;
 import com.pingo.backend.facility.service.ExitArrivalService;
 import com.pingo.backend.global.response.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/facilities")
 @RequiredArgsConstructor
+@Tag(name = "출구 도착 판정 API", description = "비로그인 사용자의 현재 위치로 목적지 출구 도착 여부를 판정하는 API")
 public class ExitArrivalController {
 
     private final ExitArrivalService exitArrivalService;

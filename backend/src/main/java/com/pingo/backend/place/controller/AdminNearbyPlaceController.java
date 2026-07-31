@@ -6,6 +6,7 @@ import com.pingo.backend.place.dto.request.NearbyPlaceUpdateRequest;
 import com.pingo.backend.place.dto.response.NearbyPlaceIdResponse;
 import com.pingo.backend.place.dto.response.NearbyPlaceResponse;
 import com.pingo.backend.place.service.AdminPlaceService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,6 +26,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/nearby-places")
 @RequiredArgsConstructor
+@Tag(name = "관리자 - 주변 장소 관리 API", description = "관리자가 역 주변 장소를 등록·조회·수정·삭제하는 API")
 public class AdminNearbyPlaceController {
 
     private final AdminPlaceService adminPlaceService;

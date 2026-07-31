@@ -45,9 +45,11 @@ public class FloorMapService {
         String mapType = normalizeMapType(request.mapType());
 
         List<FloorMap> existingMaps = floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(floorId);
+        boolean hasFile = mapFile != null && !mapFile.isEmpty();
+        validateMapContent(request, hasFile);
         validateCoordinateFrame(request, existingMaps);
 
-        String mapUrl = fileStorageService.store(mapFile, MAP_SUB_DIRECTORY);
+        String mapUrl = hasFile ? fileStorageService.store(mapFile, MAP_SUB_DIRECTORY) : null;
         existingMaps.forEach(FloorMap::deactivate);
 
         FloorMap floorMap = FloorMap.create(
@@ -105,6 +107,22 @@ public class FloorMapService {
         }
 
         return floor;
+    }
+
+    /**
+     * 등록할 내용이 있는지 검증한다.
+     *
+     * <p>도면 파일은 선택 사항이다. {@code map_url} 이 nullable 이라(S15P11A206-313) 백엔드가
+     * 좌표 프레임만 내려주고 이미지는 클라이언트 자산을 쓰는 구성이 가능하기 때문이다.
+     * 역삼역 B1·B2·B3 세 행이 그렇게 들어가 있다.
+     *
+     * <p>다만 파일도 프레임도 없으면 아무 의미 없는 빈 행이 생기고, 기존 활성 지도만 비활성화된다.
+     * 둘 중 하나는 있어야 한다.
+     */
+    private void validateMapContent(FloorMapUploadRequest request, boolean hasFile) {
+        if (!hasFile && countProvidedFrameFields(request) == 0) {
+            throw new BusinessException(ErrorCode.EMPTY_FLOOR_MAP);
+        }
     }
 
     /**

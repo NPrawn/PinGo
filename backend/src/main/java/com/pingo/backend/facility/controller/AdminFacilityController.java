@@ -7,6 +7,7 @@ import com.pingo.backend.facility.dto.response.FacilityIdResponse;
 import com.pingo.backend.facility.dto.response.FacilityResponse;
 import com.pingo.backend.facility.service.FacilityService;
 import com.pingo.backend.global.response.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/facilities")
 @RequiredArgsConstructor
+@Tag(name = "관리자 - 시설·출구 관리 API", description = "관리자가 역 내부 시설과 출구를 등록·조회·수정·삭제하는 API")
 public class AdminFacilityController {
 
     private final FacilityService facilityService;

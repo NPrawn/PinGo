@@ -18,7 +18,7 @@ export function coordinateFrameOf(map: FloorMap): CoordinateFrame | null {
 
   if (!isRenderableCoordinate(originPxX) || !isRenderableCoordinate(originPxY)) return null;
   if (!isRenderableCoordinate(frameAngleDeg)) return null;
-  if (!isRenderableCoordinate(scaleMPerPx) || scaleMPerPx === 0) return null;
+  if (!isRenderableCoordinate(scaleMPerPx) || scaleMPerPx <= 0) return null;
 
   return {
     originPx: [originPxX, originPxY],

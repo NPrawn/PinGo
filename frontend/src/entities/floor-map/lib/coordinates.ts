@@ -25,7 +25,7 @@ export function isRenderableCoordinate(value: unknown): value is number {
  */
 export function meterToPixel(x: number, y: number, frame: CoordinateFrame): PixelPoint | null {
   if (!isRenderableCoordinate(x) || !isRenderableCoordinate(y)) return null;
-  if (!isRenderableCoordinate(frame.mpp) || frame.mpp === 0) return null;
+  if (!isRenderableCoordinate(frame.mpp) || frame.mpp <= 0) return null;
 
   const radians = (frame.angleDeg * Math.PI) / 180;
   const cos = Math.cos(radians);

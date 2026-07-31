@@ -45,9 +45,16 @@ export type XrTrackingStatus =
  *   앱 안에서 복구할 수 없고 브라우저 사이트 설정에서 권한을 초기화해야 한다.
  * - request-rejected: 이번 요청을 거부했거나 일시적으로 실패했다. 재시도할 수 있다.
  * - no-reference-space: 세션은 열렸으나 쓸 수 있는 reference space가 없다.
+ * - no-render-layer: `XRWebGLLayer`를 붙이지 못했다. **세션이 프레임을 만들지 않는다.**
+ *   pose도 카메라 영상도 나오지 않으므로 세션을 유지할 의미가 없다(S15P11A206-141).
  */
 export type XrFailureReason =
-  'no-xr-object' | 'unsupported' | 'permission-blocked' | 'request-rejected' | 'no-reference-space';
+  | 'no-xr-object'
+  | 'unsupported'
+  | 'permission-blocked'
+  | 'request-rejected'
+  | 'no-reference-space'
+  | 'no-render-layer';
 
 /**
  * 한 XR frame에서 읽은 pose 값.

@@ -40,6 +40,8 @@ function createFakeController({ opensSession = true } = {}): FakeController {
   const controller: XrSessionController = {
     getState: () => state,
     getSessionId: () => sessionId,
+    // 앵커 생성용 원시 pose는 useXrMapPosition에서 검사한다.
+    getLatestReading: () => null,
     subscribe(listener) {
       const notify = (): void => {
         listener(state);
@@ -50,6 +52,10 @@ function createFakeController({ opensSession = true } = {}): FakeController {
       return () => {
         stateListeners.delete(notify);
       };
+    },
+    subscribeHeading() {
+      // 방향 채널은 useXrMapPosition이 쓴다. 이 훅은 상태와 스냅샷만 다룬다.
+      return () => undefined;
     },
     subscribeSnapshots(listener) {
       snapshotListeners.add(listener);
