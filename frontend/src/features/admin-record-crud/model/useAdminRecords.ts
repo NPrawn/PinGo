@@ -237,13 +237,16 @@ export function useAdminRecords(tab: AdminTableTab) {
         stationId: account.stationId ?? '',
         active: String(account.isActive ?? false),
         status: account.isActive ? '활성' : '승인 대기',
-        consultStatus: account.status ? COUNSELOR_STATUS_LABELS[account.status] : '상담 가능',
+        // 상태가 없는 계정을 '상담 가능'으로 보여주면 안 된다.
+        consultStatus: COUNSELOR_STATUS_LABELS[account.status ?? ''] ?? '-',
       }));
   }, [tab]);
 
   const recordsQuery = useQuery({
     queryKey: ['admin-records', tab],
     queryFn: load,
+    // 상담 상태는 상담 수락·종료로 서버에서 바뀌므로 주기적으로 다시 읽는다.
+    refetchInterval: tab === 'counselor' ? 5000 : false,
   });
   const rows = useMemo(() => recordsQuery.data ?? [], [recordsQuery.data]);
 
