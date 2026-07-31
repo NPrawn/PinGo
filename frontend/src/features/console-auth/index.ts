@@ -1,5 +1,4 @@
 export { ConsoleLoginScreen } from './ui/ConsoleLoginScreen';
-export { ConsoleLoginModal } from './ui/ConsoleLoginModal';
 export { LoginForm } from './ui/LoginForm';
 export { RequireRole } from './ui/RequireRole';
 export { checkLoginId, signup } from './api/signup';

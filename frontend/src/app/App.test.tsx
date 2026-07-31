@@ -122,12 +122,12 @@ describe('App', () => {
 
   it('signs into a console from the landing page', async () => {
     renderAt('/');
-    fireEvent.click(screen.getByRole('button', { name: /관리자/ }));
+    fireEvent.click(screen.getByRole('link', { name: /관리자/ }));
 
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('아이디'), { target: { value: 'admin' } });
-    fireEvent.change(within(dialog).getByLabelText('비밀번호'), { target: { value: '1234' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '로그인' }));
+    expect(await screen.findByRole('heading', { name: 'PinGo 콘솔 로그인' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('아이디'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: '로그인' }));
 
     expect(await screen.findByRole('heading', { name: '시설 · 출구 관리' })).toBeInTheDocument();
   });
