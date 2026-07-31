@@ -39,6 +39,20 @@
   margin-top: 32px;
 }
 
+.options button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.options button:disabled:hover {
+  background: rgb(255 255 255 / 82%);
+  border-color: rgb(255 255 255 / 90%);
+  box-shadow:
+    0 4px 12px -6px color-mix(in srgb, var(--color-ink) 8%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 85%);
+  transform: none;
+}
+
 .labels {
   flex: 1;
 }

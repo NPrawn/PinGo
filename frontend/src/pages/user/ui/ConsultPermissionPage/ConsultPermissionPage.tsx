@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useNavigationStore } from '@/entities/navigation';
 import { usePermissionStore } from '@/entities/permission';
 import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
+import { requestMediaPermissions, stopMediaStream } from '@/features/permissions';
 import { ApiError, createConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import {
@@ -55,34 +56,47 @@ const PROBLEM_TYPES = [
 export function ConsultPermissionPage() {
   const navigate = useNavigate();
   const granted = usePermissionStore((state) => state.granted);
-  const toggle = usePermissionStore((state) => state.toggle);
-  const grant = usePermissionStore((state) => state.grant);
-  const hasAll = usePermissionStore((state) => state.hasAll);
+  const syncPermissions = usePermissionStore((state) => state.sync);
   const issue = useConsultStore((state) => state.issue);
   const setConsultation = useConsultStore((state) => state.setConsultation);
   const stationId = useStationStore((state) => state.stationId);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const destinationId = useNavigationStore((state) => state.destinationId);
   const destinationType = useNavigationStore((state) => state.destinationType);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [requestingPermissions, setRequestingPermissions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  useEffect(() => {
+    if (issue == null) {
+      void navigate(USER_ROUTES.CONSULT_REQUEST, { replace: true });
+    }
+  }, [issue, navigate]);
+
   const requestConsultation = async () => {
-    if (!userSessionId || issue == null) {
-      setErrorMessage('사용자 세션 또는 상담 유형을 확인해 주세요.');
+    if (issue == null) {
+      void navigate(USER_ROUTES.CONSULT_REQUEST, { replace: true });
+      return;
+    }
+    if (!userSessionId) {
       return;
     }
 
     setSubmitting(true);
     setErrorMessage('');
     try {
+      const completeDestination =
+        destinationId != null && destinationType
+          ? { destinationId, destinationType }
+          : {};
       const consultation = await createConsultation({
         userSessionId,
         stationId,
         problemType: PROBLEM_TYPES[issue],
-        destinationId: destinationId ?? undefined,
-        destinationType: destinationType ?? undefined,
+        currentNodeId: currentNodeId ?? undefined,
+        ...completeDestination,
         videoConsent: true,
         audioConsent: true,
       });
@@ -93,24 +107,47 @@ export function ConsultPermissionPage() {
       setConsultation(consultation.consultationId);
       void navigate(USER_ROUTES.CONSULT_WAITING);
     } catch (error) {
-      setErrorMessage(error instanceof ApiError ? error.message : '상담 요청을 보내지 못했습니다.');
+      setErrorMessage(
+        error instanceof ApiError && error.code === 'CONSULTATION_ALREADY_IN_PROGRESS'
+          ? '이미 진행 중인 상담이 있습니다.'
+          : '상담 요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const connect = () => {
-    if (hasAll('cam', 'mic')) {
-      void requestConsultation();
-      return;
-    }
-    setReminderOpen(true);
-  };
+  const verifyPermissionsAndConnect = async () => {
+    if (requestingPermissions || submitting) return;
 
-  const allowAll = () => {
-    grant('cam', 'mic');
-    setReminderOpen(false);
-    void requestConsultation();
+    setRequestingPermissions(true);
+    setErrorMessage('');
+    try {
+      const result = await requestMediaPermissions();
+      stopMediaStream(result.stream);
+
+      const cameraGranted = result.camera.status === 'granted';
+      const microphoneGranted = result.microphone.status === 'granted';
+      syncPermissions({
+        loc: granted.loc,
+        cam: cameraGranted,
+        mic: microphoneGranted,
+      });
+
+      if (!cameraGranted || !microphoneGranted) {
+        setErrorMessage('카메라와 마이크 권한을 모두 허용해 주세요.');
+        setReminderOpen(true);
+        return;
+      }
+
+      setReminderOpen(false);
+      await requestConsultation();
+    } catch {
+      setErrorMessage('카메라와 마이크 권한을 확인하지 못했습니다.');
+      setReminderOpen(true);
+    } finally {
+      setRequestingPermissions(false);
+    }
   };
 
   return (
@@ -134,7 +171,7 @@ export function ConsultPermissionPage() {
           <SelectRow
             key={share.key}
             selected={granted[share.key]}
-            onClick={() => toggle(share.key)}
+            disabled
           >
             <Icon3d name={share.icon} tone={share.tone} />
             <span className={styles.labels}>
@@ -148,8 +185,17 @@ export function ConsultPermissionPage() {
 
       <Spring />
       {errorMessage && <p role="alert">{errorMessage}</p>}
-      <Button onClick={connect} disabled={submitting}>
-        {submitting ? '요청 중…' : '동의하고 상담 연결'}
+      <Button
+        onClick={() => void verifyPermissionsAndConnect()}
+        disabled={!userSessionId || requestingPermissions || submitting}
+      >
+        {!userSessionId
+          ? '상담 연결 준비 중…'
+          : requestingPermissions
+            ? '권한 확인 중…'
+            : submitting
+              ? '요청 중…'
+              : '동의하고 상담 연결'}
       </Button>
 
       {reminderOpen && (
@@ -184,8 +230,16 @@ export function ConsultPermissionPage() {
                 );
               })}
             </div>
-            <Button className={styles.primary} onClick={allowAll}>
-              모두 동의하고 연결
+            <Button
+              className={styles.primary}
+              onClick={() => void verifyPermissionsAndConnect()}
+              disabled={!userSessionId || requestingPermissions || submitting}
+            >
+              {!userSessionId
+                ? '상담 연결 준비 중…'
+                : requestingPermissions
+                  ? '권한 확인 중…'
+                  : '모두 동의하고 연결'}
             </Button>
           </div>
         </Sheet>

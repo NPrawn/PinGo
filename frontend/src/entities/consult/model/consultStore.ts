@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 type ConsultStore = {
   /** Index into `CONSULT_ISSUES`, or null before the user picks one. */
@@ -23,20 +24,28 @@ type ConsultStore = {
  * The prototype reused its `landmark` field for the issue type, which coupled
  * the consult flow to the location-recognition flow; they are separate here.
  */
-export const useConsultStore = create<ConsultStore>((set) => ({
-  issue: null,
-  satisfaction: 0,
-  consultationId: null,
-  signalingRoomId: null,
-  selectIssue: (issue) => set({ issue }),
-  rate: (satisfaction) => set({ satisfaction }),
-  setConsultation: (consultationId) => set({ consultationId }),
-  setSignalingRoom: (signalingRoomId) => set({ signalingRoomId }),
-  reset: () =>
-    set({
+export const useConsultStore = create<ConsultStore>()(
+  persist(
+    (set) => ({
       issue: null,
       satisfaction: 0,
       consultationId: null,
       signalingRoomId: null,
+      selectIssue: (issue) => set({ issue }),
+      rate: (satisfaction) => set({ satisfaction }),
+      setConsultation: (consultationId) => set({ consultationId }),
+      setSignalingRoom: (signalingRoomId) => set({ signalingRoomId }),
+      reset: () =>
+        set({
+          issue: null,
+          satisfaction: 0,
+          consultationId: null,
+          signalingRoomId: null,
+        }),
     }),
-}));
+    {
+      name: 'pingo.consult',
+      storage: createJSONStorage(() => sessionStorage),
+    },
+  ),
+);
