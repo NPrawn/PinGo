@@ -1,3 +1,4 @@
+import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
@@ -9,6 +10,8 @@ import styles from './LocateSuccessPage.module.css';
 /** Keep the live camera visible while the user confirms the matched position. */
 export function LocateSuccessPage() {
   const station = useStationStore((state) => state.station);
+  /** 안내 중 재인식으로 왔는지. 돌아갈 화면을 가른다. (S15P11A206-141) */
+  const relocalizing = useNavigationStore((state) => state.relocalizing);
 
   return (
     <PhoneFrame layout="flush" bodyClassName={styles.body} statusBarClassName={styles.statusBar}>
@@ -92,7 +95,18 @@ export function LocateSuccessPage() {
           </Card>
 
           <div className={styles.actions}>
-            <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>이 위치에서 경로 선택하기 →</ButtonLink>
+            {/*
+              안내 중 재인식으로 온 경우에는 경로를 다시 고르지 않고 안내로 돌아간다.
+              (S15P11A206-141, 화면 정의서 U-10 "현재 위치 다시 인식")
+
+              목적지와 경로는 이미 정해져 있고 바뀐 것은 현재 위치뿐이다. 기본 CTA로 보내면
+              사용자가 목적지 선택부터 다시 밟는다.
+            */}
+            {relocalizing ? (
+              <ButtonLink to={USER_ROUTES.NAVIGATION}>이 위치에서 안내 계속하기 →</ButtonLink>
+            ) : (
+              <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>이 위치에서 경로 선택하기 →</ButtonLink>
+            )}
             <GhostLink to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.retake}>
               이 위치가 아니에요 · 다시 촬영
             </GhostLink>

@@ -1,4 +1,5 @@
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MOCK_FLOOR_ID } from '@/entities/floor-map';
 import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
@@ -63,6 +64,19 @@ export function NavigationPage() {
   const setDestination = useNavigationStore((state) => state.setDestination);
   const stepsOpen = useNavigationStore((state) => state.stepsOpen);
   const toggleSteps = useNavigationStore((state) => state.toggleSteps);
+  const beginRelocalize = useNavigationStore((state) => state.beginRelocalize);
+  const endRelocalize = useNavigationStore((state) => state.endRelocalize);
+  const navigate = useNavigate();
+
+  /**
+   * 안내 화면에 도착했으면 재인식이 끝난 것이다.
+   *
+   * U-05의 CTA에 걸지 않고 여기서 지운다. 어떤 경로로 돌아와도(브라우저 뒤로가기, 다른 링크)
+   * 표시가 남지 않아야 다음 재인식 판정이 틀리지 않는다.
+   */
+  useEffect(() => {
+    endRelocalize();
+  }, [endRelocalize]);
   const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
   const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<(typeof MAP_FACILITIES)[number] | null>(
@@ -388,6 +402,31 @@ export function NavigationPage() {
             )}
 
             <div className={styles.actions}>
+              {/*
+                U-10의 "현재 위치 다시 인식". 주변을 다시 촬영해 위치를 새로 확정하는 흐름이므로
+                U-04로 나간다(화면 정의서 U-10 사용자 액션).
+
+                **세션이 끊기고 앵커가 사라지는 것이 정상이다.** 이 버튼을 누르는 상황은 이미
+                위치를 신뢰할 수 없는 상태(경로 이탈, 엘리베이터 하차 등)라 지킬 앵커가 없다.
+                앵커를 유지한 채 좌표만 갱신하는 세션 안 위치 인식은 이것과 별개이며, 그쪽은
+                camera-access로 프레임을 얻어 화면을 벗어나지 않는다(11.8).
+
+                돌아오는 경로는 스토어의 relocalizing 표시가 담당한다 — U-05의 기본 CTA가 경로
+                옵션 선택이라, 표시가 없으면 목적지를 다시 고르는 화면부터 밟게 된다.
+              */}
+              <Button
+                variant="secondary"
+                size="sm"
+                className={styles.action}
+                aria-label="현재 위치 다시 인식"
+                onClick={() => {
+                  beginRelocalize();
+                  navigate(USER_ROUTES.CAPTURE_PORTRAIT);
+                }}
+              >
+                <Icon name="refresh" size={15} />
+                재인식
+              </Button>
               <Button
                 variant="secondary"
                 size="sm"
