@@ -22,6 +22,17 @@ const STATUS_CLASS: Record<string, string> = {
   FAILED: styles.badgeMuted,
 };
 
+/** 카드 배경과 왼쪽 띠 색. 상태별로 목록이 한눈에 묶여 보이게 한다. */
+const CARD_CLASS: Record<string, string> = {
+  WAITING: styles.cardWaiting,
+  ACCEPTED: styles.cardLive,
+  IN_PROGRESS: styles.cardLive,
+  ENDED: styles.cardDone,
+  CANCELED: styles.cardMuted,
+  REJECTED: styles.cardMuted,
+  FAILED: styles.cardMuted,
+};
+
 /** 대기 중 → 상담 중 → 종료 → 취소·거절 순으로 목록을 정렬한다. */
 const STATUS_ORDER: Record<string, number> = {
   WAITING: 0,
@@ -104,8 +115,8 @@ export function RequestsPage() {
                 aria-pressed={request.consultationId === selected?.consultationId}
                 className={[
                   styles.request,
+                  CARD_CLASS[request.status] ?? styles.cardMuted,
                   request.consultationId === selected?.consultationId && styles.requestOn,
-                  request.status === 'ENDED' && styles.requestDone,
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -161,6 +172,7 @@ export function RequestsPage() {
                 {selected.status === 'ACCEPTED' && (
                   <Button
                     size="sm"
+                    className={styles.openSession}
                     onClick={() => {
                       setConsultation(selected.consultationId);
                       setSignalingRoom(`room_${selected.consultationId}`);
