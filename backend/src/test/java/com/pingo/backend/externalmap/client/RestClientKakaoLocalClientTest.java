@@ -60,4 +60,23 @@ class RestClientKakaoLocalClientTest {
         });
         server.verify();
     }
+
+    @Test
+    void searchPlacesReturnsEmptyWhenApiKeyIsMissing() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        RestClientKakaoLocalClient client = new RestClientKakaoLocalClient(
+                builder.build(),
+                new KakaoLocalProperties("https://dapi.kakao.com", "", 1000, 3000)
+        );
+
+        List<KakaoPlaceSearchResult> results = client.searchPlaces(
+                "강남파이낸스센터",
+                new BigDecimal("127.036500"),
+                new BigDecimal("37.500700")
+        );
+
+        assertThat(results).isEmpty();
+        server.verify();
+    }
 }

@@ -4,6 +4,8 @@ import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
@@ -11,6 +13,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 @Component
+@Slf4j
 public class RestClientKakaoLocalClient implements KakaoLocalClient {
 
     private static final int SEARCH_RADIUS_METERS = 3_000;
@@ -18,6 +21,7 @@ public class RestClientKakaoLocalClient implements KakaoLocalClient {
 
     private final RestClient restClient;
     private final KakaoLocalProperties properties;
+    private final AtomicBoolean missingApiKeyWarningLogged = new AtomicBoolean();
 
     public RestClientKakaoLocalClient(
             @Qualifier("kakaoLocalRestClient") RestClient restClient,
@@ -33,7 +37,10 @@ public class RestClientKakaoLocalClient implements KakaoLocalClient {
             BigDecimal centerLongitude,
             BigDecimal centerLatitude
     ) {
-        validateApiKey();
+        if (isApiKeyMissing()) {
+            logMissingApiKeyOnce();
+            return List.of();
+        }
 
         try {
             KakaoLocalSearchResponse response = restClient.get()
@@ -85,9 +92,13 @@ public class RestClientKakaoLocalClient implements KakaoLocalClient {
         return primary == null || primary.isBlank() ? fallback : primary;
     }
 
-    private void validateApiKey() {
-        if (properties.restApiKey() == null || properties.restApiKey().isBlank()) {
-            throw new BusinessException(ErrorCode.EXTERNAL_PLACE_SEARCH_FAILED);
+    private boolean isApiKeyMissing() {
+        return properties.restApiKey() == null || properties.restApiKey().isBlank();
+    }
+
+    private void logMissingApiKeyOnce() {
+        if (missingApiKeyWarningLogged.compareAndSet(false, true)) {
+            log.warn("KAKAO_REST_API_KEY가 설정되지 않아 카카오 외부 장소 검색을 건너뜁니다.");
         }
     }
 

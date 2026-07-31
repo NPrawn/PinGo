@@ -9,6 +9,7 @@ import com.pingo.backend.place.repository.NearbyPlaceRepository;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class DestinationService {
 
@@ -46,13 +48,34 @@ public class DestinationService {
                 .map(DestinationSearchResponse::fromPlace)
                 .forEach(results::add);
 
-        if (station.getLatitude() != null && station.getLongitude() != null) {
-            kakaoLocalClient.searchPlaces(normalizedKeyword, station.getLongitude(), station.getLatitude()).stream()
-                    .map(DestinationSearchResponse::fromKakaoPlace)
-                    .forEach(results::add);
-        }
+        appendExternalPlaces(results, station, normalizedKeyword);
 
         return results;
+    }
+
+    private void appendExternalPlaces(
+            List<DestinationSearchResponse> results,
+            Station station,
+            String keyword
+    ) {
+        if (station.getLatitude() == null || station.getLongitude() == null) {
+            return;
+        }
+
+        try {
+            kakaoLocalClient.searchPlaces(keyword, station.getLongitude(), station.getLatitude()).stream()
+                    .map(DestinationSearchResponse::fromKakaoPlace)
+                    .forEach(results::add);
+        } catch (BusinessException exception) {
+            if (exception.getErrorCode() != ErrorCode.EXTERNAL_PLACE_SEARCH_FAILED) {
+                throw exception;
+            }
+            log.warn(
+                    "카카오 외부 장소 검색에 실패해 로컬 검색 결과만 반환합니다. stationId={}, keyword={}",
+                    station.getId(),
+                    keyword
+            );
+        }
     }
 
     private Station getActiveStation(Long stationId) {

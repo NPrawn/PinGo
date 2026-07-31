@@ -96,6 +96,30 @@ class DestinationServiceTest {
     }
 
     @Test
+    void searchReturnsLocalResultsWhenKakaoSearchFails() {
+        when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(createStation(1L)));
+        when(facilityRepository.searchActiveByKeyword(1L, "출구")).thenReturn(List.of(createExitFacility(10L)));
+        when(nearbyPlaceRepository.searchActiveByKeyword(1L, "출구")).thenReturn(List.of(createPlace(3L)));
+        when(kakaoLocalClient.searchPlaces(
+                "출구",
+                new BigDecimal("127.0365000"),
+                new BigDecimal("37.5007000")
+        )).thenThrow(new BusinessException(ErrorCode.EXTERNAL_PLACE_SEARCH_FAILED));
+
+        List<DestinationSearchResponse> results = destinationService.search(1L, "출구");
+
+        assertThat(results)
+                .extracting(
+                        DestinationSearchResponse::destinationType,
+                        DestinationSearchResponse::destinationId
+                )
+                .containsExactly(
+                        tuple("facility", 10L),
+                        tuple("place", 3L)
+                );
+    }
+
+    @Test
     void searchThrowsWhenStationIdIsNull() {
         assertThatThrownBy(() -> destinationService.search(null, "출구"))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
