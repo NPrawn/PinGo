@@ -40,6 +40,8 @@ function createFakeController({ opensSession = true } = {}): FakeController {
   const controller: XrSessionController = {
     getState: () => state,
     getSessionId: () => sessionId,
+    // 앵커 생성용 원시 pose는 useXrMapPosition에서 검사한다.
+    getLatestReading: () => null,
     subscribe(listener) {
       const notify = (): void => {
         listener(state);

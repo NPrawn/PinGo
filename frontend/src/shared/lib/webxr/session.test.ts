@@ -603,6 +603,62 @@ describe('createXrSessionController', () => {
     it('추적 상실 임계값의 기본값은 임시 확정값이다', () => {
       expect(PROVISIONAL_TRACKING_LOST_MS).toBe(1500);
     });
+
+    /**
+     * 앵커 생성용 원시 pose 조회(S15P11A206-296).
+     *
+     * 앵커는 지도 좌표와 XR 좌표를 같은 순간의 값으로 묶어야 한다. 스냅샷은 확정 주기로
+     * 걸러지므로 그 순간을 잡을 수 없다(11.4).
+     */
+    describe('getLatestReading', () => {
+      it('추적 전에는 null이다', async () => {
+        const { controller, fake } = await startedController();
+
+        fake.emitFrame(0, null);
+
+        expect(controller.getLatestReading()).toBeNull();
+      });
+
+      /**
+       * 이 테스트가 296의 존재 이유다. 확정 주기를 통과하지 않은 프레임에서도 최신 pose를
+       * 읽을 수 있어야 한다. 스냅샷만 쓰면 여기서 (0, 0)이 잡혀 앵커가 1.2m 어긋난다.
+       */
+      it('확정 주기를 통과하지 않은 프레임의 pose도 돌려준다', async () => {
+        const { controller, fake, snapshots } = await startedController();
+
+        fake.emitFrame(1200, pose(0, 0));
+        fake.emitFrame(1400, pose(0.5, -1.1));
+
+        // 0.2초·1.2m라 확정 주기(2m/1초)를 통과하지 못한다.
+        expect(snapshots).toHaveLength(1);
+        expect(controller.getLatestReading()?.position).toEqual({ x: 0.5, y: 0, z: -1.1 });
+      });
+
+      it('세션이 끝나면 null로 돌아간다', async () => {
+        const { controller, fake } = await startedController();
+
+        fake.emitFrame(1200, pose(1, -2));
+        expect(controller.getLatestReading()).not.toBeNull();
+
+        await controller.stop();
+
+        expect(controller.getLatestReading()).toBeNull();
+      });
+
+      /**
+       * 상실 구간에는 직전 값이 남는다. 그 값으로 앵커를 만들지 않는 판단은 쓰는 쪽이
+       * status를 보고 한다 — 실측에서 blackout 사이 pose는 값 자체가 틀렸다(11.2).
+       */
+      it('추적 상실 중에는 직전 값이 남고 상태로 구분한다', async () => {
+        const { controller, fake } = await startedController();
+
+        fake.emitFrame(1000, pose(3, -4));
+        fake.emitFrame(3000, null);
+
+        expect(controller.getState().status).toBe('lost');
+        expect(controller.getLatestReading()?.position).toEqual({ x: 3, y: 0, z: -4 });
+      });
+    });
   });
 
   describe('자원 정리', () => {
