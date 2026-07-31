@@ -47,7 +47,7 @@ class IndoorRouteControllerTest {
     @DisplayName("옵션 조회 정상 요청은 200과 옵션 목록을 반환한다")
     void getRouteOptionsReturnsOptions() throws Exception {
         when(indoorRouteService.getRouteOptions(any())).thenReturn(List.of(
-                RouteOptionResponse.available(RouteType.FASTEST, BigDecimal.valueOf(15), 240),
+                RouteOptionResponse.available(RouteType.FASTEST, BigDecimal.valueOf(15), 240, true),
                 RouteOptionResponse.unavailable(RouteType.ELEVATOR_ONLY,
                         RouteUnavailableReason.NO_ACCESSIBLE_ROUTE)));
 
@@ -60,9 +60,11 @@ class IndoorRouteControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].routeType").value("fastest"))
                 .andExpect(jsonPath("$.data[0].available").value(true))
+                .andExpect(jsonPath("$.data[0].hasStairsOrEscalator").value(true))
                 .andExpect(jsonPath("$.data[1].routeType").value("elevator_only"))
                 .andExpect(jsonPath("$.data[1].available").value(false))
-                .andExpect(jsonPath("$.data[1].unavailableReason").value("NO_ACCESSIBLE_ROUTE"));
+                .andExpect(jsonPath("$.data[1].unavailableReason").value("NO_ACCESSIBLE_ROUTE"))
+                .andExpect(jsonPath("$.data[1].hasStairsOrEscalator").value(false));
     }
 
     @Test
