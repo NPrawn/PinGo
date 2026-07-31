@@ -70,6 +70,10 @@ function createFakeController() {
         snapshotListeners.delete(listener);
       };
     },
+    subscribeHeading() {
+      // 이 파일은 좌표 배선만 본다. 방향은 useXrMapPosition.test.ts가 검사한다.
+      return () => undefined;
+    },
     async start() {
       return state;
     },

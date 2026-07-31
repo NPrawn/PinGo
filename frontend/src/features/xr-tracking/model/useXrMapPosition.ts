@@ -3,6 +3,7 @@ import type { IndoorPoint } from '@/entities/navigation';
 import { xrSessionController, type XrSessionController } from '@/shared/lib/webxr';
 import {
   createXrMapAnchor,
+  mapHeadingDegOf,
   xrToMapPoint,
   type PlanarVector,
   type XrAnchorStatus,
@@ -59,6 +60,21 @@ export interface UseXrMapPositionValue extends UseXrTrackingValue {
   source: XrMapPositionSource;
   /** 좌표가 더 이상 갱신되지 않는 상태인지. `source === 'last-known'`과 같다. */
   isStale: boolean;
+  /**
+   * 지도 프레임 기준으로 사용자가 바라보는 방향(도). 앵커가 없으면 null이다.
+   *
+   * 각도 기준은 지도 `+X`축, 증가 방향은 `+Y`쪽이다. 이미지 위에 그릴 때는 좌표 프레임의
+   * `angleDeg`를 더한다(`mapHeadingDegOf` 주석).
+   *
+   * **위치와 다른 주기로 갱신된다.** 11.4가 회전을 위치 확정 트리거에서 제외했으므로 위치
+   * 스냅샷에 방향을 묶으면 제자리에서 몸만 돌렸을 때 최대 5초 늦는다. 컨트롤러의
+   * `subscribeHeading`이 회전 전용 데드밴드·최소 간격으로 각도만 흘려준다. 그 기준값은
+   * 아직 provisional이며 실기기 확정 항목이다(`PROVISIONAL_HEADING_DEADBAND_DEG`).
+   *
+   * 평활을 걸지 않는다. 표시 평활은 위치의 데드밴드·추종 비율로 정의돼 있고(296) 각도에는
+   * 그 규칙을 그대로 쓸 수 없다 — 179°와 -179°가 이웃이라 선형 보간이 한 바퀴 돌아간다.
+   */
+  headingDeg: number | null;
   /** 앵커 상태. 없으면 확정 위치만 표시된다(11.2). */
   anchorStatus: XrAnchorStatus;
   /** 앵커가 몇 번 갱신됐는지. 앵커가 없으면 null. */
@@ -113,6 +129,9 @@ export function useXrMapPosition({
   /** 마지막으로 산출한 추적 좌표. 추적이 끊겨도 남아 마지막 유효 위치가 된다. */
   const [trackedLocation, setTrackedLocation] = useState<IndoorPoint | null>(null);
 
+  /** 마지막으로 산출한 지도 프레임 방향각. 좌표와 같은 스냅샷에서 나온다. */
+  const [headingDeg, setHeadingDeg] = useState<number | null>(null);
+
   /**
    * 평활의 기준점.
    *
@@ -152,6 +171,27 @@ export function useXrMapPosition({
     }, []),
   });
 
+  /**
+   * 방향은 위치와 별도 채널로 받는다.
+   *
+   * 위치 스냅샷 주기로 갱신하면 제자리에서 몸만 돌렸을 때 화면이 최대 5초 늦는다 — 11.4가
+   * 회전을 위치 확정 트리거에서 뺐기 때문이다. 컨트롤러가 회전 전용 데드밴드·최소 간격을
+   * 적용해 각도만 흘려주므로, 위치 확정 주기는 그대로 두고 방향만 자주 갱신할 수 있다.
+   *
+   * 앵커가 없으면 각도를 지도 프레임으로 옮길 기준이 없어 그냥 버린다.
+   */
+  useEffect(
+    () =>
+      controller.subscribeHeading((yawDeg) => {
+        const anchor = anchorRef.current;
+
+        if (!anchor) return;
+
+        setHeadingDeg(mapHeadingDegOf(yawDeg, anchor));
+      }),
+    [controller],
+  );
+
   const setAnchor = useCallback(
     (map: IndoorPoint, forwardMap: PlanarVector | null) => {
       /**
@@ -186,6 +226,14 @@ export function useXrMapPosition({
       smoothedRef.current = map;
       setTrackedLocation(map);
 
+      /**
+       * 방향도 앵커 시점 값으로 새로 잡는다. 앵커 지점에서는 `forwardMap`의 각도와 같다.
+       *
+       * 여기서 세우지 않으면 다음 스냅샷까지(정지 상태에서 최대 5초) 이전 앵커 기준의 방향이
+       * 남는다. 재인식으로 방향까지 다시 확정한 뒤인데 화면이 옛 방향을 가리키게 된다.
+       */
+      setHeadingDeg(mapHeadingDegOf(reading.yawDeg, anchor));
+
       return true;
     },
     [controller],
@@ -196,6 +244,7 @@ export function useXrMapPosition({
     smoothedRef.current = null;
     setAnchorRevision(null);
     setTrackedLocation(null);
+    setHeadingDeg(null);
   }, []);
 
   const anchorStatus: XrAnchorStatus =
@@ -232,6 +281,7 @@ export function useXrMapPosition({
     currentLocation,
     source,
     isStale: source === 'last-known',
+    headingDeg,
     anchorStatus,
     anchorRevision,
     setAnchor,

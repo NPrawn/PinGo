@@ -3,6 +3,7 @@ import type { XrPoseReading } from '@/shared/lib/webxr';
 import {
   createXrMapAnchor,
   forwardXrOf,
+  mapHeadingDegOf,
   normalizePlanar,
   xrToMapPoint,
   type XrMapAnchor,
@@ -217,3 +218,67 @@ describe('xrToMapPoint', () => {
     expect(xrToMapPoint({ x: Number.NaN, z: 0 }, identityAnchor())).toBeNull();
   });
 });
+
+/**
+ * 방향각은 위치와 같은 회전을 쓴다. (S15P11A206-141)
+ *
+ * 각도 기준은 지도 `+X`축이고 증가 방향은 `+Y`쪽이다.
+ */
+describe('mapHeadingDegOf', () => {
+  /** 전방 XR `-z`가 지도 `-Y`와 같아 회전이 항등이 되는 앵커. */
+  const identity = createXrMapAnchor({
+    map: ANCHOR_MAP,
+    reading: reading(0, 0),
+    forwardMap: { x: 0, y: -1 },
+  })!;
+
+  /** 앵커를 만든 회전이 두 전방 벡터에서 나왔으므로 앵커 시점에는 정확히 forwardMap이다. */
+  it('앵커 시점에는 forwardMap의 각도와 같다', () => {
+    const anchor = createXrMapAnchor({
+      map: ANCHOR_MAP,
+      reading: reading(0, 0, 37),
+      forwardMap: { x: 0.6, y: 0.8 },
+    })!;
+
+    const expected = (Math.atan2(0.8, 0.6) * 180) / Math.PI;
+
+    expect(mapHeadingDegOf(37, anchor)).toBeCloseTo(expected, 6);
+  });
+
+  /**
+   * 앵커 이후 회전한 만큼만 방향이 돌아간다.
+   *
+   * XR yaw는 `+y`축 기준 우수 회전이고 전방이 `(-sin ψ, -cos ψ)`다. yaw가 커지면 전방 벡터가
+   * 시계 방향으로 돌고, 회전 행렬은 방향을 보존하므로 지도 각도도 같은 쪽으로 같은 양만큼 돈다.
+   */
+  it('yaw가 변한 만큼 지도 방향각도 같은 양으로 변한다', () => {
+    const anchor = createXrMapAnchor({
+      map: ANCHOR_MAP,
+      reading: reading(0, 0, 0),
+      forwardMap: { x: 1, y: 0 },
+    })!;
+
+    const at0 = mapHeadingDegOf(0, anchor)!;
+    const at90 = mapHeadingDegOf(90, anchor)!;
+
+    expect(shortestDelta(at90, at0)).toBeCloseTo(-90, 6);
+  });
+
+  it('한 바퀴 돌면 제자리로 온다', () => {
+    const anchor = identity;
+
+    expect(shortestDelta(mapHeadingDegOf(360, anchor)!, mapHeadingDegOf(0, anchor)!)).toBeCloseTo(
+      0,
+      6,
+    );
+  });
+
+  it('yaw가 유한하지 않으면 null이다', () => {
+    expect(mapHeadingDegOf(Number.NaN, identity)).toBeNull();
+  });
+});
+
+/** 두 각도 차이를 -180~180 범위로 접는다. 179도와 -179도가 2도 차이임을 반영한다. */
+function shortestDelta(a: number, b: number): number {
+  return ((a - b + 540) % 360) - 180;
+}

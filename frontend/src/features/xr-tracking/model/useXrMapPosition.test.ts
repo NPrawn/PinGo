@@ -22,6 +22,8 @@ interface FakeController {
   setState(next: XrSessionState): void;
   setReading(reading: XrPoseReading | null): void;
   emitSnapshot(snapshot: XrPoseSnapshot): void;
+  /** 방향 전용 채널. 컨트롤러가 데드밴드·간격을 통과시킨 값만 흘려준다. */
+  emitHeading(yawDeg: number): void;
 }
 
 function createFakeController(): FakeController {
@@ -29,6 +31,7 @@ function createFakeController(): FakeController {
   let latestReading: XrPoseReading | null = null;
   const stateListeners = new Set<() => void>();
   const snapshotListeners = new Set<(snapshot: XrPoseSnapshot) => void>();
+  const headingListeners = new Set<(yawDeg: number) => void>();
 
   const controller: XrSessionController = {
     getState: () => state,
@@ -50,6 +53,13 @@ function createFakeController(): FakeController {
 
       return () => {
         snapshotListeners.delete(listener);
+      };
+    },
+    subscribeHeading(listener) {
+      headingListeners.add(listener);
+
+      return () => {
+        headingListeners.delete(listener);
       };
     },
     async start() {
@@ -74,6 +84,11 @@ function createFakeController(): FakeController {
     emitSnapshot(snapshot) {
       snapshotListeners.forEach((listener) => {
         listener(snapshot);
+      });
+    },
+    emitHeading(yawDeg) {
+      headingListeners.forEach((listener) => {
+        listener(yawDeg);
       });
     },
   };
@@ -600,6 +615,76 @@ describe('useXrMapPosition', () => {
       });
 
       expect(result.current.currentLocation?.mapY).toBeLessThan(200);
+    });
+  });
+
+  /**
+   * 방향은 위치와 별도 채널로 온다. (S15P11A206-141)
+   *
+   * 위치 스냅샷에 묶으면 제자리에서 몸만 돌렸을 때 최대 5초 늦는다 — 11.4가 회전을 위치 확정
+   * 트리거에서 뺐기 때문이다. 데드밴드·최소 간격은 컨트롤러가 적용하므로 여기서는 통과한 값이
+   * 어떻게 지도 각도로 옮겨지는지만 본다.
+   */
+  describe('방향', () => {
+    it('앵커가 없으면 방향이 없다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake);
+      act(() => {
+        fake.emitHeading(90);
+      });
+
+      expect(result.current.headingDeg).toBeNull();
+    });
+
+    it('앵커 시점에는 앵커 방향의 각도를 낸다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      // FORWARD_IDENTITY는 지도 (0, -1)이므로 -90도다.
+      expect(result.current.headingDeg).toBeCloseTo(-90, 6);
+    });
+
+    /** 위치 스냅샷 없이도 방향만 갱신돼야 한다. 그것이 이 채널을 만든 이유다. */
+    it('위치 스냅샷 없이 방향만 갱신된다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      const before = result.current.currentLocation;
+
+      act(() => {
+        fake.emitHeading(90);
+      });
+
+      expect(result.current.headingDeg).not.toBeCloseTo(-90, 3);
+      // 위치는 그대로다. 방향 채널이 위치를 건드리지 않는다.
+      expect(result.current.currentLocation).toEqual(before);
+    });
+
+    it('앵커를 버리면 방향도 사라진다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+      act(() => {
+        result.current.clearAnchor();
+      });
+
+      expect(result.current.headingDeg).toBeNull();
     });
   });
 

@@ -143,6 +143,32 @@ export function createXrMapAnchor(input: XrAnchorInput, revision = 0): XrMapAnch
 }
 
 /**
+ * 지금 pose의 yaw를 지도 프레임 기준 방향각(도)으로 옮긴다. (S15P11A206-141)
+ *
+ * 위치와 같은 회전을 쓴다. 앵커의 `rotation`은 XR 평면 벡터를 지도 평면 벡터로 옮기는
+ * 변환이므로, 전방 벡터에 그대로 적용하면 지도 프레임에서 사용자가 바라보는 방향이 된다.
+ *
+ * 각도 기준은 지도 프레임의 `+X`축이고 증가 방향은 `+Y`쪽이다(`atan2(y, x)`). 이미지 위에
+ * 그릴 때는 좌표 프레임의 `angleDeg`를 더해야 픽셀 기준 각도가 된다 — `meterToPixel`이
+ * 같은 각도로 회전시키기 때문이다.
+ *
+ * 앵커 시점에 부르면 `atan2(forwardMap.y, forwardMap.x)`와 같은 값이 나온다. 회전이
+ * 두 전방 벡터로 만들어졌으므로 `rotate(forwardXr) = forwardMap`이 정확히 성립한다.
+ */
+export function mapHeadingDegOf(yawDeg: number, anchor: XrMapAnchor): number | null {
+  if (!Number.isFinite(yawDeg)) return null;
+
+  const forwardXr = forwardXrOf(yawDeg);
+  const { cosA, sinA } = anchor.rotation;
+  const x = cosA * forwardXr.x - sinA * forwardXr.y;
+  const y = sinA * forwardXr.x + cosA * forwardXr.y;
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
+/**
  * XR pose를 지도 캐노니컬 미터 좌표로 옮긴다. (좌표 스펙 8.3)
  *
  * **`dZ`의 부호를 뒤집지 않고 거울 보정도 넣지 않는다.** 3차 실기기 검증에서 90° 우회전 후

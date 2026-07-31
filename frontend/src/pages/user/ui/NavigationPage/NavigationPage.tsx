@@ -1,12 +1,16 @@
-import { Fragment, useRef, useState } from 'react';
-import { useNavigationStore } from '@/entities/navigation';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { MOCK_FLOOR_ID } from '@/entities/floor-map';
+import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
-import { Button, ButtonLink, HeadingMarker, Icon, MapPreview, Sheet } from '@/shared/ui';
+import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
+import { IndoorMapView } from '@/widgets/indoor-map';
 import { PhoneFrame } from '@/widgets/phone-frame';
+import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
 import styles from './NavigationPage.module.css';
 
 const FLOORS = ['1F', 'B1', 'B2', 'B3'] as const;
@@ -29,6 +33,24 @@ const MAP_FILTERS: readonly { name: string; icon: IconName }[] = [
   { name: '출구', icon: 'door' },
 ];
 
+/**
+ * 안내 진입 시점의 확정 실내 위치.
+ *
+ * **모듈 상수로 둔다.** 296 훅이 이 값을 진입 시점에 고정된 입력으로 다루므로(앵커가 생긴 뒤
+ * 바꾸면 조용히 무시된다) 렌더마다 새 객체를 만들면 앵커 발화 effect가 불필요하게 다시 돈다.
+ *
+ * 목업 도면 B2의 미터 원점이라 도면 가운데 부근에 찍힌다. 값 자체는 검산이 쉬운 (0, 0)이다.
+ *
+ * TODO: 위치 인식(FR-U-004)·수동 선택(FR-U-007) 결과를 받는 경로가 아직 없다. 확정 좌표를
+ * 담는 스토어가 없어서(navigationStore는 목적지 문자열만 갖는다) 여기서 목업으로 채운다.
+ * 그 흐름이 생기면 이 상수를 지우고 응답 좌표를 넘긴다.
+ */
+const MOCK_CONFIRMED_LOCATION: IndoorPoint = {
+  floorId: MOCK_FLOOR_ID.B2,
+  mapX: 0,
+  mapY: 0,
+};
+
 /** Camera guidance with an interactive indoor map and up to two stops. */
 export function NavigationPage() {
   const station = useStationStore((state) => state.station);
@@ -42,6 +64,19 @@ export function NavigationPage() {
   const setDestination = useNavigationStore((state) => state.setDestination);
   const stepsOpen = useNavigationStore((state) => state.stepsOpen);
   const toggleSteps = useNavigationStore((state) => state.toggleSteps);
+  const beginRelocalize = useNavigationStore((state) => state.beginRelocalize);
+  const endRelocalize = useNavigationStore((state) => state.endRelocalize);
+  const navigate = useNavigate();
+
+  /**
+   * 안내 화면에 도착했으면 재인식이 끝난 것이다.
+   *
+   * U-05의 CTA에 걸지 않고 여기서 지운다. 어떤 경로로 돌아와도(브라우저 뒤로가기, 다른 링크)
+   * 표시가 남지 않아야 다음 재인식 판정이 틀리지 않는다.
+   */
+  useEffect(() => {
+    endRelocalize();
+  }, [endRelocalize]);
   const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
   const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<(typeof MAP_FACILITIES)[number] | null>(
@@ -50,6 +85,28 @@ export function NavigationPage() {
   const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
+  /**
+   * XR 세션 게이트. 진입 시 안내를 띄우고 사용자가 확인하면 세션을 연다(11.7).
+   *
+   * 세션이 그리는 카메라 위에 이 화면 전체가 dom-overlay로 얹힌다. 별도 `<video>`를 만들지
+   * 않는다 — `getUserMedia`와 세션은 공존하지 못하고, 켠 채로 열면 pose가 하나도 들어오지
+   * 않는다(11.8).
+   */
+  const {
+    overlayRef,
+    isNoticeOpen,
+    isSessionOpen,
+    support,
+    status: xrStatus,
+    reason: xrReason,
+    canRetry,
+    confirm: startXrSession,
+    continueWithoutTracking,
+    currentLocation,
+    headingDeg,
+    source,
+    anchorStatus,
+  } = useXrNavigationSession({ currentIndoorLocation: MOCK_CONFIRMED_LOCATION });
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
     ? waypoints.includes(selectedFacility.name)
@@ -63,7 +120,20 @@ export function NavigationPage() {
       dark
       layout="flush"
       overlay={
-        selectedFacility ? (
+        /**
+         * 세션 안내가 시설 시트보다 앞선다. 세션을 열기 전에는 다른 조작을 받을 필요가 없고,
+         * 실패 안내가 시트에 가리면 사용자가 상태를 알 수 없다.
+         */
+        isNoticeOpen ? (
+          <XrSessionNotice
+            support={support}
+            status={xrStatus}
+            reason={xrReason}
+            canRetry={canRetry}
+            onConfirm={startXrSession}
+            onContinueWithoutTracking={continueWithoutTracking}
+          />
+        ) : selectedFacility ? (
           <Sheet
             label={`${selectedFacility.name} 경로 설정`}
             onDismiss={() => setSelectedFacility(null)}
@@ -125,10 +195,11 @@ export function NavigationPage() {
         ) : undefined
       }
     >
-      <>
-        <div className={styles.cam}>
+      <div className={styles.overlayRoot} ref={overlayRef}>
+        <div className={[styles.cam, isSessionOpen && styles.camLive].filter(Boolean).join(' ')}>
           <div className={styles.topBar}>
             <ViewfinderBack to={USER_ROUTES.ROUTE_OPTIONS} />
+            <XrTrackingBadge status={xrStatus} anchorStatus={anchorStatus} source={source} />
             <ConsultCta variant="icon" />
           </div>
 
@@ -218,45 +289,58 @@ export function NavigationPage() {
 
         <div className={styles.lower}>
           <div className={styles.lowerBody}>
-            <MapPreview className={styles.map} dest={{ left: '74%', top: '22%' }}>
-              <svg
-                viewBox="0 0 300 300"
-                preserveAspectRatio="xMidYMid slice"
-                className={styles.mapSvg}
-                aria-hidden
+            <MapPreview className={styles.map}>
+              {/* 실제 실내 지도(282). 목업 스키매틱 SVG가 있던 자리를 그대로 채운다.
+                  현재 위치 마커는 이 컴포넌트가 그린다 — 296 훅이 준 캐노니컬 미터 좌표를
+                  넘기면 프레임 변환(meterToPixel)은 그쪽이 한다. 여기서 좌표를 가공하지 않는다.
+
+                  표시 층은 현재 위치를 따라간다. 사용자가 버튼으로 층을 바꾸는 기능은 280이다.
+
+                  TODO: useMockData를 끄면 실제 층 지도 API를 쓴다. 지금은 도면 이미지가
+                  업로드되지 않아(mapUrl이 null) 목업 도면으로 마커 움직임을 확인한다. */}
+              <div className={styles.mapCanvas}>
+                <IndoorMapView
+                  stationId={1}
+                  floorId={currentLocation?.floorId ?? MOCK_CONFIRMED_LOCATION.floorId}
+                  currentLocation={currentLocation}
+                  currentHeadingDeg={headingDeg}
+                  /* 목적지 이름은 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
+                     시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
+                  destinationLabel={
+                    facilityFilter == null || facilityFilter === '출구' ? exit : null
+                  }
+                  useMockData
+                />
+              </div>
+
+              {/*
+                U-10의 "현재 위치 다시 인식". 주변을 다시 촬영해 위치를 새로 확정하는 흐름이므로
+                U-04로 나간다(화면 정의서 U-10 사용자 액션).
+
+                하단 액션 행이 아니라 지도 위에 둔다. 원본 액션 행은 버튼이 두 개이고, 셋으로
+                늘리면 좁은 화면에서 글자가 눌린다. 위치 표시를 다시 잡는 조작이라 지도에 붙는
+                편이 뜻도 더 분명하다.
+
+                **세션이 끊기고 앵커가 사라지는 것이 정상이다.** 이 버튼을 누르는 상황은 이미
+                위치를 신뢰할 수 없는 상태(경로 이탈, 엘리베이터 하차 등)라 지킬 앵커가 없다.
+                앵커를 유지한 채 좌표만 갱신하는 세션 안 위치 인식은 이것과 별개이며, 그쪽은
+                camera-access로 프레임을 얻어 화면을 벗어나지 않는다(11.8).
+
+                돌아오는 경로는 스토어의 relocalizing 표시가 담당한다 — U-05의 기본 CTA가 경로
+                옵션 선택이라, 표시가 없으면 목적지를 다시 고르는 화면부터 밟게 된다.
+              */}
+              <button
+                type="button"
+                className={styles.relocalize}
+                aria-label="현재 위치 다시 인식"
+                onClick={() => {
+                  beginRelocalize();
+                  navigate(USER_ROUTES.CAPTURE_PORTRAIT);
+                }}
               >
-                <rect x="0" y="0" width="300" height="300" fill="#eef1f5" />
-                <rect
-                  x="24"
-                  y="24"
-                  width="252"
-                  height="252"
-                  rx="10"
-                  fill="#f8fafc"
-                  stroke="#cdd5df"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M120 210 V96 H228 V60"
-                  fill="none"
-                  stroke="#e3e9f1"
-                  strokeWidth="26"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-                <rect x="40" y="40" width="52" height="44" rx="4" fill="#eef6f0" />
-                <rect x="210" y="210" width="48" height="44" rx="4" fill="#f7eef2" />
-                <rect x="40" y="210" width="48" height="44" rx="4" fill="#fef8ec" />
-                <polyline
-                  points="120,210 120,96 228,96 228,66"
-                  fill="none"
-                  stroke="#3EB489"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeDasharray="1 11"
-                />
-              </svg>
+                <Icon name="refresh" size={14} />
+                재인식
+              </button>
 
               <div className={styles.floorButtons} role="group" aria-label="층 선택">
                 {FLOORS.map((option) => (
@@ -296,10 +380,9 @@ export function NavigationPage() {
                 })}
               </div>
 
-              {(facilityFilter == null || facilityFilter === '출구') && (
-                <div className={styles.destLabel}>{exit}</div>
-              )}
-              <HeadingMarker style={{ left: '40%', top: '70%' }} />
+              {/* 현재 위치·방향·목적지와 그 이름은 모두 IndoorMapView가 실제 좌표로 그린다.
+                  퍼센트로 고정돼 있던 HeadingMarker와 목적지 라벨을 남겨 두면 마커가 둘이 되어
+                  어느 쪽이 실제인지 구분할 수 없다. */}
 
               {MAP_FACILITIES.filter(
                 (facility) => facilityFilter == null || facility.name === facilityFilter,
@@ -366,7 +449,7 @@ export function NavigationPage() {
             </div>
           </div>
         </div>
-      </>
+      </div>
     </PhoneFrame>
   );
 }

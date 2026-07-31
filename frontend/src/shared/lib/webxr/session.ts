@@ -1,4 +1,4 @@
-import { toPoseReading } from './pose';
+import { angleDiffDeg, toPoseReading } from './pose';
 import { createPoseSampler, DEFAULT_SAMPLING_RULE } from './sampler';
 import { detectXrSupport } from './support';
 import type {
@@ -32,6 +32,28 @@ export const PROVISIONAL_TRACKING_LOST_MS = 1500;
  * 잡되 **표본이 적어 보조 신호로만 쓰고 단독 판단 근거로 삼지 않는다**고 정한다.
  */
 const PERMISSION_BLOCKED_MS = 500;
+
+/**
+ * 방향 표시 갱신 기준. **확정값이 아니다.** (S15P11A206-141)
+ *
+ * 11.4는 회전을 **위치 확정** 트리거에서 제외했다. 1차 실측에서 회전 15도 기준이 상시 참이 되어
+ * 확정의 79%가 회전으로 발화했고, 규칙이 "1초마다 갱신"으로 퇴화했기 때문이다. 그러면서
+ * "회전량은 계속 기록해 **표시 갱신 기준을 따로 정하는 데 쓴다**"고 남겼다.
+ *
+ * 이 두 값이 그 기준이다. 위치와 **별도 채널**로 흘리는 것이 핵심이다 — 회전을 위치 확정에
+ * 되돌려 넣으면 11.4가 제거한 문제가 그대로 돌아온다. 여기서 나가는 것은 각도 하나뿐이라
+ * 위치 확정 주기는 손대지 않는다.
+ *
+ * | 값 | 근거 |
+ * | --- | --- |
+ * | 데드밴드 5도 | 손에 든 단말의 흔들림을 걸러야 하는데 실측에 평면 yaw 지터 값이 없다. 15도(1초 창에서 상시 참)보다 훨씬 작게 두어 의도한 회전이 곧 반영되게 했다 |
+ * | 최소 간격 120ms | 30fps 세션에서 프레임 3~4개당 한 번이다. 매 프레임 리렌더는 11.4가 제거한 것이므로 상한을 둔다 |
+ *
+ * 정지 상태에서 부채꼴이 떨리면 데드밴드를 올리고, 몸을 돌렸을 때 따라오는 것이 늦으면 간격을
+ * 내린다. 실기기 확정 항목이다(`docs/기술_의사결정_정리.md` 13장).
+ */
+export const PROVISIONAL_HEADING_DEADBAND_DEG = 5;
+export const PROVISIONAL_HEADING_MIN_INTERVAL_MS = 120;
 
 /**
  * reference space 후보. `local`을 우선한다.
@@ -87,6 +109,16 @@ export interface XrSessionControllerOptions {
   now?: () => DOMHighResTimeStamp;
   /** 추적 상실 판정 임계값(ms). */
   trackingLostAfterMs?: number;
+  /** 방향 표시 갱신 기준. 생략하면 provisional 기본값을 쓴다. */
+  headingRule?: { deadbandDeg: number; minIntervalMs: number };
+  /**
+   * 세션에 렌더 레이어를 붙인다. 성공하면 true.
+   *
+   * 기본값은 `xrCompatible` WebGL 컨텍스트를 만들어 `XRWebGLLayer`를 연결한다. 테스트에서
+   * 주입하는 것은 jsdom에 WebGL이 없어서다 — 레이어 연결 자체는 실기기 검증 대상이며
+   * (S15P11A206-141), 여기서 검사하는 것은 그 성공·실패가 세션 흐름을 어떻게 가르는지다.
+   */
+  attachRenderLayer?: (session: XRSession) => Promise<boolean>;
 }
 
 export interface XrStartOptions {
@@ -127,6 +159,16 @@ export interface XrSessionController {
   /** 11.4 확정 주기를 통과한 스냅샷만 전달된다. 받는 쪽에서 다시 throttle하지 않는다. */
   subscribeSnapshots(listener: (snapshot: XrPoseSnapshot) => void): () => void;
   /**
+   * 방향 표시용 yaw만 전달한다. 위치 확정과 **별도 주기**다.
+   *
+   * 11.4가 회전을 위치 확정 트리거에서 뺀 대신 "표시 갱신 기준을 따로 정한다"로 남긴 자리다.
+   * 위치 스냅샷 주기(정지 시 5초 heartbeat)로 방향을 갱신하면 제자리에서 몸만 돌렸을 때
+   * 화면이 최대 5초 늦는다. 이 채널은 각도 하나만 흘리므로 위치 확정 주기에 영향이 없다.
+   *
+   * 데드밴드와 최소 간격을 통과한 값만 온다. 받는 쪽에서 다시 throttle하지 않는다.
+   */
+  subscribeHeading(listener: (yawDeg: number) => void): () => void;
+  /**
    * 마지막 프레임의 pose. 추적 중이 아니면 null이다.
    *
    * **위치 갱신에 쓰지 않는다.** 위치 갱신은 `subscribeSnapshots`가 담당하며, 이 값을
@@ -165,14 +207,40 @@ export function createXrSessionController(
     rule = DEFAULT_SAMPLING_RULE,
     now = () => performance.now(),
     trackingLostAfterMs = PROVISIONAL_TRACKING_LOST_MS,
+    headingRule = {
+      deadbandDeg: PROVISIONAL_HEADING_DEADBAND_DEG,
+      minIntervalMs: PROVISIONAL_HEADING_MIN_INTERVAL_MS,
+    },
   } = options;
 
   let state: XrSessionState = { status: 'idle' };
   const stateListeners = new Set<(state: XrSessionState) => void>();
   const snapshotListeners = new Set<(snapshot: XrPoseSnapshot) => void>();
+  const headingListeners = new Set<(yawDeg: number) => void>();
+
+  /** 마지막으로 내보낸 방향과 그 시각. 데드밴드·간격 판정 기준이다. */
+  let lastHeadingYawDeg: number | null = null;
+  let lastHeadingAt: DOMHighResTimeStamp | null = null;
 
   let session: XRSession | null = null;
   let referenceSpace: XRReferenceSpace | null = null;
+
+  /**
+   * XR 컴포지터가 그릴 대상.
+   *
+   * **`baseLayer`가 없으면 immersive 세션은 프레임을 만들지 않는다.** `requestSession`과
+   * `requestReferenceSpace`가 모두 성공해도 `requestAnimationFrame` 콜백이 오지 않아
+   * pose가 영원히 없고, 카메라 영상도 화면에 나오지 않는다. 검증 페이지가 이 레이어를
+   * 붙였기 때문에 1~3차 실측이 성립했다.
+   *
+   * 이 모듈은 3D를 그리지 않는다. 레이어는 **카메라를 통과시키기 위한 투명 표면**으로만 쓴다 —
+   * 매 프레임 알파 0으로 지워서, ARCore가 뒤에 합성한 카메라 영상이 그대로 보이게 한다.
+   * 지도와 안내 UI는 그 위에 `dom-overlay`로 얹힌다(11.8).
+   *
+   * `webgl2`로 만드는 것은 11.8의 결정이다. `getCameraImage` 텍스처의 비동기 리드백에
+   * 쓰이는 PBO가 WebGL2 기능이라, 나중에 그 경로를 붙일 때 컨텍스트를 다시 만들지 않아도 된다.
+   */
+  let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
   let sampler = createPoseSampler(rule);
   let startInFlight: Promise<XrSessionState> | null = null;
   let frameHandle: number | null = null;
@@ -258,6 +326,8 @@ export function createXrSessionController(
 
     frameHandle = current.requestAnimationFrame(onFrame);
 
+    clearToTransparent(current);
+
     const viewerPose = frame.getViewerPose(referenceSpace);
 
     if (!viewerPose) {
@@ -306,6 +376,8 @@ export function createXrSessionController(
 
     latestReading = reading;
 
+    maybeEmitHeading(reading.yawDeg, time);
+
     /** 확정 주기 판정은 샘플러가 한다. 통과한 프레임만 바깥으로 나간다. */
     const snapshot = sampler.consider(reading);
 
@@ -314,6 +386,92 @@ export function createXrSessionController(
         listener(snapshot);
       });
     }
+  }
+
+  /**
+   * XR 레이어를 알파 0으로 지운다.
+   *
+   * `immersive-ar`의 blend mode는 ARCore에서 `alpha-blend`다. 즉 컴포지터가 카메라 영상 위에
+   * 이 레이어를 알파 합성한다. 지우지 않으면 프레임버퍼 내용이 정의되지 않아 앞 프레임의
+   * 잔상이나 검은 화면이 카메라를 덮을 수 있다. **비우는 것이 카메라를 보이게 하는 방법이다.**
+   *
+   * 픽셀을 읽지 않고 쓰기만 하므로 파이프라인을 flush하지 않는다. 11.8이 금지한 것은 동기
+   * `readPixels`이며 여기에는 해당하지 않는다.
+   */
+  function clearToTransparent(current: XRSession): void {
+    // 레이어를 직접 붙이지 않았으면(테스트에서 주입한 경우) 지울 대상도 없다.
+    if (!gl) return;
+
+    const layer = current.renderState.baseLayer;
+
+    if (!layer) return;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  }
+
+  /**
+   * 세션에 렌더 레이어를 붙인다. 실패하면 false.
+   *
+   * `xrCompatible`을 컨텍스트 생성 시에 주고 `makeXRCompatible()`도 부른다. 앞의 것은 처음부터
+   * XR 장치에 맞는 어댑터를 고르게 하고, 뒤의 것은 이미 만들어진 컨텍스트를 XR 장치로 옮긴다.
+   * 어느 한쪽만으로 되는 기기가 갈리므로 둘 다 한다.
+   */
+  async function attachRenderLayer(opened: XRSession): Promise<boolean> {
+    try {
+      const element = document.createElement('canvas');
+
+      /**
+       * DOM에 붙이지 않는다. 컴포지터가 이 캔버스를 XR 표면으로만 쓰고 페이지에는 그리지 않는다.
+       * 붙이면 화면에 빈 캔버스가 자리를 차지한다. 검증 페이지도 붙이지 않았고 실기기에서
+       * 레이어 연결이 성공했다.
+       */
+      const context =
+        element.getContext('webgl2', { xrCompatible: true }) ??
+        // WebGL2가 없는 기기에서도 카메라는 보여야 한다. 리드백 경로만 나중에 못 쓴다(11.8).
+        element.getContext('webgl', { xrCompatible: true });
+
+      if (!context) return false;
+
+      await context.makeXRCompatible();
+      opened.updateRenderState({ baseLayer: new XRWebGLLayer(opened, context) });
+
+      // 캔버스는 컨텍스트가 `gl.canvas`로 붙들고 있어 따로 참조를 두지 않아도 살아 있다.
+      gl = context;
+
+      return true;
+    } catch {
+      // 컨텍스트 생성·전환·레이어 연결 중 어디서 실패해도 세션을 쓸 수 없다는 결론은 같다.
+      return false;
+    }
+  }
+
+  /** GL 자원을 반납한다. 컨텍스트는 기기당 개수 제한이 있어 세션마다 새로 만들고 버린다. */
+  function releaseRenderLayer(): void {
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    gl = null;
+  }
+
+  /**
+   * 방향이 눈에 보일 만큼 바뀌었으면 내보낸다.
+   *
+   * 첫 pose는 기준이 없으므로 무조건 내보낸다 — 그 값이 이후 판정의 기준점이 된다.
+   * 최소 간격을 먼저 보고 데드밴드를 본다. 순서를 뒤집으면 큰 회전이 매 프레임 통과한다.
+   */
+  function maybeEmitHeading(yawDeg: number, time: DOMHighResTimeStamp): void {
+    if (!Number.isFinite(yawDeg)) return;
+
+    if (lastHeadingYawDeg !== null && lastHeadingAt !== null) {
+      if (time - lastHeadingAt < headingRule.minIntervalMs) return;
+      if (angleDiffDeg(yawDeg, lastHeadingYawDeg) < headingRule.deadbandDeg) return;
+    }
+
+    lastHeadingYawDeg = yawDeg;
+    lastHeadingAt = time;
+    headingListeners.forEach((listener) => {
+      listener(yawDeg);
+    });
   }
 
   function onSessionEnd(): void {
@@ -358,6 +516,10 @@ export function createXrSessionController(
     referenceSpace = null;
     lastPoseAt = null;
     latestReading = null;
+    // 다음 세션의 첫 pose가 기준점을 새로 잡아야 한다. 남기면 옛 방향과 비교된다.
+    lastHeadingYawDeg = null;
+    lastHeadingAt = null;
+    releaseRenderLayer();
     sampler.reset();
   }
 
@@ -370,6 +532,9 @@ export function createXrSessionController(
     } catch {
       // 이미 끝났거나 종료에 실패해도 더 할 수 있는 일이 없다.
     }
+
+    // 레이어를 이미 붙인 뒤 버리는 경우가 있다. GL 컨텍스트는 개수 제한이 있어 남기지 않는다.
+    releaseRenderLayer();
 
     return setState({ status: 'ended', reason: undefined, referenceSpaceType: undefined });
   }
@@ -431,6 +596,28 @@ export function createXrSessionController(
       return abandon(opened);
     }
 
+    /**
+     * reference space보다 렌더 레이어를 먼저 붙인다.
+     *
+     * 레이어가 없으면 프레임이 오지 않아 reference space를 구해도 쓸 데가 없다. 순서를 뒤집으면
+     * 레이어 실패 시 이미 구한 공간을 버리게 된다. 검증 페이지도 이 순서였다.
+     */
+    if (!(await (options.attachRenderLayer ?? attachRenderLayer)(opened))) {
+      try {
+        await opened.end();
+      } catch {
+        // 이미 끝났거나 종료에 실패해도 더 할 수 있는 일이 없다.
+      }
+
+      releaseRenderLayer();
+
+      return setState({ status: 'failed', reason: 'no-render-layer' });
+    }
+
+    if (stopRequested) {
+      return abandon(opened);
+    }
+
     let acquired: XRReferenceSpace | null = null;
     let acquiredType: XRReferenceSpaceType | undefined;
 
@@ -450,6 +637,8 @@ export function createXrSessionController(
       } catch {
         // 이미 끝났거나 종료에 실패해도 더 할 수 있는 일이 없다.
       }
+
+      releaseRenderLayer();
 
       return setState({ status: 'failed', reason: 'no-reference-space' });
     }
@@ -551,6 +740,14 @@ export function createXrSessionController(
 
       return () => {
         snapshotListeners.delete(listener);
+      };
+    },
+
+    subscribeHeading(listener) {
+      headingListeners.add(listener);
+
+      return () => {
+        headingListeners.delete(listener);
       };
     },
 

@@ -1,4 +1,4 @@
-import type { CoordinateFrame } from '../model/types';
+import type { CoordinateFrame, FloorMap } from '../model/types';
 
 // 원본 이미지 픽셀 좌표.
 export interface PixelPoint {
@@ -14,6 +14,30 @@ export interface PixelPoint {
  */
 export function isRenderableCoordinate(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * 층별 지도 응답에서 좌표 프레임을 꺼낸다. 값이 온전하지 않으면 null.
+ *
+ * 프레임 세 값은 백엔드 `BigDecimal`에서 내려오므로 JSON 파싱 결과가 null·NaN일 수 있다.
+ * 하나라도 없으면 미터 좌표를 이미지 어디에 놓아야 할지 알 수 없어, 그리지 않는 편이 맞다 —
+ * 0으로 채우면 마커가 이미지 좌상단에 붙어 조용히 틀린 위치를 보여준다.
+ *
+ * `mpp`가 0인 경우는 여기서 걸러지지 않는다. 나눗셈이 일어나는 `meterToPixel`이 판단한다.
+ */
+export function coordinateFrameOf(map: FloorMap): CoordinateFrame | null {
+  const { originPxX, originPxY, frameAngleDeg, scaleMPerPx } = map;
+
+  if (
+    !isRenderableCoordinate(originPxX) ||
+    !isRenderableCoordinate(originPxY) ||
+    !isRenderableCoordinate(frameAngleDeg) ||
+    !isRenderableCoordinate(scaleMPerPx)
+  ) {
+    return null;
+  }
+
+  return { originPx: [originPxX, originPxY], angleDeg: frameAngleDeg, mpp: scaleMPerPx };
 }
 
 /**
