@@ -231,10 +231,23 @@ class SecurityFilterChainTest {
     }
 
     @Test
-    void 비로그인_상담종료API_401() throws Exception {
-        mockMvc.perform(post("/api/consultations/consultation-1/end"))
+    void 비로그인_상담자_목록조회API_401() throws Exception {
+        mockMvc.perform(get("/api/counselors/consultations"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void 비로그인_상담종료API_사용자_종료_인가통과_404() throws Exception {
+        String body = """
+            {"endedBy": "user", "userSessionId": "usr_test"}
+            """;
+
+        mockMvc.perform(post("/api/consultations/consultation-1/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
+    }
+
 
     // ---- ADMIN ----
 
@@ -274,12 +287,26 @@ class SecurityFilterChainTest {
     }
 
     @Test
-    void ADMIN_상담종료API_403() throws Exception {
+    void ADMIN_상담자_목록조회API_403() throws Exception {
         String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
 
-        mockMvc.perform(post("/api/consultations/consultation-1/end")
+        mockMvc.perform(get("/api/counselors/consultations")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ADMIN_상담종료API_404() throws Exception {
+        String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
+        String body = """
+            {"endedBy": "counselor"}
+            """;
+
+        mockMvc.perform(post("/api/consultations/consultation-1/end")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
     }
 
     // ---- COUNSELOR ----
@@ -306,8 +333,6 @@ class SecurityFilterChainTest {
     void COUNSELOR_상담수락API_인가통과_404() throws Exception {
         String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
 
-        // 인가(Security)는 통과하고, 존재하지 않는 상담이라 서비스 단에서 404가 나는지 확인
-        // (401/403이 아니라는 것 자체가 COUNSELOR 권한으로 필터를 통과했다는 증거)
         mockMvc.perform(post("/api/consultations/consultation-1/accept")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound());
@@ -323,14 +348,27 @@ class SecurityFilterChainTest {
     }
 
     @Test
-    void COUNSELOR_상담종료API_인가통과_404() throws Exception {
+    void COUNSELOR_상담자_목록조회API_200() throws Exception {
         String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
 
-        mockMvc.perform(post("/api/consultations/consultation-1/end")
+        mockMvc.perform(get("/api/counselors/consultations")
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk());
     }
 
+    @Test
+    void COUNSELOR_상담종료API_인가통과_404() throws Exception {
+        String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
+        String body = """
+            {"endedBy": "counselor"}
+            """;
+
+        mockMvc.perform(post("/api/consultations/consultation-1/end")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
+    }
 
     // ---- 토큰 이상 ----
 
