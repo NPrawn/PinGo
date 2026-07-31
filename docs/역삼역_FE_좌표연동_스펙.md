@@ -127,12 +127,12 @@ function pixelToMeter(px, py, floor) {
 
 ### 8.2 앵커
 
-위치 확정(VPS 인식 성공 또는 지도 수동 선택) 시점에 다음을 한 쌍으로 저장한다.
+**경로 안내 화면에서 세션 안 VPS가 위치를 확정한 시점**에 다음을 한 쌍으로 저장한다. 사전 위치 확정(U-05 VPS, U-07 수동 선택)으로는 만들지 않는다 — 그 시점에는 XR 세션이 없어 짝지을 pose가 없다(`기술_의사결정_정리.md` 11.2, 아래 §8.5 마지막 문단).
 
 | 값 | 출처 |
 |---|---|
-| `anchor.x`, `anchor.y`, `anchor.floorId` | 확정된 지도 미터 좌표 (`candidates[].mapX/mapY` 또는 `pixelToMeter` 결과) |
-| `anchor.xr` = `(X, Z)` | 같은 시점 `XRFrame.getViewerPose()`의 위치 |
+| `anchor.x`, `anchor.y`, `anchor.floorId` | 확정된 지도 미터 좌표 (`candidates[].mapX/mapY`) |
+| `anchor.xr` = `(X, Z)` | 같은 시점 `XRFrame.getViewerPose()`의 위치. **확정 주기(11.4)로 걸러진 스냅샷이 아니라 그 순간의 원시 pose여야 한다.** 정지 상태 heartbeat가 5초라 스냅샷을 쓰면 앵커가 그만큼 어긋난다 |
 | `anchor.forwardXr` | 같은 시점 단말 전방의 XR 평면 단위벡터. `yawDegOf`가 반환하는 ψ에 대해 `(-sin ψ, -cos ψ)`. WebXR 뷰어의 전방이 `-Z`이기 때문이다 |
 | `anchor.forwardMap` | 같은 시점 단말 전방의 캐노니컬 미터 평면 단위벡터. **위치 인식 응답의 방향 필드에서 받는다(§8.5)** |
 
