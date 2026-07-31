@@ -20,6 +20,7 @@ function renderOverlay(props: {
   currentLocation?: IndoorPoint | null;
   currentHeadingImageDeg?: number | null;
   destination?: IndoorPoint | null;
+  destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
   project?: (mapX: number, mapY: number) => PixelPoint | null;
 }) {
@@ -32,6 +33,7 @@ function renderOverlay(props: {
       currentLocation={props.currentLocation}
       currentHeadingImageDeg={props.currentHeadingImageDeg}
       destination={props.destination}
+      destinationLabel={props.destinationLabel}
       pathNodes={props.pathNodes}
     />,
   );
@@ -54,6 +56,33 @@ describe('IndoorMapOverlay', () => {
 
     expect(screen.getByRole('img', { name: '현재 위치' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '목적지' })).toBeInTheDocument();
+  });
+
+  /**
+   * 이름이 마커와 떨어져 있으면 안 된다. 프로토타입은 라벨을 화면 비율로 고정해 뒀는데,
+   * 그 방식은 목적지가 바뀌거나 층을 옮기면 점과 라벨이 서로 다른 곳을 가리킨다.
+   */
+  it('목적지 이름을 마커 위에 붙여 그린다', () => {
+    renderOverlay({
+      destination: { floorId: FLOOR_B2, mapX: 400, mapY: 500 },
+      destinationLabel: '3번 출구',
+    });
+
+    const marker = screen.getByRole('img', { name: '목적지' });
+    const label = marker.querySelector('text');
+    const pin = marker.querySelector('circle');
+
+    expect(label).toHaveTextContent('3번 출구');
+    expect(label).toHaveAttribute('x', '400');
+    expect(pin).toHaveAttribute('cx', '400');
+    // 점 위쪽이므로 y가 더 작다.
+    expect(Number(label?.getAttribute('y'))).toBeLessThan(500);
+  });
+
+  it('목적지 이름을 넘기지 않으면 점만 그린다', () => {
+    renderOverlay({ destination: { floorId: FLOOR_B2, mapX: 400, mapY: 500 } });
+
+    expect(screen.getByRole('img', { name: '목적지' }).querySelector('text')).toBeNull();
   });
 
   it('경로 노드를 순서대로 이은 선을 그린다', () => {

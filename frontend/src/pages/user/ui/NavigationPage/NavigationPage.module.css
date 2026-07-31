@@ -351,17 +351,29 @@
 }
 
 /* 실제 실내 지도가 들어가는 자리. 목업 SVG가 쓰던 것과 같은 박스다.
-   IndoorMapView의 .viewport가 width/height 100%라 이 박스를 그대로 채운다. */
+   IndoorMapView의 .viewport가 width/height 100%라 이 박스를 그대로 채운다.
+
+   이 박스에는 z-index를 주지 않는다. 도면 이미지와 오버레이가 함께 들어 있어서, 올리면
+   불투명한 도면까지 시설 칩 위로 올라가 칩이 사라진다. */
 .mapCanvas {
   position: absolute;
   inset: 0;
+}
+
+/* 오버레이 SVG만 시설 칩 위로 올린다. 현재 위치와 목적지 이름이 칩에 가리면 안 된다 —
+   원본에도 목적지 라벨이 지도 위 요소들보다 나중에 그려져 있었다.
+   IndoorMapView의 .viewport·.stage가 stacking context를 만들지 않으므로, 그 자손인 오버레이의
+   z-index가 시설 칩과 같은 문맥에서 비교된다. 오버레이는 pointer-events: none이라 칩의 탭을
+   가리지 않는다. 도면 이미지는 z-index가 없어 그대로 칩 아래 남는다. */
+.mapCanvas svg {
+  z-index: 4;
 }
 
 .floorButtons {
   position: absolute;
   top: 8px;
   left: 8px;
-  z-index: 4;
+  z-index: 5;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -390,7 +402,7 @@
   position: absolute;
   bottom: 8px;
   left: 50%;
-  z-index: 4;
+  z-index: 5;
   display: flex;
   flex-direction: row;
   gap: 4px;
@@ -441,18 +453,34 @@
   background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
 }
 
-.destLabel {
+/* 현재 위치 다시 인식. 층 버튼과 마주보는 위치에 둔다.
+   층 버튼(top-left)·시설 필터(bottom-center)와 겹치지 않는 자리다. */
+.relocalize {
   position: absolute;
-  top: 22%;
-  left: 74%;
-  padding: 2px 6px;
-  font-size: 8.5px;
-  font-weight: 800;
-  white-space: nowrap;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 9px;
+  font: 800 10px/1 var(--font-family-base);
+  color: var(--color-mint-forest);
+  cursor: pointer;
+  background: rgb(255 255 255 / 88%);
+  border: 0;
+  border-radius: 11px;
+  box-shadow: 0 4px 12px -8px rgb(15 44 34 / 50%);
+}
+
+.relocalize:hover {
   color: #fff;
-  background: var(--color-coral);
-  border-radius: 5px;
-  transform: translate(-50%, -150%);
+  background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
+}
+
+.relocalize:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 1px;
 }
 
 .facility {

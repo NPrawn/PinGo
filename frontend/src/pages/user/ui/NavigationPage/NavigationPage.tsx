@@ -304,9 +304,43 @@ export function NavigationPage() {
                   floorId={currentLocation?.floorId ?? MOCK_CONFIRMED_LOCATION.floorId}
                   currentLocation={currentLocation}
                   currentHeadingDeg={headingDeg}
+                  /* 목적지 이름은 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
+                     시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
+                  destinationLabel={
+                    facilityFilter == null || facilityFilter === '출구' ? exit : null
+                  }
                   useMockData
                 />
               </div>
+
+              {/*
+                U-10의 "현재 위치 다시 인식". 주변을 다시 촬영해 위치를 새로 확정하는 흐름이므로
+                U-04로 나간다(화면 정의서 U-10 사용자 액션).
+
+                하단 액션 행이 아니라 지도 위에 둔다. 원본 액션 행은 버튼이 두 개이고, 셋으로
+                늘리면 좁은 화면에서 글자가 눌린다. 위치 표시를 다시 잡는 조작이라 지도에 붙는
+                편이 뜻도 더 분명하다.
+
+                **세션이 끊기고 앵커가 사라지는 것이 정상이다.** 이 버튼을 누르는 상황은 이미
+                위치를 신뢰할 수 없는 상태(경로 이탈, 엘리베이터 하차 등)라 지킬 앵커가 없다.
+                앵커를 유지한 채 좌표만 갱신하는 세션 안 위치 인식은 이것과 별개이며, 그쪽은
+                camera-access로 프레임을 얻어 화면을 벗어나지 않는다(11.8).
+
+                돌아오는 경로는 스토어의 relocalizing 표시가 담당한다 — U-05의 기본 CTA가 경로
+                옵션 선택이라, 표시가 없으면 목적지를 다시 고르는 화면부터 밟게 된다.
+              */}
+              <button
+                type="button"
+                className={styles.relocalize}
+                aria-label="현재 위치 다시 인식"
+                onClick={() => {
+                  beginRelocalize();
+                  navigate(USER_ROUTES.CAPTURE_PORTRAIT);
+                }}
+              >
+                <Icon name="refresh" size={14} />
+                재인식
+              </button>
 
               <div className={styles.floorButtons} role="group" aria-label="층 선택">
                 {FLOORS.map((option) => (
@@ -346,12 +380,9 @@ export function NavigationPage() {
                 })}
               </div>
 
-              {(facilityFilter == null || facilityFilter === '출구') && (
-                <div className={styles.destLabel}>{exit}</div>
-              )}
-              {/* 현재 위치와 바라보는 방향은 IndoorMapView가 실제 좌표로 그린다.
-                  퍼센트로 고정돼 있던 HeadingMarker를 남겨 두면 마커가 둘이 되어 어느 쪽이
-                  실제인지 구분할 수 없다. */}
+              {/* 현재 위치·방향·목적지와 그 이름은 모두 IndoorMapView가 실제 좌표로 그린다.
+                  퍼센트로 고정돼 있던 HeadingMarker와 목적지 라벨을 남겨 두면 마커가 둘이 되어
+                  어느 쪽이 실제인지 구분할 수 없다. */}
 
               {MAP_FACILITIES.filter(
                 (facility) => facilityFilter == null || facility.name === facilityFilter,
@@ -402,31 +433,6 @@ export function NavigationPage() {
             )}
 
             <div className={styles.actions}>
-              {/*
-                U-10의 "현재 위치 다시 인식". 주변을 다시 촬영해 위치를 새로 확정하는 흐름이므로
-                U-04로 나간다(화면 정의서 U-10 사용자 액션).
-
-                **세션이 끊기고 앵커가 사라지는 것이 정상이다.** 이 버튼을 누르는 상황은 이미
-                위치를 신뢰할 수 없는 상태(경로 이탈, 엘리베이터 하차 등)라 지킬 앵커가 없다.
-                앵커를 유지한 채 좌표만 갱신하는 세션 안 위치 인식은 이것과 별개이며, 그쪽은
-                camera-access로 프레임을 얻어 화면을 벗어나지 않는다(11.8).
-
-                돌아오는 경로는 스토어의 relocalizing 표시가 담당한다 — U-05의 기본 CTA가 경로
-                옵션 선택이라, 표시가 없으면 목적지를 다시 고르는 화면부터 밟게 된다.
-              */}
-              <Button
-                variant="secondary"
-                size="sm"
-                className={styles.action}
-                aria-label="현재 위치 다시 인식"
-                onClick={() => {
-                  beginRelocalize();
-                  navigate(USER_ROUTES.CAPTURE_PORTRAIT);
-                }}
-              >
-                <Icon name="refresh" size={15} />
-                재인식
-              </Button>
               <Button
                 variant="secondary"
                 size="sm"

@@ -27,6 +27,8 @@ interface IndoorMapViewProps {
   currentHeadingDeg?: number | null;
   /** 목적지. 경로 응답의 마지막 노드와 같아도 무방하다. */
   destination?: IndoorPoint | null;
+  /** 목적지 마커에 붙일 이름. 넘기지 않으면 점만 그린다. */
+  destinationLabel?: string | null;
   /** 경로가 지나는 노드. 경로 응답의 pathNodes를 그대로 받는다. */
   pathNodes?: readonly RoutePathNode[];
   /**
@@ -57,6 +59,7 @@ export function IndoorMapView({
   currentLocation,
   currentHeadingDeg,
   destination,
+  destinationLabel,
   pathNodes,
   useMockData = false,
 }: IndoorMapViewProps) {
@@ -107,6 +110,7 @@ export function IndoorMapView({
           currentLocation={currentLocation ?? (useMockData ? MOCK_CURRENT_LOCATION : null)}
           currentHeadingDeg={currentHeadingDeg}
           destination={destination ?? (useMockData ? MOCK_DESTINATION : null)}
+          destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
         />
         {/* 시설·출구 마커(281)가 이 stage 위에 추가된다. */}
@@ -124,12 +128,14 @@ function MapOverlay({
   currentLocation,
   currentHeadingDeg,
   destination,
+  destinationLabel,
   pathNodes,
 }: {
   floorMap: FloorMap;
   currentLocation: IndoorPoint | null;
   currentHeadingDeg?: number | null;
   destination: IndoorPoint | null;
+  destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
 }) {
   const frame = coordinateFrameOf(floorMap);
@@ -153,6 +159,7 @@ function MapOverlay({
         typeof currentHeadingDeg === 'number' ? currentHeadingDeg + frame.angleDeg : null
       }
       destination={destination}
+      destinationLabel={destinationLabel}
       pathNodes={pathNodes}
     />
   );

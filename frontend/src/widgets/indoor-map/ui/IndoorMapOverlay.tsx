@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type PixelPoint } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
@@ -28,6 +29,13 @@ interface IndoorMapOverlayProps {
    */
   currentHeadingImageDeg?: number | null;
   destination?: IndoorPoint | null;
+  /**
+   * 목적지 마커에 붙일 이름. 프로토타입에서 점 위에 얹혀 있던 `3번 출구` 칩이다.
+   *
+   * 마커와 같은 좌표계에서 그려야 층을 바꾸거나 목적지가 달라져도 둘이 붙어 있다.
+   * null이면 점만 그린다.
+   */
+  destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
 }
 
@@ -48,9 +56,19 @@ export function IndoorMapOverlay({
   currentLocation,
   currentHeadingImageDeg,
   destination,
+  destinationLabel,
   pathNodes,
 }: IndoorMapOverlayProps) {
   const { t } = useTranslation();
+  /**
+   * 부채꼴 페이드 그라디언트의 id.
+   *
+   * 고정 문자열로 두면 한 문서에 오버레이가 둘 이상 있을 때 뒤쪽 오버레이가 앞쪽 정의를
+   * 참조한다 — 그라디언트 중심이 남의 마커 위치라 페이드가 엉뚱한 곳에서 시작한다.
+   *
+   * `useId`가 붙이는 구분 기호는 id에 쓸 수 없는 문자일 수 있어 걸러낸다.
+   */
+  const beamGradientId = `beam${useId().replace(/[^\w-]/g, '')}`;
 
   const routeSegments = floorSegments(pathNodes ?? [], floorId, project);
   const currentPoint = pointOnFloor(currentLocation, floorId, project);
@@ -87,30 +105,57 @@ export function IndoorMapOverlay({
             className={styles.destinationPin}
             cx={destinationPoint.px}
             cy={destinationPoint.py}
-            r={MARKER_RADIUS}
+            r={DESTINATION_RADIUS}
           />
-          <circle
-            className={styles.destinationCore}
-            cx={destinationPoint.px}
-            cy={destinationPoint.py}
-            r={MARKER_RADIUS / 2.5}
-          />
+          {destinationLabel != null && destinationLabel !== '' && (
+            // 원본과 같이 점 위쪽에 얹는다. 점과 겹치지 않을 만큼만 띄운다.
+            <text
+              className={styles.destinationLabel}
+              x={destinationPoint.px}
+              y={destinationPoint.py - DESTINATION_RADIUS - LABEL_GAP}
+              fontSize={LABEL_FONT_SIZE}
+              textAnchor="middle"
+            >
+              {destinationLabel}
+            </text>
+          )}
         </g>
       )}
 
       {currentPoint && (
         <g role="img" aria-label={t('indoorMap.overlay.currentLocation')}>
+          {/**
+           * 부채꼴의 페이드. 마커 중심을 기준으로 옅어져야 하므로 좌표를 직접 준다 —
+           * 기본 단위(objectBoundingBox)는 부채꼴 경로의 바운딩 박스 중심을 쓰는데,
+           * 그 중심은 마커 위치가 아니라 부채꼴 한복판이다.
+           *
+           * 회전은 마커 중심을 축으로 하므로, 같은 점을 중심으로 둔 그라디언트는 회전에
+           * 영향받지 않는다.
+           */}
+          <defs>
+            <radialGradient
+              id={beamGradientId}
+              gradientUnits="userSpaceOnUse"
+              cx={currentPoint.px}
+              cy={currentPoint.py}
+              r={BEAM_LENGTH}
+            >
+              <stop className={styles.beamStopInner} offset="0%" />
+              <stop className={styles.beamStopOuter} offset="100%" />
+            </radialGradient>
+          </defs>
           <circle
             className={styles.currentHalo}
             cx={currentPoint.px}
             cy={currentPoint.py}
-            r={MARKER_RADIUS * 1.8}
+            r={MARKER_RADIUS * HALO_SCALE}
           />
           {/* 방향을 아는 경우에만 부채꼴을 얹는다. 점보다 먼저 그려 점이 위에 남게 한다 —
               점의 중심이 곧 위치이므로 방향 표시가 그것을 덮으면 위치가 흐려진다. */}
           {Number.isFinite(currentHeadingImageDeg) && (
             <path
               className={styles.currentBeam}
+              fill={`url(#${beamGradientId})`}
               d={beamPath(currentPoint)}
               transform={`rotate(${currentHeadingImageDeg} ${currentPoint.px} ${currentPoint.py})`}
             />
@@ -127,12 +172,29 @@ export function IndoorMapOverlay({
   );
 }
 
-// 원본 이미지 픽셀 단위 마커 반지름. viewBox와 함께 축소되므로 지도 축척에 비례한다.
-const MARKER_RADIUS = 26;
+/**
+ * 마커 치수. 단위는 **원본 이미지 픽셀**이라 viewBox와 함께 축소된다.
+ *
+ * 비율은 프로토타입 `.heading`(점 16px · ping 22px · beam 반지름 27px)과
+ * `.dotdest`(14px)에서 가져왔다. 절대값은 경로 안내 화면의 지도 박스에서 원본과 같은 크기로
+ * 보이도록 맞춘 것이다(그 박스의 표시 배율이 약 0.2다).
+ *
+ * TODO(283): 표시 배율에 관계없이 화면상 크기를 일정하게 두려면 렌더된 박스를 실제로 재야
+ * 한다. 팬·줌이 들어올 때 그 값이 필요하므로 그때 화면 좌표 기준으로 바꾼다. 지금은 지도를
+ * 크게 띄우는 화면(/user/map)에서 마커도 함께 커진다.
+ */
+const MARKER_RADIUS = 40;
+const HALO_SCALE = 1.375;
+const DESTINATION_RADIUS = 35;
 
-/** 방향 부채꼴의 길이와 반각. 반각을 넓게 잡아 각도 오차가 덜 드러나게 한다. */
-const BEAM_LENGTH = MARKER_RADIUS * 3.2;
-const BEAM_HALF_ANGLE_DEG = 26;
+/** 목적지 이름. 점 위에 얹되 겹치지 않을 만큼 띄운다. */
+const LABEL_FONT_SIZE = 44;
+const LABEL_GAP = 14;
+
+/** 방향 부채꼴. 원본의 conic-gradient가 60도를 덮었으므로 반각은 30도다. */
+const BEAM_LENGTH = MARKER_RADIUS * 3.375;
+const BEAM_HALF_ANGLE_DEG = 30;
+
 
 /**
  * 마커 중심에서 오른쪽(0도)으로 뻗는 부채꼴을 그린다.
