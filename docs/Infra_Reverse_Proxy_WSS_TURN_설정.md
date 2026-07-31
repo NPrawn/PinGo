@@ -105,13 +105,26 @@ proxy_set_header Connection $connection_upgrade;
 
 WebRTC 연결을 위해 coturn을 사용한다.
 
-실제 서버 적용 시 coturn 환경값과 secret을 운영 환경에 맞게 주입한다. 운영 secret과 배포 여부는 저장소만으로 검증할 수 없다.
+실제 서버 적용 시 coturn 환경값과 secret을 운영 환경에 맞게 주입한다. 운영 secret과 배포 여부는 저장소만으로 검증할 수 없다. 실제 설정 파일은 `infra/coturn/turnserver.conf`로 생성하되, credential이 포함되므로 저장소에 커밋하지 않는다.
+
+서버 적용 절차:
+
+```bash
+cp infra/coturn/turnserver.conf.example infra/coturn/turnserver.conf
+vi infra/coturn/turnserver.conf
+docker compose --profile webrtc up -d coturn
+docker logs -f pingo-coturn
+```
+
+운영 설정 필수값:
 
 ```conf
-realm=pingo.example.com
-user=pingo:CHANGE_ME_TURN_PASSWORD
+realm=jenkins.example.invalid
+user=CHANGE_ME_TURN_USERNAME:CHANGE_ME_TURN_PASSWORD
 external-ip=CHANGE_ME_PUBLIC_SERVER_IP
 ```
+
+`CHANGE_ME_TURN_USERNAME`, `CHANGE_ME_TURN_PASSWORD`, `CHANGE_ME_PUBLIC_SERVER_IP`는 운영 서버에서만 관리한다.
 
 TURN 서버 주요 포트:
 
@@ -121,9 +134,29 @@ TURN 서버 주요 포트:
 
 서버 방화벽과 클라우드 보안 그룹에서 위 포트를 허용해야 한다.
 
+백엔드는 `/api/webrtc/ice-servers` 응답에 TURN 정보를 포함하기 위해 아래 환경변수를 사용한다. `WEBRTC_TURN_USERNAME`과 `WEBRTC_TURN_CREDENTIAL`은 coturn의 `user=username:password`와 동일해야 한다.
+
+```bash
+WEBRTC_TURN_URLS=turn:jenkins.example.invalid:3478?transport=udp,turns:jenkins.example.invalid:5349?transport=tcp
+WEBRTC_TURN_USERNAME=CHANGE_ME_TURN_USERNAME
+WEBRTC_TURN_CREDENTIAL=CHANGE_ME_TURN_PASSWORD
+```
+
+검증 절차:
+
+1. 상담 요청을 생성하고 상담자가 수락해 `signalingAccessToken`을 발급받는다.
+2. 아래 요청의 응답에 `turn:` 또는 `turns:` URL과 credential이 포함되는지 확인한다.
+
+```bash
+curl -H "Authorization: Bearer ${SIGNALING_ACCESS_TOKEN}" \
+  "https://jenkins.example.invalid/api/webrtc/ice-servers"
+```
+
+3. WebRTC 클라이언트에서 ICE candidate 로그에 `typ relay` candidate가 생성되는지 확인한다.
+
 ## 후속 작업
 
 - 운영 인증서 경로·자동 갱신 상태 점검
 - 정적 Frontend를 제공하는 service Nginx 설정과 Jenkins 배포 경로 일치 확인
 - coturn secret·external IP·relay port 운영 설정 확인
-- WebRTC 기능 연동 후 STUN/TURN 연결 테스트
+- WebRTC 기능 연동 후 `typ relay` candidate 생성 여부 확인
