@@ -468,6 +468,12 @@ export function useAdminRecords(tab: AdminTableTab) {
     confirmDelete,
     approve,
     isApprovable: tab === 'counselor' ? (row: AdminRecord) => row.active === 'false' : undefined,
+    // Counselor accounts are deactivated, not removed, so the action says so and
+    // only shows on accounts that are still active.
+    deleteLabel: tab === 'counselor' ? '비활성화' : '삭제',
+    deleteDescription:
+      tab === 'counselor' ? '계정을 비활성화해요. 다시 수락하면 활성화됩니다.' : undefined,
+    isDeletable: tab === 'counselor' ? (row: AdminRecord) => row.active === 'true' : undefined,
     toast,
     flash,
   };

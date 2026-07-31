@@ -14,6 +14,10 @@ type AdminTableProps = {
   /** Rows this returns true for get an extra approve action. */
   isApprovable?: (row: AdminRecord) => boolean;
   onApprove?: (id: number) => void;
+  /** Label of the destructive action. Defaults to 삭제. */
+  deleteLabel?: string;
+  /** Hides the destructive action for rows this returns false for. */
+  isDeletable?: (row: AdminRecord) => boolean;
 };
 
 /** The searchable CRUD table shared by five of the six admin tabs. */
@@ -27,6 +31,8 @@ export function AdminTable({
   onDelete,
   isApprovable,
   onApprove,
+  deleteLabel = '삭제',
+  isDeletable,
 }: AdminTableProps) {
   return (
     <>
@@ -106,9 +112,11 @@ export function AdminTable({
               <button type="button" className={styles.edit} onClick={() => onEdit(row.id)}>
                 수정
               </button>
-              <button type="button" className={styles.delete} onClick={() => onDelete(row.id)}>
-                삭제
-              </button>
+              {(isDeletable?.(row) ?? true) && (
+                <button type="button" className={styles.delete} onClick={() => onDelete(row.id)}>
+                  {deleteLabel}
+                </button>
+              )}
             </span>
           </div>
         ))}
