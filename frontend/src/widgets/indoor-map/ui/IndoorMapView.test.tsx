@@ -139,6 +139,37 @@ describe('IndoorMapView 오버레이 연결', () => {
     expect(screen.getByRole('img', { name: '현재 위치' })).toBeInTheDocument();
   });
 
+  /**
+   * 미터 프레임 각도를 이미지 각도로 옮긴다. `meterToPixel`이 미터 벡터를 `angleDeg`만큼
+   * 회전시키므로 방향에도 같은 회전을 적용해야 점과 부채꼴이 같은 좌표계를 가리킨다.
+   */
+  it('방향각에 프레임 회전을 더해 오버레이에 넘긴다', () => {
+    render(
+      <IndoorMapView
+        stationId={1}
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+        currentHeadingDeg={30}
+      />,
+    );
+
+    const beam = screen.getByRole('img', { name: '현재 위치' }).querySelector('path');
+    const rotated = /rotate\((-?[\d.]+) (-?[\d.]+) (-?[\d.]+)\)/.exec(
+      beam?.getAttribute('transform') ?? '',
+    );
+
+    // B2 프레임은 -21.28도다. 30 + (-21.28) = 8.72
+    expect(Number(rotated?.[1])).toBeCloseTo(8.72, 6);
+    // 회전 중심은 마커 위치, 즉 미터 원점의 픽셀 좌표다.
+    expect(Number(rotated?.[2])).toBeCloseTo(622, 6);
+    expect(Number(rotated?.[3])).toBeCloseTo(512, 6);
+  });
+
+  it('방향각이 없으면 부채꼴을 그리지 않는다', () => {
+    render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
+
+    expect(screen.getByRole('img', { name: '현재 위치' }).querySelector('path')).toBeNull();
+  });
+
   it('현재 위치의 좌표를 프레임 원점 기준으로 변환해 찍는다', () => {
     // 미터 원점(0,0)은 B2 프레임의 originPx(622, 512)로 간다.
     render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);

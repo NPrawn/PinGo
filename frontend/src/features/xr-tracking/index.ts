@@ -4,7 +4,13 @@ export {
   smoothMapPoint,
 } from './lib/displaySmoothing';
 export type { DisplaySmoothingOptions } from './lib/displaySmoothing';
-export { createXrMapAnchor, forwardXrOf, normalizePlanar, xrToMapPoint } from './lib/mapAlignment';
+export {
+  createXrMapAnchor,
+  forwardXrOf,
+  mapHeadingDegOf,
+  normalizePlanar,
+  xrToMapPoint,
+} from './lib/mapAlignment';
 export type { PlanarVector, XrAnchorInput, XrAnchorStatus, XrMapAnchor } from './lib/mapAlignment';
 export {
   MOCK_ANCHOR_FORWARD_MAP,

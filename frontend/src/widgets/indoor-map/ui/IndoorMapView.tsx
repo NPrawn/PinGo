@@ -18,6 +18,13 @@ interface IndoorMapViewProps {
   floorId?: number;
   /** 현재 위치. 위치 인식(FR-U-004) 결과를 그대로 받는다. */
   currentLocation?: IndoorPoint | null;
+  /**
+   * 사용자가 바라보는 방향(도). **지도 미터 프레임 기준**이며 `useXrMapPosition`의
+   * `headingDeg`를 그대로 받는다. 이미지 각도 변환은 이 컴포넌트가 한다.
+   *
+   * null이면 방향을 모르는 것이므로 마커에 방향을 표시하지 않는다.
+   */
+  currentHeadingDeg?: number | null;
   /** 목적지. 경로 응답의 마지막 노드와 같아도 무방하다. */
   destination?: IndoorPoint | null;
   /** 경로가 지나는 노드. 경로 응답의 pathNodes를 그대로 받는다. */
@@ -48,6 +55,7 @@ export function IndoorMapView({
   stationId,
   floorId,
   currentLocation,
+  currentHeadingDeg,
   destination,
   pathNodes,
   useMockData = false,
@@ -97,6 +105,7 @@ export function IndoorMapView({
         <MapOverlay
           floorMap={floorMap}
           currentLocation={currentLocation ?? (useMockData ? MOCK_CURRENT_LOCATION : null)}
+          currentHeadingDeg={currentHeadingDeg}
           destination={destination ?? (useMockData ? MOCK_DESTINATION : null)}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
         />
@@ -113,11 +122,13 @@ export function IndoorMapView({
 function MapOverlay({
   floorMap,
   currentLocation,
+  currentHeadingDeg,
   destination,
   pathNodes,
 }: {
   floorMap: FloorMap;
   currentLocation: IndoorPoint | null;
+  currentHeadingDeg?: number | null;
   destination: IndoorPoint | null;
   pathNodes?: readonly RoutePathNode[];
 }) {
@@ -131,6 +142,16 @@ function MapOverlay({
       imageHeight={floorMap.height}
       project={(mapX, mapY) => meterToPixel(mapX, mapY, frame)}
       currentLocation={currentLocation}
+      /**
+       * 미터 프레임 각도를 이미지 각도로 옮긴다.
+       *
+       * `meterToPixel`이 미터 벡터를 `frame.angleDeg`만큼 회전시키므로, 미터 프레임에서
+       * θ인 방향은 이미지에서 `θ + angleDeg`가 된다. 위치와 방향에 같은 회전을 적용해야
+       * 마커의 점과 부채꼴이 같은 좌표계를 가리킨다.
+       */
+      currentHeadingImageDeg={
+        typeof currentHeadingDeg === 'number' ? currentHeadingDeg + frame.angleDeg : null
+      }
       destination={destination}
       pathNodes={pathNodes}
     />

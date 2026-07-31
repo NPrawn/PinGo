@@ -89,6 +89,7 @@ export function NavigationPage() {
     confirm: startXrSession,
     continueWithoutTracking,
     currentLocation,
+    headingDeg,
     source,
     anchorStatus,
   } = useXrNavigationSession({ currentIndoorLocation: MOCK_CONFIRMED_LOCATION });
@@ -288,6 +289,7 @@ export function NavigationPage() {
                   stationId={1}
                   floorId={currentLocation?.floorId ?? MOCK_CONFIRMED_LOCATION.floorId}
                   currentLocation={currentLocation}
+                  currentHeadingDeg={headingDeg}
                   useMockData
                 />
               </div>
@@ -333,9 +335,9 @@ export function NavigationPage() {
               {(facilityFilter == null || facilityFilter === '출구') && (
                 <div className={styles.destLabel}>{exit}</div>
               )}
-              {/* 현재 위치는 IndoorMapView가 실제 좌표로 그린다. 퍼센트로 고정된 HeadingMarker를
-                  남겨 두면 마커가 둘이 되어 어느 쪽이 실제인지 구분할 수 없다.
-                  TODO(141): 방향(heading) 표시를 실제 pose로 되살린다. */}
+              {/* 현재 위치와 바라보는 방향은 IndoorMapView가 실제 좌표로 그린다.
+                  퍼센트로 고정돼 있던 HeadingMarker를 남겨 두면 마커가 둘이 되어 어느 쪽이
+                  실제인지 구분할 수 없다. */}
 
               {MAP_FACILITIES.filter(
                 (facility) => facilityFilter == null || facility.name === facilityFilter,

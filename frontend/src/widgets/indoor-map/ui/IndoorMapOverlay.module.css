@@ -45,3 +45,11 @@
   stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
+
+/* 바라보는 방향. 헤일로보다 진하고 점보다 연하게 두어 세 겹이 서로 구분된다.
+   각도가 확정 주기로만 갱신되므로(11.4가 회전을 트리거에서 제외했다) 부채꼴이 뚝뚝 끊겨
+   돌아간다. 폭을 넓게 잡아 각도 오차가 눈에 덜 띄게 한다. */
+.currentBeam {
+  fill: var(--color-mint);
+  opacity: 0.55;
+}

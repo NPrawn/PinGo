@@ -18,6 +18,7 @@ function identityProject(mapX: number, mapY: number): PixelPoint | null {
 function renderOverlay(props: {
   floorId?: number;
   currentLocation?: IndoorPoint | null;
+  currentHeadingImageDeg?: number | null;
   destination?: IndoorPoint | null;
   pathNodes?: readonly RoutePathNode[];
   project?: (mapX: number, mapY: number) => PixelPoint | null;
@@ -29,6 +30,7 @@ function renderOverlay(props: {
       imageHeight={969}
       project={props.project ?? identityProject}
       currentLocation={props.currentLocation}
+      currentHeadingImageDeg={props.currentHeadingImageDeg}
       destination={props.destination}
       pathNodes={props.pathNodes}
     />,
@@ -241,5 +243,52 @@ describe('IndoorMapOverlay', () => {
       />,
     );
     expect(routeSegments()).toEqual(['70,80 90,100']);
+  });
+});
+
+/**
+ * 바라보는 방향 표시. (S15P11A206-141)
+ *
+ * 이미지 픽셀 기준 각도를 받아 마커에 부채꼴을 얹는다. 미터→이미지 각도 변환은 IndoorMapView가
+ * 하며 `IndoorMapView.test.tsx`가 검사한다.
+ */
+describe('IndoorMapOverlay 방향 표시', () => {
+  function beam(): SVGPathElement | null {
+    const group = screen.queryByRole('img', { name: '현재 위치' });
+
+    return group?.querySelector('path') ?? null;
+  }
+
+  it('방향을 받으면 마커에 부채꼴을 얹는다', () => {
+    renderOverlay({
+      currentLocation: { floorId: FLOOR_B2, mapX: 100, mapY: 200 },
+      currentHeadingImageDeg: 45,
+    });
+
+    expect(beam()).toHaveAttribute('transform', 'rotate(45 100 200)');
+  });
+
+  /**
+   * 방향을 모르는 것과 오른쪽(0도)을 보는 것은 다르다. 0으로 채우면 그 차이가 화면에서 사라진다.
+   */
+  it('방향이 없으면 부채꼴을 그리지 않는다', () => {
+    renderOverlay({ currentLocation: { floorId: FLOOR_B2, mapX: 100, mapY: 200 } });
+
+    expect(beam()).toBeNull();
+  });
+
+  it('0도도 방향으로 다룬다', () => {
+    renderOverlay({
+      currentLocation: { floorId: FLOOR_B2, mapX: 100, mapY: 200 },
+      currentHeadingImageDeg: 0,
+    });
+
+    expect(beam()).toHaveAttribute('transform', 'rotate(0 100 200)');
+  });
+
+  it('현재 위치가 없으면 방향만으로는 아무것도 그리지 않는다', () => {
+    renderOverlay({ currentHeadingImageDeg: 90 });
+
+    expect(screen.queryByRole('img', { name: '현재 위치' })).not.toBeInTheDocument();
   });
 });

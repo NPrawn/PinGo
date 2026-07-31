@@ -17,6 +17,16 @@ interface IndoorMapOverlayProps {
    */
   project: (mapX: number, mapY: number) => PixelPoint | null;
   currentLocation?: IndoorPoint | null;
+  /**
+   * 현재 위치 마커가 가리킬 방향(도). **이미지 픽셀 기준**이며 0이 오른쪽, 증가 방향이 아래다.
+   *
+   * 미터 프레임 각도가 아니라 이미지 각도를 받는다. `project`와 같은 이유로 — 프레임 변환을
+   * 이 컴포넌트가 알지 못하게 두면 좌표 계약이 바뀌어도 여기는 그대로다.
+   *
+   * null이면 방향을 모르는 것이므로 점만 그린다. 0으로 대신 채우면 오른쪽을 바라보는 것으로
+   * 보여, 방향을 모른다는 사실이 화면에서 사라진다.
+   */
+  currentHeadingImageDeg?: number | null;
   destination?: IndoorPoint | null;
   pathNodes?: readonly RoutePathNode[];
 }
@@ -36,6 +46,7 @@ export function IndoorMapOverlay({
   imageHeight,
   project,
   currentLocation,
+  currentHeadingImageDeg,
   destination,
   pathNodes,
 }: IndoorMapOverlayProps) {
@@ -95,6 +106,15 @@ export function IndoorMapOverlay({
             cy={currentPoint.py}
             r={MARKER_RADIUS * 1.8}
           />
+          {/* 방향을 아는 경우에만 부채꼴을 얹는다. 점보다 먼저 그려 점이 위에 남게 한다 —
+              점의 중심이 곧 위치이므로 방향 표시가 그것을 덮으면 위치가 흐려진다. */}
+          {Number.isFinite(currentHeadingImageDeg) && (
+            <path
+              className={styles.currentBeam}
+              d={beamPath(currentPoint)}
+              transform={`rotate(${currentHeadingImageDeg} ${currentPoint.px} ${currentPoint.py})`}
+            />
+          )}
           <circle
             className={styles.currentDot}
             cx={currentPoint.px}
@@ -109,6 +129,30 @@ export function IndoorMapOverlay({
 
 // 원본 이미지 픽셀 단위 마커 반지름. viewBox와 함께 축소되므로 지도 축척에 비례한다.
 const MARKER_RADIUS = 26;
+
+/** 방향 부채꼴의 길이와 반각. 반각을 넓게 잡아 각도 오차가 덜 드러나게 한다. */
+const BEAM_LENGTH = MARKER_RADIUS * 3.2;
+const BEAM_HALF_ANGLE_DEG = 26;
+
+/**
+ * 마커 중심에서 오른쪽(0도)으로 뻗는 부채꼴을 그린다.
+ *
+ * 항상 0도로 그리고 회전은 `transform`이 맡는다. 각도를 경로 계산에 넣으면 179도와 -179도
+ * 같은 경계에서 호의 방향(sweep flag)을 따로 판단해야 한다.
+ */
+function beamPath({ px, py }: PixelPoint): string {
+  const rad = (BEAM_HALF_ANGLE_DEG * Math.PI) / 180;
+  const dx = BEAM_LENGTH * Math.cos(rad);
+  const dy = BEAM_LENGTH * Math.sin(rad);
+
+  return [
+    `M ${px} ${py}`,
+    `L ${px + dx} ${py - dy}`,
+    // 반각이 90도 미만이라 항상 짧은 호다. large-arc-flag는 0, sweep-flag는 시계 방향으로 1.
+    `A ${BEAM_LENGTH} ${BEAM_LENGTH} 0 0 1 ${px + dx} ${py + dy}`,
+    'Z',
+  ].join(' ');
+}
 
 /**
  * 경로를 "표시 층에 연속으로 속한 구간"들로 나눈다.
