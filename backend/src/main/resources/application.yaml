@@ -11,6 +11,14 @@ app:
     upload-dir: uploads
     url-prefix: /uploads
 
+exit:
+  arrival:
+    # 출구 도착으로 판정하는 평면 거리(m). FR-U-011.
+    # 위치 오차(역삼역 B1 프레임 미검증 최대 4.4m + provisional 축척 1~1.6m)보다 커야 하고,
+    # 가장 가까운 출구 쌍(7번·8번, 18.3m)의 절반보다는 작아야 한다.
+    # B1 프레임 확정(S15P11A206-314)과 sim3 정합 후 5~6m 로 조일 수 있다.
+    threshold-m: ${EXIT_ARRIVAL_THRESHOLD_M:10.0}
+
 ai:
   localization:
     base-url: ${AI_LOCALIZATION_BASE_URL:http://localhost:8000}
