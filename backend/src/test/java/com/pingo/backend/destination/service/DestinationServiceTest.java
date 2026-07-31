@@ -1,6 +1,8 @@
 package com.pingo.backend.destination.service;
 
 import com.pingo.backend.destination.dto.response.DestinationSearchResponse;
+import com.pingo.backend.externalmap.client.KakaoLocalClient;
+import com.pingo.backend.externalmap.client.KakaoPlaceSearchResult;
 import com.pingo.backend.facility.domain.Facility;
 import com.pingo.backend.facility.repository.FacilityRepository;
 import com.pingo.backend.global.exception.BusinessException;
@@ -40,11 +42,19 @@ class DestinationServiceTest {
     @Mock
     private StationRepository stationRepository;
 
+    @Mock
+    private KakaoLocalClient kakaoLocalClient;
+
     private DestinationService destinationService;
 
     @BeforeEach
     void setUp() {
-        destinationService = new DestinationService(facilityRepository, nearbyPlaceRepository, stationRepository);
+        destinationService = new DestinationService(
+                facilityRepository,
+                nearbyPlaceRepository,
+                stationRepository,
+                kakaoLocalClient
+        );
     }
 
     @Test
@@ -52,14 +62,37 @@ class DestinationServiceTest {
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(createStation(1L)));
         when(facilityRepository.searchActiveByKeyword(1L, "출구")).thenReturn(List.of(createExitFacility(10L)));
         when(nearbyPlaceRepository.searchActiveByKeyword(1L, "출구")).thenReturn(List.of(createPlace(3L)));
+        when(kakaoLocalClient.searchPlaces(
+                "출구",
+                new BigDecimal("127.0365000"),
+                new BigDecimal("37.5007000")
+        )).thenReturn(List.of(new KakaoPlaceSearchResult(
+                "18577297",
+                "강남파이낸스센터",
+                "서비스,산업 > 기업",
+                "서울 강남구 테헤란로 152",
+                new BigDecimal("37.500029"),
+                new BigDecimal("127.036431"),
+                75L
+        )));
 
         List<DestinationSearchResponse> results = destinationService.search(1L, "  출구  ");
 
         assertThat(results)
-                .extracting(DestinationSearchResponse::destinationType, DestinationSearchResponse::destinationId, DestinationSearchResponse::category)
+                .extracting(
+                        DestinationSearchResponse::destinationType,
+                        DestinationSearchResponse::destinationId,
+                        DestinationSearchResponse::category
+                )
                 .containsExactly(
                         tuple("facility", 10L, "exit"),
-                        tuple("place", 3L, "shopping"));
+                        tuple("place", 3L, "shopping"),
+                        tuple("external_place", null, "서비스,산업 > 기업"));
+
+        DestinationSearchResponse externalPlace = results.get(2);
+        assertThat(externalPlace.externalId()).isEqualTo("18577297");
+        assertThat(externalPlace.latitude()).isEqualByComparingTo("37.500029");
+        assertThat(externalPlace.longitude()).isEqualByComparingTo("127.036431");
     }
 
     @Test

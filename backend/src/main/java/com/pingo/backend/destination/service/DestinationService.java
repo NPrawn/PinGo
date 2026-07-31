@@ -1,10 +1,12 @@
 package com.pingo.backend.destination.service;
 
 import com.pingo.backend.destination.dto.response.DestinationSearchResponse;
+import com.pingo.backend.externalmap.client.KakaoLocalClient;
 import com.pingo.backend.facility.repository.FacilityRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.place.repository.NearbyPlaceRepository;
+import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ public class DestinationService {
     private final FacilityRepository facilityRepository;
     private final NearbyPlaceRepository nearbyPlaceRepository;
     private final StationRepository stationRepository;
+    private final KakaoLocalClient kakaoLocalClient;
 
     /**
      * 역 내부 시설과 역 주변 장소를 이름 키워드로 통합 검색한다.
@@ -31,7 +34,7 @@ public class DestinationService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
         String normalizedKeyword = normalizeKeyword(keyword);
-        validateStationActive(stationId);
+        Station station = getActiveStation(stationId);
 
         List<DestinationSearchResponse> results = new ArrayList<>();
 
@@ -43,13 +46,18 @@ public class DestinationService {
                 .map(DestinationSearchResponse::fromPlace)
                 .forEach(results::add);
 
+        if (station.getLatitude() != null && station.getLongitude() != null) {
+            kakaoLocalClient.searchPlaces(normalizedKeyword, station.getLongitude(), station.getLatitude()).stream()
+                    .map(DestinationSearchResponse::fromKakaoPlace)
+                    .forEach(results::add);
+        }
+
         return results;
     }
 
-    private void validateStationActive(Long stationId) {
-        if (stationRepository.findByIdAndActiveTrue(stationId).isEmpty()) {
-            throw new BusinessException(ErrorCode.STATION_NOT_FOUND);
-        }
+    private Station getActiveStation(Long stationId) {
+        return stationRepository.findByIdAndActiveTrue(stationId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STATION_NOT_FOUND));
     }
 
     private String normalizeKeyword(String keyword) {
