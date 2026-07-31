@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { facilityIconOf, type Facility } from '@/entities/facility';
-import { MOCK_FLOOR_ID } from '@/entities/floor-map';
+import { floorCodeOf, floorIdOf, MOCK_FLOOR_ID, useStationFloorMaps } from '@/entities/floor-map';
 import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import type { FloorId } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -14,7 +15,6 @@ import { PhoneFrame } from '@/widgets/phone-frame';
 import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
 import styles from './NavigationPage.module.css';
 
-const FLOORS = ['1F', 'B1', 'B2', 'B3'] as const;
 
 /**
  * 지도 위 시설 필터.
@@ -58,7 +58,6 @@ const MOCK_CONFIRMED_LOCATION: IndoorPoint = {
 /** Camera guidance with an interactive indoor map and up to two stops. */
 export function NavigationPage() {
   const station = useStationStore((state) => state.station);
-  const floor = useStationStore((state) => state.floor);
   const setFloor = useStationStore((state) => state.setFloor);
   const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
   const route = useNavigationStore((state) => state.route);
@@ -110,6 +109,24 @@ export function NavigationPage() {
     source,
     anchorStatus,
   } = useXrNavigationSession({ currentIndoorLocation: MOCK_CONFIRMED_LOCATION });
+
+  /**
+   * 층 탭. **목록을 지도 응답에서 만든다.** (S15P11A206-280)
+   *
+   * 프로토타입은 `1F·B1·B2·B3`를 하드코딩해 뒀는데, 역삼역에 등록된 지도는 B1·B2·B3 세 장이라
+   * `1F`를 눌러도 보여줄 지도가 없었다. `floor_id`는 auto-increment라 코드↔id 매핑을 상수로
+   * 두면 시드가 바뀔 때 조용히 어긋나므로 응답에서 찾는다.
+   */
+  const floorMapsQuery = useStationFloorMaps(1);
+  const floorMaps = floorMapsQuery.data ?? [];
+  /** 사용자가 탭으로 고른 층. null이면 현재 위치를 따라간다. */
+  const [pickedFloorCode, setPickedFloorCode] = useState<string | null>(null);
+  const followedFloorId = currentLocation?.floorId ?? MOCK_CONFIRMED_LOCATION.floorId;
+  const displayedFloorId =
+    (pickedFloorCode === null ? undefined : floorIdOf(floorMaps, pickedFloorCode)) ??
+    followedFloorId;
+  const displayedFloorCode = floorCodeOf(floorMaps, displayedFloorId);
+
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
     ? waypoints.includes(selectedFacility.nameKo)
@@ -310,7 +327,7 @@ export function NavigationPage() {
               <div className={styles.mapCanvas}>
                 <IndoorMapView
                   stationId={1}
-                  floorId={currentLocation?.floorId ?? MOCK_CONFIRMED_LOCATION.floorId}
+                  floorId={displayedFloorId}
                   currentLocation={currentLocation}
                   currentHeadingDeg={headingDeg}
                   /* 목적지 이름은 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
@@ -355,19 +372,29 @@ export function NavigationPage() {
               </button>
 
               <div className={styles.floorButtons} role="group" aria-label="층 선택">
-                {FLOORS.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    aria-pressed={floor === option}
-                    className={[styles.floorButton, floor === option && styles.floorButtonOn]
-                      .filter(Boolean)
-                      .join(' ')}
-                    onClick={() => setFloor(option)}
-                  >
-                    {option}
-                  </button>
-                ))}
+                {floorMaps.map((map) => {
+                  const on = map.floorCode === displayedFloorCode;
+
+                  return (
+                    <button
+                      key={map.floorId}
+                      type="button"
+                      aria-pressed={on}
+                      className={[styles.floorButton, on && styles.floorButtonOn]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onClick={() => {
+                        setPickedFloorCode(map.floorCode);
+                        // 다른 층의 시설을 고른 상태로 남기지 않는다.
+                        setSelectedFacility(null);
+                        // 다른 화면(U-07 등)이 보는 층 상태도 함께 맞춘다.
+                        setFloor(map.floorCode as FloorId);
+                      }}
+                    >
+                      {map.floorCode}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className={styles.facilityFilters} role="group" aria-label="시설 필터">

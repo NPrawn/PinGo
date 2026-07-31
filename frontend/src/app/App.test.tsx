@@ -256,6 +256,39 @@ describe('user routes', () => {
   });
 
   /**
+   * 층 전환. (S15P11A206-280)
+   *
+   * 탭 목록은 층별 지도 응답에서 만든다. 프로토타입에 하드코딩돼 있던 `1F`는 역삼역에 등록된
+   * 지도가 없어 눌러도 보여줄 것이 없었으므로 목록에서 빠진다.
+   */
+  it('층 탭은 지도가 있는 층만 보여주고 누르면 표시 층이 바뀐다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    const tabs = within(floorGroup).getAllByRole('button');
+
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['B1', 'B2', 'B3']);
+
+    // 진입 시에는 현재 위치가 있는 층을 따라간다.
+    expect(within(floorGroup).getByRole('button', { name: 'B2' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B1' }));
+
+    expect(within(floorGroup).getByRole('button', { name: 'B1' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(floorGroup).getByRole('button', { name: 'B2' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  /**
    * 안내 중 위치 재인식. (S15P11A206-141)
    *
    * U-10 → U-04(촬영·매칭) → U-05(위치 확인) → **U-10** 으로 돌아와야 한다. 표시가 없으면

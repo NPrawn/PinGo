@@ -33,8 +33,48 @@ const FACILITIES = [
   },
 ];
 
+/**
+ * 층별 지도. 역삼역 배포 값을 그대로 옮겼다.
+ *
+ * **`floorId` 순서가 층 순서와 다르다**(B1=3·B2=1·B3=2). auto-increment라 그렇고, 코드↔id를
+ * 상수로 매핑하면 안 되는 이유이기도 하다. 도면은 아직 업로드되지 않아 `mapUrl`이 null이다.
+ */
+const FLOOR_MAPS = [
+  floorMap(1, 3, 'B1', 1626, 967, 594, 501),
+  floorMap(2, 1, 'B2', 1624, 969, 622, 512),
+  floorMap(3, 2, 'B3', 1659, 948, 597, 497),
+];
+
+function floorMap(
+  mapId: number,
+  floorId: number,
+  floorCode: string,
+  width: number,
+  height: number,
+  originPxX: number,
+  originPxY: number,
+) {
+  return {
+    mapId,
+    floorId,
+    floorCode,
+    mapType: 'image',
+    mapUrl: null,
+    width,
+    height,
+    scaleMPerPx: 0.19,
+    originPxX,
+    originPxY,
+    frameAngleDeg: -21.28,
+    version: 'v1',
+  };
+}
+
 export const handlers = [
   http.get('/health', () => HttpResponse.json({ status: 'ok' })),
+  http.get('*/api/stations/:stationId/maps', () =>
+    HttpResponse.json({ success: true, data: FLOOR_MAPS, message: null }),
+  ),
   http.get('*/api/stations/:stationId/facilities', ({ request }) => {
     const type = new URL(request.url).searchParams.get('facilityType');
     const data = type ? FACILITIES.filter((f) => f.facilityType === type) : FACILITIES;
