@@ -1,7 +1,13 @@
 import { toPoseReading } from './pose';
 import { createPoseSampler, DEFAULT_SAMPLING_RULE } from './sampler';
 import { detectXrSupport } from './support';
-import type { XrFailureReason, XrPoseSnapshot, XrSamplingRule, XrTrackingStatus } from './types';
+import type {
+  XrFailureReason,
+  XrPoseReading,
+  XrPoseSnapshot,
+  XrSamplingRule,
+  XrTrackingStatus,
+} from './types';
 
 /**
  * pose가 이 시간(ms) 이상 연속으로 없으면 추적 상실로 본다.
@@ -121,6 +127,17 @@ export interface XrSessionController {
   /** 11.4 확정 주기를 통과한 스냅샷만 전달된다. 받는 쪽에서 다시 throttle하지 않는다. */
   subscribeSnapshots(listener: (snapshot: XrPoseSnapshot) => void): () => void;
   /**
+   * 마지막 프레임의 pose. 추적 중이 아니면 null이다.
+   *
+   * **위치 갱신에 쓰지 않는다.** 위치 갱신은 `subscribeSnapshots`가 담당하며, 이 값을
+   * 주기적으로 읽는 것은 11.4가 제거한 "매 프레임 갱신"을 되살리는 것이다.
+   *
+   * 용도는 하나다 — **앵커 생성 시점의 pose를 집는 것.** 앵커는 지도 좌표와 XR 좌표를 한
+   * 쌍으로 묶는데, 그 둘이 같은 순간의 값이어야 한다. 스냅샷은 확정 주기로 걸러지므로
+   * VPS 응답이 도착한 순간과 최대 5초까지 벌어진다(11.4).
+   */
+  getLatestReading(): XrPoseReading | null;
+  /**
    * 세션을 시작한다.
    *
    * 이미 열려 있거나 시작 중이면 새 세션을 만들지 않는다. XR 세션은 한 번에 하나만 열 수 있다.
@@ -167,6 +184,20 @@ export function createXrSessionController(
    * 0.96~1.54초 동안 getViewerPose가 null이므로, 이 구간을 추적 상실과 구분해야 한다.
    */
   let lastPoseAt: DOMHighResTimeStamp | null = null;
+
+  /**
+   * 마지막 프레임에서 읽은 pose. 확정 주기를 거치지 않은 원시 관측값이다.
+   *
+   * 앵커를 만들려면 "VPS가 좌표를 확정한 그 순간"의 pose가 필요한데, 스냅샷 스트림으로는
+   * 그 순간을 잡을 수 없다. 확정 주기가 정지 상태에서 5초 heartbeat이므로 최대 5초 뒤의
+   * pose와 짝지어지고, 보행 중이면 2m 이상 이동한 pose와 짝지어진다(11.4). 앵커가 어긋나면
+   * 이후 모든 변환 결과가 같은 양만큼 어긋나므로, 앵커 생성에는 걸러지지 않은 최신 값을 쓴다.
+   *
+   * 추적이 잡히기 전(warming-up)과 정리 후에는 null이다. 추적 상실 구간에서는 상실 직전
+   * 값이 남는데, 이는 `getState().status`로 구분한다 — 상실 중에 앵커를 만들지 않는 판단은
+   * 이 값을 쓰는 쪽의 몫이다.
+   */
+  let latestReading: XrPoseReading | null = null;
 
   /**
    * start가 끝나기 전에 stop이 호출됐는지.
@@ -271,8 +302,12 @@ export function createXrSessionController(
       sampler.reset();
     }
 
+    const reading = toPoseReading(viewerPose, time);
+
+    latestReading = reading;
+
     /** 확정 주기 판정은 샘플러가 한다. 통과한 프레임만 바깥으로 나간다. */
-    const snapshot = sampler.consider(toPoseReading(viewerPose, time));
+    const snapshot = sampler.consider(reading);
 
     if (snapshot) {
       snapshotListeners.forEach((listener) => {
@@ -322,6 +357,7 @@ export function createXrSessionController(
     sessionId = null;
     referenceSpace = null;
     lastPoseAt = null;
+    latestReading = null;
     sampler.reset();
   }
 
@@ -431,6 +467,7 @@ export function createXrSessionController(
     referenceSpace = acquired;
     sampler = createPoseSampler(rule);
     lastPoseAt = null;
+    latestReading = null;
 
     opened.addEventListener('end', onSessionEnd);
     detachUnloadListener = attachUnloadListener();
@@ -503,6 +540,10 @@ export function createXrSessionController(
       return () => {
         stateListeners.delete(listener);
       };
+    },
+
+    getLatestReading() {
+      return latestReading;
     },
 
     subscribeSnapshots(listener) {
