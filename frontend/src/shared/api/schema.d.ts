@@ -108,6 +108,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/consultations/{consultationSessionId}/reject': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['rejectConsultation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/consultations/{consultationSessionId}/end': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['endConsultation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/consultations/{consultationSessionId}/accept': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['acceptConsultation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/consultations/{consultationRequestId}/fallback-events': {
     parameters: {
       query?: never;
@@ -122,6 +170,26 @@ export interface paths {
      * @description WebRTC 상담 중 영상 연결 실패, 음성 상담 전환, 채팅 상담 전환 같은 fallback 상태를 서버에 알린다. 인증이 필요 없는 공개 API다.
      */
     post: operations['publishFallbackEvent'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/consultations/{consultationRequestId}/data-channel-events': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * DataChannel fallback 이벤트 발행
+     * @description DataChannel 연결 실패 또는 보조 전달이 필요한 경우 화살표, 안내 메시지, 목적지 변경 이벤트를 서버에 알린다. 인증이 필요 없는 공개 API다.
+     */
+    post: operations['publishDataChannelEvent'];
     delete?: never;
     options?: never;
     head?: never;
@@ -432,6 +500,23 @@ export interface paths {
     patch: operations['update'];
     trace?: never;
   };
+  '/api/webrtc/ice-servers': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** WebRTC ICE 서버 설정 조회 */
+    get: operations['getIceServers'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/stations/{stationId}': {
     parameters: {
       query?: never;
@@ -568,6 +653,22 @@ export interface paths {
       cookie?: never;
     };
     get: operations['search'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/counselor/consultations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['listConsultations'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1021,6 +1122,46 @@ export interface components {
       /** Format: date-time */
       requestedAt?: string;
     };
+    ApiResponseConsultationRejectResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['ConsultationRejectResponse'];
+    };
+    ConsultationRejectResponse: {
+      consultationId?: string;
+      /** @enum {string} */
+      status?:
+        'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+    };
+    ApiResponseConsultationEndResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['ConsultationEndResponse'];
+    };
+    ConsultationEndResponse: {
+      consultationId?: string;
+      /** @enum {string} */
+      status?:
+        'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+    };
+    ApiResponseConsultationAcceptResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['ConsultationAcceptResponse'];
+    };
+    ConsultationAcceptResponse: {
+      consultationId?: string;
+      /** @enum {string} */
+      status?:
+        'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+      /** Format: int64 */
+      counselorId?: number;
+      signalingRoomId?: string;
+      signalingAccessToken?: string;
+    };
     ConsultationFallbackEventRequest: {
       /** @enum {string} */
       type:
@@ -1030,6 +1171,48 @@ export interface components {
         | 'CHAT_ONLY_REQUESTED'
         | 'FALLBACK_CONFIRMED';
       reason?: string;
+    };
+    ConsultationDataChannelEventRequest: {
+      /** @enum {string} */
+      type: 'ARROW_POINTED' | 'GUIDE_MESSAGE_SENT' | 'DESTINATION_CHANGE_REQUESTED';
+      payload?: components['schemas']['JsonNode'];
+    };
+    JsonNode: {
+      array?: boolean;
+      empty?: boolean;
+      null?: boolean;
+      float?: boolean;
+      number?: boolean;
+      container?: boolean;
+      floatingPointNumber?: boolean;
+      valueNode?: boolean;
+      missingNode?: boolean;
+      integralNumber?: boolean;
+      object?: boolean;
+      /** @enum {string} */
+      nodeType?:
+        | 'ARRAY'
+        | 'BINARY'
+        | 'BOOLEAN'
+        | 'MISSING'
+        | 'NULL'
+        | 'NUMBER'
+        | 'OBJECT'
+        | 'POJO'
+        | 'STRING';
+      string?: boolean;
+      long?: boolean;
+      double?: boolean;
+      /** @deprecated */
+      textual?: boolean;
+      boolean?: boolean;
+      bigInteger?: boolean;
+      int?: boolean;
+      bigDecimal?: boolean;
+      pojo?: boolean;
+      binary?: boolean;
+      short?: boolean;
+      embeddedValue?: boolean;
     };
     SignupRequest: {
       loginId: string;
@@ -1478,6 +1661,20 @@ export interface components {
       stationId?: number;
       isActive?: boolean;
     };
+    ApiResponseIceServersResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['IceServersResponse'];
+    };
+    IceServerResponse: {
+      urls?: string[];
+      username?: string;
+      credential?: string;
+    };
+    IceServersResponse: {
+      iceServers?: components['schemas']['IceServerResponse'][];
+    };
     ApiResponseListFloorMapResponse: {
       success?: boolean;
       code?: string;
@@ -1594,6 +1791,38 @@ export interface components {
       longitude?: number;
       address?: string;
     };
+    ApiResponseListCounselorConsultationResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['CounselorConsultationResponse'][];
+    };
+    CounselorConsultationResponse: {
+      consultationId?: string;
+      /** Format: int64 */
+      stationId?: number;
+      /** @enum {string} */
+      problemType?:
+        | 'CANNOT_FIND_LOCATION'
+        | 'WRONG_DIRECTION'
+        | 'CANNOT_FIND_EXIT'
+        | 'GATE_PROBLEM'
+        | 'ELEVATOR_NEEDED'
+        | 'CARD_PROBLEM'
+        | 'OTHER';
+      /** @enum {string} */
+      status?:
+        'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+      /** Format: int64 */
+      currentNodeId?: number;
+      currentLocationLabel?: string;
+      destinationType?: string;
+      /** Format: int64 */
+      destinationId?: number;
+      destinationLabel?: string;
+      /** Format: date-time */
+      requestedAt?: string;
+    };
     ApiResponseConsultationResponse: {
       success?: boolean;
       code?: string;
@@ -1608,6 +1837,7 @@ export interface components {
       /** Format: int64 */
       counselorId?: number;
       signalingRoomId?: string;
+      signalingAccessToken?: string;
     };
     SseEmitter: {
       /** Format: int64 */
@@ -1897,6 +2127,72 @@ export interface operations {
       };
     };
   };
+  rejectConsultation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationSessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseConsultationRejectResponse'];
+        };
+      };
+    };
+  };
+  endConsultation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationSessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseConsultationEndResponse'];
+        };
+      };
+    };
+  };
+  acceptConsultation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationSessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseConsultationAcceptResponse'];
+        };
+      };
+    };
+  };
   publishFallbackEvent: {
     parameters: {
       query?: never;
@@ -1929,6 +2225,55 @@ export interface operations {
         };
       };
       /** @description fallback 이벤트 타입 누락 또는 지원하지 않는 enum 값 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "success": false,
+           *       "code": "INVALID_REQUEST",
+           *       "message": "요청 형식이 올바르지 않습니다."
+           *     }
+           */
+          '*/*': unknown;
+        };
+      };
+    };
+  };
+  publishDataChannelEvent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationRequestId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConsultationDataChannelEventRequest'];
+      };
+    };
+    responses: {
+      /** @description DataChannel fallback 이벤트 발행 성공 */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "success": true,
+           *       "data": null,
+           *       "message": null
+           *     }
+           */
+          '*/*': unknown;
+        };
+      };
+      /** @description DataChannel 이벤트 타입 누락 또는 지원하지 않는 enum 값 */
       400: {
         headers: {
           [name: string]: unknown;
@@ -2932,6 +3277,30 @@ export interface operations {
       };
     };
   };
+  getIceServers: {
+    parameters: {
+      query?: {
+        token?: string;
+      };
+      header?: {
+        Authorization?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseIceServersResponse'];
+        };
+      };
+    };
+  };
   getStation_1: {
     parameters: {
       query?: never;
@@ -3132,6 +3501,29 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseListDestinationSearchResponse'];
+        };
+      };
+    };
+  };
+  listConsultations: {
+    parameters: {
+      query?: {
+        status?:
+          'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListCounselorConsultationResponse'];
         };
       };
     };
