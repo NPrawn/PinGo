@@ -1,98 +1,101 @@
-import type { FloorMap } from './types';
+import { localPlanUrl } from './localPlans';
+import type { CoordinateFrame, FloorMap } from './types';
 
 /**
- * 역삼역(stationId=1) 목업 지도 데이터.
+ * 역삼역(stationId=1) 목업 지도 데이터. `?mock=1`에서만 쓴다.
  *
- * TODO: 백엔드에 floor_map seed가 아직 없어(FR-A-002 지도 업로드 대기) FE에서 임시로 들고 있다.
- * 층별 지도 조회 API가 데이터를 내려주면 이 모듈과 IndoorMapView의 목업 분기를 함께 제거한다.
+ * TODO: 백엔드가 없거나 DB가 준비되지 않은 상태에서 화면을 확인하기 위한 것이다. 층별 지도
+ * 조회·경로·위치 API가 모두 연결되면 이 모듈과 IndoorMapView의 목업 분기를 함께 제거한다.
  *
  * 좌표계·프레임 값 원본: docs/역삼역_FE_좌표연동_스펙.md
+ * 실제 값은 V9__add_floor_map_coordinate_frame.sql seed와 같다.
  */
 
 /**
- * 목업 floorId. 실제 floor_id는 auto-increment라 값이 다를 수 있으므로,
- * API 연동 시에는 이 상수 대신 층별 지도 응답의 floorCode로 매핑해야 한다.
+ * 목업 floorId.
+ *
+ * **실제 floor_id와 대응하지 않는다.** 실제 값은 auto-increment이고 V8이 B1→B2→B3 순으로
+ * 넣으므로 fresh DB에서는 B1이 가장 작다. 목업은 여기 순서를 따르며, 두 값을 비교하거나
+ * 목업 id를 실제 API 응답에 쓰면 안 된다. API 연동 시에는 응답의 `floorCode`로 매핑한다.
+ *
+ * TODO: 목업 제거 시 이 상수도 함께 지운다. 그때까지는 `?mock=1&floorId=` 파라미터의 의미가
+ * 실제 모드와 다르다는 점에 주의한다.
  */
 export const MOCK_FLOOR_ID = {
   B2: 1,
   B3: 2,
+  B1: 3,
 } as const;
 
 /**
- * 평면도 자리를 채우는 스키매틱 도면.
+ * 층별 좌표 프레임 **폴백**. (docs/역삼역_FE_좌표연동_스펙.md §2)
  *
- * 실제 평면도 이미지(역삼역_B2.png 1624×969, 역삼역_B3.png 1659×948)가 아직 저장소에 없어
- * 같은 원본 픽셀 크기로 대체한다. 크기가 같아야 프레임 좌표가 실제 이미지에서도 그대로 맞는다.
- * 미터 원점과 +X축 방향을 프레임과 동일하게 회전시켜, 오버레이 좌표가 도면과 어긋나면 눈에 보인다.
+ * 우선순위는 API 응답이다(`coordinateFrameOf`). 이 상수는 목업 모드와, 프레임 컬럼이 비어 있는
+ * 지도를 위한 폴백으로만 쓴다. 값은 V9 seed와 같으므로 둘이 갈라지면 안 된다.
+ *
+ * B1의 originPx는 **미검증 추정값**이다. B1에는 원점 기준 엘리베이터가 없어 추정으로 얹었고
+ * 예비 정합에서 최대 4.4m 차이가 나왔다. B1 좌표끼리는 일관되므로 B1 안에서의 지도 표시와
+ * 경로선 렌더링은 정상 동작하고, 층 전환 위치 정합에만 영향이 있다(S15P11A206-314에서 확정).
+ *
+ * TODO: 프레임이 확정되면 DB만 UPDATE하면 되도록, 실제 모드에서는 이 상수를 타지 않아야 한다.
+ * 모든 층의 프레임이 API로 내려오는 것이 확인되면 이 상수를 지운다.
  */
-function schematicPlan(options: {
-  width: number;
-  height: number;
-  originPx: readonly [number, number];
-  angleDeg: number;
-  hall: { x: number; y: number; width: number; height: number };
-  label: string;
-}): string {
-  const { width, height, originPx, angleDeg, hall, label } = options;
-  const svg = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-    `<rect width="${width}" height="${height}" fill="#eceff4"/>`,
-    `<g transform="translate(${originPx[0]} ${originPx[1]}) rotate(${angleDeg})">`,
-    `<rect x="${hall.x}" y="${hall.y}" width="${hall.width}" height="${hall.height}" rx="12" fill="#fbfcfe" stroke="#c3ccd8" stroke-width="5"/>`,
-    // 미터 원점(층간 엘리베이터 EVA) 표시.
-    `<circle r="10" fill="none" stroke="#9aa6b4" stroke-width="4"/>`,
-    // +X축 방향 표시.
-    `<line x1="0" y1="0" x2="140" y2="0" stroke="#9aa6b4" stroke-width="4" stroke-dasharray="14 10"/>`,
-    `</g>`,
-    `<text x="28" y="56" font-family="sans-serif" font-size="34" fill="#8b95a3">${label}</text>`,
-    `</svg>`,
-  ].join('');
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+export const MOCK_COORDINATE_FRAMES: Readonly<Record<string, CoordinateFrame>> = {
+  B1: { originPx: [594, 501], angleDeg: -21.28, mpp: 0.19 },
+  B2: { originPx: [622, 512], angleDeg: -21.28, mpp: 0.19 },
+  B3: { originPx: [597, 497], angleDeg: -21.28, mpp: 0.19 },
+};
+
+/** 층 코드로 폴백 좌표 프레임을 찾는다. 등록되지 않은 층이면 undefined. */
+export function findCoordinateFrame(floorCode: string): CoordinateFrame | undefined {
+  return MOCK_COORDINATE_FRAMES[floorCode];
 }
 
+/** 목업 지도 한 장을 만든다. 프레임 값은 폴백 상수에서 가져와 둘이 어긋나지 않게 한다. */
+function mockFloorMap(options: {
+  mapId: number;
+  floorId: number;
+  floorCode: 'B1' | 'B2' | 'B3';
+  width: number;
+  height: number;
+}): FloorMap {
+  const { mapId, floorId, floorCode, width, height } = options;
+  const frame = MOCK_COORDINATE_FRAMES[floorCode];
+
+  return {
+    mapId,
+    floorId,
+    floorCode,
+    mapType: 'image',
+    // 실제 응답도 mapUrl이 null이라 같은 폴백 경로를 탄다(localPlans).
+    mapUrl: null,
+    width,
+    height,
+    scaleMPerPx: frame.mpp,
+    originPxX: frame.originPx[0],
+    originPxY: frame.originPx[1],
+    frameAngleDeg: frame.angleDeg,
+    version: 'mock',
+  };
+}
+
+/**
+ * 목업 층별 지도.
+ *
+ * width·height는 스펙 §1의 원본 픽셀 크기이며 실제 PNG와 V9 seed 값 모두와 일치한다.
+ * 프레임의 originPx가 이 크기를 기준으로 정의돼 있으므로 어긋나면 오버레이가 도면과 맞지 않는다.
+ *
+ * **순서에 의미가 있다.** 층을 지정하지 않으면 첫 번째 지도가 표시된다(IndoorMapView).
+ * 층 오름차순(B1→B3)이 자연스럽지만 목업 위치·경로가 B2·B3에만 있어, 기본 화면에서 바로
+ * 오버레이가 보이도록 B2를 앞에 둔다. 층 전환 UI(280)가 붙으면 이 순서는 의미를 잃는다.
+ */
 export const MOCK_FLOOR_MAPS: readonly FloorMap[] = [
-  {
-    mapId: 1,
-    floorId: MOCK_FLOOR_ID.B2,
-    floorCode: 'B2',
-    mapType: 'image',
-    mapUrl: schematicPlan({
-      width: 1624,
-      height: 969,
-      originPx: [622, 512],
-      angleDeg: -21.28,
-      // B2 노드 분포(x -80~118m, y -15~43m)를 감싸는 대합실 영역.
-      hall: { x: -470, y: -130, width: 1160, height: 400 },
-      label: 'B2 대합실 (목업 도면)',
-    }),
-    width: 1624,
-    height: 969,
-    originPxX: 622,
-    originPxY: 512,
-    frameAngleDeg: -21.28,
-    scaleMPerPx: 0.19,
-    version: 'mock',
-  },
-  {
-    mapId: 2,
-    floorId: MOCK_FLOOR_ID.B3,
-    floorCode: 'B3',
-    mapType: 'image',
-    mapUrl: schematicPlan({
-      width: 1659,
-      height: 948,
-      originPx: [597, 497],
-      angleDeg: -21.28,
-      // B3 노드 분포(x -92~90m, y 0~27m)를 감싸는 승강장 영역.
-      hall: { x: -560, y: -120, width: 1120, height: 340 },
-      label: 'B3 승강장 (목업 도면)',
-    }),
-    width: 1659,
-    height: 948,
-    originPxX: 597,
-    originPxY: 497,
-    frameAngleDeg: -21.28,
-    scaleMPerPx: 0.19,
-    version: 'mock',
-  },
+  mockFloorMap({ mapId: 1, floorId: MOCK_FLOOR_ID.B2, floorCode: 'B2', width: 1624, height: 969 }),
+  mockFloorMap({ mapId: 2, floorId: MOCK_FLOOR_ID.B3, floorCode: 'B3', width: 1659, height: 948 }),
+  mockFloorMap({ mapId: 3, floorId: MOCK_FLOOR_ID.B1, floorCode: 'B1', width: 1626, height: 967 }),
 ];
+
+/** 목업 지도가 쓰는 자체 평면도 URL. 브라우저 밖에서는 null이다. */
+export function mockPlanUrl(floorCode: string): string | null {
+  return localPlanUrl(floorCode);
+}
