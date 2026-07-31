@@ -45,7 +45,15 @@ export function canAttemptXrSession(support: XrSupport): boolean {
  *   없고** 브라우저 사이트 설정에서 권한을 초기화해야 한다.
  *
  * 어느 경우든 추적 없이 위치 재인식과 수동 위치 선택으로 안내가 완결되어야 한다.
+ *
+ * `no-render-layer`는 재시도 대상에 넣는다. GL 컨텍스트 확보는 기기 능력이 아니라 그 시점의
+ * 자원 상황에 달려 있어(다른 탭이 컨텍스트를 많이 물고 있으면 실패할 수 있다) 다시 시도하면
+ * 결과가 달라질 수 있다.
  */
 export function canRetryXrSession(reason: XrFailureReason | undefined): boolean {
-  return reason === 'request-rejected' || reason === 'no-reference-space';
+  return (
+    reason === 'request-rejected' ||
+    reason === 'no-reference-space' ||
+    reason === 'no-render-layer'
+  );
 }
