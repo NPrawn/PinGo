@@ -5,6 +5,7 @@ import com.pingo.backend.station.dto.response.StationDetailResponse;
 import com.pingo.backend.station.dto.response.StationNearbyResponse;
 import com.pingo.backend.station.dto.response.StationSearchResponse;
 import com.pingo.backend.station.service.StationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +18,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/stations")
 @RequiredArgsConstructor
+@Tag(name = "역 조회 API", description = "비로그인 사용자가 GPS 주변 역 후보와 이름 검색으로 현재 역을 확인하는 API")
 public class StationController {
 
     private final StationService stationService;

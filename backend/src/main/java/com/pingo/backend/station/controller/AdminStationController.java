@@ -11,6 +11,7 @@ import com.pingo.backend.station.dto.response.StationDetailResponse;
 import com.pingo.backend.station.dto.response.StationIdResponse;
 import com.pingo.backend.station.dto.response.StationResponse;
 import com.pingo.backend.station.service.StationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
+@Tag(name = "관리자 - 역·층 관리 API", description = "관리자가 대상 역과 층 정보를 등록·조회·수정·삭제하는 API")
 public class AdminStationController {
 
     private final StationService stationService;
