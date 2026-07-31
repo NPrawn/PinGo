@@ -9,6 +9,7 @@
 /* Prototype `.clist` — the glass request rail. */
 .rail {
   display: flex;
+  flex: none;
   flex-direction: column;
   width: 290px;
   background: rgb(255 255 255 / 65%);
@@ -144,6 +145,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
+  min-width: 0;
   padding: 22px 26px;
   overflow: auto;
   background: #faf9fb;
@@ -206,14 +208,16 @@
   animation: request-pulse 1.4s infinite;
 }
 
+/* Two columns while there is room; one below ~520px of pane width. */
 .cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
   margin-top: 20px;
 }
 
 .card {
+  min-width: 0;
   padding: 18px;
   background: rgb(255 255 255 / 75%);
   backdrop-filter: blur(14px);
@@ -244,6 +248,9 @@
   gap: 6px;
   margin-top: 10px;
   font-size: 12.5px;
+  /* The consultation id is one long token — let it wrap instead of stretching
+     the grid column. */
+  overflow-wrap: anywhere;
 }
 
 .option {

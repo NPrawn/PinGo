@@ -57,17 +57,33 @@
 .tabs {
   display: flex;
   gap: 4px;
+  align-items: flex-end;
   padding: 10px 16px 0;
   background: rgb(255 255 255 / 60%);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid rgb(207 226 213 / 50%);
 }
 
+/* Right-aligned strip content (profile, status, logout). Keeps its own spacing
+   so the items cannot collide with the tabs when the window is narrow. */
+.tabsTrailing {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+  margin-left: auto;
+  padding-left: 10px;
+  font-size: 12px;
+}
+
 .tab {
   display: flex;
+  flex: none;
   gap: 8px;
   align-items: center;
   padding: 11px 20px;
+  white-space: nowrap;
   font-size: 14px;
   font-weight: 600;
   color: var(--color-sub);

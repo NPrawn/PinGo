@@ -41,8 +41,9 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
         label="상담자 콘솔"
         trailing={
           <>
-            <span>{profileQuery.data?.name ?? '상담원'}</span>
+            <span className={styles.name}>{profileQuery.data?.name ?? '상담원'}</span>
             <select
+              className={styles.status}
               aria-label="상담 상태"
               value={profileQuery.data?.status ?? 'OFFLINE'}
               onChange={(event) =>
