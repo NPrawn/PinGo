@@ -4,8 +4,9 @@
   height: 100%;
   overflow: hidden;
   background: var(--color-background);
-  /* 팬·줌을 직접 처리한다. 브라우저 기본 스크롤·확대에 이벤트를 빼앗기면 안 된다. */
+  /* 팬·줌을 직접 처리한다. 브라우저 기본 스크롤·확대·선택에 이벤트를 빼앗기면 안 된다. */
   touch-action: none;
+  user-select: none;
 }
 
 /* 지도 이미지와 오버레이가 공유하는 좌표 컨테이너.

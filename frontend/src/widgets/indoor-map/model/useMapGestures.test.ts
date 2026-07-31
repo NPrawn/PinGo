@@ -14,10 +14,7 @@ function pointerEvent(pointerId: number, clientX: number, clientY: number) {
     pointerId,
     clientX,
     clientY,
-    currentTarget: {
-      setPointerCapture: () => {},
-      getBoundingClientRect: () => BOX,
-    },
+    currentTarget: { getBoundingClientRect: () => BOX },
   } as unknown as React.PointerEvent<HTMLElement>;
 }
 

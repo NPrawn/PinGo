@@ -159,6 +159,9 @@ export function IndoorMapView({
         {planImageUrl !== null && (
           <img
             className={styles.image}
+            /* 브라우저 기본 이미지 끌기를 막는다. 그것이 시작되면 이후 pointermove가 끊겨
+               지도 이동이 첫 이동에서 멈춘다. */
+            draggable={false}
             src={resolveAssetUrl(planImageUrl)}
             alt={t('indoorMap.imageAlt', { floorCode: floorMap.floorCode })}
             width={floorMap.width}
@@ -178,6 +181,9 @@ export function IndoorMapView({
           facilities={facilityQuery.data}
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
+          /* 지도가 커져도 마커는 화면상 크기를 유지한다. 확대는 도면을 크게 보려는 조작이고,
+             마커까지 커지면 가리는 면적만 늘어난다. */
+          viewScale={mapView.scale}
         />
       </div>
       {mapTransformed && (
@@ -203,6 +209,7 @@ function MapOverlay({
   facilities,
   selectedFacilityId,
   onSelectFacility,
+  viewScale,
 }: {
   floorMap: FloorMap;
   currentLocation: IndoorPoint | null;
@@ -213,6 +220,7 @@ function MapOverlay({
   facilities?: readonly Facility[];
   selectedFacilityId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
+  viewScale: number;
 }) {
   const frame = coordinateFrameOf(floorMap);
   if (!frame) return null;
@@ -240,6 +248,7 @@ function MapOverlay({
       facilities={facilities}
       selectedFacilityId={selectedFacilityId}
       onSelectFacility={onSelectFacility}
+      viewScale={viewScale}
     />
   );
 }

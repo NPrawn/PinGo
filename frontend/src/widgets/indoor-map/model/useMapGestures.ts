@@ -19,6 +19,9 @@ const IDENTITY: MapView = { scale: 1, x: 0, y: 0 };
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
 
+/** 탭과 끌기를 가르는 이동량. 이보다 작게 움직이면 탭으로 본다. */
+const DRAG_THRESHOLD_PX = 4;
+
 /**
  * 지도 팬·줌. (S15P11A206-283)
  *
@@ -34,6 +37,8 @@ export function useMapGestures() {
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   /** 확대 제스처 시작 시점의 두 손가락 거리와 배율. */
   const pinch = useRef<{ distance: number; scale: number } | null>(null);
+  /** 끌기로 판정된 포인터. 탭과 구분해 캡처 시점을 늦추는 데 쓴다. */
+  const dragged = useRef(new Set<number>());
 
   const reset = useCallback(() => {
     setView(IDENTITY);
@@ -58,9 +63,16 @@ export function useMapGestures() {
   }, []);
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    // 캡처해 두면 손가락이 지도 밖으로 나가도 이동이 끊기지 않는다.
-    event.currentTarget.setPointerCapture(event.pointerId);
+    /**
+     * **`setPointerCapture`를 쓰지 않는다.** 두 가지가 깨진다 — 캡처한 뒤에는 `click`의 대상이
+     * 캡처한 요소로 바뀌어 지도 위 시설 마커를 눌러도 탭이 마커까지 가지 않고, Chromium에서
+     * 후속 `pointermove`가 전달되지 않아(실측: 7개 중 1개) 끌기가 첫 이동에서 멈춘다.
+     *
+     * 대신 지도 요소 위에서만 추적한다. 손가락이 지도 밖으로 나가면 이동이 멈추고, 다시
+     * 들어오면 이어진다. 지도가 화면 아래 절반을 채우므로 실사용에서 크게 걸리지 않는다.
+     */
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    dragged.current.delete(event.pointerId);
 
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
@@ -74,8 +86,15 @@ export function useMapGestures() {
       if (!previous) return;
 
       const current = { x: event.clientX, y: event.clientY };
-      pointers.current.set(event.pointerId, current);
       const box = event.currentTarget.getBoundingClientRect();
+
+      /** 손가락이 조금 흔들린 것은 탭이다. 문턱을 넘어야 끌기로 본다. */
+      if (pointers.current.size < 2 && !dragged.current.has(event.pointerId)) {
+        if (Math.hypot(current.x - previous.x, current.y - previous.y) < DRAG_THRESHOLD_PX) return;
+        dragged.current.add(event.pointerId);
+      }
+
+      pointers.current.set(event.pointerId, current);
 
       if (pointers.current.size >= 2 && pinch.current) {
         const [a, b] = [...pointers.current.values()];
@@ -97,6 +116,7 @@ export function useMapGestures() {
 
   const onPointerUp = useCallback((event: React.PointerEvent<HTMLElement>) => {
     pointers.current.delete(event.pointerId);
+    dragged.current.delete(event.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
   }, []);
 

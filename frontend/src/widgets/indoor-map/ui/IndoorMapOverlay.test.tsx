@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import type { Facility } from '@/entities/facility';
 import type { PixelPoint } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
@@ -25,6 +25,7 @@ function renderOverlay(props: {
   facilities?: readonly Facility[];
   selectedFacilityId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
+  viewScale?: number;
   pathNodes?: readonly RoutePathNode[];
   project?: (mapX: number, mapY: number) => PixelPoint | null;
 }) {
@@ -41,6 +42,7 @@ function renderOverlay(props: {
       facilities={props.facilities}
       selectedFacilityId={props.selectedFacilityId}
       onSelectFacility={props.onSelectFacility}
+      viewScale={props.viewScale}
       pathNodes={props.pathNodes}
     />,
   );
@@ -159,6 +161,36 @@ describe('IndoorMapOverlay', () => {
       const { container } = renderOverlay({ facilities: [RESTROOM] });
 
       expect(container.querySelector('svg')).not.toBeNull();
+    });
+  });
+
+  /**
+   * 확대해도 마커는 화면상 크기가 그대로여야 한다. 지도와 같이 커지면 도면을 크게 보려고 한
+   * 조작인데 마커가 가리는 면적만 늘어난다.
+   */
+  describe('확대 배율 상쇄', () => {
+    const AT: IndoorPoint = { floorId: FLOOR_B2, mapX: 300, mapY: 400 };
+
+    function markerRadius(scale: number): number {
+      const { container } = renderOverlay({ currentLocation: AT, viewScale: scale });
+      const dot = container.querySelector('g[role="img"] circle:last-of-type');
+      return Number(dot?.getAttribute('r'));
+    }
+
+    it('배율이 2배면 마커 반지름은 절반이 된다', () => {
+      const base = markerRadius(1);
+      cleanup();
+      const zoomed = markerRadius(2);
+
+      expect(zoomed).toBeCloseTo(base / 2);
+    });
+
+    it('좌표는 배율과 무관하게 그대로다', () => {
+      const { container } = renderOverlay({ currentLocation: AT, viewScale: 3 });
+      const dot = container.querySelector('g[role="img"] circle:last-of-type');
+
+      expect(dot).toHaveAttribute('cx', '300');
+      expect(dot).toHaveAttribute('cy', '400');
     });
   });
 

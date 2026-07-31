@@ -43,7 +43,11 @@ const MAP_FILTERS: readonly { name: string; icon: IconName; facilityType: string
  * **모듈 상수로 둔다.** 296 훅이 이 값을 진입 시점에 고정된 입력으로 다루므로(앵커가 생긴 뒤
  * 바꾸면 조용히 무시된다) 렌더마다 새 객체를 만들면 앵커 발화 effect가 불필요하게 다시 돈다.
  *
- * 목업 도면 B2의 미터 원점이라 도면 가운데 부근에 찍힌다. 값 자체는 검산이 쉬운 (0, 0)이다.
+ * 좌표는 B2 대합실 통로 위, 어느 시설과도 30m 이상 떨어진 지점이다.
+ *
+ * **원점 `(0, 0)`을 쓰지 않는다.** 그 지점은 좌표계의 기준으로 삼은 `B2-B3 엘리베이터 B`가
+ * 실제로 서 있는 자리다. 거기에 현재 위치를 두면 시설 마커와 정확히 겹쳐, 엘리베이터를 고르는
+ * 순간 내 위치에 테두리가 쳐진 것처럼 보인다. 가까운 시설도 마찬가지라 넉넉히 띄운다.
  *
  * TODO: 위치 인식(FR-U-004)·수동 선택(FR-U-007) 결과를 받는 경로가 아직 없다. 확정 좌표를
  * 담는 스토어가 없어서(navigationStore는 목적지 문자열만 갖는다) 여기서 목업으로 채운다.
@@ -51,8 +55,8 @@ const MAP_FILTERS: readonly { name: string; icon: IconName; facilityType: string
  */
 const MOCK_CONFIRMED_LOCATION: IndoorPoint = {
   floorId: MOCK_FLOOR_ID.B2,
-  mapX: 0,
-  mapY: 0,
+  mapX: -30,
+  mapY: 10,
 };
 
 /**

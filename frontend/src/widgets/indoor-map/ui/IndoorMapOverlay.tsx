@@ -50,6 +50,14 @@ interface IndoorMapOverlayProps {
   selectedFacilityId?: number | null;
   /** 시설 마커를 눌렀을 때. 넘기지 않으면 마커가 탭을 받지 않는다. */
   onSelectFacility?: (facility: Facility) => void;
+  /**
+   * 지도에 적용된 확대 배율. 기본 1.
+   *
+   * **마커 치수를 이 값으로 나눈다.** 마커는 지도와 함께 확대되면 안 된다 — 확대는 도면을 크게
+   * 보려는 조작이고, 마커가 같이 커지면 가리는 면적만 늘어난다. 지도 UI의 통례이기도 하다.
+   * 좌표는 그대로 두고 크기만 상쇄하므로 마커가 가리키는 지점은 바뀌지 않는다.
+   */
+  viewScale?: number;
 }
 
 /**
@@ -74,6 +82,7 @@ export function IndoorMapOverlay({
   facilities,
   selectedFacilityId,
   onSelectFacility,
+  viewScale = 1,
 }: IndoorMapOverlayProps) {
   const { t } = useTranslation();
   /**
@@ -85,6 +94,24 @@ export function IndoorMapOverlay({
    * `useId`가 붙이는 구분 기호는 id에 쓸 수 없는 문자일 수 있어 걸러낸다.
    */
   const beamGradientId = `beam${useId().replace(/[^\w-]/g, '')}`;
+
+  /**
+   * 화면상 크기를 일정하게 두기 위한 배수.
+   *
+   * 지도를 2배로 확대하면 마커 치수를 절반으로 줄여, 보이는 크기가 그대로 유지된다.
+   */
+  const sizeUnit = 1 / (viewScale > 0 ? viewScale : 1);
+  const markerRadius = MARKER_RADIUS * sizeUnit;
+  const destinationRadius = DESTINATION_RADIUS * sizeUnit;
+  const facilityRadius = FACILITY_RADIUS * sizeUnit;
+  const labelFontSize = LABEL_FONT_SIZE * sizeUnit;
+  const labelGap = LABEL_GAP * sizeUnit;
+  const beamLength = BEAM_LENGTH * sizeUnit;
+  const borderWidth = BORDER_WIDTH * sizeUnit;
+  const pinBorderWidth = PIN_BORDER_WIDTH * sizeUnit;
+  const labelHaloWidth = LABEL_HALO_WIDTH * sizeUnit;
+  const routeWidth = ROUTE_WIDTH * sizeUnit;
+  const routeDash = `${ROUTE_DASH[0] * sizeUnit} ${ROUTE_DASH[1] * sizeUnit}`;
 
   const routeSegments = floorSegments(pathNodes ?? [], floorId, project);
   const currentPoint = pointOnFloor(currentLocation, floorId, project);
@@ -115,6 +142,8 @@ export function IndoorMapOverlay({
             <polyline
               key={index}
               className={styles.route}
+              strokeWidth={routeWidth}
+              strokeDasharray={routeDash}
               points={points.map((point) => `${point.px},${point.py}`).join(' ')}
             />
           ))}
@@ -140,7 +169,8 @@ export function IndoorMapOverlay({
                 .join(' ')}
               cx={point.px}
               cy={point.py}
-              r={FACILITY_RADIUS}
+              r={facilityRadius}
+              strokeWidth={pinBorderWidth}
             />
             {/* 스프라이트 심볼을 그대로 참조한다. 아이콘 모양은 entities/facility가 정한다. */}
             <use
@@ -148,18 +178,19 @@ export function IndoorMapOverlay({
                 .filter(Boolean)
                 .join(' ')}
               href={`#i-${facilityIconOf(facility.facilityType)}`}
-              x={point.px - FACILITY_RADIUS / 2}
-              y={point.py - FACILITY_RADIUS / 2}
-              width={FACILITY_RADIUS}
-              height={FACILITY_RADIUS}
+              x={point.px - facilityRadius / 2}
+              y={point.py - facilityRadius / 2}
+              width={facilityRadius}
+              height={facilityRadius}
             />
             {/* 이름은 고른 것에만 붙인다. 층당 30여 개를 모두 붙이면 도면이 글자로 덮인다. */}
             {selected && (
               <text
                 className={styles.facilityLabel}
                 x={point.px}
-                y={point.py + FACILITY_RADIUS + LABEL_FONT_SIZE}
-                fontSize={LABEL_FONT_SIZE}
+                y={point.py + facilityRadius + labelFontSize}
+                fontSize={labelFontSize}
+                strokeWidth={labelHaloWidth}
                 textAnchor="middle"
               >
                 {facility.nameKo}
@@ -175,15 +206,17 @@ export function IndoorMapOverlay({
             className={styles.destinationPin}
             cx={destinationPoint.px}
             cy={destinationPoint.py}
-            r={DESTINATION_RADIUS}
+            r={destinationRadius}
+            strokeWidth={borderWidth}
           />
           {destinationLabel != null && destinationLabel !== '' && (
             // 원본과 같이 점 위쪽에 얹는다. 점과 겹치지 않을 만큼만 띄운다.
             <text
               className={styles.destinationLabel}
               x={destinationPoint.px}
-              y={destinationPoint.py - DESTINATION_RADIUS - LABEL_GAP}
-              fontSize={LABEL_FONT_SIZE}
+              y={destinationPoint.py - destinationRadius - labelGap}
+              fontSize={labelFontSize}
+              strokeWidth={labelHaloWidth}
               textAnchor="middle"
             >
               {destinationLabel}
@@ -208,7 +241,7 @@ export function IndoorMapOverlay({
               gradientUnits="userSpaceOnUse"
               cx={currentPoint.px}
               cy={currentPoint.py}
-              r={BEAM_LENGTH}
+              r={beamLength}
             >
               <stop className={styles.beamStopInner} offset="0%" />
               <stop className={styles.beamStopOuter} offset="100%" />
@@ -218,7 +251,7 @@ export function IndoorMapOverlay({
             className={styles.currentHalo}
             cx={currentPoint.px}
             cy={currentPoint.py}
-            r={MARKER_RADIUS * HALO_SCALE}
+            r={markerRadius * HALO_SCALE}
           />
           {/* 방향을 아는 경우에만 부채꼴을 얹는다. 점보다 먼저 그려 점이 위에 남게 한다 —
               점의 중심이 곧 위치이므로 방향 표시가 그것을 덮으면 위치가 흐려진다. */}
@@ -226,7 +259,7 @@ export function IndoorMapOverlay({
             <path
               className={styles.currentBeam}
               fill={`url(#${beamGradientId})`}
-              d={beamPath(currentPoint)}
+              d={beamPath(currentPoint, beamLength)}
               transform={`rotate(${currentHeadingImageDeg} ${currentPoint.px} ${currentPoint.py})`}
             />
           )}
@@ -234,7 +267,8 @@ export function IndoorMapOverlay({
             className={styles.currentDot}
             cx={currentPoint.px}
             cy={currentPoint.py}
-            r={MARKER_RADIUS}
+            r={markerRadius}
+            strokeWidth={borderWidth}
           />
         </g>
       )}
@@ -262,6 +296,19 @@ const LABEL_FONT_SIZE = 44;
 const LABEL_GAP = 14;
 
 /**
+ * 선 두께. 좌표와 같은 원본 이미지 픽셀 단위다.
+ *
+ * `vector-effect: non-scaling-stroke`를 쓰지 않는다. 그것은 SVG 안의 변환만 무시하고 바깥
+ * CSS 확대는 그대로 받아서, 확대할 때 반지름은 줄고 두께만 커진다. 값은 프로토타입의 화면상
+ * 두께(테두리 3px·시설 2px·글자 외곽선 5px·경로 5px)를 지금 표시 배율에서 환산한 것이다.
+ */
+const BORDER_WIDTH = 15;
+const PIN_BORDER_WIDTH = 10;
+const LABEL_HALO_WIDTH = 25;
+const ROUTE_WIDTH = 25;
+const ROUTE_DASH: readonly [number, number] = [5, 55];
+
+/**
  * 시설 마커 반지름. 프로토타입 `.facpin`의 아이콘 원이 26px이므로 같은 크기가 되도록 잡았다.
  * 안쪽 아이콘 글리프는 원 지름의 절반이며, 이 역시 프로토타입과 같다.
  */
@@ -278,16 +325,16 @@ const BEAM_HALF_ANGLE_DEG = 30;
  * 항상 0도로 그리고 회전은 `transform`이 맡는다. 각도를 경로 계산에 넣으면 179도와 -179도
  * 같은 경계에서 호의 방향(sweep flag)을 따로 판단해야 한다.
  */
-function beamPath({ px, py }: PixelPoint): string {
+function beamPath({ px, py }: PixelPoint, length: number): string {
   const rad = (BEAM_HALF_ANGLE_DEG * Math.PI) / 180;
-  const dx = BEAM_LENGTH * Math.cos(rad);
-  const dy = BEAM_LENGTH * Math.sin(rad);
+  const dx = length * Math.cos(rad);
+  const dy = length * Math.sin(rad);
 
   return [
     `M ${px} ${py}`,
     `L ${px + dx} ${py - dy}`,
     // 반각이 90도 미만이라 항상 짧은 호다. large-arc-flag는 0, sweep-flag는 시계 방향으로 1.
-    `A ${BEAM_LENGTH} ${BEAM_LENGTH} 0 0 1 ${px + dx} ${py + dy}`,
+    `A ${length} ${length} 0 0 1 ${px + dx} ${py + dy}`,
     'Z',
   ].join(' ');
 }
