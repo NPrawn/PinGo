@@ -144,7 +144,7 @@ public class ConsultationSessionService {
         ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
         findStationCounselor(counselorAccountId, session.getStationId());
-        return ConsultationDetailResponse.from(session);
+        return ConsultationDetailResponse.from(session, createCounselorSignalingAccessToken(session));
     }
 
     @Transactional

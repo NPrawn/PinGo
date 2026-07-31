@@ -15,9 +15,11 @@ public record ConsultationDetailResponse(
         String destinationLabel,
         boolean videoConsent,
         boolean audioConsent,
-        LocalDateTime requestedAt
+        LocalDateTime requestedAt,
+        String signalingRoomId,
+        String signalingAccessToken
 ){
-    public static ConsultationDetailResponse from(ConsultationSession session){
+    public static ConsultationDetailResponse from(ConsultationSession session, String signalingAccessToken){
         return new ConsultationDetailResponse(
                 session.getConsultationId(),
                 session.getStationId(),
@@ -27,7 +29,9 @@ public record ConsultationDetailResponse(
                 null, // [TODO] OO: 위와 동일
                 session.isVideoConsent(),
                 session.isAudioConsent(),
-                session.getRequestedAt()
+                session.getRequestedAt(),
+                session.getSignalingRoomId(),
+                signalingAccessToken
         );
     }
 }

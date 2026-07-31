@@ -74,7 +74,8 @@ class ConsultationCounselorQueryControllerTest {
     void getConsultationDetail_성공() throws Exception {
         ConsultationDetailResponse response = new ConsultationDetailResponse(
                 CONSULTATION_ID, 1L, ProblemType.CANNOT_FIND_EXIT, ConsultationStatus.WAITING,
-                null, null, true, true, LocalDateTime.now()
+                null, null, true, true, LocalDateTime.now(),
+                null,null
         );
         given(consultationSessionService.getConsultationDetailForCounselor(eq(CONSULTATION_ID), any()))
                 .willReturn(response);

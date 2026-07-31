@@ -506,7 +506,6 @@ class ConsultationSessionServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.INACTIVE_ACCOUNT);
     }
-
     @Test
     void getConsultationDetailForCounselor_성공() {
         ConsultationSession session = newSession();
@@ -523,6 +522,30 @@ class ConsultationSessionServiceTest {
                 consultationSessionService.getConsultationDetailForCounselor(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
 
         assertThat(response.consultationId()).isEqualTo(session.getConsultationId());
+        assertThat(response.signalingRoomId()).isNull();
+        assertThat(response.signalingAccessToken()).isNull();
+    }
+
+    @Test
+    void getConsultationDetailForCounselor_성공_수락된_상담이면_상담원_signaling_token을_반환한다() {
+        ConsultationSession session = newSession();
+        session.accept(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findById(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(signalingAccessTokenProvider.createCounselorToken(session.getConsultationId(), COUNSELOR_ACCOUNT_ID))
+                .willReturn("counselor-signaling-token");
+
+        ConsultationDetailResponse response =
+                consultationSessionService.getConsultationDetailForCounselor(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
+
+        assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
+        assertThat(response.signalingAccessToken()).isEqualTo("counselor-signaling-token");
     }
 
     @Test
