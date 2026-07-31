@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 출구 도착 판정 (FR-U-011).
  *
- * <p>대상이 {@code facility} 이므로 경로도 {@code /api/facilities} 아래에 둔다.
- * 비로그인 사용자가 쓰는 API 인데 이 경로는 이미 공개로 열려 있어
- * 여러 사람이 함께 고치는 {@code SecurityConfig} 를 건드릴 필요가 없다.
+ * <p>판정 대상이 출구 시설이고 주소가 가리키는 자원도 {@code facilityId} 이므로
+ * 경로를 {@code /api/facilities} 아래에 둔다. 비로그인 사용자가 쓰는 API 인데
+ * {@code SecurityConfig} 에서 {@code /api/facilities/**} 가 이미 공개라 그대로 열린다.
  */
 @RestController
 @RequestMapping("/api/facilities")
