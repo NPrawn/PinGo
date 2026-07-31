@@ -20,6 +20,13 @@ ai:
     connect-timeout-ms: ${AI_LOCALIZATION_CONNECT_TIMEOUT_MS:300}
     read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
 
+kakao:
+  local:
+    base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
+    rest-api-key: ${KAKAO_REST_API_KEY:}
+    connect-timeout-ms: ${KAKAO_LOCAL_CONNECT_TIMEOUT_MS:1000}
+    read-timeout-ms: ${KAKAO_LOCAL_READ_TIMEOUT_MS:3000}
+
 signaling:
   websocket:
     allowed-origin-patterns: ${SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,https://jenkins.example.invalid}
