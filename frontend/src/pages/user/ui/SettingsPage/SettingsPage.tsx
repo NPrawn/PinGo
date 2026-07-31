@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useAccessibilityStore } from '@/entities/accessibility';
 import { usePermissionStore } from '@/entities/permission';
 import { useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
@@ -16,7 +15,6 @@ import {
   SelectRow,
   Sub,
   Title,
-  Toggle,
 } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './SettingsPage.module.css';
@@ -29,7 +27,7 @@ const LANGUAGES = [
 const GRANTED_CHIP = { bg: '#d9f0df', fg: '#0f5a3e' };
 const PENDING_CHIP = { bg: '#fff', fg: '#8b857a' };
 
-/** Screen 24 (FR-U-016) — language, permissions and accessibility. */
+/** Screen 24 (FR-U-016) — language and permissions. */
 export function SettingsPage() {
   const { i18n } = useTranslation();
   const navigate = useNavigate();
@@ -37,24 +35,13 @@ export function SettingsPage() {
   const clearSession = useUserSessionStore((state) => state.clearSession);
   const granted = usePermissionStore((state) => state.granted);
   const togglePermission = usePermissionStore((state) => state.toggle);
-  const accessibility = useAccessibilityStore();
-
-  const guidance = [
-    { label: '큰 글씨 안내', checked: accessibility.bigText, toggle: accessibility.toggleBigText },
-    { label: '음성 안내', checked: accessibility.voice, toggle: accessibility.toggleVoice },
-    {
-      label: '계단 없는 경로 우선',
-      checked: accessibility.noStair,
-      toggle: accessibility.toggleNoStair,
-    },
-  ];
 
   return (
     <PhoneFrame>
       <div className={styles.topSpacer} />
       <BackLink to={USER_ROUTES.STATION}>홈으로</BackLink>
       <Title className={styles.title}>설정</Title>
-      <Sub>언어와 권한, 안내 방식을 언제든 바꿀 수 있어요.</Sub>
+      <Sub>언어와 권한을 언제든 바꿀 수 있어요.</Sub>
 
       <Kicker className={styles.sectionLabel}>언어</Kicker>
       <div className={styles.languages}>
@@ -93,25 +80,6 @@ export function SettingsPage() {
             </div>
           );
         })}
-      </Card>
-
-      <Kicker className={styles.sectionLabel}>안내 방식</Kicker>
-      <Card className={styles.list}>
-        {guidance.map((option, index) => (
-          <div
-            key={option.label}
-            className={[
-              styles.row,
-              styles.toggleRow,
-              index === guidance.length - 1 && styles.rowLast,
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            <span className={styles.rowLabel}>{option.label}</span>
-            <Toggle label={option.label} checked={option.checked} onCheckedChange={option.toggle} />
-          </div>
-        ))}
       </Card>
 
       <Kicker className={styles.sectionLabel}>도움이 필요하신가요?</Kicker>
