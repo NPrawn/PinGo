@@ -94,9 +94,11 @@ describe('ConsultPermissionPage', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
-        getUserMedia: vi.fn().mockRejectedValue(
-          Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' }),
-        ),
+        getUserMedia: vi
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' }),
+          ),
       },
     });
 
@@ -128,12 +130,14 @@ describe('ConsultPermissionPage', () => {
     expect(screen.queryByText('사용자 세션 또는 상담 유형을 확인해 주세요.')).toBeNull();
   });
 
-  it('waits for the user session instead of exposing a session error', () => {
+  it('offers to prepare the session again instead of locking the button', () => {
     useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
 
     renderPage();
 
-    expect(screen.getByRole('button', { name: '상담 연결 준비 중…' })).toBeDisabled();
+    // 세션이 없으면 연결 버튼이 준비 재시도 버튼으로 바뀐다. 잠긴 버튼으로 막히면
+    // 통신 실패 한 번에 상담 요청 자체가 불가능해진다.
+    expect(screen.getByRole('button', { name: '상담 연결 준비하기' })).toBeEnabled();
     expect(screen.queryByText('사용자 세션 또는 상담 유형을 확인해 주세요.')).toBeNull();
   });
 });

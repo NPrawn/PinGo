@@ -7,7 +7,8 @@ export const ENDPOINTS = {
   },
   counselors: {
     me: '/api/counselors/me',
-    consultations: '/api/counselor/consultations',
+    consultations: '/api/counselors/consultations',
+    consultation: (consultationId: string) => `/api/counselors/consultations/${consultationId}`,
   },
   userSessions: {
     root: '/api/user-sessions',
@@ -45,8 +46,6 @@ export const ENDPOINTS = {
     accept: (consultationId: string) => `/api/consultations/${consultationId}/accept`,
     reject: (consultationId: string) => `/api/consultations/${consultationId}/reject`,
     end: (consultationId: string) => `/api/consultations/${consultationId}/end`,
-    signalingToken: (consultationId: string) =>
-      `/api/consultations/${consultationId}/signaling-token`,
     waitingEvents: (consultationId: string) =>
       `/api/consultations/${consultationId}/waiting-events`,
     fallbackEvents: (consultationId: string) =>

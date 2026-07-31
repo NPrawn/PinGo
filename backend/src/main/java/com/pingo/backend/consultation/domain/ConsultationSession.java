@@ -97,4 +97,5 @@ public class ConsultationSession {
                 || status == ConsultationStatus.IN_PROGRESS;
         return roomActive ? "room_" + consultationId : null;
     }
+
 }

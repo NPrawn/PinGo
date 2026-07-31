@@ -39,6 +39,7 @@ public enum ErrorCode {
     FLOOR_NOT_FOUND(HttpStatus.NOT_FOUND, "FLOOR_NOT_FOUND", "층을 찾을 수 없습니다."),
     FACILITY_NOT_FOUND(HttpStatus.NOT_FOUND, "FACILITY_NOT_FOUND", "시설을 찾을 수 없습니다."),
     UNSUPPORTED_FACILITY_TYPE(HttpStatus.BAD_REQUEST, "UNSUPPORTED_FACILITY_TYPE", "지원하지 않는 시설 유형입니다."),
+    NOT_EXIT_FACILITY(HttpStatus.BAD_REQUEST, "NOT_EXIT_FACILITY", "출구가 아닌 시설입니다."),
     DUPLICATE_FLOOR_CODE(HttpStatus.CONFLICT, "DUPLICATE_FLOOR_CODE", "해당 역에 동일한 층 코드가 존재합니다."),
     FLOOR_IN_USE(HttpStatus.CONFLICT, "FLOOR_IN_USE", "사용 중인 층은 삭제할 수 없습니다."),
 
@@ -46,11 +47,15 @@ public enum ErrorCode {
     PLACE_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_NOT_FOUND", "주변 장소를 찾을 수 없습니다."),
     EXIT_RECOMMENDATION_NOT_FOUND(HttpStatus.NOT_FOUND, "EXIT_RECOMMENDATION_NOT_FOUND", "장소-출구 추천을 찾을 수 없습니다."),
     DUPLICATE_EXIT_RECOMMENDATION(HttpStatus.CONFLICT, "DUPLICATE_EXIT_RECOMMENDATION", "이미 등록된 장소-출구 추천입니다."),
+    EXIT_LOCATION_NOT_FOUND(HttpStatus.NOT_FOUND, "EXIT_LOCATION_NOT_FOUND", "외부 좌표가 등록된 출구를 찾을 수 없습니다."),
 
     // 지도,파일
     INVALID_MAP_FILE(HttpStatus.BAD_REQUEST, "INVALID_MAP_FILE", "지도 파일이 비어 있거나 올바르지 않습니다."),
     UNSUPPORTED_MAP_TYPE(HttpStatus.BAD_REQUEST, "UNSUPPORTED_MAP_TYPE", "지원하지 않는 지도 유형입니다."),
+    INCOMPLETE_COORDINATE_FRAME(HttpStatus.BAD_REQUEST, "INCOMPLETE_COORDINATE_FRAME", "좌표 프레임은 축척·원점 X·원점 Y·회전각을 모두 함께 지정해야 합니다."),
+    COORDINATE_FRAME_WOULD_BE_LOST(HttpStatus.BAD_REQUEST, "COORDINATE_FRAME_WOULD_BE_LOST", "기존 지도에 좌표 프레임이 있습니다. 새 이미지 기준으로 좌표 프레임을 함께 지정해 주세요."),
     FILE_STORAGE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_STORAGE_FAILED", "파일 저장에 실패했습니다."),
+    EXTERNAL_PLACE_SEARCH_FAILED(HttpStatus.BAD_GATEWAY, "EXTERNAL_PLACE_SEARCH_FAILED", "외부 장소 검색에 실패했습니다."),
 
 
     // 경로 

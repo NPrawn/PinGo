@@ -35,7 +35,7 @@ export const handlers = [
       },
     }),
   ),
-  http.get('http://localhost:8080/api/counselor/consultations', () =>
+  http.get('http://localhost:8080/api/counselors/consultations', () =>
     HttpResponse.json({
       success: true,
       data: [

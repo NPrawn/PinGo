@@ -21,6 +21,7 @@ export const CONSULTATION_PROBLEM_LABELS: Record<string, string> = {
   OTHER: '기타 문의',
 };
 
-export function consultationProblemLabel(problemType: string) {
+export function consultationProblemLabel(problemType?: string) {
+  if (!problemType) return '문의 유형 미지정';
   return CONSULTATION_PROBLEM_LABELS[problemType] ?? problemType;
 }

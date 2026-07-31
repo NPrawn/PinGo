@@ -574,8 +574,8 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)가 **모두 있어야** 좌표 변환이 가능하다. 하나라도 `null`이면 지도 이미지는 표시할 수 있으나 좌표 오버레이는 할 수 없다. **층마다 값이 다르므로 층별로 사용해야 한다** — 원본 평면도 이미지의 크기·여백이 층마다 달라 원점 픽셀이 다르다.
 
-> **구현 상태: `originPxX`·`originPxY`·`frameAngleDeg`는 미구현이다.** 이 엔드포인트는 구현돼 있으나 세 필드는 아직 응답에 없다. `floor_map` 컬럼 추가(V6)·엔티티·DTO 반영이 필요하며 별도 작업이다. 또한 **`floor_map`에 시드 데이터가 없어 현재 이 엔드포인트는 빈 배열을 반환한다.**
-> 그때까지 FE는 [`역삼역_FE_좌표연동_스펙.md`](역삼역_FE_좌표연동_스펙.md) §2의 프레임 값을 사용한다.
+> 역삼역(`stationId = 1`)은 B1·B2·B3 세 층의 지도가 프레임 값과 함께 시드돼 있다.
+> **B1의 `originPxX`·`originPxY`는 미검증 추정값**이며 COLMAP 정합 후 확정한다(→ [`역삼역_route_node_naming.md`](역삼역_route_node_naming.md) §1). 확정 시 이 테이블만 갱신하면 되고 클라이언트 코드는 바뀌지 않는다.
 
 #### 좌표 변환식
 
@@ -686,6 +686,93 @@ function pixelToMeter(px, py, frame) {
 ```
 
 출구가 아닌 시설은 `exitDetail`이 `null`이다.
+
+---
+
+## 5.4 출구 도착 판정
+
+### POST `/facilities/{facilityId}/arrival-check`
+
+사용자가 목적지로 정한 출구에 도착했는지 판정한다 (FR-U-011).
+
+주변 출구를 훑지 않고 **요청받은 출구 하나만** 확인한다. 경로 안내의 끝에서 목적지가 이미 정해져 있는 상황을 전제하므로, 가까이 붙은 출구끼리 서로 오검출되지 않는다.
+
+조회성 요청이지만 현재 위치를 본문으로 받으므로 POST를 쓴다.
+
+#### Request
+
+| 이름 | 타입 | 필수 | 설명 |
+| ------- | ------ | ---- | ------------------------------ |
+| floorId | number | Y | 현재 층 ID |
+| mapX | number | Y | 현재 위치 X (캐노니컬 미터) |
+| mapY | number | Y | 현재 위치 Y (캐노니컬 미터) |
+
+```json
+{
+  "floorId": 3,
+  "mapX": 100.354,
+  "mapY": -39.875
+}
+```
+
+좌표는 WebXR 상대 추적 결과나 위치 인식(VPS) 결과에서 온다. 층은 좌표로 유도하지 않고 현재 확정된 층을 그대로 보낸다.
+
+**높이(z)는 받지 않는다.** 판정이 같은 층 안의 평면 거리로 이루어지고, 클라이언트가 높이를 추적하지 않기 때문이다.
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "facilityId": 42,
+    "nameKo": "6번 출구",
+    "nameEn": "Exit 6",
+    "floorId": 3,
+    "arrived": true,
+    "sameFloor": true,
+    "distanceM": 4.12,
+    "thresholdM": 10.0
+  },
+  "message": null
+}
+```
+
+| 이름 | 타입 | 설명 |
+| ---------- | ------- | ------------------------------------------------ |
+| arrived | boolean | 도착 여부. **같은 층이고 거리가 임계값 이하**일 때만 true |
+| sameFloor | boolean | 현재 위치와 출구가 같은 층인지 |
+| distanceM | number | 출구까지의 평면 거리(m). 층이 다르면 `null` |
+| thresholdM | number | 도착으로 판정하는 거리 임계값(m) |
+
+#### 판정 규칙
+
+```
+층이 다르면            -> arrived = false (평면 거리와 무관)
+같은 층이면 거리 = √((내X − 출구X)² + (내Y − 출구Y)²)
+거리 ≤ thresholdM     -> arrived = true
+```
+
+층을 먼저 거르는 이유는 B1 출구 바로 아래 B2 지점이 평면상 가깝게 나오기 때문이다.
+
+#### 임계값
+
+기본 10m이며 `exit.arrival.threshold-m` 설정으로 바꿀 수 있다(환경변수 `EXIT_ARRIVAL_THRESHOLD_M`).
+
+값의 범위가 좁다. **아래로는 위치 오차보다 커야 하고**(역삼역 B1 좌표 프레임이 미검증이라 최대 4.4m, provisional 축척에서 1~1.6m가 더해진다), **위로는 가장 가까운 출구 쌍의 절반보다 작아야 한다**(7번·8번 출구가 18.3m). 임계값이 오차보다 작으면 출구 앞에 서 있어도 도착이 뜨지 않는다.
+
+B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
+
+#### 오류
+
+| 코드 | 상태 | 설명 |
+| ------------------ | ---- | ------------------------ |
+| FACILITY_NOT_FOUND | 404 | 시설이 없거나 비활성 |
+| NOT_EXIT_FACILITY | 400 | 출구가 아닌 시설 |
+
+#### 범위 밖
+
+자동 판정이 어려울 때 사용자가 직접 `출구에 도착했어요`를 누르는 흐름은 클라이언트가 처리한다. 이 API는 판단만 제공하고 세션 상태를 바꾸지 않는다. 도착 후 외부 지도 연계는 §12(FR-U-012)를 쓴다.
 
 ---
 
@@ -1585,7 +1672,7 @@ Event Name: `DATA_CHANNEL`
 
 ## 11.2 상담 요청 목록 조회
 
-### GET `/counselor/consultations`
+### GET `/counselors/consultations`
 
 상담자가 담당 역의 상담 요청 목록을 조회한다.
 
@@ -1612,7 +1699,10 @@ Authorization: Bearer {accessToken}
       "stationId": 1,
       "problemType": "CANNOT_FIND_EXIT",
       "status": "WAITING",
+      "currentNodeId": 101,
       "currentLocationLabel": "B2 개찰구 앞",
+      "destinationType": "place",
+      "destinationId": 3,
       "destinationLabel": "COEX Mall",
       "requestedAt": "2026-07-16T03:00:00Z"
     }
@@ -1621,9 +1711,56 @@ Authorization: Bearer {accessToken}
 }
 ```
 
----
+`status`를 지정하지 않으면 담당 역의 모든 상담을 반환한다. 상담자 콘솔의 요청 목록과 상담 이력이 같은 응답을 사용한다.
 
-## 11.3 상담 수락
+`currentLocationLabel`, `destinationLabel`은 route_node-facility 연결이 정리되기 전까지 식별자 기반 임시 문자열(`Node 101`, `place 3`)이며, 좌표·시설 연결 이후 실제 명칭으로 바뀐다.
+
+---
+## 11.3 상담 요청 상세 조회
+
+### GET `/counselors/consultations/{consultationId}`
+
+상담자가 담당 역의 상담 요청 상세를 조회한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+#### Response
+
+```json
+{
+"success": true,
+"data": {
+"consultationId": "cs_abc123",
+"stationId": 1,
+"problemType": "CANNOT_FIND_EXIT",
+"status": "ACCEPTED",
+"currentLocationLabel": "B2 개찰구 앞",
+"destinationLabel": "COEX Mall",
+"videoConsent": true,
+"audioConsent": true,
+"requestedAt": "2026-07-16T03:00:00Z",
+"signalingRoomId": "room_cs_abc123",
+"signalingAccessToken": "signaling-token"
+},
+"message": null
+}
+```
+
+`signalingRoomId`/`signalingAccessToken`은 상담이 `ACCEPTED`/`IN_PROGRESS`이고 **조회한 상담자가 실제로 배정된 상담자 본인일 때만** 값이 채워진다. 같은 역의 다른 상담자가 조회하면 나머지 필드(상태·문제유형 등)는 그대로 보이되 두 필드는 `null`로 반환된다 — 통화 참여 자격증명을 배정자 본인에게만 한정하기 위함이다.
+
+#### Error
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
+| 담당 역 상담자가 아님 | 403 | `CONSULTATION_STATION_MISMATCH` |
+
+--- 
+## 11.4 상담 수락
 
 ### POST `/consultations/{consultationId}/accept`
 
@@ -1654,7 +1791,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.4 상담 거절
+## 11.5 상담 거절
 
 ### POST `/consultations/{consultationId}/reject`
 
@@ -1675,7 +1812,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.5 상담 종료
+## 11.6 상담 종료
 
 ### POST `/consultations/{consultationId}/end`
 
@@ -1713,48 +1850,6 @@ Authorization: Bearer {accessToken}
 
 상담 종료가 성공하면 Backend는 해당 `signalingRoomId`의 WebSocket room을 정리하고, 남아 있는 WebSocket session을 `4400 Signaling Room Closed`로 종료한다.
 상담 종료가 성공하면 Backend는 상담자의 상태를 `AVAILABLE`로 복귀시킨다. 종료 실패 시 상담자 상태는 변경하지 않는다.
-
----
-
-## 11.6 상담 signaling 토큰 재발급
-
-### POST `/consultations/{consultationId}/signaling-token`
-
-상담자가 이미 수락한 상담의 signaling access token을 다시 발급받는다.
-
-수락 응답으로 받은 토큰은 `signaling.access-token.expiration-ms`(기본 10분)가 지나면 만료되고, 상담자가 요청 목록에서 상담 화면으로 다시 들어올 때는 수락 API를 거칠 수 없다. 이때 이 API로 토큰을 새로 받아 WebSocket에 접속한다.
-
-#### Header
-
-```http
-Authorization: Bearer {accessToken}
-```
-
-요청 본문은 사용하지 않는다.
-
-#### Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "consultationId": "cs_abc123",
-    "status": "ACCEPTED",
-    "signalingRoomId": "room_cs_abc123",
-    "signalingAccessToken": "eyJhbGciOiJIUzM4NCJ9..."
-  },
-  "message": null
-}
-```
-
-#### Error
-
-| 상황 | HTTP | code |
-| --- | --- | --- |
-| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
-| 아직 수락되지 않았거나 이미 종료된 상담 | 409 | `CONSULTATION_NOT_ACCEPTED` |
-| 담당 역 상담자가 아님 | 403 | `CONSULTATION_STATION_MISMATCH` |
-| 수락한 상담자가 아님 | 403 | `CONSULTATION_COUNSELOR_MISMATCH` |
 
 ---
 
@@ -2121,9 +2216,22 @@ multipart/form-data
 | originPxY     | number | N    | 캐노니컬 원점 `(0,0)`에 대응하는 이미지 픽셀 y |
 | frameAngleDeg | number | N    | 캐노니컬 +X축과 이미지 x축의 각도(도)          |
 
-프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)는 업로드하는 **이 이미지 기준**으로 넣는다. 같은 층의 지도를 다른 이미지로 교체하면 원점 픽셀과 축척이 달라지므로 새 이미지에 맞춰 다시 측정해야 한다. 값을 넣지 않으면 지도 표시는 되지만 좌표 오버레이는 동작하지 않는다. 의미와 변환식은 §5.1 참고.
+프레임 4필드(`scaleMPerPx`, `originPxX`, `originPxY`, `frameAngleDeg`)는 업로드하는 **이 이미지 기준**으로 넣는다. 같은 층의 지도를 다른 이미지로 교체하면 원점 픽셀과 축척이 달라지므로 새 이미지에 맞춰 다시 측정해야 한다. 의미와 변환식은 §5.1 참고.
 
-> **구현 상태: `originPxX`·`originPxY`·`frameAngleDeg`는 미구현이다.** §5.1 참고.
+`originPxX`·`originPxY`는 이미지 좌상단 기준이라 0이나 음수도 유효하고, `frameAngleDeg`도 음수가 정상이다(역삼역 −21.28).
+
+#### 좌표 프레임 규칙
+
+새 지도를 올리면 그 층의 기존 활성 지도는 비활성화된다. 프레임이 조용히 사라지는 것을 막기 위해 두 가지를 검증한다.
+
+| 상황 | 결과 |
+| --- | --- |
+| 4필드 전부 지정 | 통과 |
+| 4필드 전부 생략 + 기존 지도에도 프레임 없음 | 통과 (오버레이 없는 지도) |
+| **4필드 중 일부만 지정** | **`400 INCOMPLETE_COORDINATE_FRAME`** |
+| **4필드 전부 생략 + 기존 활성 지도에 프레임 있음** | **`400 COORDINATE_FRAME_WOULD_BE_LOST`** |
+
+**기존 프레임을 자동으로 물려주지 않는다.** 프레임은 특정 이미지에 대한 값이라, 다른 이미지에 그대로 적용하면 오버레이가 켜진 채로 틀린 위치에 그려진다. 조용히 틀린 좌표가 조용히 꺼진 기능보다 나쁘다. 이미지를 교체할 때는 새 이미지 기준으로 프레임을 다시 재서 함께 보내야 한다.
 
 #### Response
 
@@ -2136,6 +2244,16 @@ multipart/form-data
   "message": null
 }
 ```
+
+#### 오류
+
+| 코드 | 상태 | 설명 |
+| ----------------------------- | ---- | -------------------------------------------- |
+| FLOOR_NOT_FOUND | 404 | 층이 없거나 역이 비활성 |
+| UNSUPPORTED_MAP_TYPE | 400 | `image`·`svg` 외의 유형 |
+| INVALID_MAP_FILE | 400 | 파일이 비어 있거나 올바르지 않음 |
+| INCOMPLETE_COORDINATE_FRAME | 400 | 프레임 4필드 중 일부만 지정 |
+| COORDINATE_FRAME_WOULD_BE_LOST | 400 | 기존 프레임이 있는데 새 요청에 프레임이 없음 |
 
 ---
 
@@ -2687,22 +2805,22 @@ multipart/form-data
 
 ## 17. MVP 필수 API 요약
 
-| 구분        | API                                                                                                     |
-| ----------- | ------------------------------------------------------------------------------------------------------- |
+| 구분        | API                                                                                                                                  |
+| ----------- |--------------------------------------------------------------------------------------------------------------------------------------|
 | 사용자 세션 | POST /user-sessions, GET /user-sessions/{userSessionId}, PATCH /user-sessions/{userSessionId}, DELETE /user-sessions/{userSessionId} |
-| 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                   |
-| 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                    |
-| 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits     |
-| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                       |
-| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                       |
-| 외부 지도   | POST /external-maps/directions                                                                          |
-| 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                   |
-| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}        |
-| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                           |
-| 상담자      | GET /counselor/consultations, POST /consultations/{id}/accept, GET /counselors/me, PATCH /counselors/me |
-| WebRTC      | WS /ws/signaling                                                                                        |
-| 교통카드    | POST /transport-cards/recommend                                                                         |
-| 관리자      | 관리자 데이터 등록 API 전체 구현                                                                        |
+| 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                                                |
+| 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                                                 |
+| 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits                                  |
+| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                                                    |
+| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                                                    |
+| 외부 지도   | POST /external-maps/directions                                                                                                       |
+| 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                                                |
+| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}                                     |
+| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                                                        |
+| 상담자      | GET /counselors/consultations, POST /consultations/{id}/accept, GET /counselors/me, PATCH /counselors/me                             |
+| WebRTC      | WS /ws/signaling                                                                                                                     |
+| 교통카드    | POST /transport-cards/recommend                                                                                                      |
+| 관리자      | 관리자 데이터 등록 API 전체 구현                                                                                                                 |
 
 ---
 

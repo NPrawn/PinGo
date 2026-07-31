@@ -9,8 +9,8 @@ import {
 import {
   acceptConsultation,
   ApiError,
+  getCounselorConsultation,
   getCounselorConsultations,
-  issueConsultationSignalingToken,
 } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { Button, Icon, MapPreview } from '@/shared/ui';
@@ -105,9 +105,9 @@ export function RequestsPage() {
     onError: (error) => setActionError(errorMessage(error)),
   });
 
-  // 이미 수락한 상담으로 다시 들어갈 때는 signaling 토큰을 새로 받아야 접속된다.
+  // 이미 수락한 상담으로 다시 들어갈 때는 상세 조회로 signaling 토큰을 새로 받아야 접속된다.
   const reenterMutation = useMutation({
-    mutationFn: issueConsultationSignalingToken,
+    mutationFn: getCounselorConsultation,
     onMutate: () => setActionError(''),
     onSuccess: (response) => {
       if (!response.consultationId || !response.signalingRoomId) return;

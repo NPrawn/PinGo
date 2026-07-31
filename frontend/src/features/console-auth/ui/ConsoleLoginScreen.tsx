@@ -1,4 +1,5 @@
-import { DesktopWindow } from '@/shared/ui';
+import { ROUTES } from '@/shared/config';
+import { BackLink, DesktopWindow } from '@/shared/ui';
 import { LoginForm } from './LoginForm';
 import styles from './ConsoleLoginScreen.module.css';
 
@@ -13,6 +14,10 @@ export function ConsoleLoginScreen() {
   return (
     <DesktopWindow url="console.pingo.kr" secure width={560}>
       <div className={styles.stage}>
+        {/* 로그인 창이 페이지가 되면서 닫기 수단이 없어졌으므로 홈으로 나갈 길을 둔다. */}
+        <div className={styles.back}>
+          <BackLink to={ROUTES.HOME}>처음으로</BackLink>
+        </div>
         <LoginForm />
       </div>
     </DesktopWindow>

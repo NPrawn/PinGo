@@ -7,6 +7,7 @@ import com.pingo.backend.auth.repository.AccountRepository;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
+import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
 import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
@@ -95,31 +96,6 @@ public class ConsultationSessionService {
         return ConsultationCancelResponse.from(session);
     }
 
-    /** 상담자 콘솔의 요청 목록. 담당 역의 상담을 요청 시각 순으로 반환한다. */
-    @Transactional(readOnly = true)
-    public List<CounselorConsultationResponse> listForCounselor(
-            Long counselorAccountId,
-            ConsultationStatus status
-    ){
-        Account counselor = accountRepository.findById(counselorAccountId)
-                .filter(account -> account.getAccountType() == AccountType.COUNSELOR)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
-
-        if(!counselor.isActive()){
-            throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
-        }
-
-        List<ConsultationStatus> statuses = status == null
-                ? List.of(ConsultationStatus.values())
-                : List.of(status);
-
-        return consultationSessionRepository
-                .findAllByStationIdAndStatusInOrderByRequestedAtAsc(counselor.getStationId(), statuses)
-                .stream()
-                .map(CounselorConsultationResponse::from)
-                .toList();
-    }
-
     @Transactional
     public ConsultationAcceptResponse accept(String consultationSessionId, Long counselorAccountId){
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
@@ -157,65 +133,80 @@ public class ConsultationSessionService {
         return ConsultationRejectResponse.from(session);
     }
 
+    @Transactional(readOnly = true)
+    public List<ConsultationListResponse> getConsultationsForCounselor(Long counselorAccountId, ConsultationStatus status){
+        Account counselor = findActiveCounselor(counselorAccountId);
+        // status를 지정하지 않으면 이력 화면이 쓸 수 있도록 담당 역의 모든 상담을 준다.
+        List<ConsultationStatus> statuses =
+                status != null ? List.of(status) : List.of(ConsultationStatus.values());
+        return consultationSessionRepository.findByStationIdAndStatusIn(counselor.getStationId(), statuses).stream()
+                .map(ConsultationListResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ConsultationDetailResponse getConsultationDetailForCounselor(String consultationSessionId, Long counselorAccountId){
+        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        findStationCounselor(counselorAccountId, session.getStationId());
+
+        boolean isAssignedCounselor = counselorAccountId.equals(session.getCounselorId());
+        String token = isAssignedCounselor ? createCounselorSignalingAccessToken(session) : null;
+        return ConsultationDetailResponse.from(session, token);
+    }
+
     @Transactional
-    public ConsultationEndResponse end(String consultationSessionId, Long counselorAccountId){
+    public ConsultationEndResponse end(String consultationSessionId, ConsultationEndRequest request, Long accountId){
+        if ("user".equals(request.endedBy()) && (request.userSessionId() == null || request.userSessionId().isBlank())) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
 
-        if(session.getStatus() != ConsultationStatus.ACCEPTED
-                && session.getStatus() != ConsultationStatus.IN_PROGRESS){
+        if (session.getStatus() != ConsultationStatus.ACCEPTED && session.getStatus() != ConsultationStatus.IN_PROGRESS) {
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
         }
 
-        Account counselor = findStationCounselorForUpdate(counselorAccountId, session.getStationId());
-
-        if(!counselor.getAccountId().equals(session.getCounselorId())){
-            throw new BusinessException(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+        if ("counselor".equals(request.endedBy())) {
+            Account counselor = findStationCounselorForUpdate(accountId, session.getStationId());
+            if (!counselor.getAccountId().equals(session.getCounselorId())) {
+                throw new BusinessException(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
+            }
+            counselor.changeStatus(CounselorStatus.AVAILABLE);
+        } else {
+            validateOwner(session, request.userSessionId());
+            accountRepository.findByIdForUpdate(session.getCounselorId())
+                    .ifPresent(counselor -> counselor.changeStatus(CounselorStatus.AVAILABLE));
         }
 
         String signalingRoomId = session.getSignalingRoomId();
         session.end();
-        counselor.changeStatus(CounselorStatus.AVAILABLE);
         applicationEventPublisher.publishEvent(new ConsultationEndedEvent(session.getConsultationId(), signalingRoomId));
-        log.info("상담 종료 처리 - consultationId={}, endedBy={}", session.getConsultationId(), counselor.getAccountId());
+        log.info("상담 종료 처리 - consultationId={}, endedBy={}", session.getConsultationId(), request.endedBy());
         return ConsultationEndResponse.from(session);
     }
 
-    /**
-     * 진행 중인 상담의 signaling 토큰을 다시 발급한다.
-     *
-     * 수락 응답으로 받은 토큰은 만료되고, 상담자가 목록에서 상담 화면으로 다시 들어올 때는
-     * 수락을 거칠 수 없으므로 별도 발급 경로가 필요하다.
-     */
-    @Transactional(readOnly = true)
-    public ConsultationSignalingTokenResponse issueCounselorSignalingToken(
-            String consultationSessionId,
-            Long counselorAccountId
-    ){
-        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
-
-        if(session.getSignalingRoomId() == null){
-            throw new BusinessException(ErrorCode.CONSULTATION_NOT_ACCEPTED);
+    private Account findActiveCounselor(Long counselorAccountId){
+        if (counselorAccountId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
         }
 
-        Account counselor = findStationCounselor(counselorAccountId, session.getStationId());
-        if(!counselor.getAccountId().equals(session.getCounselorId())){
-            throw new BusinessException(ErrorCode.CONSULTATION_COUNSELOR_MISMATCH);
-        }
-
-        return ConsultationSignalingTokenResponse.from(
-                session,
-                createCounselorSignalingAccessToken(session)
-        );
-    }
-
-    private Account findStationCounselor(Long counselorAccountId, Long stationId){
         Account counselor = accountRepository.findById(counselorAccountId)
                 .filter(account -> account.getAccountType() == AccountType.COUNSELOR)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
 
-        validateStationCounselor(counselor, stationId);
+        if(!counselor.isActive()){
+            throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
+        }
+        return counselor;
+    }
+
+    private Account findStationCounselor(Long counselorAccountId, Long stationId){
+        Account counselor = findActiveCounselor(counselorAccountId);
+        if(!stationId.equals(counselor.getStationId())){
+            throw new BusinessException(ErrorCode.CONSULTATION_STATION_MISMATCH);
+        }
         return counselor;
     }
 
@@ -232,7 +223,6 @@ public class ConsultationSessionService {
         if(!counselor.isActive()){
             throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
         }
-
         if(!stationId.equals(counselor.getStationId())){
             throw new BusinessException(ErrorCode.CONSULTATION_STATION_MISMATCH);
         }

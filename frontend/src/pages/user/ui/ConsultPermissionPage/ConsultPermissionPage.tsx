@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useNavigationStore } from '@/entities/navigation';
 import { usePermissionStore } from '@/entities/permission';
 import { useStationStore } from '@/entities/station';
-import { useUserSessionStore } from '@/entities/user-session';
+import { ensureUserSession, useUserSessionStore } from '@/entities/user-session';
 import { requestMediaPermissions, stopMediaStream } from '@/features/permissions';
 import { ApiError, createConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
@@ -55,6 +56,7 @@ const PROBLEM_TYPES = [
 /** Screen 18 (FR-U-013) — consent to share camera and microphone. */
 export function ConsultPermissionPage() {
   const navigate = useNavigate();
+  const { i18n } = useTranslation();
   const granted = usePermissionStore((state) => state.granted);
   const syncPermissions = usePermissionStore((state) => state.sync);
   const issue = useConsultStore((state) => state.issue);
@@ -68,6 +70,16 @@ export function ConsultPermissionPage() {
   const [requestingPermissions, setRequestingPermissions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [preparingSession, setPreparingSession] = useState(false);
+
+  /** 자동 준비가 실패했을 때 사용자가 직접 다시 시도하는 경로. */
+  const prepareSession = async () => {
+    setPreparingSession(true);
+    setErrorMessage('');
+    const ready = await ensureUserSession(i18n.language);
+    setPreparingSession(false);
+    if (!ready) setErrorMessage('상담 연결을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  };
 
   useEffect(() => {
     if (issue == null) {
@@ -88,9 +100,7 @@ export function ConsultPermissionPage() {
     setErrorMessage('');
     try {
       const completeDestination =
-        destinationId != null && destinationType
-          ? { destinationId, destinationType }
-          : {};
+        destinationId != null && destinationType ? { destinationId, destinationType } : {};
       const consultation = await createConsultation({
         userSessionId,
         stationId,
@@ -168,11 +178,7 @@ export function ConsultPermissionPage() {
 
       <div className={styles.options}>
         {SHARES.map((share) => (
-          <SelectRow
-            key={share.key}
-            selected={granted[share.key]}
-            disabled
-          >
+          <SelectRow key={share.key} selected={granted[share.key]} disabled>
             <Icon3d name={share.icon} tone={share.tone} />
             <span className={styles.labels}>
               <b className={styles.name}>{share.name}</b>
@@ -185,12 +191,15 @@ export function ConsultPermissionPage() {
 
       <Spring />
       {errorMessage && <p role="alert">{errorMessage}</p>}
+      {/* 세션 준비가 실패해도 버튼이 잠기지 않게, 준비를 다시 시도하는 버튼으로 바꾼다. */}
       <Button
-        onClick={() => void verifyPermissionsAndConnect()}
-        disabled={!userSessionId || requestingPermissions || submitting}
+        onClick={() => (userSessionId ? void verifyPermissionsAndConnect() : void prepareSession())}
+        disabled={preparingSession || requestingPermissions || submitting}
       >
         {!userSessionId
-          ? '상담 연결 준비 중…'
+          ? preparingSession
+            ? '상담 연결 준비 중…'
+            : '상담 연결 준비하기'
           : requestingPermissions
             ? '권한 확인 중…'
             : submitting

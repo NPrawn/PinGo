@@ -72,6 +72,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/facilities/{facilityId}/arrival-check': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['checkArrival'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/external-maps/directions': {
     parameters: {
       query?: never;
@@ -92,6 +108,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/destinations/nearest-exit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['findNearestExit'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/consultations': {
     parameters: {
       query?: never;
@@ -102,22 +134,6 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations['createConsultation'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/consultations/{consultationSessionId}/signaling-token': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post: operations['issueSignalingToken'];
     delete?: never;
     options?: never;
     head?: never;
@@ -677,14 +693,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/counselor/consultations': {
+  '/api/counselors/consultations': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get: operations['listConsultations'];
+    get: operations['getConsultations'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/counselors/consultations/{consultationSessionId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getConsultationDetail'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1028,6 +1060,74 @@ export interface components {
       /** Format: int32 */
       estimatedTimeSec?: number;
     };
+    ExitArrivalCheckRequest: {
+      /**
+       * Format: int64
+       * @description 현재 층 ID
+       * @example 3
+       */
+      floorId: number;
+      /**
+       * @description 현재 위치 X (캐노니컬 미터)
+       * @example 100.354
+       */
+      mapX: number;
+      /**
+       * @description 현재 위치 Y (캐노니컬 미터)
+       * @example -39.875
+       */
+      mapY: number;
+    };
+    ApiResponseExitArrivalResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['ExitArrivalResponse'];
+    };
+    ExitArrivalResponse: {
+      /**
+       * Format: int64
+       * @description 출구 시설 ID
+       * @example 42
+       */
+      facilityId?: number;
+      /**
+       * @description 출구 이름(한국어)
+       * @example 6번 출구
+       */
+      nameKo?: string;
+      /**
+       * @description 출구 이름(영어)
+       * @example Exit 6
+       */
+      nameEn?: string;
+      /**
+       * Format: int64
+       * @description 출구가 속한 층 ID
+       * @example 3
+       */
+      floorId?: number;
+      /**
+       * @description 도착 여부
+       * @example true
+       */
+      arrived?: boolean;
+      /**
+       * @description 현재 위치와 출구가 같은 층인지
+       * @example true
+       */
+      sameFloor?: boolean;
+      /**
+       * @description 출구까지의 평면 거리(m). 층이 다르면 null
+       * @example 4.12
+       */
+      distanceM?: number;
+      /**
+       * @description 도착으로 판정하는 거리 임계값(m)
+       * @example 10
+       */
+      thresholdM?: number;
+    };
     ExternalDestinationRequest: {
       /**
        * Format: int64
@@ -1103,6 +1203,23 @@ export interface components {
        */
       webUrl?: string;
     };
+    NearestExitRequest: {
+      /** Format: int64 */
+      stationId: number;
+      destinationLatitude: number;
+      destinationLongitude: number;
+    };
+    ApiResponseNearestExitResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['NearestExitResponse'];
+    };
+    NearestExitResponse: {
+      /** Format: int64 */
+      exitFacilityId?: number;
+      exitNumber?: string;
+    };
     ConsultationCreateRequest: {
       userSessionId: string;
       /** Format: int64 */
@@ -1138,20 +1255,6 @@ export interface components {
       /** Format: date-time */
       requestedAt?: string;
     };
-    ApiResponseConsultationSignalingTokenResponse: {
-      success?: boolean;
-      code?: string;
-      message?: string;
-      data?: components['schemas']['ConsultationSignalingTokenResponse'];
-    };
-    ConsultationSignalingTokenResponse: {
-      consultationId?: string;
-      /** @enum {string} */
-      status?:
-        'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
-      signalingRoomId?: string;
-      signalingAccessToken?: string;
-    };
     ApiResponseConsultationRejectResponse: {
       success?: boolean;
       code?: string;
@@ -1163,6 +1266,10 @@ export interface components {
       /** @enum {string} */
       status?:
         'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+    };
+    ConsultationEndRequest: {
+      endedBy: string;
+      userSessionId?: string;
     };
     ApiResponseConsultationEndResponse: {
       success?: boolean;
@@ -1215,6 +1322,7 @@ export interface components {
       number?: boolean;
       container?: boolean;
       floatingPointNumber?: boolean;
+      integralNumber?: boolean;
       /** @enum {string} */
       nodeType?:
         | 'ARRAY'
@@ -1226,22 +1334,21 @@ export interface components {
         | 'OBJECT'
         | 'POJO'
         | 'STRING';
-      integralNumber?: boolean;
-      object?: boolean;
-      long?: boolean;
-      int?: boolean;
-      double?: boolean;
-      short?: boolean;
-      missingNode?: boolean;
-      bigInteger?: boolean;
-      bigDecimal?: boolean;
       string?: boolean;
+      object?: boolean;
       valueNode?: boolean;
-      pojo?: boolean;
+      int?: boolean;
       binary?: boolean;
-      boolean?: boolean;
+      pojo?: boolean;
+      double?: boolean;
+      bigDecimal?: boolean;
       /** @deprecated */
       textual?: boolean;
+      long?: boolean;
+      boolean?: boolean;
+      missingNode?: boolean;
+      short?: boolean;
+      bigInteger?: boolean;
       embeddedValue?: boolean;
     };
     SignupRequest: {
@@ -1415,6 +1522,9 @@ export interface components {
       /** Format: int32 */
       height?: number;
       scaleMPerPx?: number;
+      originPxX?: number;
+      originPxY?: number;
+      frameAngleDeg?: number;
     };
     ApiResponseFloorMapIdResponse: {
       success?: boolean;
@@ -1724,6 +1834,9 @@ export interface components {
       /** Format: int32 */
       height?: number;
       scaleMPerPx?: number;
+      originPxX?: number;
+      originPxY?: number;
+      frameAngleDeg?: number;
       version?: string;
     };
     ApiResponseListFacilityResponse: {
@@ -1817,17 +1930,21 @@ export interface components {
       nameKo?: string;
       nameEn?: string;
       category?: string;
+      provider?: string;
+      externalId?: string;
+      address?: string;
       latitude?: number;
       longitude?: number;
-      address?: string;
+      /** Format: int64 */
+      distanceMeters?: number;
     };
-    ApiResponseListCounselorConsultationResponse: {
+    ApiResponseListConsultationListResponse: {
       success?: boolean;
       code?: string;
       message?: string;
-      data?: components['schemas']['CounselorConsultationResponse'][];
+      data?: components['schemas']['ConsultationListResponse'][];
     };
-    CounselorConsultationResponse: {
+    ConsultationListResponse: {
       consultationId?: string;
       /** Format: int64 */
       stationId?: number;
@@ -1852,6 +1969,37 @@ export interface components {
       destinationLabel?: string;
       /** Format: date-time */
       requestedAt?: string;
+    };
+    ApiResponseConsultationDetailResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['ConsultationDetailResponse'];
+    };
+    ConsultationDetailResponse: {
+      consultationId?: string;
+      /** Format: int64 */
+      stationId?: number;
+      /** @enum {string} */
+      problemType?:
+        | 'CANNOT_FIND_LOCATION'
+        | 'WRONG_DIRECTION'
+        | 'CANNOT_FIND_EXIT'
+        | 'GATE_PROBLEM'
+        | 'ELEVATOR_NEEDED'
+        | 'CARD_PROBLEM'
+        | 'OTHER';
+      /** @enum {string} */
+      status?:
+        'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+      currentLocationLabel?: string;
+      destinationLabel?: string;
+      videoConsent?: boolean;
+      audioConsent?: boolean;
+      /** Format: date-time */
+      requestedAt?: string;
+      signalingRoomId?: string;
+      signalingAccessToken?: string;
     };
     ApiResponseConsultationResponse: {
       success?: boolean;
@@ -2083,6 +2231,32 @@ export interface operations {
       };
     };
   };
+  checkArrival: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        facilityId: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ExitArrivalCheckRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseExitArrivalResponse'];
+        };
+      };
+    };
+  };
   createDirection: {
     parameters: {
       query?: never;
@@ -2133,6 +2307,30 @@ export interface operations {
       };
     };
   };
+  findNearestExit: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['NearestExitRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseNearestExitResponse'];
+        };
+      };
+    };
+  };
   createConsultation: {
     parameters: {
       query?: never;
@@ -2153,28 +2351,6 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseConsultationCreateResponse'];
-        };
-      };
-    };
-  };
-  issueSignalingToken: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        consultationSessionId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          '*/*': components['schemas']['ApiResponseConsultationSignalingTokenResponse'];
         };
       };
     };
@@ -2210,7 +2386,11 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConsultationEndRequest'];
+      };
+    };
     responses: {
       /** @description OK */
       200: {
@@ -3579,7 +3759,7 @@ export interface operations {
       };
     };
   };
-  listConsultations: {
+  getConsultations: {
     parameters: {
       query?: {
         status?:
@@ -3597,7 +3777,29 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          '*/*': components['schemas']['ApiResponseListCounselorConsultationResponse'];
+          '*/*': components['schemas']['ApiResponseListConsultationListResponse'];
+        };
+      };
+    };
+  };
+  getConsultationDetail: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationSessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseConsultationDetailResponse'];
         };
       };
     };
