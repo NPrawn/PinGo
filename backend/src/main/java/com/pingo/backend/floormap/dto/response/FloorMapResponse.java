@@ -1,6 +1,7 @@
 package com.pingo.backend.floormap.dto.response;
 
 import com.pingo.backend.floormap.domain.FloorMap;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
 
@@ -38,10 +39,20 @@ public record FloorMapResponse(
         BigDecimal originPxX,
         BigDecimal originPxY,
         BigDecimal frameAngleDeg,
-        String version
+        String version,
+
+        @Schema(
+                description = """
+                        층의 캐노니컬 기준 높이(m). 층 바닥 기준이며 역삼역은 B1=5 · B2=0 · B3=-5.
+                        클라이언트가 WebXR 의 앵커 대비 ΔY 와 비교해 층 전환을 판정하는 데 쓴다.
+                        같은 층 안에서 높이가 갈리는 구간(역삼역 B0.5)은 이 값으로 구분할 수 없다.
+                        """,
+                example = "0.0"
+        )
+        BigDecimal nominalZ
 ) {
 
-    public static FloorMapResponse of(FloorMap floorMap, String floorCode) {
+    public static FloorMapResponse of(FloorMap floorMap, String floorCode, BigDecimal nominalZ) {
         return new FloorMapResponse(
                 floorMap.getId(),
                 floorMap.getFloorId(),
@@ -54,7 +65,8 @@ public record FloorMapResponse(
                 floorMap.getOriginPxX(),
                 floorMap.getOriginPxY(),
                 floorMap.getFrameAngleDeg(),
-                floorMap.getVersion()
+                floorMap.getVersion(),
+                nominalZ
         );
     }
 }

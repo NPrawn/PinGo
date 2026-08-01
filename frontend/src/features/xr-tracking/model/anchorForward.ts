@@ -11,7 +11,7 @@ import type { PlanarVector } from '../lib/mapAlignment';
 /**
  * 위치 인식 응답의 후보 하나에서 방향을 꺼낸다.
  *
- * 지금은 **어떤 필드가 올지 모른다.** `API_명세서.md`의 `candidates[]`에는 아직
+ * 지금은 **어떤 필드가 올지 모른다.** `API_명세서.md`의 위치 인식 응답에는 아직
  * `nodeId`·`floorId`·`label`·`mapX`·`mapY`·`confidenceScore`·`confidenceLabel`만 있다.
  * 그래서 알려진 후보 필드명을 순서대로 보고, 없으면 null을 돌려준다.
  *

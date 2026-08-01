@@ -44,6 +44,21 @@ public class RouteNode {
     @Column(name = "map_y", nullable = false, precision = 10, scale = 3)
     private BigDecimal mapY;
 
+    /**
+     * 캐노니컬 높이(m). 층 바닥이 기준값이고 역삼역은 B1=5, B2=0, B3=-5 이다.
+     *
+     * <p>같은 층 안에서도 값이 갈릴 수 있다. 역삼역 B1 개찰구 위 중간층(B0.5)은 별도 층이 아니라
+     * {@code floor_code=B1} 안의 {@code map_z=7.5} 로 모델링돼 있고 해당 노드가 6개다.
+     * 그래서 위치 인식 결과를 노드에 스냅할 때 x·y 만 쓰면 중간층 노드를 바닥으로 착각한다.
+     * {@code floor_id} 로 걸러도 둘 다 B1 이라 걸러지지 않는다.
+     *
+     * <p>컬럼은 nullable 이다(V4 에서 추가). 현재 역삼역 노드 142개는 모두 값이 있다.
+     * 값이 없는 노드는 그 층 바닥에 있는 것으로 본다 — 평면 거리로 대신하면 항상 3차원 거리보다
+     * 짧아서 높이 없는 노드가 구조적으로 유리해지기 때문이다.
+     */
+    @Column(name = "map_z", precision = 10, scale = 3)
+    private BigDecimal mapZ;
+
     @Column(name = "is_landmark", nullable = false)
     private boolean landmark;
 
@@ -60,6 +75,7 @@ public class RouteNode {
             String name,
             BigDecimal mapX,
             BigDecimal mapY,
+            BigDecimal mapZ,
             boolean landmark
     ) {
         this.stationId = stationId;
@@ -68,6 +84,7 @@ public class RouteNode {
         this.name = name;
         this.mapX = mapX;
         this.mapY = mapY;
+        this.mapZ = mapZ;
         this.landmark = landmark;
     }
 
@@ -78,16 +95,18 @@ public class RouteNode {
             String name,
             BigDecimal mapX,
             BigDecimal mapY,
+            BigDecimal mapZ,
             boolean landmark
     ) {
-        return new RouteNode(stationId, floorId, nodeType, name, mapX, mapY, landmark);
+        return new RouteNode(stationId, floorId, nodeType, name, mapX, mapY, mapZ, landmark);
     }
 
-    public void update(String nodeType, String name, BigDecimal mapX, BigDecimal mapY, boolean landmark) {
+    public void update(String nodeType, String name, BigDecimal mapX, BigDecimal mapY, BigDecimal mapZ, boolean landmark) {
         this.nodeType = nodeType;
         this.name = name;
         this.mapX = mapX;
         this.mapY = mapY;
+        this.mapZ = mapZ;
         this.landmark = landmark;
     }
 

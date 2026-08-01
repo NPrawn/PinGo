@@ -50,6 +50,7 @@ public class RouteService {
                 trimToNull(request.name()),
                 request.mapX(),
                 request.mapY(),
+                request.mapZ(),
                 Boolean.TRUE.equals(request.isLandmark())
         );
 
@@ -77,6 +78,7 @@ public class RouteService {
                 trimToNull(request.name()),
                 request.mapX(),
                 request.mapY(),
+                request.mapZ(),
                 Boolean.TRUE.equals(request.isLandmark())
         );
 

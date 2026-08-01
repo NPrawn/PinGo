@@ -72,7 +72,7 @@ public class FloorMapService {
         StationFloor floor = getFloor(floorId);
 
         return floorMapRepository.findAllByFloorIdAndActiveTrueOrderByCreatedAtDesc(floorId).stream()
-                .map(floorMap -> FloorMapResponse.of(floorMap, floor.getFloorCode()))
+                .map(floorMap -> FloorMapResponse.of(floorMap, floor.getFloorCode(), floor.getNominalZ()))
                 .toList();
     }
 
@@ -94,7 +94,7 @@ public class FloorMapService {
         // 층 정렬 순서(floorOrder)대로, 활성 지도가 있는 층만 응답한다.
         return floors.stream()
                 .filter(floor -> mapsByFloorId.containsKey(floor.getId()))
-                .map(floor -> FloorMapResponse.of(mapsByFloorId.get(floor.getId()), floor.getFloorCode()))
+                .map(floor -> FloorMapResponse.of(mapsByFloorId.get(floor.getId()), floor.getFloorCode(), floor.getNominalZ()))
                 .toList();
     }
 

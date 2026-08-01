@@ -121,7 +121,8 @@ public class StationService {
                 station,
                 floorCode,
                 trimToNull(request.floorName()),
-                request.floorOrder()
+                request.floorOrder(),
+                request.nominalZ()
         );
 
         try {
@@ -147,7 +148,7 @@ public class StationService {
             throw new BusinessException(ErrorCode.DUPLICATE_FLOOR_CODE);
         }
 
-        floor.update(floorCode, trimToNull(request.floorName()), request.floorOrder());
+        floor.update(floorCode, trimToNull(request.floorName()), request.floorOrder(), request.nominalZ());
 
         try {
             stationFloorRepository.flush();

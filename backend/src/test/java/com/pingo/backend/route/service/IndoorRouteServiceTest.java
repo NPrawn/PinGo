@@ -237,7 +237,7 @@ class IndoorRouteServiceTest {
 
     private RouteNode node(long id) {
         RouteNode node = RouteNode.create(1L, 1L, "normal", "노드" + id,
-                new BigDecimal("10.0"), new BigDecimal("20.0"), false);
+                new BigDecimal("10.0"), new BigDecimal("20.0"), null, false);
         ReflectionTestUtils.setField(node, "id", id);
         return node;
     }

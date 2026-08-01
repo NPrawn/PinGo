@@ -71,7 +71,7 @@ class AdminFloorMapControllerTest {
     @Test
     void getMapsReturnsFloorMaps() throws Exception {
         when(floorMapService.getMaps(2L)).thenReturn(List.of(
-                new FloorMapResponse(11L, 2L, "B2", "image", "/uploads/maps/new.png", 1200, 800, null, null, null, null, "v1")));
+                new FloorMapResponse(11L, 2L, "B2", "image", "/uploads/maps/new.png", 1200, 800, null, null, null, null, "v1", null)));
 
         mockMvc.perform(get("/api/admin/floors/2/maps"))
                 .andExpect(status().isOk())
