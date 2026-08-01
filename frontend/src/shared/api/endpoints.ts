@@ -4,4 +4,6 @@ export const ENDPOINTS = {
   stationFloorMaps: (stationId: number) => `/api/stations/${stationId}/maps`,
   // 5.2 시설 목록 조회
   stationFacilities: (stationId: number) => `/api/stations/${stationId}/facilities`,
+  // 8.1 경로 옵션 조회. 조회지만 요청 본문이 필요해 POST다.
+  indoorRouteOptions: () => `/api/routes/indoor/options`,
 } as const;

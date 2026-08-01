@@ -14,4 +14,12 @@ export const queryKeys = {
       filter?.floorId ?? null,
       filter?.facilityType ?? null,
     ] as const,
+  /**
+   * 경로 옵션. 세 값이 모두 키에 들어가야 한다.
+   *
+   * 출발이나 목적지가 바뀌면 다른 경로다. 하나라도 빠뜨리면 위치를 옮겼는데 이전 경로가
+   * 그대로 보인다.
+   */
+  indoorRouteOptions: (stationId: number, startNodeId: number, targetNodeId: number) =>
+    ['pingo', 'routes', 'indoor', 'options', stationId, startNodeId, targetNodeId] as const,
 } as const;
