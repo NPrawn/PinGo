@@ -75,10 +75,9 @@ export async function acquireCamera(): Promise<void> {
 
       // `granted`인데 스트림이 없는 경우는 여기로 온다. 실제로는 없지만 타입이 허용하고,
       // 그 상태를 `live`로 두면 화면이 영상이 있다고 믿는다.
-      useCameraStore.setState({
-        stream: null,
-        status: result.status === 'granted' ? 'error' : result.status,
-      });
+      const status = result.status === 'granted' ? 'error' : result.status;
+      warnWhyUnavailable(status, result.error);
+      useCameraStore.setState({ stream: null, status });
     })
     .finally(() => {
       starting = null;
@@ -113,6 +112,27 @@ export function stopCamera(): void {
   const { stream } = useCameraStore.getState();
   if (stream) stopMediaStream(stream);
   useCameraStore.setState({ stream: null, status: 'idle' });
+}
+
+/**
+ * 카메라를 못 켠 기술적 원인을 개발 빌드에서만 남긴다.
+ *
+ * **화면 문구와 분리한다.** 사용자에게는 자기가 할 수 있는 일만 보여야 하는데, 원인을 찾는
+ * 쪽에는 그 구분이 필요하다. 실기기 확인 때 LAN 주소(`http://192.168.x.x:5173`)로 접속하면
+ * 보안 컨텍스트가 아니어서 `getUserMedia`가 아예 막히는데, 화면만 보면 권한 거부와 구별되지
+ * 않아 원인을 찾는 데 시간이 걸렸다. 그 정보를 여기로 옮긴다.
+ *
+ * 프로덕션 빌드에서는 `import.meta.env.DEV`가 false라 번들에서 함께 제거된다.
+ */
+function warnWhyUnavailable(status: CameraStatus, error?: { name: string; message: string }): void {
+  if (!import.meta.env.DEV) return;
+
+  const hint =
+    status === 'unsupported' && !window.isSecureContext
+      ? ' 보안 컨텍스트가 아니다. HTTPS나 localhost로 접속해야 카메라가 열린다.'
+      : '';
+
+  console.warn(`[camera-preview] ${status}: ${error?.name ?? '알 수 없음'}.${hint}`);
 }
 
 function cancelGrace(): void {

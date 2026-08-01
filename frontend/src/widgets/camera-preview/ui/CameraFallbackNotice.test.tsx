@@ -2,20 +2,23 @@ import { render, screen } from '@testing-library/react';
 import { CameraFallbackNotice } from './CameraFallbackNotice';
 
 describe('CameraFallbackNotice', () => {
-  /**
-   * 실기기 확인 때 LAN 주소로 접속하면 보안 컨텍스트가 아니어서 `getUserMedia`가 막힌다.
-   * 그 경우와 권한 거부는 대응이 다르므로 문구도 달라야 한다.
-   */
-  it('보안 컨텍스트가 아니면 접속 방법을 알려 준다', () => {
-    render(<CameraFallbackNotice status="unsupported" />);
-
-    expect(screen.getByText(/HTTPS 또는 localhost로 접속해 주세요/)).toBeInTheDocument();
-  });
-
-  it('권한 거부는 권한 문제로 알려 준다', () => {
+  /** 권한 거부는 사용자가 되돌릴 수 있는 유일한 경우다. 그때만 행동을 안내한다. */
+  it('권한 거부에는 허용하라는 안내를 준다', () => {
     render(<CameraFallbackNotice status="denied" />);
 
-    expect(screen.getByText(/카메라 권한이 거부되어/)).toBeInTheDocument();
+    expect(screen.getByText(/카메라 권한을 허용하면/)).toBeInTheDocument();
+  });
+
+  /**
+   * **기술적 원인을 사용자에게 노출하지 않는다.** 보안 컨텍스트·프로토콜은 지하철에서 앱을 쓰는
+   * 사람이 손댈 수 있는 것이 아니다. 그 구분은 개발 빌드의 콘솔 경고가 맡는다.
+   */
+  it.each(['unsupported', 'error'] as const)('%s 문구에 기술 용어를 담지 않는다', (status) => {
+    const { container } = render(<CameraFallbackNotice status={status} />);
+    const text = container.textContent ?? '';
+
+    expect(text).not.toMatch(/HTTPS|localhost|보안 컨텍스트|getUserMedia|http:/);
+    expect(text.length).toBeGreaterThan(0);
   });
 
   /**

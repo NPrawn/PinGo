@@ -2,17 +2,17 @@ import type { CameraStatus } from '../model/cameraStream';
 import styles from './CameraFallbackNotice.module.css';
 
 /**
- * 카메라를 쓸 수 없는 이유.
+ * 카메라를 쓸 수 없을 때 사용자에게 보여줄 문구.
  *
- * **`unsupported`를 따로 안내한다.** 실기기 확인 때 LAN 주소(`http://192.168.x.x:5173`)로
- * 접속하면 보안 컨텍스트가 아니어서 `getUserMedia` 자체가 막힌다. 그 경우와 사용자가 권한을
- * 거부한 경우는 대응이 완전히 다르다 — 앞은 접속 방법을 바꿔야 하고 뒤는 권한을 다시 허용해야
- * 한다. 구분해 주지 않으면 원인을 찾는 데 시간이 걸린다(실제로 그랬다).
+ * **사용자가 할 수 있는 일만 적는다.** 원인을 그대로 옮기면 안 된다 — 보안 컨텍스트나 프로토콜은
+ * 지하철에서 앱을 쓰는 사람이 손댈 수 있는 것이 아니다. 권한 거부만 사용자가 되돌릴 수 있으므로
+ * 그 경우에만 행동을 안내하고, 나머지는 카메라를 쓸 수 없다는 사실만 알린다. 진단에 필요한
+ * 구분은 개발 빌드의 콘솔 경고(`cameraStream`)가 맡는다.
  */
 const REASON: Partial<Record<CameraStatus, string>> = {
-  denied: '카메라 권한이 거부되어 미리보기를 표시할 수 없어요.',
-  unsupported: '이 주소에서는 카메라를 쓸 수 없어요. HTTPS 또는 localhost로 접속해 주세요.',
-  error: '카메라를 열지 못했어요.',
+  denied: '카메라 권한을 허용하면 주변을 비춰 위치를 찾을 수 있어요.',
+  unsupported: '이 기기에서는 카메라를 사용할 수 없어요.',
+  error: '카메라를 열 수 없어요. 잠시 후 다시 시도해 주세요.',
 };
 
 type CameraFallbackNoticeProps = {
