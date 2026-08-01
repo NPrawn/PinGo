@@ -1228,6 +1228,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ### POST `/api/routes/indoor/options`
 
+> **`language`** — 이용 불가 사유 문구(`unavailableMessage`)의 언어다. `ko`·`en`·`ja`·`zh` 중 하나이며 생략하면 `en`이다. 이 요청에는 세션 ID가 없어 서버가 사용자의 언어를 알 수 없으므로 클라이언트가 실어 보낸다. 목적지 검색·편의시설·역 검색 API가 쓰는 `language`와 같은 값이다. **현재 문구는 한국어와 영어만 있고 `ja`·`zh`는 영어로 내려간다**(FR-U-001 범위). 아래 `POST /api/routes/indoor`도 같다.
+
 출발 노드에서 도착 노드까지 가능한 경로 옵션을 조회한다. 도착지는 실내 노드 ID(`targetNodeId`)로 직접 지정하며, 외부 목적지 검색·출구 추천은 이 API 범위 밖이다. 응답은 옵션별 요약이며 상세 `steps`·`pathNodes`는 포함하지 않는다.
 
 #### Request
@@ -1236,7 +1238,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "stationId": 1,
   "startNodeId": 15,
-  "targetNodeId": 44
+  "targetNodeId": 44,
+  "language": "en"
 }
 ```
 
@@ -1260,6 +1263,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
       "displayName": "빠른 경로",
       "available": true,
       "unavailableReason": null,
+      "unavailableMessage": null,
       "totalDistanceM": 180,
       "estimatedTimeSec": 240,
       "hasStairsOrEscalator": true
@@ -1269,6 +1273,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
       "displayName": "엘리베이터 이용 경로",
       "available": false,
       "unavailableReason": "NO_ACCESSIBLE_ROUTE",
+      "unavailableMessage": "The destination cannot be reached without using stairs or escalators.",
       "totalDistanceM": null,
       "estimatedTimeSec": null,
       "hasStairsOrEscalator": false
@@ -1278,7 +1283,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 }
 ```
 
-이용 불가한 옵션도 목록에서 제외하지 않고 `available=false`와 `unavailableReason`으로 표현한다. `unavailableReason`은 `NO_ROUTE`(연결된 경로 없음) 또는 `NO_ACCESSIBLE_ROUTE`(계단·에스컬레이터 제외 시 도달 불가)이다. `estimatedTimeSec`은 경로상 모든 간선에 예상 시간이 있을 때만 채워지며, 하나라도 없으면 `null`이다.
+이용 불가한 옵션도 목록에서 제외하지 않고 `available=false`와 `unavailableReason`으로 표현한다. `unavailableReason`은 `NO_ROUTE`(연결된 경로 없음) 또는 `NO_ACCESSIBLE_ROUTE`(계단·에스컬레이터 제외 시 도달 불가)이다. `unavailableMessage`는 같은 사유를 **요청 언어로 쓴 문구**이며 그대로 화면에 보여주면 된다. `unavailableReason`은 언어와 무관한 코드이므로 분기에는 이쪽을 쓴다. 이용 가능한 옵션은 둘 다 `null`이다. `estimatedTimeSec`은 경로상 모든 간선에 예상 시간이 있을 때만 채워지며, 하나라도 없으면 `null`이다.
 
 `hasStairsOrEscalator`는 그 경로가 계단이나 에스컬레이터를 지나는지다(FR-U-009 "계단 포함 여부"). 상세 조회와 달리 옵션 조회에는 `steps`가 없어 클라이언트가 스스로 판단할 수 없으므로 함께 내려준다. `elevator_only`는 정의상 항상 `false`이고, `available=false`인 옵션도 `false`다. 실질적으로는 **`fastest`가 왜 `elevator_only`보다 짧은지를 설명하는 값**이다. 휠체어·유모차 기준으로는 에스컬레이터도 계단과 같은 장벽이라 하나로 묶는다.
 
@@ -1297,7 +1302,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "stationId": 1,
   "startNodeId": 15,
   "targetNodeId": 44,
-  "routeType": "elevator_only"
+  "routeType": "elevator_only",
+  "language": "en"
 }
 ```
 
@@ -1311,6 +1317,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
     "displayName": "엘리베이터 이용 경로",
     "available": true,
     "unavailableReason": null,
+    "unavailableMessage": null,
     "startNodeId": 15,
     "targetNodeId": 44,
     "totalDistanceM": 230,
@@ -1340,7 +1347,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 }
 ```
 
-도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다. 방향(좌/우) 안내는 좌표 기반 계산이 필요하여 현재 범위에서 제외한다.
+도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. `unavailableMessage`에는 같은 사유를 요청 언어로 쓴 문구가 들어간다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다. 방향(좌/우) 안내는 좌표 기반 계산이 필요하여 현재 범위에서 제외한다.
 
 `mapZ`는 그 노드의 캐노니컬 높이(m)다. **같은 층 안에서 높이가 갈리는 구간을 구분하는 데 쓴다** — 역삼역 B0.5 중간층은 별도 층이 아니라 `floorId`가 B1이면서 `map_z=7.5`인 노드 6개로 돼 있어, 이 값이 없으면 바닥 구간과 중간층 구간이 도면 위 같은 평면에 겹쳐 그려진다. **관리자가 높이를 넣지 않은 노드는 `null`이다.**
 

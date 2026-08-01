@@ -5,6 +5,7 @@ import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.route.domain.RouteEdge;
 import com.pingo.backend.route.domain.RouteMoveType;
 import com.pingo.backend.route.domain.RouteNode;
+import com.pingo.backend.route.domain.RouteUnavailableReason;
 import com.pingo.backend.route.dto.request.RouteCreateRequest;
 import com.pingo.backend.route.dto.request.RouteOptionsRequest;
 import com.pingo.backend.route.dto.response.RouteOptionResponse;
@@ -13,6 +14,7 @@ import com.pingo.backend.route.repository.RouteEdgeRepository;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
+import com.pingo.backend.usersession.domain.Language;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -62,7 +64,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L));
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, null));
 
         assertThat(options)
                 .extracting(RouteOptionResponse::routeType, RouteOptionResponse::available)
@@ -88,7 +90,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L));
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, null));
 
         // 휠체어·유모차 기준으로는 에스컬레이터도 계단과 같은 장벽이다.
         assertThat(options.get(0).hasStairsOrEscalator()).isTrue();
@@ -105,7 +107,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 3L));
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 3L, null));
 
         assertThat(options).allSatisfy(option ->
                 assertThat(option.hasStairsOrEscalator()).isFalse());
@@ -119,10 +121,74 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L));
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, null));
 
         assertThat(options.get(1).available()).isFalse();
         assertThat(options.get(1).hasStairsOrEscalator()).isFalse();
+    }
+
+    @Test
+    @DisplayName("이용 불가 사유 문구가 요청 언어로 내려간다")
+    void putsUnavailableMessageInRequestedLanguage() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
+
+        RouteOptionResponse korean = indoorRouteService
+                .getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, Language.KO)).get(1);
+        RouteOptionResponse english = indoorRouteService
+                .getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, Language.EN)).get(1);
+
+        assertThat(korean.unavailableReason()).isEqualTo("NO_ACCESSIBLE_ROUTE");
+        assertThat(korean.unavailableMessage())
+                .isEqualTo("계단·에스컬레이터를 제외한 경로로는 도착지까지 이동할 수 없습니다.");
+        assertThat(english.unavailableMessage())
+                .isEqualTo("The destination cannot be reached without using stairs or escalators.");
+        // 사유 코드는 언어와 무관하다. 클라이언트가 분기에 쓴다.
+        assertThat(english.unavailableReason()).isEqualTo(korean.unavailableReason());
+    }
+
+    @Test
+    @DisplayName("언어를 생략하면 영어로 내려간다")
+    void defaultsToEnglishWhenLanguageOmitted() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
+
+        RouteOptionResponse option = indoorRouteService
+                .getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, null)).get(1);
+
+        assertThat(option.unavailableMessage())
+                .isEqualTo(RouteUnavailableReason.NO_ACCESSIBLE_ROUTE.messageFor(Language.DEFAULT));
+    }
+
+    @Test
+    @DisplayName("이용 가능한 옵션에는 문구가 없다")
+    void leavesUnavailableMessageNullWhenReachable() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY));
+
+        RouteOptionResponse option = indoorRouteService
+                .getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, Language.KO)).get(0);
+
+        assertThat(option.available()).isTrue();
+        assertThat(option.unavailableMessage()).isNull();
+    }
+
+    @Test
+    @DisplayName("상세 경로도 이용 불가 문구를 요청 언어로 담는다")
+    void putsUnavailableMessageOnDetailedRoute() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
+
+        RouteResponse route = indoorRouteService
+                .createRoute(new RouteCreateRequest(1L, 1L, 2L, "elevator_only", Language.KO));
+
+        assertThat(route.available()).isFalse();
+        assertThat(route.unavailableMessage())
+                .isEqualTo("계단·에스컬레이터를 제외한 경로로는 도착지까지 이동할 수 없습니다.");
     }
 
     @Test
@@ -137,7 +203,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR));
 
         RouteResponse response =
-                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 4L, "elevator_only"));
+                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 4L, "elevator_only", null));
 
         assertThat(response.routeType()).isEqualTo("elevator_only");
         assertThat(response.available()).isTrue();
@@ -161,7 +227,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
 
         RouteResponse response =
-                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, "elevator_only"));
+                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, "elevator_only", null));
 
         assertThat(response.available()).isFalse();
         assertThat(response.unavailableReason()).isEqualTo("NO_ACCESSIBLE_ROUTE");
@@ -177,7 +243,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 5L, 10, RouteMoveType.WALKWAY)); // 목적지 2와 단절
 
         RouteResponse response =
-                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, "fastest"));
+                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, "fastest", null));
 
         assertThat(response.available()).isFalse();
         assertThat(response.unavailableReason()).isEqualTo("NO_ROUTE");
@@ -189,7 +255,7 @@ class IndoorRouteServiceTest {
     @DisplayName("지원하지 않는 routeType이면 예외가 발생한다")
     void createRouteRejectsUnsupportedRouteType() {
         assertThatThrownBy(() ->
-                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, "flying")))
+                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, "flying", null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNSUPPORTED_ROUTE_TYPE));
     }
@@ -200,7 +266,7 @@ class IndoorRouteServiceTest {
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L)))
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.STATION_NOT_FOUND));
     }
@@ -212,7 +278,7 @@ class IndoorRouteServiceTest {
         givenNodes(1L, node(2L), node(4L)); // 출발 노드 1 없음
 
         assertThatThrownBy(() ->
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L)))
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ROUTE_NODE_NOT_FOUND));
     }

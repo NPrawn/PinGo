@@ -2,6 +2,7 @@ package com.pingo.backend.route.dto.response;
 
 import com.pingo.backend.route.domain.RouteType;
 import com.pingo.backend.route.domain.RouteUnavailableReason;
+import com.pingo.backend.usersession.domain.Language;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -15,6 +16,10 @@ public record RouteResponse(
         String displayName,
         boolean available,
         String unavailableReason,
+
+        /** 이용 불가 사유를 요청 언어로 쓴 문구. 이용 가능하면 {@code null}. */
+        String unavailableMessage,
+
         Long startNodeId,
         Long targetNodeId,
         BigDecimal totalDistanceM,
@@ -37,6 +42,7 @@ public record RouteResponse(
                 routeType.getDisplayName(),
                 true,
                 null,
+                null,
                 startNodeId,
                 targetNodeId,
                 totalDistanceM,
@@ -50,13 +56,15 @@ public record RouteResponse(
             RouteType routeType,
             Long startNodeId,
             Long targetNodeId,
-            RouteUnavailableReason reason
+            RouteUnavailableReason reason,
+            Language language
     ) {
         return new RouteResponse(
                 routeType.getCode(),
                 routeType.getDisplayName(),
                 false,
                 reason.name(),
+                reason.messageFor(language),
                 startNodeId,
                 targetNodeId,
                 null,
