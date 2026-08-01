@@ -153,6 +153,7 @@ erDiagram
 | floor_code | varchar | 층 코드 | 예: B1, B2 |
 | floor_name | varchar | 층 표시명 | nullable |
 | floor_order | int | 층 정렬 순서 | not null |
+| nominal_z | decimal | 캐노니컬 기준 높이(m). 층 바닥 기준 명목값이며 클라이언트 층 전환 판정에 쓴다 | nullable |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |
 

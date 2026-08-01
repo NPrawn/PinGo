@@ -361,18 +361,16 @@ FastAPI lifespan 준비 순서:
     "requestId": "loc_01J...",
     "resultStatus": "success",
     "mapVersion": "YS-2026-07-23.1",
-    "candidates": [
-      {
-        "nodeId": 15,
-        "floorId": 2,
-        "label": "B2 개찰구 앞",
-        "mapX": 320.5,
-        "mapY": 180.2,
-        "heading": 126.8,
-        "confidenceScore": 0.87,
-        "confidenceLabel": "high"
-      }
-    ],
+    "position": {
+      "floorId": 2,
+      "floorCode": "B2",
+      "mapX": -0.975,
+      "mapY": 27.717,
+      "mapZ": 0.0,
+      "accuracyM": 0.497
+    },
+    "startNodeId": 123,
+    "startNodeLabel": "B2-B3 엘리베이터 A",
     "processingTimeMs": 2310
   },
   "message": null

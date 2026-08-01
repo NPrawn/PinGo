@@ -47,7 +47,7 @@ class AdminRouteNodeControllerTest {
     @Test
     void createNodeReturnsCreatedResponse() throws Exception {
         RouteNodeCreateRequest request = new RouteNodeCreateRequest(
-                1L, 2L, "junction", "B2 갈림길", new BigDecimal("300"), new BigDecimal("200"), true);
+                1L, 2L, "junction", "B2 갈림길", new BigDecimal("300"), new BigDecimal("200"), null, true);
         when(routeService.createNode(any(RouteNodeCreateRequest.class)))
                 .thenReturn(new RouteNodeIdResponse(20L));
 
@@ -62,7 +62,7 @@ class AdminRouteNodeControllerTest {
     void getNodesReturnsList() throws Exception {
         when(routeService.getNodes(1L, null)).thenReturn(List.of(
                 new RouteNodeResponse(20L, 1L, 2L, "junction", "B2 갈림길",
-                        new BigDecimal("300"), new BigDecimal("200"), true)));
+                        new BigDecimal("300"), new BigDecimal("200"), null, true)));
 
         mockMvc.perform(get("/api/admin/route-nodes").param("stationId", "1"))
                 .andExpect(status().isOk())

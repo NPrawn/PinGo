@@ -82,7 +82,7 @@ class AdminStationControllerTest {
 
     @Test
     void createFloorReturnsConflictForDuplicatedCode() throws Exception {
-        FloorCreateRequest request = new FloorCreateRequest("B2", "지하 2층", 1);
+        FloorCreateRequest request = new FloorCreateRequest("B2", "지하 2층", 1, null);
         when(stationService.createFloor(1L, request))
                 .thenThrow(new BusinessException(ErrorCode.DUPLICATE_FLOOR_CODE));
 

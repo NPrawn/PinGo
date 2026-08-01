@@ -15,6 +15,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Getter
@@ -41,6 +42,20 @@ public class StationFloor {
     @Column(name = "floor_order", nullable = false)
     private int floorOrder;
 
+    /**
+     * 캐노니컬 기준 높이(m). 층 바닥 기준이고 역삼역은 B1=5, B2=0, B3=-5 이다.
+     *
+     * <p>클라이언트가 층 전환을 판정하는 데 쓴다. WebXR 의 앵커 대비 ΔY(미터)와 층 사이 z 차이를
+     * 비교해 올라갔는지 내려갔는지 본다. 명목값이며 실측 층고가 아니다 — 부호와 대략적 크기만
+     * 쓰므로 충분하다(계단 실측 ΔY 3.80m vs 명목 5m).
+     *
+     * <p>그 층 <b>바닥</b> 하나뿐이다. 같은 층 안에서 높이가 갈리는 구간(역삼역 B0.5,
+     * {@code floor_code=B1} 안의 {@code map_z=7.5})은 이 값으로 구분할 수 없고
+     * {@code route_node.map_z} 를 봐야 한다.
+     */
+    @Column(name = "nominal_z", precision = 10, scale = 3)
+    private BigDecimal nominalZ;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -51,27 +66,31 @@ public class StationFloor {
             Station station,
             String floorCode,
             String floorName,
-            int floorOrder
+            int floorOrder,
+            BigDecimal nominalZ
     ) {
         this.station = station;
         this.floorCode = floorCode;
         this.floorName = floorName;
         this.floorOrder = floorOrder;
+        this.nominalZ = nominalZ;
     }
 
     public static StationFloor create(
             Station station,
             String floorCode,
             String floorName,
-            int floorOrder
+            int floorOrder,
+            BigDecimal nominalZ
     ) {
-        return new StationFloor(station, floorCode, floorName, floorOrder);
+        return new StationFloor(station, floorCode, floorName, floorOrder, nominalZ);
     }
 
-    public void update(String floorCode, String floorName, int floorOrder) {
+    public void update(String floorCode, String floorName, int floorOrder, BigDecimal nominalZ) {
         this.floorCode = floorCode;
         this.floorName = floorName;
         this.floorOrder = floorOrder;
+        this.nominalZ = nominalZ;
     }
 
     @PrePersist
