@@ -31,7 +31,13 @@ const FACILITIES = [
     linkedNodeId: 123,
     isAccessible: true,
   },
-  /** 출구는 B1(floorId 3)에 있다. B2를 보고 있을 때 목적지 마커가 없는 것이 정상이다. */
+  /**
+   * 출구는 B1(floorId 3)에 있다. B2를 보고 있을 때 목적지 마커가 없는 것이 정상이다.
+   *
+   * `linkedNodeId`는 V8 시드 재구축 뒤의 실제 값이다. 7번 출구가 325인 것은 경로 옵션 화면의
+   * 임시 도착 노드와 같은 값이어야 한다 — 목업이 다른 노드를 가리키면 이 흐름을 목업으로
+   * 따라가는 사람이 잘못된 결론을 얻는다.
+   */
   {
     facilityId: 25,
     stationId: 1,
@@ -41,7 +47,7 @@ const FACILITIES = [
     nameEn: 'Exit 7',
     mapX: 149.166,
     mapY: -33.989,
-    linkedNodeId: 44,
+    linkedNodeId: 325,
     isAccessible: false,
   },
   {
@@ -53,7 +59,7 @@ const FACILITIES = [
     nameEn: 'Exit 2',
     mapX: 99.725,
     mapY: 48.451,
-    linkedNodeId: 60,
+    linkedNodeId: 341,
     isAccessible: false,
   },
 ];
