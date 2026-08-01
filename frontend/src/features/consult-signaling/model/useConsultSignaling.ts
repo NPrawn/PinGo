@@ -78,6 +78,10 @@ export function useConsultSignaling(
 
   useEffect(() => {
     if (!roomId) return;
+    // 서버는 room과 함께 발급한 토큰이 없는 handshake를 401로 거절한다. 토큰 없이
+    // 접속하면 무조건 실패하므로, 화면이 토큰을 받아올 때까지 기다린다.
+    // (토큰이 채워지면 이 effect가 다시 돌면서 접속한다.)
+    if (!accessToken) return;
 
     let disposed = false;
     let offerTimer: number | undefined;
@@ -86,9 +90,9 @@ export function useConsultSignaling(
     let shouldRecognize = true;
     const peer = new RTCPeerConnection(rtcConfiguration());
     const wsBase = env.VITE_WS_BASE_URL.replace(/\/$/, '');
-    // The server rejects the handshake without the token issued alongside the room.
-    const query = accessToken ? `?token=${encodeURIComponent(accessToken)}` : '';
-    const socket = new WebSocket(`${wsBase}/ws/signaling${query}`);
+    const socket = new WebSocket(
+      `${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`,
+    );
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
     const publishVideoFailure = (reason: string) => {
       void publishConsultationFallbackEvent(consultationId, {
