@@ -8,6 +8,7 @@ import { USER_ROUTES } from '@/shared/config';
 import type { RouteType } from '@/shared/types';
 import { ButtonLink, Icon, SelectRow } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
+import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './RouteOptionsPage.module.css';
@@ -59,6 +60,7 @@ export function RouteOptionsPage() {
   const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
   const route = useNavigationStore((state) => state.route);
   const setRoute = useNavigationStore((state) => state.setRoute);
+  const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{
     id: number;
     message: string;
@@ -136,26 +138,34 @@ export function RouteOptionsPage() {
             </div>
           </div>
 
-          <svg
-            viewBox="0 0 338 290"
-            preserveAspectRatio="none"
-            className={styles.scene}
-            aria-hidden
-          >
-            <path d="M0 290 L132 138 H206 L338 290 Z" fill="rgba(60,216,160,0.09)" />
-            <path
-              d="M0 290 L132 138 M338 290 L206 138 M132 138 H206"
-              stroke="rgba(127,239,195,0.24)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <path
-              d="M132 138 V48 H206 V138"
-              stroke="rgba(127,239,195,0.16)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-          </svg>
+          <CameraFeed camera={camera} className={styles.feed} />
+
+          {/* 카메라를 켤 수 없을 때의 대체 그림. 검은 화면으로 두지 않는다. */}
+          {!camera.isLive && (
+            <svg
+              viewBox="0 0 338 290"
+              preserveAspectRatio="none"
+              className={styles.scene}
+              aria-hidden
+            >
+              <path d="M0 290 L132 138 H206 L338 290 Z" fill="rgba(60,216,160,0.09)" />
+              <path
+                d="M0 290 L132 138 M338 290 L206 138 M132 138 H206"
+                stroke="rgba(127,239,195,0.24)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <path
+                d="M132 138 V48 H206 V138"
+                stroke="rgba(127,239,195,0.16)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+            </svg>
+          )}
+
+          <CameraFallbackNotice status={camera.status} />
+
           <div className={styles.cameraHint}>
             <Icon name="camera" size={14} />
             카메라를 정면에 맞춰주세요

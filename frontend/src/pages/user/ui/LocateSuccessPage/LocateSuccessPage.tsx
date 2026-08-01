@@ -3,6 +3,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink, Card, GhostLink, Icon, Icon3d } from '@/shared/ui';
+import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './LocateSuccessPage.module.css';
@@ -12,6 +13,7 @@ export function LocateSuccessPage() {
   const station = useStationStore((state) => state.station);
   /** 안내 중 재인식으로 왔는지. 돌아갈 화면을 가른다. (S15P11A206-141) */
   const relocalizing = useNavigationStore((state) => state.relocalizing);
+  const camera = useCameraPreview();
 
   return (
     <PhoneFrame layout="flush" bodyClassName={styles.body} statusBarClassName={styles.statusBar}>
@@ -22,27 +24,45 @@ export function LocateSuccessPage() {
             <ConsultCta variant="icon" />
           </div>
 
-          <svg
-            viewBox="0 0 300 640"
-            preserveAspectRatio="none"
-            className={styles.scene}
-            aria-hidden
-          >
-            <path d="M0 640 L117 320 H183 L300 640 Z" fill="rgba(60,216,160,0.07)" />
-            <path
-              d="M0 640 L117 320 M300 640 L183 320 M117 320 H183"
-              stroke="rgba(127,239,195,0.24)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <path
-              d="M117 320 V128 H183 V320"
-              stroke="rgba(127,239,195,0.16)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <rect x="129" y="172.8" width="42" height="51.2" rx="3" fill="rgba(127,239,195,0.2)" />
-          </svg>
+          <CameraFeed camera={camera} className={styles.feed} />
+
+          {/*
+            카메라를 켤 수 없을 때 쓰는 대체 그림. 권한 거부, 보안 컨텍스트가 아닌 접속
+            (`http://` LAN 주소), 카메라가 없는 기기에서 이쪽이 보인다. 검은 화면을 두면
+            사용자는 앱이 멈춘 것으로 읽는다.
+          */}
+          {!camera.isLive && (
+            <svg
+              viewBox="0 0 300 640"
+              preserveAspectRatio="none"
+              className={styles.scene}
+              aria-hidden
+            >
+              <path d="M0 640 L117 320 H183 L300 640 Z" fill="rgba(60,216,160,0.07)" />
+              <path
+                d="M0 640 L117 320 M300 640 L183 320 M117 320 H183"
+                stroke="rgba(127,239,195,0.24)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <path
+                d="M117 320 V128 H183 V320"
+                stroke="rgba(127,239,195,0.16)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <rect
+                x="129"
+                y="172.8"
+                width="42"
+                height="51.2"
+                rx="3"
+                fill="rgba(127,239,195,0.2)"
+              />
+            </svg>
+          )}
+
+          <CameraFallbackNotice status={camera.status} />
 
           <div className={styles.horizon} aria-hidden />
           <div className={styles.cornerLeft} aria-hidden />

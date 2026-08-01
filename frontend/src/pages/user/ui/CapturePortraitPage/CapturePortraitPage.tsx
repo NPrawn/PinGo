@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
+import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { RecordingBadge, ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './CapturePortraitPage.module.css';
@@ -36,6 +37,7 @@ const DIRECTIONS = [
  * navigate to `LOCATE_SUCCESS` as soon as the VPS matching response succeeds.
  */
 export function CapturePortraitPage() {
+  const camera = useCameraPreview();
   const [elapsed, setElapsed] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
@@ -127,33 +129,47 @@ export function CapturePortraitPage() {
         </div>
 
         <div className={styles.viewfinder}>
-          <svg
-            viewBox="0 0 300 640"
-            preserveAspectRatio="none"
-            className={styles.scene}
-            aria-hidden
-          >
-            <path d="M0 640 L117 320 H183 L300 640 Z" fill="rgba(60,216,160,0.07)" />
-            <path
-              d="M0 640 L117 320 M300 640 L183 320 M117 320 H183"
-              stroke="rgba(127,239,195,0.24)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <path
-              d="M117 320 V128 H183 V320"
-              stroke="rgba(127,239,195,0.16)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <rect x="129" y="172.8" width="42" height="51.2" rx="3" fill="rgba(127,239,195,0.2)" />
-            <path
-              d="M0 512 H90 M210 512 H300"
-              stroke="rgba(127,239,195,0.12)"
-              strokeWidth="1"
-              fill="none"
-            />
-          </svg>
+          <CameraFeed camera={camera} className={styles.feed} />
+
+          {/* 카메라를 켤 수 없을 때의 대체 그림. 검은 화면으로 두지 않는다. */}
+          {!camera.isLive && (
+            <svg
+              viewBox="0 0 300 640"
+              preserveAspectRatio="none"
+              className={styles.scene}
+              aria-hidden
+            >
+              <path d="M0 640 L117 320 H183 L300 640 Z" fill="rgba(60,216,160,0.07)" />
+              <path
+                d="M0 640 L117 320 M300 640 L183 320 M117 320 H183"
+                stroke="rgba(127,239,195,0.24)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <path
+                d="M117 320 V128 H183 V320"
+                stroke="rgba(127,239,195,0.16)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <rect
+                x="129"
+                y="172.8"
+                width="42"
+                height="51.2"
+                rx="3"
+                fill="rgba(127,239,195,0.2)"
+              />
+              <path
+                d="M0 512 H90 M210 512 H300"
+                stroke="rgba(127,239,195,0.12)"
+                strokeWidth="1"
+                fill="none"
+              />
+            </svg>
+          )}
+
+          <CameraFallbackNotice status={camera.status} />
 
           <div className={styles.band} aria-hidden />
           <div className={styles.horizon} aria-hidden />
