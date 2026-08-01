@@ -36,6 +36,17 @@
   object-fit: contain;
 }
 
+/* 층 전환을 스냅이 아니라 디졸브로 보이게 한다. 길게 끌면 두 층이 겹쳐 보이므로 짧게 잡는다. */
+.planLayer {
+  transition: opacity 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planLayer {
+    transition: none;
+  }
+}
+
 .status {
   padding: var(--space-2);
   color: var(--color-text);

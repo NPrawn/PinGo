@@ -77,6 +77,7 @@ describe('IndoorMapView', () => {
 
     const image = plan.querySelector('image');
     expect(image).toHaveAttribute('href', 'http://localhost:8080/uploads/maps/3f2a1b.png');
+    expect(image).toHaveAttribute('opacity', '1');
     // 원본 width/height를 고유 비율로 유지한다. 기준 캔버스로 옮기는 일은 transform이 맡는다.
     expect(image).toHaveAttribute('width', '1200');
     expect(image).toHaveAttribute('height', '800');
@@ -153,6 +154,25 @@ describe('IndoorMapView 오버레이 연결', () => {
 
     const image = screen.getByRole('img', { name: 'B2 실내 지도' }).querySelector('image');
     expect(image?.getAttribute('href')).toContain('/maps/yeoksam_B2.png');
+  });
+
+  /**
+   * 층 전환이 스냅으로 보이지 않게 모든 층을 올려 두고 표시 층만 드러낸다.
+   * 실제로 바뀌는 것은 층 구조라 없앨 수 없지만, 짧게 겹쳐 넘기면 디졸브로 읽힌다.
+   */
+  it('모든 층의 도면을 올려 두고 표시 층만 드러낸다', () => {
+    const b2: FloorMap = { ...framedMap, mapUrl: null };
+    const b3: FloorMap = { ...framedMap, mapId: 9, floorId: 2, floorCode: 'B3', mapUrl: null };
+
+    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [b2, b3] }));
+    render(<IndoorMapView stationId={1} floorId={2} />);
+
+    const images = [...screen.getByRole('img', { name: 'B3 실내 지도' }).querySelectorAll('image')];
+    expect(images).toHaveLength(2);
+
+    const shown = images.filter((image) => image.getAttribute('opacity') === '1');
+    expect(shown).toHaveLength(1);
+    expect(shown[0].getAttribute('href')).toContain('/maps/yeoksam_B3.png');
   });
 
   /**

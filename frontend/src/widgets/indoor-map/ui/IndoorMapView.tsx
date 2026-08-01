@@ -146,6 +146,23 @@ export function IndoorMapView({
   const placement = planPlacementOf(floorMap);
   const imageAlt = t('indoorMap.imageAlt', { floorCode: floorMap.floorCode });
 
+  /**
+   * 모든 층의 도면을 한 번에 올려 두고 표시 층만 드러낸다.
+   *
+   * 층을 바꿀 때 그림이 순간적으로 갈아치워지면 튀어 보인다. 실제로 바뀌는 것은 층 구조라
+   * 없앨 수 없는 차이지만(지도 패널 기준 9~10%, 그중 95% 이상이 도면), 짧게 겹쳐 넘기면
+   * 스냅이 아니라 디졸브로 읽힌다.
+   *
+   * 도면을 전처리해 장당 50KB가 되었으므로 세 층을 다 올려도 154KB다. 미리 올려 두는 김에
+   * 디코딩 지연도 없앤다.
+   */
+  const planLayers = maps
+    .map((map) => ({ map, url: floorPlanImageUrl(map), placement: planPlacementOf(map) }))
+    .filter(
+      (layer): layer is { map: FloorMap; url: string; placement: PlanPlacement } =>
+        layer.url !== null && layer.placement !== null,
+    );
+
   return (
     <div
       className={styles.viewport}
@@ -173,14 +190,19 @@ export function IndoorMapView({
               role="img"
               aria-label={imageAlt}
             >
-              <image
-                href={resolveAssetUrl(planImageUrl)}
-                x={0}
-                y={0}
-                width={placement.width}
-                height={placement.height}
-                transform={placement.transform}
-              />
+              {planLayers.map((layer) => (
+                <image
+                  key={layer.map.floorId}
+                  className={styles.planLayer}
+                  href={resolveAssetUrl(layer.url)}
+                  x={0}
+                  y={0}
+                  width={layer.placement.width}
+                  height={layer.placement.height}
+                  transform={layer.placement.transform}
+                  opacity={layer.map.floorId === floorMap.floorId ? 1 : 0}
+                />
+              ))}
             </svg>
           ) : (
             /* 프레임을 모르는 층. 도면을 기준 캔버스 어디에 놓을지 정할 수 없으므로 상자에만
