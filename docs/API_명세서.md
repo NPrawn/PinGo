@@ -955,6 +955,7 @@ multipart/form-data
       "mapX": -0.975,
       "mapY": 27.717,
       "mapZ": 0.0,
+      "forwardMap": { "x": 0.930418, "y": -0.366501 },
       "accuracyM": 0.497
     },
     "startNodeId": 123,
@@ -975,6 +976,23 @@ multipart/form-data
 `accuracyM`은 위치 정확도(m)이며 GPS 정확도 원처럼 쓰면 된다. **leave-one-out 평균**이다 — 기준점 위에서 잰 in-sample 잔차(B2 0.423 · B3 0.594)는 그 기준점으로 맞춘 값이라 낙관적이어서, 일반화 오차 쪽을 싣는다. 현재 값은 **B2 0.497 · B3 1.095**다.
 
 `mapZ`는 그 층의 기준 높이이며 위치추정으로 얻은 값이 아니다. 정합 기준점이 모두 같은 층 바닥 높이라 높이 방향은 데이터가 결정해주지 않는다. 따라서 **같은 층 안에서 높이가 갈리는 구간(역삼역 B0.5, `map_z=7.5`)은 이 값으로 구분할 수 없다.**
+
+#### `forwardMap` — 앵커 시점의 방향
+
+**앵커를 잡은 순간 단말이 향한 방향**이다. `mapX`·`mapY`와 같은 캐노니컬 프레임의 **수평면 2D 단위벡터**이며 각도가 아니다.
+
+FE가 WebXR 좌표를 지도에 정렬하려면 이 값이 필요하다(FE 좌표연동 스펙 §8.2·§8.5). FE는 같은 순간의 WebXR 전방(`forwardXr`)을 스스로 알고 있고, **둘의 각도 차가 XR↔지도 회전**이다. 그게 있어야 WebXR이 주는 이동량을 지도 위 이동으로 바꿀 수 있다. 지도 기준 방향은 VPS 포즈에만 들어 있어 클라이언트가 스스로 구할 수 없다.
+
+| 항목 | 확정 |
+| --- | --- |
+| 위치 | `position` 안쪽. 좌표와 한 쌍이어야 의미가 있다 |
+| 형태 | `{ "x": number, "y": number }`. 길이 1 |
+| 정규화 | **백엔드가 한다.** 클라이언트가 다시 정규화할 필요 없다 |
+| 축척 | 단위벡터라 캐노니컬 미터의 축척과 무관하다 |
+
+**`null`일 수 있다.** AI가 회전(`rotationXyzw`)을 주지 않거나, 카메라가 바닥·천장을 정면으로 봐서 수평 방향이 정의되지 않을 때다. 이때도 **좌표는 그대로 채워진다** — 방향이 없으면 WebXR 정렬만 못 하고 지도에 위치를 찍는 것은 된다. 즉 `resultStatus`가 `success`라도 `forwardMap`은 `null` 검사가 필요하다.
+
+방향이 틀려도 오류가 나지 않고 마커만 엉뚱한 쪽으로 움직인다. `null`이면 WebXR 정렬을 시작하지 않는 편이 안전하다.
 
 #### 좌표 정합이 없는 층
 
@@ -1006,6 +1024,17 @@ multipart/form-data
 | startNodeLabel | string | 경로 시작 노드 표시 이름. 시설이 붙어 있으면 시설명 |
 | fallbackOptions | string[] | 사용자에게 제공할 대체 행동 목록 |
 | processingTimeMs | number | AI 위치추정 처리 시간(ms). AI 호출 실패로 측정할 수 없으면 `null` 또는 생략 |
+
+`position` 내부 필드.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| floorId | number | 층 ID |
+| floorCode | string | 층 코드(`B1`·`B2`·`B3`) |
+| mapX / mapY | number | 캐노니컬 좌표(m) |
+| mapZ | number | 그 층의 기준 높이(m). 위치추정으로 얻은 값이 아니다 |
+| forwardMap | object | 앵커 시점 단말이 향한 방향. `{ x, y }` 캐노니컬 수평면 단위벡터. **산출하지 못하면 `null`** |
+| accuracyM | number | 위치 정확도(m). 정합의 leave-one-out 평균 |
 
 ##### resultStatus
 
