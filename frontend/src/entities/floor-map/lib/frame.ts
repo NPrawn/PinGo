@@ -1,4 +1,5 @@
 import { isRenderableCoordinate } from './coordinates';
+import { localPlanFrame } from '../model/localPlans';
 import type { CoordinateFrame, FloorMap } from '../model/types';
 
 /**
@@ -25,4 +26,29 @@ export function coordinateFrameOf(map: FloorMap): CoordinateFrame | null {
     angleDeg: frameAngleDeg,
     mpp: scaleMPerPx,
   };
+}
+
+/**
+ * **실제로 화면에 그려지는 도면**에 맞는 좌표 프레임을 고른다.
+ *
+ * 규칙은 하나다 — 프레임은 도면을 따라간다.
+ *
+ * - `mapUrl`이 있으면 백엔드가 올린 도면이 그려지므로 백엔드 프레임을 쓴다.
+ * - 없으면 FE 자체 도면으로 떨어지므로(`floorPlanImageUrl`) 그 도면의 프레임을 쓴다.
+ *
+ * 프레임은 특정 이미지에 대해서만 의미가 있는 값이기 때문이다. 지금 백엔드에는 세 층이 모두
+ * `scaleMPerPx: 0.19`로 등록돼 있는데 실제 도면 세 장은 서로 다른 배율로 캡쳐됐다. 그 값을
+ * FE 도면에 그대로 적용하면 층마다 같은 미터 좌표가 다른 자리에 찍힌다(S15P11A206-314).
+ * 측정 근거는 `localPlans.ts`에 있다.
+ *
+ * 자체 도면이 없는 층은 그릴 이미지도 없으므로 백엔드 프레임으로 떨어진다. 그림 없이 좌표만
+ * 얹는 경우이며, 프레임마저 없으면 null이 되어 호출부가 오버레이를 생략한다.
+ */
+export function displayFrameOf(map: FloorMap): CoordinateFrame | null {
+  if (map.mapUrl === null) {
+    const local = localPlanFrame(map.floorCode);
+    if (local) return local;
+  }
+
+  return coordinateFrameOf(map);
 }

@@ -69,11 +69,18 @@ describe('IndoorMapView', () => {
   it('지도 이미지를 절대 URL과 층 정보로 렌더링한다', () => {
     mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [sampleMap] }));
     render(<IndoorMapView stationId={1} />);
-    const image = screen.getByRole('img', { name: 'B1 실내 지도' });
-    expect(image).toHaveAttribute('src', 'http://localhost:8080/uploads/maps/3f2a1b.png');
-    // 원본 width/height를 고유 비율로 유지한다. (CSS로 뷰포트에 맞춰 축소되어도 비율 보존)
+
+    // 도면은 기준 캔버스 SVG 안에 놓인다. 층마다 캔버스가 달라지면 층 전환 때 지도가 튄다.
+    const plan = screen.getByRole('img', { name: 'B1 실내 지도' });
+    // 기준 층(1624×969)이 아니라 세 층을 모두 담는 캔버스다. 좁게 잡으면 B1·B3가 잘린다.
+    expect(plan).toHaveAttribute('viewBox', '0 0 1699 992');
+
+    const image = plan.querySelector('image');
+    expect(image).toHaveAttribute('href', 'http://localhost:8080/uploads/maps/3f2a1b.png');
+    // 원본 width/height를 고유 비율로 유지한다. 기준 캔버스로 옮기는 일은 transform이 맡는다.
     expect(image).toHaveAttribute('width', '1200');
     expect(image).toHaveAttribute('height', '800');
+    expect(image?.getAttribute('transform')).toContain('translate(622 512)');
   });
 });
 
@@ -144,9 +151,8 @@ describe('IndoorMapView 오버레이 연결', () => {
     mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [withoutImage] }));
     render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
 
-    expect(screen.getByRole('img', { name: 'B2 실내 지도' }).getAttribute('src')).toContain(
-      '/maps/yeoksam_B2.png',
-    );
+    const image = screen.getByRole('img', { name: 'B2 실내 지도' }).querySelector('image');
+    expect(image?.getAttribute('href')).toContain('/maps/yeoksam_B2.png');
   });
 
   /**

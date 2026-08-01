@@ -47,8 +47,30 @@ describe('IndoorMapPage 현재 위치 파라미터', () => {
   it('floor로 다른 층을 지정할 수 있다', () => {
     renderAt('?mock=1&floorId=2&x=0&y=0');
     expect(screen.getByRole('img', { name: 'B3 실내 지도' })).toBeInTheDocument();
-    // B3 프레임의 originPx(597, 497).
-    expect(markerCenter('현재 위치')).toEqual({ cx: '597', cy: '497' });
+    // 기준 캔버스(B2) 좌표라 B2와 같은 (622, 512)다. 층마다 다른 좌표계로 그리지 않는다.
+    expect(markerCenter('현재 위치')).toEqual({ cx: '622', cy: '512' });
+  });
+
+  /**
+   * 층 전환 정합. (S15P11A206-314)
+   *
+   * 도면 세 장은 캔버스 크기가 제각각이라(1626×967 · 1624×969 · 1659×948) 층마다 따로 상자에
+   * 맞추면 이미지→화면 배율이 2.2% 어긋나고, 층을 바꿀 때 역사 전체가 커졌다 작아졌다 한다.
+   * 세 층을 한 기준 캔버스에 얹어 없앤 문제다.
+   *
+   * 원점에서는 보정량이 0에 가까워 차이가 드러나지 않는다. 배율 오차는 거리에 비례하므로
+   * 끝단(150m)에서 본다 — 고치기 전에는 여기서 층 간 13px이 벌어졌다.
+   */
+  it('층이 달라도 같은 미터 좌표는 화면의 같은 자리에 찍힌다', () => {
+    const centers = [1, 2, 3].map((floorId) => {
+      const { unmount } = renderAt(`?mock=1&floorId=${floorId}&x=150&y=0`);
+      const center = markerCenter('현재 위치');
+      unmount();
+      return center;
+    });
+
+    expect(centers[1]).toEqual(centers[0]);
+    expect(centers[2]).toEqual(centers[0]);
   });
 
   it('표시 중인 층과 다른 층을 지정하면 마커가 나타나지 않는다', () => {

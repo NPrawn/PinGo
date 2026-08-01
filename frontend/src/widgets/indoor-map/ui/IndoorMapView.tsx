@@ -1,12 +1,15 @@
 import { useTranslation } from 'react-i18next';
 import { useStationFacilities, type Facility } from '@/entities/facility';
 import {
-  coordinateFrameOf,
   floorPlanImageUrl,
   meterToPixel,
   MOCK_FLOOR_MAPS,
+  PLAN_CANVAS,
+  PLAN_REFERENCE,
+  planPlacementOf,
   useStationFloorMaps,
   type FloorMap,
+  type PlanPlacement,
 } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
 import { resolveAssetUrl } from '@/shared/config';
@@ -140,6 +143,8 @@ export function IndoorMapView({
   }
 
   const planImageUrl = floorPlanImageUrl(floorMap);
+  const placement = planPlacementOf(floorMap);
+  const imageAlt = t('indoorMap.imageAlt', { floorCode: floorMap.floorCode });
 
   return (
     <div
@@ -154,25 +159,49 @@ export function IndoorMapView({
         }}
       >
         {/* 백엔드에 등록된 도면이 없으면 FE가 들고 있는 평면도로 떨어진다(localPlans).
-            둘 다 없으면 img를 만들지 않는다 — 빈 src는 깨진 이미지로 보이고, 좌표 오버레이는
+            둘 다 없으면 아무것도 만들지 않는다 — 빈 src는 깨진 이미지로 보이고, 좌표 오버레이는
             프레임만으로 그려지므로 도면 그림이 없어도 마커 위치는 맞다. */}
-        {planImageUrl !== null && (
-          <img
-            className={styles.image}
-            /* 브라우저 기본 이미지 끌기를 막는다. 그것이 시작되면 이후 pointermove가 끊겨
-               지도 이동이 첫 이동에서 멈춘다. */
-            draggable={false}
-            src={resolveAssetUrl(planImageUrl)}
-            alt={t('indoorMap.imageAlt', { floorCode: floorMap.floorCode })}
-            width={floorMap.width}
-            height={floorMap.height}
-          />
-        )}
+        {planImageUrl !== null &&
+          (placement ? (
+            /* 도면을 **기준 캔버스**에 얹는다. 층마다 캔버스 크기가 달라(1626×967 · 1624×969 ·
+               1659×948) 각자 contain으로 맞추면 이미지→화면 배율이 층마다 2.2% 어긋나고, 층을
+               바꿀 때 역사 전체가 커졌다 작아졌다 한다. 오버레이와 같은 viewBox를 쓰므로 둘의
+               맞춤 방식도 자동으로 일치한다. */
+            <svg
+              className={styles.image}
+              viewBox={`0 0 ${PLAN_CANVAS.width} ${PLAN_CANVAS.height}`}
+              role="img"
+              aria-label={imageAlt}
+            >
+              <image
+                href={resolveAssetUrl(planImageUrl)}
+                x={0}
+                y={0}
+                width={placement.width}
+                height={placement.height}
+                transform={placement.transform}
+              />
+            </svg>
+          ) : (
+            /* 프레임을 모르는 층. 도면을 기준 캔버스 어디에 놓을지 정할 수 없으므로 상자에만
+               맞춰 보여준다. 이 경우 오버레이도 그리지 않는다. */
+            <img
+              className={styles.image}
+              /* 브라우저 기본 이미지 끌기를 막는다. 그것이 시작되면 이후 pointermove가 끊겨
+                 지도 이동이 첫 이동에서 멈춘다. */
+              draggable={false}
+              src={resolveAssetUrl(planImageUrl)}
+              alt={imageAlt}
+              width={floorMap.width}
+              height={floorMap.height}
+            />
+          ))}
         {/* 목업은 **넘겨받지 않은 것만** 채운다. `null`을 넘긴 것은 "표시할 것이 없다"는 뜻이라
             목업으로 대신하지 않는다 — 그러지 않으면 호출부가 목적지 없음을 표현할 수 없고,
             좌표를 모르는 목적지가 목업 자리에 그려져 이름과 다른 곳을 가리킨다. */}
         <MapOverlay
-          floorMap={floorMap}
+          floorId={floorMap.floorId}
+          placement={placement}
           currentLocation={mockable(currentLocation, MOCK_CURRENT_LOCATION, useMockData)}
           currentHeadingDeg={currentHeadingDeg}
           destination={mockable(destination, MOCK_DESTINATION, useMockData)}
@@ -196,11 +225,18 @@ export function IndoorMapView({
 }
 
 /**
- * 표시 중인 층의 좌표 프레임을 읽어 오버레이에 변환 함수를 넘긴다.
- * 프레임이 없는 층은 좌표를 이미지 위 어디에 놓아야 할지 알 수 없으므로 오버레이를 생략한다.
+ * 오버레이를 **기준 캔버스** 좌표계로 그린다.
+ *
+ * 층별 프레임을 쓰지 않는다. 도면이 이미 `planPlacementOf`로 기준 캔버스에 옮겨져 있으므로,
+ * 좌표 변환도 기준 프레임 하나만 쓰면 어느 층에서든 같은 미터 좌표가 화면의 같은 점으로 간다.
+ * 층마다 다른 프레임으로 그리면 도면과 마커가 서로 다른 공간에 놓여 어긋난다.
+ *
+ * 도면을 기준 캔버스에 놓을 수 없는 층(프레임 결손)은 `placement`가 null이다. 그 층은 좌표를
+ * 어디에 찍어야 할지 알 수 없으므로 오버레이를 생략한다.
  */
 function MapOverlay({
-  floorMap,
+  floorId,
+  placement,
   currentLocation,
   currentHeadingDeg,
   destination,
@@ -211,7 +247,8 @@ function MapOverlay({
   onSelectFacility,
   viewScale,
 }: {
-  floorMap: FloorMap;
+  floorId: number;
+  placement: PlanPlacement | null;
   currentLocation: IndoorPoint | null;
   currentHeadingDeg?: number | null;
   destination: IndoorPoint | null;
@@ -222,14 +259,15 @@ function MapOverlay({
   onSelectFacility?: (facility: Facility) => void;
   viewScale: number;
 }) {
-  const frame = coordinateFrameOf(floorMap);
-  if (!frame) return null;
+  if (!placement) return null;
+
+  const frame = PLAN_REFERENCE.frame;
 
   return (
     <IndoorMapOverlay
-      floorId={floorMap.floorId}
-      imageWidth={floorMap.width}
-      imageHeight={floorMap.height}
+      floorId={floorId}
+      imageWidth={PLAN_CANVAS.width}
+      imageHeight={PLAN_CANVAS.height}
       project={(mapX, mapY) => meterToPixel(mapX, mapY, frame)}
       currentLocation={currentLocation}
       /**
