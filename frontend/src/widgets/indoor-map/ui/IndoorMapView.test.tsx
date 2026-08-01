@@ -2,6 +2,15 @@ import { render, screen } from '@testing-library/react';
 import { useStationFloorMaps, type FloorMap } from '@/entities/floor-map';
 import { IndoorMapView } from './IndoorMapView';
 
+/**
+ * 시설 조회는 이 테스트의 관심사가 아니다. QueryClient 없이 렌더하므로 훅만 비워 둔다.
+ * 시설 마커 렌더링은 IndoorMapOverlay 테스트가 검사한다.
+ */
+vi.mock('@/entities/facility', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/facility')>()),
+  useStationFacilities: vi.fn(() => ({ data: undefined })),
+}));
+
 // 렌더링 로직에만 집중하기 위해 데이터 조회 훅만 목으로 대체하고,
 // 좌표 변환·프레임·목업 지도는 실제 구현을 그대로 쓴다.
 vi.mock('@/entities/floor-map', async (importOriginal) => ({
@@ -60,11 +69,19 @@ describe('IndoorMapView', () => {
   it('지도 이미지를 절대 URL과 층 정보로 렌더링한다', () => {
     mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [sampleMap] }));
     render(<IndoorMapView stationId={1} />);
-    const image = screen.getByRole('img', { name: 'B1 실내 지도' });
-    expect(image).toHaveAttribute('src', 'http://localhost:8080/uploads/maps/3f2a1b.png');
-    // 원본 width/height를 고유 비율로 유지한다. (CSS로 뷰포트에 맞춰 축소되어도 비율 보존)
+
+    // 도면은 기준 캔버스 SVG 안에 놓인다. 층마다 캔버스가 달라지면 층 전환 때 지도가 튄다.
+    const plan = screen.getByRole('img', { name: 'B1 실내 지도' });
+    // 기준 층(1624×969)이 아니라 세 층을 모두 담는 캔버스다. 좁게 잡으면 B1·B3가 잘린다.
+    expect(plan).toHaveAttribute('viewBox', '0 0 1699 992');
+
+    const image = plan.querySelector('image');
+    expect(image).toHaveAttribute('href', 'http://localhost:8080/uploads/maps/3f2a1b.png');
+    expect(image).toHaveAttribute('opacity', '1');
+    // 원본 width/height를 고유 비율로 유지한다. 기준 캔버스로 옮기는 일은 transform이 맡는다.
     expect(image).toHaveAttribute('width', '1200');
     expect(image).toHaveAttribute('height', '800');
+    expect(image?.getAttribute('transform')).toContain('translate(622 512)');
   });
 });
 
@@ -122,7 +139,9 @@ describe('IndoorMapView 오버레이 연결', () => {
   it('좌표 프레임 값이 온전하지 않으면 오버레이를 생략한다', () => {
     const brokenFrame: FloorMap = { ...framedMap, originPxX: Number.NaN };
 
-    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [brokenFrame] }));
+    mockedHook.mockReturnValue(
+      hookState({ isPending: false, isError: false, data: [brokenFrame] }),
+    );
     render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
 
     expect(screen.queryByRole('img', { name: '현재 위치' })).not.toBeInTheDocument();
@@ -132,12 +151,32 @@ describe('IndoorMapView 오버레이 연결', () => {
   it('mapUrl이 없으면 자체 평면도로 떨어진다', () => {
     const withoutImage: FloorMap = { ...framedMap, mapUrl: null };
 
-    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [withoutImage] }));
+    mockedHook.mockReturnValue(
+      hookState({ isPending: false, isError: false, data: [withoutImage] }),
+    );
     render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
 
-    expect(screen.getByRole('img', { name: 'B2 실내 지도' }).getAttribute('src')).toContain(
-      '/maps/yeoksam_B2.png',
-    );
+    const image = screen.getByRole('img', { name: 'B2 실내 지도' }).querySelector('image');
+    expect(image?.getAttribute('href')).toContain('/maps/yeoksam_B2.png');
+  });
+
+  /**
+   * 층 전환이 스냅으로 보이지 않게 모든 층을 올려 두고 표시 층만 드러낸다.
+   * 실제로 바뀌는 것은 층 구조라 없앨 수 없지만, 짧게 겹쳐 넘기면 디졸브로 읽힌다.
+   */
+  it('모든 층의 도면을 올려 두고 표시 층만 드러낸다', () => {
+    const b2: FloorMap = { ...framedMap, mapUrl: null };
+    const b3: FloorMap = { ...framedMap, mapId: 9, floorId: 2, floorCode: 'B3', mapUrl: null };
+
+    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [b2, b3] }));
+    render(<IndoorMapView stationId={1} floorId={2} />);
+
+    const images = [...screen.getByRole('img', { name: 'B3 실내 지도' }).querySelectorAll('image')];
+    expect(images).toHaveLength(2);
+
+    const shown = images.filter((image) => image.getAttribute('opacity') === '1');
+    expect(shown).toHaveLength(1);
+    expect(shown[0].getAttribute('href')).toContain('/maps/yeoksam_B3.png');
   });
 
   /**
@@ -229,10 +268,81 @@ describe('IndoorMapView 목업 모드', () => {
   it('목업 모드에서도 넘겨받은 데이터가 있으면 그것을 우선한다', () => {
     mockedHook.mockReturnValue(hookState({ isPending: true, isError: false }));
     render(
-      <IndoorMapView stationId={1} useMockData currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />,
+      <IndoorMapView
+        stationId={1}
+        useMockData
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+      />,
     );
 
     // B2 지도인데도 현재 위치가 보인다 = 목업(B3) 대신 넘겨받은 값을 썼다.
     expect(screen.getByRole('img', { name: '현재 위치' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * 조회가 끝난 뒤에 시점 추종이 켜지는지. (S15P11A206-79 리뷰)
+ *
+ * 실제 경로에서는 첫 렌더가 `isPending`이라 지도 요소를 만들지 않는다. 훅이 화면 크기를
+ * 마운트 한 번에만 재면 그때는 붙을 요소가 없고, 응답이 와서 요소가 생겨도 다시 재지 않는다.
+ * 그러면 크기를 영원히 모르므로 추종이 조용히 꺼지고 복귀 버튼이 상시 노출된다.
+ *
+ * 기존 추종 테스트는 요소를 항상 렌더하는 하네스를 쓰고, 이 파일의 다른 테스트는 조회 상태를
+ * 고정해 둔다. 그래서 **pending → loaded 전이를 태우는 테스트가 없었다.**
+ */
+describe('IndoorMapView 시점 추종', () => {
+  /** jsdom에는 ResizeObserver가 없다. 관찰 즉시 크기를 알려주는 가짜를 심는다. */
+  function stubResizeObserver(box: { width: number; height: number }) {
+    class Stub {
+      callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+
+      observe() {
+        this.callback(
+          [{ contentRect: box } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+
+      unobserve() {}
+      disconnect() {}
+    }
+
+    vi.stubGlobal('ResizeObserver', Stub);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('조회가 끝나고 지도가 생긴 뒤에도 화면 크기를 재서 추종을 켠다', () => {
+    stubResizeObserver({ width: 314, height: 291 });
+    mockedHook.mockReturnValue(hookState({ isPending: true, isError: false }));
+
+    const view = render(
+      <IndoorMapView
+        stationId={1}
+        followCamera
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+      />,
+    );
+
+    // 조회 중에는 지도 요소가 없다. 여기서 크기를 잴 방법이 없는 것이 정상이다.
+    expect(screen.getByText('지도를 불러오는 중입니다')).toBeInTheDocument();
+
+    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [framedMap] }));
+    view.rerender(
+      <IndoorMapView
+        stationId={1}
+        followCamera
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+      />,
+    );
+
+    // 추종 중이면 복귀 버튼을 보이지 않는다. 버튼이 있으면 추종이 꺼진 것이다.
+    expect(screen.queryByRole('button', { name: '내 위치' })).not.toBeInTheDocument();
   });
 });

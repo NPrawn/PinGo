@@ -722,13 +722,13 @@ describe('createXrSessionController', () => {
       fake.emitFrame(3000, null);
       fake.emitFrame(10000, pose(0, -8));
 
-      // 복구 지점(-8)에서 1m만 움직였으므로 확정되지 않는다.
+      // 복구 지점(-8)에서 0.1m만 움직였으므로 확정되지 않는다.
       expect(fake.hasPendingFrame()).toBe(true);
-      fake.emitFrame(12000, pose(0, -9));
+      fake.emitFrame(12000, pose(0, -8.1));
       expect(snapshots).toHaveLength(2);
 
-      // 복구 지점 대비 2m가 되면 move로 확정된다.
-      fake.emitFrame(13000, pose(0, -10));
+      // 복구 지점 대비 갱신 거리를 넘으면 move로 확정된다.
+      fake.emitFrame(13000, pose(0, -8.4));
       expect(snapshots.map((snapshot) => snapshot.trigger)).toEqual(['first', 'first', 'move']);
     });
 
@@ -759,9 +759,9 @@ describe('createXrSessionController', () => {
         const { controller, fake, snapshots } = await startedController();
 
         fake.emitFrame(1200, pose(0, 0));
-        fake.emitFrame(1400, pose(0.5, -1.1));
+        fake.emitFrame(1250, pose(0.5, -1.1));
 
-        // 0.2초·1.2m라 확정 주기(2m/1초)를 통과하지 못한다.
+        // 1.2m를 갔지만 0.05초라 확정 주기의 최소 간격을 통과하지 못한다.
         expect(snapshots).toHaveLength(1);
         expect(controller.getLatestReading()?.position).toEqual({ x: 0.5, y: 0, z: -1.1 });
       });

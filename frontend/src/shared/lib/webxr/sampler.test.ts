@@ -20,12 +20,28 @@ function reading(x: number, z: number, timestamp: number): XrPoseReading {
 describe('DEFAULT_SAMPLING_RULE', () => {
   it('11.4 표의 기준값과 같다', () => {
     expect(DEFAULT_SAMPLING_RULE).toEqual({
-      moveM: 2,
-      minIntervalMs: 1000,
+      moveM: 0.25,
+      minIntervalMs: 100,
       heartbeatMs: 5000,
     });
   });
+
+  /**
+   * 초당 몇 번 확정되는지가 지도에서 움직임이 실시간으로 보이는지를 가른다. 초속 1.2m
+   * 보행에서 4Hz 아래로 내려가면 지도가 끊어서 움직이는 것으로 보인다(S15P11A206-79).
+   */
+  it('보행 중 확정이 초당 4회 이상이다', () => {
+    const walkingSpeedMps = 1.2;
+    const intervalMs = Math.max(
+      (DEFAULT_SAMPLING_RULE.moveM / walkingSpeedMps) * 1000,
+      DEFAULT_SAMPLING_RULE.minIntervalMs,
+    );
+
+    expect(1000 / intervalMs).toBeGreaterThanOrEqual(4);
+  });
 });
+
+const { moveM, minIntervalMs } = DEFAULT_SAMPLING_RULE;
 
 describe('createPoseSampler', () => {
   it('첫 pose를 first 스냅샷으로 확정한다', () => {
@@ -34,33 +50,33 @@ describe('createPoseSampler', () => {
     expect(sampler.consider(reading(0, 0, 0))?.trigger).toBe('first');
   });
 
-  it('2m 이상 이동하면 move로 확정한다', () => {
+  it('갱신 거리만큼 이동하면 move로 확정한다', () => {
     const sampler = createPoseSampler();
     sampler.consider(reading(0, 0, 0));
 
-    const snapshot = sampler.consider(reading(0, -2, 1500));
+    const snapshot = sampler.consider(reading(0, -moveM, 1500));
 
     expect(snapshot?.trigger).toBe('move');
-    expect(snapshot?.position.z).toBe(-2);
+    expect(snapshot?.position.z).toBe(-moveM);
   });
 
-  it('2m 미만 이동이면 확정하지 않는다', () => {
+  it('갱신 거리에 못 미치면 확정하지 않는다', () => {
     const sampler = createPoseSampler();
     sampler.consider(reading(0, 0, 0));
 
-    expect(sampler.consider(reading(0, -1.99, 1500))).toBeNull();
+    expect(sampler.consider(reading(0, -(moveM - 0.01), 1500))).toBeNull();
   });
 
   /**
-   * 1차 실측에서 확정의 63%가 여기서 걸려 나갔다. 회전 트리거를 제거한 뒤에는
-   * 보행 중 확정 간격이 1297~1861ms로 이 조건에 걸리지 않았다.
+   * 1차 실측에서 확정의 63%가 여기서 걸려 나갔다. 그 원인이던 회전 트리거는 제거됐고,
+   * 지금 이 값은 빨리 걷거나 뛸 때 확정이 프레임마다 나가지 않게 막는 상한이다.
    */
-  it('2m 이상 이동했어도 최소 간격 1초 안이면 확정하지 않는다', () => {
+  it('충분히 이동했어도 최소 간격 안이면 확정하지 않는다', () => {
     const sampler = createPoseSampler();
     sampler.consider(reading(0, 0, 0));
 
-    expect(sampler.consider(reading(0, -5, 999))).toBeNull();
-    expect(sampler.consider(reading(0, -5, 1000))?.trigger).toBe('move');
+    expect(sampler.consider(reading(0, -5, minIntervalMs - 1))).toBeNull();
+    expect(sampler.consider(reading(0, -5, minIntervalMs))?.trigger).toBe('move');
   });
 
   it('이동이 없어도 5초가 지나면 heartbeat로 확정한다', () => {
@@ -76,10 +92,10 @@ describe('createPoseSampler', () => {
     sampler.consider(reading(0, 0, 0));
     sampler.consider(reading(0, -3, 1500));
 
-    // 원점에서는 3m지만 직전 확정(-3)에서는 1m이므로 확정하지 않는다.
-    expect(sampler.consider(reading(0, -4, 3000))).toBeNull();
-    // 직전 확정 대비 2m가 되는 시점에 확정된다.
-    expect(sampler.consider(reading(0, -5, 3200))?.trigger).toBe('move');
+    // 원점에서는 3m 넘게 갔지만 직전 확정(-3)에서는 갱신 거리에 못 미친다.
+    expect(sampler.consider(reading(0, -3 - (moveM - 0.01), 3000))).toBeNull();
+    // 직전 확정 대비 갱신 거리가 되는 시점에 확정된다.
+    expect(sampler.consider(reading(0, -3 - moveM, 3200))?.trigger).toBe('move');
   });
 
   /**

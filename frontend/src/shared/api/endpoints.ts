@@ -2,4 +2,6 @@
 export const ENDPOINTS = {
   // 5.1 층별 지도 조회
   stationFloorMaps: (stationId: number) => `/api/stations/${stationId}/maps`,
+  // 5.2 시설 목록 조회
+  stationFacilities: (stationId: number) => `/api/stations/${stationId}/facilities`,
 } as const;

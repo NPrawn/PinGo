@@ -1,8 +1,15 @@
 .viewport {
+  position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--color-background);
+  /* 역사 바깥이다. 도면이 그 영역을 투명하게 비워 두므로 이 색이 그대로 보인다.
+     값은 프로토타입 `.map`의 배경(#eef1f5)이다 — 앱 배경(연녹색)을 쓰면 실내 도면이
+     야외처럼 보인다. */
+  background: #eef1f5;
+  /* 팬·줌을 직접 처리한다. 브라우저 기본 스크롤·확대·선택에 이벤트를 빼앗기면 안 된다. */
+  touch-action: none;
+  user-select: none;
 }
 
 /* 지도 이미지와 오버레이가 공유하는 좌표 컨테이너.
@@ -13,10 +20,27 @@
   height: 100%;
 }
 
+/*
+ * **stage 변환에는 transition을 걸지 않는다.**
+ *
+ * 내 위치 마커는 이 stage 안에 있고, 추종 중에는 마커의 캔버스 좌표 변화와 stage 이동량이
+ * 서로를 정확히 상쇄해 마커가 앵커에 고정된다. transition을 걸면 마커 좌표만 즉시 바뀌고
+ * stage가 뒤늦게 따라와, 갱신 때마다 마커가 앵커 밖으로 튀어나갔다 돌아온다. 화면에서는
+ * 위치가 흔들리며 늦게 따라오는 것으로 보인다.
+ *
+ * 방향 계단을 펴는 일은 표시 각도 자체를 프레임마다 잇는 쪽에서 한다(useSmoothedRotation).
+ * 그래야 이동량이 같은 각도로 다시 계산돼 마커가 앵커에 붙어 있는다.
+ */
+
 /* stage를 채우되 object-fit: contain으로 원본 비율을 유지한다.
    오버레이 SVG는 같은 박스에서 preserveAspectRatio 기본값(xMidYMid meet)으로 그려지는데,
    이는 contain과 같은 방식으로 여백을 만든다. 따라서 뷰포트가 가로로 넓든 세로로 길든
    이미지와 오버레이 좌표가 서로 어긋나지 않는다. */
+/**
+ * 도면은 역사 바깥이 투명하게 전처리돼 있다. 색 보정을 CSS로 하지 않는다 — 보행 공간과
+ * 배경의 밝기 차이가 8밖에 안 돼서(248 vs 240) 필터로는 갈라낼 수 없고, 영역을 픽셀로
+ * 판별해 이미지에 구워 넣었다. 자세한 내용은 entities/floor-map/model/localPlans.ts 참고.
+ */
 .image {
   display: block;
   width: 100%;
@@ -24,8 +48,40 @@
   object-fit: contain;
 }
 
+/* 층 전환을 스냅이 아니라 디졸브로 보이게 한다. 길게 끌면 두 층이 겹쳐 보이므로 짧게 잡는다. */
+.planLayer {
+  transition: opacity 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planLayer {
+    transition: none;
+  }
+}
+
 .status {
   padding: var(--space-2);
   color: var(--color-text);
   text-align: center;
+}
+
+/* 확대·이동을 되돌린다. 조작한 뒤에만 나타나므로 기본 화면의 모습은 바뀌지 않는다. */
+/* 내 위치로 돌아가기. 글자 대신 아이콘이라 정사각형으로 둔다. */
+.resetView {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--color-mint-forest);
+  cursor: pointer;
+  background: rgb(255 255 255 / 92%);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px -6px rgb(15 44 34 / 55%);
 }

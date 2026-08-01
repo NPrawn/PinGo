@@ -37,6 +37,8 @@ export const en = {
       empty: 'No map is registered',
       floorNotFound: 'No map for this floor',
       imageAlt: '{{floorCode}} indoor map',
+      resetView: 'Reset map',
+      recenter: 'My location',
       overlay: {
         currentLocation: 'Current location',
         destination: 'Destination',

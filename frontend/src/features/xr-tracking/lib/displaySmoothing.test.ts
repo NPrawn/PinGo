@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SAMPLING_RULE } from '@/shared/lib/webxr';
 import {
   PROVISIONAL_DISPLAY_DEADBAND_M,
   PROVISIONAL_DISPLAY_FOLLOW_RATIO,
@@ -76,16 +77,41 @@ describe('smoothMapPoint', () => {
   });
 
   /**
-   * 보행 중 확정은 2m 간격이다(11.4). 평활을 걸어도 한 스냅샷에서 절반 이상은 따라가야
-   * 마커가 사용자보다 크게 뒤처지지 않는다.
+   * 평활을 걸어도 한 스냅샷에서 절반 이상은 따라가야 마커가 사용자보다 크게 뒤처지지 않는다.
    */
-  it('보행 중 2m 확정에서 절반 이상 따라간다', () => {
+  it('한 번의 확정에서 절반 이상 따라간다', () => {
+    const step = DEFAULT_SAMPLING_RULE.moveM;
     const smoothed = smoothMapPoint(
       { floorId: B2, mapX: 0, mapY: 0 },
-      { floorId: B2, mapX: 0, mapY: 2 },
+      { floorId: B2, mapX: 0, mapY: step },
     );
 
-    expect(smoothed.mapY).toBeGreaterThanOrEqual(1);
+    expect(smoothed.mapY).toBeGreaterThanOrEqual(step / 2);
+  });
+
+  /**
+   * 걷는 동안 남는 지연은 한 스냅샷에서 회복되지 않고 계속 쌓인 채로 유지된다. 스냅샷 자체가
+   * 확정 간격만큼 뒤에 오므로(11.4) 평활이 그 위에 지연을 더 얹으면 체감이 두 배가 된다.
+   * 상시 지연을 데드밴드 아래로 묶어 화면에서 구분되지 않게 한다.
+   */
+  it('보행 중 상시로 남는 지연이 데드밴드 이하다', () => {
+    let walked = 0;
+    let current = { floorId: B2, mapX: 0, mapY: 0 };
+
+    for (let index = 0; index < 30; index += 1) {
+      walked += DEFAULT_SAMPLING_RULE.moveM;
+      current = smoothMapPoint(current, { floorId: B2, mapX: walked, mapY: 0 });
+    }
+
+    expect(walked - current.mapX).toBeLessThanOrEqual(PROVISIONAL_DISPLAY_DEADBAND_M);
+  });
+
+  /**
+   * 데드밴드가 확정 간격보다 크면 확정이 아무리 자주 와도 마커가 한 번도 움직이지 않는다.
+   * 두 값은 따로 정할 수 없다.
+   */
+  it('한 번의 확정으로 들어오는 이동은 데드밴드를 넘는다', () => {
+    expect(DEFAULT_SAMPLING_RULE.moveM).toBeGreaterThan(PROVISIONAL_DISPLAY_DEADBAND_M);
   });
 
   /**
@@ -124,7 +150,7 @@ describe('smoothMapPoint', () => {
   });
 
   it('기본 상수는 provisional 값이다', () => {
-    expect(PROVISIONAL_DISPLAY_DEADBAND_M).toBe(0.3);
-    expect(PROVISIONAL_DISPLAY_FOLLOW_RATIO).toBe(0.6);
+    expect(PROVISIONAL_DISPLAY_DEADBAND_M).toBe(0.08);
+    expect(PROVISIONAL_DISPLAY_FOLLOW_RATIO).toBe(0.9);
   });
 });

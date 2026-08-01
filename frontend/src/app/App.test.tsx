@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNavigationStore } from '@/entities/navigation';
 import { usePermissionStore } from '@/entities/permission';
+import { i18n } from '@/shared/i18n';
 import { App } from './App';
 
 type GeoSuccess = (position: GeolocationPosition) => void;
@@ -69,6 +70,8 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, 'mediaDevices');
   Reflect.deleteProperty(window, 'isSecureContext');
   window.sessionStorage.clear();
+  // 언어 전환 테스트가 영어로 바꿔 둔 것을 되돌린다. 남으면 뒤 테스트가 영어 라벨을 만난다.
+  void i18n.changeLanguage('ko');
   usePermissionStore.setState({ granted: { loc: false, cam: false, mic: false } });
 });
 
@@ -256,6 +259,65 @@ describe('user routes', () => {
   });
 
   /**
+   * 층 전환. (S15P11A206-280)
+   *
+   * 탭 목록은 층별 지도 응답에서 만든다. 프로토타입에 하드코딩돼 있던 `1F`는 역삼역에 등록된
+   * 지도가 없어 눌러도 보여줄 것이 없었으므로 목록에서 빠진다.
+   */
+  it('층 탭은 지도가 있는 층만 보여주고 누르면 표시 층이 바뀐다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    const tabs = within(floorGroup).getAllByRole('button');
+
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['B1', 'B2', 'B3']);
+
+    // 진입 시에는 현재 위치가 있는 층을 따라간다.
+    expect(within(floorGroup).getByRole('button', { name: 'B2' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B1' }));
+
+    expect(within(floorGroup).getByRole('button', { name: 'B1' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(floorGroup).getByRole('button', { name: 'B2' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  /**
+   * 목적지 마커. (S15P11A206-79)
+   *
+   * 이름과 좌표가 같은 곳을 가리켜야 한다. 목업 좌표(3번출구 엘리베이터)에 경로 옵션 화면의
+   * 문자열(`7번 출입구`)을 붙여 두면, 3번 출구 자리에 7번이라고 적힌 마커가 그려진다.
+   *
+   * 역삼역 출구는 B1에 있으므로 B2를 보고 있을 때는 그려지지 않는 것이 정상이다.
+   */
+  it('목적지 마커는 실제 출구 시설의 이름과 좌표를 쓴다', async () => {
+    useNavigationStore.setState({ route: 'fast' });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+
+    // B2에는 7번 출구가 없다.
+    expect(screen.queryByRole('img', { name: '목적지' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B1' }));
+
+    const marker = await screen.findByRole('img', { name: '목적지' });
+
+    // 응답의 이름이다. 화면이 들고 있던 `7번 출입구`가 아니다.
+    expect(within(marker).getByText('7번 출구')).toBeInTheDocument();
+  });
+
+  /**
    * 안내 중 위치 재인식. (S15P11A206-141)
    *
    * U-10 → U-04(촬영·매칭) → U-05(위치 확인) → **U-10** 으로 돌아와야 한다. 표시가 없으면
@@ -361,7 +423,13 @@ describe('user routes', () => {
     expect(within(routeHeader).getByText('경유 2')).toBeInTheDocument();
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '승차권 충전 경로 옵션 열기' }));
+    /**
+     * 시설 마커는 유형 필터를 켠 뒤에 나타난다. 기본으로 전부 그리지 않는 이유는 밀도다 —
+     * 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가 시설 36개를 모두 그리면 마커가
+     * 서로를 덮는다(FR-U-006 점진적 공개). 좌표는 시설 조회 응답에서 온다.
+     */
+    fireEvent.click(screen.getByRole('button', { name: '승차권 충전 필터 적용' }));
+    fireEvent.click(await screen.findByRole('button', { name: '승차권 충전' }));
     const duplicateDestinationButton = await screen.findByRole('button', {
       name: '경유지로 등록된 장소',
     });
@@ -375,7 +443,8 @@ describe('user routes', () => {
       ).not.toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '엘리베이터 경로 옵션 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: '엘리베이터 필터 적용' }));
+    fireEvent.click(await screen.findByRole('button', { name: '엘리베이터' }));
     fireEvent.click(await screen.findByRole('button', { name: '새 목적지로 설정' }));
     expect(useNavigationStore.getState().destination).toBe('엘리베이터');
     expect(useNavigationStore.getState().waypoints).toEqual(['화장실', '승차권 충전']);

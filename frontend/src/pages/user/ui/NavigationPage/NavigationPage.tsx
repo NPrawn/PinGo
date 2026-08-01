@@ -1,10 +1,12 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_FLOOR_ID } from '@/entities/floor-map';
+import { facilityIconOf, useStationFacilities, type Facility } from '@/entities/facility';
+import { floorCodeOf, floorIdOf, MOCK_FLOOR_ID, useStationFloorMaps } from '@/entities/floor-map';
 import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import type { FloorId } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -13,24 +15,31 @@ import { PhoneFrame } from '@/widgets/phone-frame';
 import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
 import styles from './NavigationPage.module.css';
 
-const FLOORS = ['1F', 'B1', 'B2', 'B3'] as const;
-
-const MAP_FACILITIES: readonly {
-  name: string;
-  detail: string;
-  icon: IconName;
-  left: string;
-  top: string;
-}[] = [
-  { name: '화장실', detail: 'B1 대합실 · 약 80m', icon: 'restroom', left: '21%', top: '25%' },
-  { name: '승차권 충전', detail: '2번 개찰구 옆 · 약 45m', icon: 'card', left: '73%', top: '73%' },
-  { name: '엘리베이터', detail: 'B1 ↔ 1F · 약 110m', icon: 'elevator', left: '76%', top: '25%' },
-  { name: '내린 위치', detail: 'B2 승강장 · 3-2 탑승칸', icon: 'train', left: '23%', top: '66%' },
-];
-
-const MAP_FILTERS: readonly { name: string; icon: IconName }[] = [
-  ...MAP_FACILITIES.map(({ name, icon }) => ({ name, icon })),
-  { name: '출구', icon: 'door' },
+/**
+ * 지도 위 시설 필터.
+ *
+ * **기본은 아무것도 켜지 않는다.** 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가
+ * 1m가 1.2px이고, 그 층 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px이 되어 서로를
+ * 덮는다. 유형 하나를 켜면 많아도 13개(계단)라 겹치지 않는다 — FR-U-006의 점진적 공개다.
+ *
+ * 이름과 아이콘은 프로토타입(`#s-nav`)의 칩 다섯 개에서 출발했고, 각 칩이 실제
+ * `facilityType`을 켜도록 연결했다.
+ *
+ * **에스컬레이터와 계단을 뒤에 붙였다.** 역삼역에서 가장 많은 두 유형인데(B1 기준 각각
+ * 10개·13개) 칩이 없어 지도에 한 번도 뜨지 않았다. 층을 오르내리는 통로라 길안내에서 오히려
+ * 자주 찾는 것들이다. 밀도는 문제되지 않는다 — 위 계산의 상한이 바로 계단 13개다.
+ *
+ * TODO: `platform`은 역삼역에 등록된 시설이 없어 눌러도 표시할 것이 없다. 승강장 시설이
+ * 시드되면 그대로 동작한다(백엔드 요청 예정).
+ */
+const MAP_FILTERS: readonly { name: string; icon: IconName; facilityType: string }[] = [
+  { name: '화장실', icon: 'restroom', facilityType: 'restroom' },
+  { name: '승차권 충전', icon: 'card', facilityType: 'card_charger' },
+  { name: '엘리베이터', icon: 'elevator', facilityType: 'elevator' },
+  { name: '에스컬레이터', icon: 'escalator', facilityType: 'escalator' },
+  { name: '계단', icon: 'stairs', facilityType: 'stair' },
+  { name: '내린 위치', icon: 'train', facilityType: 'platform' },
+  { name: '출구', icon: 'door', facilityType: 'exit' },
 ];
 
 /**
@@ -39,7 +48,11 @@ const MAP_FILTERS: readonly { name: string; icon: IconName }[] = [
  * **모듈 상수로 둔다.** 296 훅이 이 값을 진입 시점에 고정된 입력으로 다루므로(앵커가 생긴 뒤
  * 바꾸면 조용히 무시된다) 렌더마다 새 객체를 만들면 앵커 발화 effect가 불필요하게 다시 돈다.
  *
- * 목업 도면 B2의 미터 원점이라 도면 가운데 부근에 찍힌다. 값 자체는 검산이 쉬운 (0, 0)이다.
+ * 좌표는 B2 대합실 통로 위, 어느 시설과도 30m 이상 떨어진 지점이다.
+ *
+ * **원점 `(0, 0)`을 쓰지 않는다.** 그 지점은 좌표계의 기준으로 삼은 `B2-B3 엘리베이터 B`가
+ * 실제로 서 있는 자리다. 거기에 현재 위치를 두면 시설 마커와 정확히 겹쳐, 엘리베이터를 고르는
+ * 순간 내 위치에 테두리가 쳐진 것처럼 보인다. 가까운 시설도 마찬가지라 넉넉히 띄운다.
  *
  * TODO: 위치 인식(FR-U-004)·수동 선택(FR-U-007) 결과를 받는 경로가 아직 없다. 확정 좌표를
  * 담는 스토어가 없어서(navigationStore는 목적지 문자열만 갖는다) 여기서 목업으로 채운다.
@@ -47,14 +60,26 @@ const MAP_FILTERS: readonly { name: string; icon: IconName }[] = [
  */
 const MOCK_CONFIRMED_LOCATION: IndoorPoint = {
   floorId: MOCK_FLOOR_ID.B2,
-  mapX: 0,
-  mapY: 0,
+  mapX: -30,
+  mapY: 10,
 };
+
+/**
+ * 화면이 들고 있는 출구 이름으로 실제 출구 시설을 찾는다.
+ *
+ * 화면은 `7번 출입구`, 응답은 `7번 출구`로 표기가 다르다. 출구 번호만 뽑아 맞춘다.
+ * 번호가 없는 이름(`강남파이낸스센터(GFC몰) 연결 출입구` 등)은 대조하지 않는다.
+ */
+function matchExitByName(exits: readonly Facility[], name: string): Facility | null {
+  const number = /^(\d+)번/.exec(name)?.[1];
+  if (!number) return null;
+
+  return exits.find((exit) => exit.nameKo.startsWith(`${number}번`)) ?? null;
+}
 
 /** Camera guidance with an interactive indoor map and up to two stops. */
 export function NavigationPage() {
   const station = useStationStore((state) => state.station);
-  const floor = useStationStore((state) => state.floor);
   const setFloor = useStationStore((state) => state.setFloor);
   const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
   const route = useNavigationStore((state) => state.route);
@@ -79,9 +104,8 @@ export function NavigationPage() {
   }, [endRelocalize]);
   const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
   const initialDestination = useRef(destination);
-  const [selectedFacility, setSelectedFacility] = useState<(typeof MAP_FACILITIES)[number] | null>(
-    null,
-  );
+  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
+  /** 켜 둔 시설 유형(`facilityType`). null이면 시설을 그리지 않는다. */
   const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
@@ -107,12 +131,49 @@ export function NavigationPage() {
     source,
     anchorStatus,
   } = useXrNavigationSession({ currentIndoorLocation: MOCK_CONFIRMED_LOCATION });
+
+  /**
+   * 층 탭. **목록을 지도 응답에서 만든다.** (S15P11A206-280)
+   *
+   * 프로토타입은 `1F·B1·B2·B3`를 하드코딩해 뒀는데, 역삼역에 등록된 지도는 B1·B2·B3 세 장이라
+   * `1F`를 눌러도 보여줄 지도가 없었다. `floor_id`는 auto-increment라 코드↔id 매핑을 상수로
+   * 두면 시드가 바뀔 때 조용히 어긋나므로 응답에서 찾는다.
+   */
+  const floorMapsQuery = useStationFloorMaps(1);
+  const floorMaps = floorMapsQuery.data ?? [];
+  /** 사용자가 탭으로 고른 층. null이면 현재 위치를 따라간다. */
+  const [pickedFloorCode, setPickedFloorCode] = useState<string | null>(null);
+  const followedFloorId = currentLocation?.floorId ?? MOCK_CONFIRMED_LOCATION.floorId;
+  const displayedFloorId =
+    (pickedFloorCode === null ? undefined : floorIdOf(floorMaps, pickedFloorCode)) ??
+    followedFloorId;
+  const displayedFloorCode = floorCodeOf(floorMaps, displayedFloorId);
+
+  /**
+   * 목적지 마커. **이름과 좌표가 같은 곳을 가리켜야 한다.**
+   *
+   * 이전에는 좌표가 목업 상수(3번출구 엘리베이터)이고 이름은 경로 옵션 화면에서 온 문자열
+   * (`7번 출입구`)이라, 3번 출구 자리에 7번이라고 적힌 마커가 그려졌다. 두 목업이 서로 다른
+   * 곳에서 와서 맞춰진 적이 없었다.
+   *
+   * 이제 출구 이름으로 실제 시설을 찾아 그 좌표를 쓴다. 찾지 못하면 그리지 않는다 — 틀린
+   * 자리에 표시하는 것보다 없는 편이 낫다. 사용자가 시설을 새 목적지로 지정한 경우에는 그
+   * 시설을 그대로 쓴다.
+   *
+   * TODO(297): 경로 조회가 붙으면 목적지는 경로 응답의 마지막 노드에서 온다. 그때 이 조회와
+   * 이름 대조를 지운다.
+   */
+  const exitsQuery = useStationFacilities(1, { facilityType: 'exit' });
+  const [pickedDestination, setPickedDestination] = useState<Facility | null>(null);
+  const destinationFacility =
+    pickedDestination ?? matchExitByName(exitsQuery.data ?? [], activeDestination);
+
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
-    ? waypoints.includes(selectedFacility.name)
+    ? waypoints.includes(selectedFacility.nameKo)
     : false;
   const selectedFacilityIsDestination = selectedFacility
-    ? selectedFacility.name === activeDestination
+    ? selectedFacility.nameKo === activeDestination
     : false;
 
   return (
@@ -135,17 +196,23 @@ export function NavigationPage() {
           />
         ) : selectedFacility ? (
           <Sheet
-            label={`${selectedFacility.name} 경로 설정`}
+            label={`${selectedFacility.nameKo} 경로 설정`}
             onDismiss={() => setSelectedFacility(null)}
           >
             <div className={styles.sheetHandle} aria-hidden />
             <div className={styles.sheetHead}>
               <span className={styles.sheetIcon}>
-                <Icon name={selectedFacility.icon} size={20} />
+                <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
               </span>
               <div>
-                <h2>{selectedFacility.name}</h2>
-                <p>{selectedFacility.detail}</p>
+                <h2>{selectedFacility.nameKo}</h2>
+                {/* 목업이던 거리·층 설명 대신 응답에 있는 값을 쓴다. 거리는 경로 계산(297)이
+                    붙으면 넣는다 — 지금 임의로 만들면 틀린 숫자를 보여주게 된다. */}
+                <p>
+                  {selectedFacility.isAccessible
+                    ? '계단 없이 갈 수 있어요'
+                    : '계단 구간이 있을 수 있어요'}
+                </p>
               </div>
             </div>
             <p className={styles.sheetNote}>
@@ -160,7 +227,7 @@ export function NavigationPage() {
                 }
                 onClick={() => {
                   if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  addWaypoint(selectedFacility.name);
+                  addWaypoint(selectedFacility.nameKo);
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -178,8 +245,10 @@ export function NavigationPage() {
                 disabled={selectedFacilityIsWaypoint || selectedFacilityIsDestination}
                 onClick={() => {
                   if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  setDestination(selectedFacility.name);
-                  setActiveDestination(selectedFacility.name);
+                  setDestination(selectedFacility.nameKo);
+                  setActiveDestination(selectedFacility.nameKo);
+                  // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
+                  setPickedDestination(selectedFacility);
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -253,6 +322,7 @@ export function NavigationPage() {
                   onClick={() => {
                     setDestination(initialDestination.current);
                     setActiveDestination(exit);
+                    setPickedDestination(null);
                     setRecalculated(true);
                   }}
                   aria-label={`목적지를 ${exit}로 되돌리기`}
@@ -301,14 +371,34 @@ export function NavigationPage() {
               <div className={styles.mapCanvas}>
                 <IndoorMapView
                   stationId={1}
-                  floorId={currentLocation?.floorId ?? MOCK_CONFIRMED_LOCATION.floorId}
+                  floorId={displayedFloorId}
                   currentLocation={currentLocation}
                   currentHeadingDeg={headingDeg}
-                  /* 목적지 이름은 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
+                  /* 길안내 화면이므로 시점이 내 위치를 따라간다. 밀거나 확대하면 풀리고
+                     `내 위치` 버튼으로 돌아온다. */
+                  followCamera
+                  /* 실제 시설 좌표를 넘긴다. 목업 목적지를 쓰지 않는다 — 좌표와 이름이
+                     다른 곳을 가리키던 원인이다. 다른 층의 목적지는 오버레이가 걸러낸다. */
+                  destination={
+                    destinationFacility
+                      ? {
+                          floorId: destinationFacility.floorId,
+                          mapX: destinationFacility.mapX,
+                          mapY: destinationFacility.mapY,
+                        }
+                      : null
+                  }
+                  /* 이름은 응답의 것을 쓴다. 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
                      시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
                   destinationLabel={
-                    facilityFilter == null || facilityFilter === '출구' ? exit : null
+                    (facilityFilter == null || facilityFilter === 'exit') &&
+                    destinationFacility !== null
+                      ? destinationFacility.nameKo
+                      : null
                   }
+                  facilityType={facilityFilter}
+                  selectedFacilityId={selectedFacility?.facilityId}
+                  onSelectFacility={setSelectedFacility}
                   useMockData
                 />
               </div>
@@ -343,24 +433,34 @@ export function NavigationPage() {
               </button>
 
               <div className={styles.floorButtons} role="group" aria-label="층 선택">
-                {FLOORS.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    aria-pressed={floor === option}
-                    className={[styles.floorButton, floor === option && styles.floorButtonOn]
-                      .filter(Boolean)
-                      .join(' ')}
-                    onClick={() => setFloor(option)}
-                  >
-                    {option}
-                  </button>
-                ))}
+                {floorMaps.map((map) => {
+                  const on = map.floorCode === displayedFloorCode;
+
+                  return (
+                    <button
+                      key={map.floorId}
+                      type="button"
+                      aria-pressed={on}
+                      className={[styles.floorButton, on && styles.floorButtonOn]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onClick={() => {
+                        setPickedFloorCode(map.floorCode);
+                        // 다른 층의 시설을 고른 상태로 남기지 않는다.
+                        setSelectedFacility(null);
+                        // 다른 화면(U-07 등)이 보는 층 상태도 함께 맞춘다.
+                        setFloor(map.floorCode as FloorId);
+                      }}
+                    >
+                      {map.floorCode}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className={styles.facilityFilters} role="group" aria-label="시설 필터">
                 {MAP_FILTERS.map((filter) => {
-                  const active = facilityFilter === filter.name;
+                  const active = facilityFilter === filter.facilityType;
 
                   return (
                     <button
@@ -372,7 +472,11 @@ export function NavigationPage() {
                       aria-label={`${filter.name} ${active ? '필터 해제' : '필터 적용'}`}
                       aria-pressed={active}
                       title={filter.name}
-                      onClick={() => setFacilityFilter(active ? null : filter.name)}
+                      onClick={() => {
+                        setFacilityFilter(active ? null : filter.facilityType);
+                        // 다른 유형으로 넘어가면 이전에 고른 시설의 이름표가 남지 않게 한다.
+                        setSelectedFacility(null);
+                      }}
                     >
                       <Icon name={filter.icon} size={14} />
                     </button>
@@ -380,25 +484,9 @@ export function NavigationPage() {
                 })}
               </div>
 
-              {/* 현재 위치·방향·목적지와 그 이름은 모두 IndoorMapView가 실제 좌표로 그린다.
-                  퍼센트로 고정돼 있던 HeadingMarker와 목적지 라벨을 남겨 두면 마커가 둘이 되어
-                  어느 쪽이 실제인지 구분할 수 없다. */}
-
-              {MAP_FACILITIES.filter(
-                (facility) => facilityFilter == null || facility.name === facilityFilter,
-              ).map((facility) => (
-                <button
-                  key={facility.name}
-                  type="button"
-                  className={styles.facility}
-                  style={{ left: facility.left, top: facility.top }}
-                  onClick={() => setSelectedFacility(facility)}
-                  aria-label={`${facility.name} 경로 옵션 열기`}
-                >
-                  <Icon name={facility.icon} size={13} />
-                  <span>{facility.name}</span>
-                </button>
-              ))}
+              {/* 현재 위치·방향·목적지·시설은 모두 IndoorMapView가 실제 좌표로 그린다.
+                  퍼센트로 고정돼 있던 마커들을 남겨 두면 표시가 둘이 되어 어느 쪽이 실제인지
+                  구분할 수 없다. */}
             </MapPreview>
 
             <div className={styles.mapLegend}>
