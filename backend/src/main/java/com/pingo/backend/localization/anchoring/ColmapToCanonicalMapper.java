@@ -141,14 +141,6 @@ public class ColmapToCanonicalMapper {
     }
 
     /**
-     * 해당 역·층 바닥의 캐노니컬 높이. 높이가 없는 노드의 기본값으로도 쓴다.
-     */
-    public Optional<Double> nominalZOf(Long stationId, String floorCode) {
-        FloorFrame frame = properties.frameOf(stationId, floorCode);
-        return frame == null ? Optional.empty() : Optional.of(frame.nominalZ());
-    }
-
-    /**
      * 단위 방향 {@code (fx, fy, fz)} 중 지도 평면에 남는 성분의 크기(0~1).
      *
      * <p>어파인 선형부 두 행의 외적이 이 층 COLMAP 좌표계의 수직 방향이다. 선형부가 그 방향을

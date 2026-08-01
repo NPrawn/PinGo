@@ -14,10 +14,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 설정 계수가 온전하지 않으면 기동 단계에서 걸리는지 확인한다.
  *
- * <p>{@link ColmapToCanonicalMapper#accuracyOf}·{@code nominalZOf} 가 {@code Optional.of} 를
- * 쓰는 근거다. 값이 {@code null} 인 프레임은 애초에 바인딩을 통과하지 못하므로 그 지점에서
- * {@code null} 을 방어할 필요가 없다. 방어하면 "계수가 없다"와 "계수는 있는데 값이 비었다"가
- * 같은 {@code Optional.empty()} 로 뭉개진다.
+ * <p>{@link ColmapToCanonicalMapper#accuracyOf} 가 {@code Optional.of} 를 쓰는 근거다.
+ * 값이 {@code null} 인 프레임은 애초에 바인딩을 통과하지 못하므로 그 지점에서 {@code null} 을
+ * 방어할 필요가 없다. 방어하면 "계수가 없다"와 "계수는 있는데 값이 비었다"가 같은
+ * {@code Optional.empty()} 로 뭉개진다.
  */
 class VpsAnchoringPropertiesValidationTest {
 

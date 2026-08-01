@@ -86,7 +86,6 @@ class ColmapToCanonicalMapperTest {
         // 역삼역 B1 은 COLMAP 커버가 없어 계수 자체가 없다.
         assertThat(mapper.toCanonical(YEOKSAM, "B1", List.of(1.0, 2.0, 3.0))).isEmpty();
         assertThat(mapper.accuracyOf(YEOKSAM, "B1")).isEmpty();
-        assertThat(mapper.nominalZOf(YEOKSAM, "B1")).isEmpty();
     }
 
     @Test
@@ -107,12 +106,8 @@ class ColmapToCanonicalMapperTest {
         assertThat(mapper.accuracyOf(YEOKSAM, "B3")).contains(1.095);
     }
 
-    @Test
-    @DisplayName("층 기준 높이를 돌려준다")
-    void exposesNominalHeightPerFloor() {
-        assertThat(mapper.nominalZOf(YEOKSAM, "B2")).contains(0.0);
-        assertThat(mapper.nominalZOf(YEOKSAM, "B3")).contains(-5.0);
-    }
+    // 층 기준 높이(B2 0.0 · B3 -5.0)는 toCanonical 결과의 z 로 검증한다.
+    // mapsB2ControlPointBackToCanonical · mapsB3ControlPointAndUsesNominalHeight 참고.
 
     // ── forwardMap (FE 스펙 8.5) ───────────────────────────────────────────────
 
