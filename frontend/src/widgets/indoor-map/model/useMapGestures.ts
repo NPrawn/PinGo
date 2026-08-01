@@ -236,10 +236,24 @@ export function useMapGestures(follow?: FollowOptions) {
    * TODO: 실기기에서 dom-overlay 안 제스처가 실제로 통과하는지 아직 확인하지 못했다
    * (`public/webxr-probe.html` 6장). 통과하지 않으면 조작은 세션 밖 화면에서만 쓸 수 있다.
    */
-  const ref = useRef<HTMLDivElement | null>(null);
+  /**
+   * 관찰할 요소. **ref가 아니라 상태로 둔다.**
+   *
+   * ref로 두고 마운트 한 번(`[]`)만 재면, 호출부가 요소를 조건부로 렌더할 때 크기를 영원히
+   * 모른다. 실제로 그랬다 — `IndoorMapView`는 층별 지도 조회가 끝나기 전에 로딩 문구만
+   * 반환하므로 첫 렌더에 지도 요소가 없고, 응답이 온 뒤 요소가 생겨도 effect가 다시 돌지
+   * 않았다. 그러면 `box`가 null로 굳어 추종이 조용히 꺼지고, ResizeObserver와
+   * `beforexrselect` 차단도 걸리지 않는다.
+   *
+   * 콜백 ref로 받으면 요소가 붙는 순간 상태가 바뀌어 아래 effect가 그때 돈다. 호출부가
+   * 어떻게 렌더하든 상관없어진다.
+   */
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  const ref = useCallback((node: HTMLDivElement | null) => {
+    setElement(node);
+  }, []);
 
   useEffect(() => {
-    const element = ref.current;
     if (!element) return;
 
     const block = (event: Event): void => {
@@ -282,7 +296,7 @@ export function useMapGestures(follow?: FollowOptions) {
       element.removeEventListener('beforexrselect', block);
       observer.disconnect();
     };
-  }, []);
+  }, [element]);
 
   const followView = computeFollowView(follow, box);
 
