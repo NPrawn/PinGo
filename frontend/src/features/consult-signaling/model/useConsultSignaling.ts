@@ -88,12 +88,24 @@ export function useConsultSignaling(
     let localStream: MediaStream | null = null;
     let recognition: SpeechRecognitionLike | null = null;
     let shouldRecognize = true;
+    let socketOpened = false;
+    // 메시지 처리가 서로 끼어들지 않게 한 줄로 세운다. OFFER를 적용하는 동안
+    // 다음 메시지가 먼저 처리되면 candidate가 SDP보다 앞질러 버린다.
+    let handling: Promise<void> = Promise.resolve();
+    /** 상대 SDP가 적용되기 전에 도착한 candidate. 지금 넣으면 addIceCandidate가 실패한다. */
+    const pendingRemoteCandidates: RTCIceCandidateInit[] = [];
+    /** 상대가 아직 없을 때 보낸 candidate는 서버가 버리므로 offer를 다시 보낼 때 함께 재전송한다. */
+    const localCandidates: RTCIceCandidateInit[] = [];
     const peer = new RTCPeerConnection(rtcConfiguration());
     const wsBase = env.VITE_WS_BASE_URL.replace(/\/$/, '');
     const socket = new WebSocket(
       `${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`,
     );
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
+    /** 정리된 뒤에 도착한 이벤트로 화면에 실패를 남기지 않는다. */
+    const fail = (message: string) => {
+      if (!disposed) setError(message);
+    };
     const publishVideoFailure = (reason: string) => {
       void publishConsultationFallbackEvent(consultationId, {
         type: 'VIDEO_FAILED',
@@ -161,28 +173,69 @@ export function useConsultSignaling(
       socket.send(JSON.stringify(message));
     };
 
-    const makeOffer = async () => {
+    const addRemoteCandidate = async (candidate: RTCIceCandidateInit) => {
+      try {
+        await peer.addIceCandidate(candidate);
+      } catch {
+        // 후보 하나가 거절돼도 다른 후보로 연결될 수 있어 상담을 끊지 않는다.
+      }
+    };
+
+    const applyRemoteDescription = async (description: RTCSessionDescriptionInit) => {
+      await peer.setRemoteDescription(description);
+      while (pendingRemoteCandidates.length > 0) {
+        await addRemoteCandidate(pendingRemoteCandidates.shift()!);
+      }
+    };
+
+    /**
+     * 상담자가 offer를 알린다.
+     *
+     * 사용자가 아직 들어오지 않으면 서버가 중계하지 못하고 버리므로, answer가
+     * 도착할 때까지 같은 offer와 그동안 모인 candidate를 다시 보낸다.
+     */
+    const sendOffer = async () => {
       if (role !== 'COUNSELOR' || socket.readyState !== WebSocket.OPEN) return;
+      // answer를 적용했으면 협상이 끝났다. 여기서 다시 offer를 만들면 재협상이 된다.
+      if (peer.remoteDescription) return;
+
+      if (peer.signalingState === 'have-local-offer' && peer.localDescription) {
+        send('OFFER', peer.localDescription.toJSON());
+        localCandidates.forEach((candidate) => send('ICE_CANDIDATE', candidate));
+        return;
+      }
       if (peer.signalingState !== 'stable') return;
+
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
       send('OFFER', offer);
     };
 
     peer.onconnectionstatechange = () => {
-      if (!disposed) setStatus(peer.connectionState);
-      if (peer.connectionState === 'connected' && offerTimer) window.clearInterval(offerTimer);
+      if (disposed) return;
+      setStatus(peer.connectionState);
+      if (peer.connectionState === 'connected') {
+        if (offerTimer) window.clearInterval(offerTimer);
+        // 재접속으로 연결됐다면 이전 시도의 실패 안내는 더 이상 사실이 아니다.
+        setError(null);
+      }
       if (peer.connectionState === 'failed') publishVideoFailure('peer_connection_failed');
     };
     peer.ontrack = (event) => {
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0];
     };
     peer.onicecandidate = (event) => {
-      if (event.candidate) send('ICE_CANDIDATE', event.candidate.toJSON());
+      if (!event.candidate) return;
+      const candidate = event.candidate.toJSON();
+      localCandidates.push(candidate);
+      send('ICE_CANDIDATE', candidate);
     };
 
     socket.onopen = async () => {
+      socketOpened = true;
       setStatus('signaling');
+      // 접속에 성공했으므로 지난 시도의 실패 안내는 더 이상 사실이 아니다.
+      setError(null);
       send('JOIN');
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -191,8 +244,8 @@ export function useConsultSignaling(
         localStream.getTracks().forEach((track) => peer.addTrack(track, localStream!));
         startCaptions();
         if (role === 'COUNSELOR') {
-          await makeOffer();
-          offerTimer = window.setInterval(() => void makeOffer(), 2000);
+          await sendOffer();
+          offerTimer = window.setInterval(() => void sendOffer(), 2000);
         }
       } catch {
         if (!disposed) setError('카메라 또는 마이크를 사용할 수 없습니다.');
@@ -200,38 +253,57 @@ export function useConsultSignaling(
       }
     };
 
-    socket.onmessage = (event) => {
-      void (async () => {
-        const message = JSON.parse(String(event.data)) as SignalingMessage;
-        if (message.type === 'ERROR') {
-          const payload = message.payload as { retryable?: boolean; message?: string } | undefined;
-          if (
-            payload?.retryable &&
-            role === 'COUNSELOR' &&
-            peer.signalingState === 'have-local-offer'
-          ) {
-            await peer.setLocalDescription({ type: 'rollback' });
-          } else if (!payload?.retryable) {
-            setError(payload?.message ?? '상담 연결에 실패했습니다.');
-          }
+    const handleMessage = async (raw: string) => {
+      const message = JSON.parse(raw) as SignalingMessage;
+      if (message.type === 'ERROR') {
+        const payload = message.payload as { retryable?: boolean; message?: string } | undefined;
+        // 재시도 가능한 오류는 대개 상대가 아직 입장하지 않은 경우다. offer 타이머가 다시 알린다.
+        if (!payload?.retryable) fail(payload?.message ?? '상담 연결에 실패했습니다.');
+        return;
+      }
+      if (message.type === 'OFFER' && role === 'USER') {
+        await applyRemoteDescription(message.payload as RTCSessionDescriptionInit);
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        send('ANSWER', answer);
+        return;
+      }
+      if (message.type === 'ANSWER' && role === 'COUNSELOR') {
+        // 재전송한 offer에 사용자가 다시 답하면 answer가 두 번 온다. 두 번째는 버린다.
+        if (peer.signalingState !== 'have-local-offer') return;
+        await applyRemoteDescription(message.payload as RTCSessionDescriptionInit);
+        return;
+      }
+      if (message.type === 'ICE_CANDIDATE' && message.payload) {
+        const candidate = message.payload as RTCIceCandidateInit;
+        if (!peer.remoteDescription) {
+          pendingRemoteCandidates.push(candidate);
           return;
         }
-        if (message.type === 'OFFER' && role === 'USER') {
-          await peer.setRemoteDescription(message.payload as RTCSessionDescriptionInit);
-          const answer = await peer.createAnswer();
-          await peer.setLocalDescription(answer);
-          send('ANSWER', answer);
-        } else if (message.type === 'ANSWER' && role === 'COUNSELOR') {
-          await peer.setRemoteDescription(message.payload as RTCSessionDescriptionInit);
-        } else if (message.type === 'ICE_CANDIDATE' && message.payload) {
-          await peer.addIceCandidate(message.payload as RTCIceCandidateInit);
-        } else if (message.type === 'CAPTION' && message.payload) {
-          const caption = message.payload as CaptionPayload;
-          if (typeof caption.text === 'string') setRemoteCaption(caption.text);
-        }
-      })().catch(() => setError('실시간 연결 정보를 처리하지 못했습니다.'));
+        await addRemoteCandidate(candidate);
+        return;
+      }
+      if (message.type === 'CAPTION' && message.payload) {
+        const caption = message.payload as CaptionPayload;
+        if (typeof caption.text === 'string') setRemoteCaption(caption.text);
+      }
     };
-    socket.onerror = () => setError('상담 연결 서버에 접속하지 못했습니다.');
+
+    socket.onmessage = (event) => {
+      handling = handling
+        .then(() => handleMessage(String(event.data)))
+        .catch(() => fail('실시간 연결 정보를 처리하지 못했습니다.'));
+    };
+    socket.onerror = () => fail('상담 연결 서버에 접속하지 못했습니다.');
+    socket.onclose = () => {
+      if (!socketOpened) {
+        fail('상담 연결 서버에 접속하지 못했습니다.');
+        return;
+      }
+      // 이미 영상까지 붙었으면 signaling이 닫혀도 통화는 유지된다.
+      if (peer.connectionState === 'connected') return;
+      fail('상담 연결이 끊어졌습니다. 잠시 후 다시 시도해 주세요.');
+    };
 
     return () => {
       disposed = true;
