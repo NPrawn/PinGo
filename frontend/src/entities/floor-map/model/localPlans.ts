@@ -213,6 +213,9 @@ export function hasLocalPlan(floorCode: string): boolean {
  * 백엔드에 등록된 이미지가 있으면 그것을 쓴다. 관리자가 올린 도면이 FE 번들보다 최신이기
  * 때문이다. 없으면 자체 이미지로 떨어지고, 그것도 없으면 null이다.
  */
-export function floorPlanImageUrl(map: { mapUrl: string | null; floorCode: string }): string | null {
+export function floorPlanImageUrl(map: {
+  mapUrl: string | null;
+  floorCode: string;
+}): string | null {
   return map.mapUrl ?? localPlanUrl(map.floorCode);
 }

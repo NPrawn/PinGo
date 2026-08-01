@@ -227,11 +227,7 @@ export function IndoorMapView({
     );
 
   return (
-    <div
-      className={styles.viewport}
-      ref={mapRef}
-      {...mapHandlers}
-    >
+    <div className={styles.viewport} ref={mapRef} {...mapHandlers}>
       <div
         className={styles.stage}
         style={{

@@ -139,7 +139,9 @@ describe('IndoorMapView 오버레이 연결', () => {
   it('좌표 프레임 값이 온전하지 않으면 오버레이를 생략한다', () => {
     const brokenFrame: FloorMap = { ...framedMap, originPxX: Number.NaN };
 
-    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [brokenFrame] }));
+    mockedHook.mockReturnValue(
+      hookState({ isPending: false, isError: false, data: [brokenFrame] }),
+    );
     render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
 
     expect(screen.queryByRole('img', { name: '현재 위치' })).not.toBeInTheDocument();
@@ -149,7 +151,9 @@ describe('IndoorMapView 오버레이 연결', () => {
   it('mapUrl이 없으면 자체 평면도로 떨어진다', () => {
     const withoutImage: FloorMap = { ...framedMap, mapUrl: null };
 
-    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [withoutImage] }));
+    mockedHook.mockReturnValue(
+      hookState({ isPending: false, isError: false, data: [withoutImage] }),
+    );
     render(<IndoorMapView stationId={1} currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />);
 
     const image = screen.getByRole('img', { name: 'B2 실내 지도' }).querySelector('image');
@@ -264,7 +268,11 @@ describe('IndoorMapView 목업 모드', () => {
   it('목업 모드에서도 넘겨받은 데이터가 있으면 그것을 우선한다', () => {
     mockedHook.mockReturnValue(hookState({ isPending: true, isError: false }));
     render(
-      <IndoorMapView stationId={1} useMockData currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }} />,
+      <IndoorMapView
+        stationId={1}
+        useMockData
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+      />,
     );
 
     // B2 지도인데도 현재 위치가 보인다 = 목업(B3) 대신 넘겨받은 값을 썼다.

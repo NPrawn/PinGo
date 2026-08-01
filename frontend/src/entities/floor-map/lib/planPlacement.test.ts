@@ -57,7 +57,10 @@ function applyTransform(transform: string, point: { px: number; py: number }) {
   // transform 목록은 왼쪽이 바깥이다. 점에는 오른쪽부터 적용한다.
   for (let index = steps.length - 1; index >= 0; index -= 1) {
     const [, op, rawArgs] = steps[index];
-    const args = rawArgs.trim().split(/[\s,]+/).map(Number);
+    const args = rawArgs
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
 
     if (op === 'translate') {
       px += args[0];

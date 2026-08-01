@@ -124,9 +124,7 @@ export function IndoorMapOverlay({
 
   /** 지도가 돌아간 만큼 되돌린다. 읽는 요소는 항상 화면에 바로 서 있어야 한다. */
   const upright = (point: PixelPoint): string | undefined =>
-    mapRotationDeg === 0
-      ? undefined
-      : `rotate(${-mapRotationDeg} ${point.px} ${point.py})`;
+    mapRotationDeg === 0 ? undefined : `rotate(${-mapRotationDeg} ${point.px} ${point.py})`;
 
   const routeSegments = floorSegments(pathNodes ?? [], floorId, project);
   const currentPoint = pointOnFloor(currentLocation, floorId, project);
@@ -335,7 +333,6 @@ const FACILITY_RADIUS = 65;
 /** 방향 부채꼴. 원본의 conic-gradient가 60도를 덮었으므로 반각은 30도다. */
 const BEAM_LENGTH = MARKER_RADIUS * 3.375;
 const BEAM_HALF_ANGLE_DEG = 30;
-
 
 /**
  * 마커 중심에서 오른쪽(0도)으로 뻗는 부채꼴을 그린다.

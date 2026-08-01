@@ -261,8 +261,7 @@ export function useMapGestures(follow?: FollowOptions) {
     /** 시점이 내 위치를 따라가는 중인지. 복귀 버튼을 보일지 판단하는 데 쓴다. */
     isFollowing: following && followView !== null,
     /** 추종이 없을 때 확대·이동된 상태인지. */
-    isTransformed:
-      active.scale !== 1 || active.x !== 0 || active.y !== 0 || active.rotation !== 0,
+    isTransformed: active.scale !== 1 || active.x !== 0 || active.y !== 0 || active.rotation !== 0,
     handlers: {
       onPointerDown,
       onPointerMove,

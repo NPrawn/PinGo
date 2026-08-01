@@ -15,7 +15,6 @@ import { PhoneFrame } from '@/widgets/phone-frame';
 import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
 import styles from './NavigationPage.module.css';
 
-
 /**
  * 지도 위 시설 필터.
  *
