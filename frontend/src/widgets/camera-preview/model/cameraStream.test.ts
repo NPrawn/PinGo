@@ -124,6 +124,124 @@ describe('cameraStream', () => {
     expect(useCameraStore.getState().stream).toBeNull();
   });
 
+  /**
+   * 권한 계층은 실패를 결과 객체로 돌려주게 되어 있지만, 예외가 새어 나오면 상태가
+   * `starting`에 갇힌다. 그러면 화면은 이유 없는 대체 그림만 보여준다 — 안내 문구는
+   * `starting`에서 아무것도 그리지 않는다.
+   */
+  it('권한 요청이 거부를 던져도 상태를 error로 끝낸다', async () => {
+    mockedRequest.mockRejectedValue(new Error('예기치 않은 실패'));
+
+    // 거부도 일시적 실패로 보고 재시도하므로, 그 대기를 지나가야 끝난다.
+    const pending = acquireCamera();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await pending;
+
+    expect(useCameraStore.getState()).toEqual({ stream: null, status: 'error' });
+  });
+
+  /**
+   * 안내 화면에서 재인식을 누르면 XR 세션 종료(`void controller.stop()`)가 결과를 기다리지 않고
+   * 촬영 화면이 곧바로 카메라를 요구한다. 세션이 아직 카메라를 쥐고 있으면 첫 시도가 실패한다.
+   */
+  it('일시적 실패는 다시 시도해서 열린다', async () => {
+    const stream = fakeStream();
+    mockedRequest
+      .mockResolvedValueOnce({ kind: 'camera', status: 'error' })
+      .mockResolvedValueOnce(granted(stream));
+
+    const pending = acquireCamera();
+    await vi.advanceTimersByTimeAsync(300);
+    await pending;
+
+    expect(mockedRequest).toHaveBeenCalledTimes(2);
+    expect(useCameraStore.getState()).toEqual({ stream, status: 'live' });
+  });
+
+  it('재시도를 다 써도 안 열리면 error로 끝낸다', async () => {
+    mockedRequest.mockResolvedValue({ kind: 'camera', status: 'error' });
+
+    const pending = acquireCamera();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await pending;
+
+    // 첫 시도 + 재시도 2회
+    expect(mockedRequest).toHaveBeenCalledTimes(3);
+    expect(useCameraStore.getState()).toEqual({ stream: null, status: 'error' });
+  });
+
+  /** 사용자 결정과 환경은 다시 물어도 결과가 같다. 헛되게 두 번 더 묻지 않는다. */
+  it.each(['denied', 'unsupported'] as const)('%s는 다시 시도하지 않는다', async (status) => {
+    mockedRequest.mockResolvedValue({ kind: 'camera', status });
+
+    await acquireCamera();
+
+    expect(mockedRequest).toHaveBeenCalledTimes(1);
+    expect(useCameraStore.getState().status).toBe(status);
+  });
+
+  /** 재시도를 기다리는 사이 화면이 모두 떠났으면 카메라를 열지 않는다. */
+  it('재시도 대기 중 마지막 화면이 떠나면 그만둔다', async () => {
+    mockedRequest.mockResolvedValue({ kind: 'camera', status: 'error' });
+
+    const pending = acquireCamera();
+    releaseCamera();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await pending;
+
+    expect(mockedRequest).toHaveBeenCalledTimes(1);
+    expect(useCameraStore.getState()).toEqual({ stream: null, status: 'idle' });
+  });
+
+  /**
+   * XR 세션이 열리는 순간 진행 중인 시도가 있으면, 그 시도는 결과를 반영해서는 안 된다.
+   * 나중에 깨어나 카메라를 열면 세션이 카메라를 쓰는 중이라 pose가 끊긴다(11.8).
+   */
+  it('stopCamera는 진행 중인 시도가 카메라를 되살리지 못하게 한다', async () => {
+    const stream = fakeStream();
+    mockedRequest.mockResolvedValue(granted(stream));
+
+    const pending = acquireCamera();
+    stopCamera();
+    await pending;
+
+    expect(mockedStop).toHaveBeenCalledWith(stream);
+    expect(useCameraStore.getState()).toEqual({ stream: null, status: 'idle' });
+  });
+
+  /**
+   * **세대 가드가 없으면 여기서 카메라가 되살아난다.**
+   *
+   * `stopCamera`가 붙잡은 수를 0으로 만들어도, 그 뒤에 다른 화면이 붙잡으면 다시 1이 된다.
+   * 그 상태에서 무효가 된 옛 시도가 늦게 응답하면 "아직 보는 화면이 있다"고 판단해 스트림을
+   * 스토어에 넣는다. XR 세션이 이미 열린 뒤라면 그 순간 pose가 끊긴다(11.8).
+   */
+  it('stopCamera 뒤 새 화면이 붙잡아도 옛 시도가 카메라를 되살리지 않는다', async () => {
+    const stale = fakeStream();
+    const fresh = fakeStream();
+    let answerStale!: (result: ReturnType<typeof granted>) => void;
+    mockedRequest
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerStale = resolve;
+          }),
+      )
+      .mockResolvedValue(granted(fresh));
+
+    const staleAttempt = acquireCamera();
+    stopCamera();
+    // XR을 닫고 돌아온 화면이 다시 붙잡는다. 붙잡은 수가 1로 돌아온다.
+    await acquireCamera();
+    // 이제 옛 시도가 늦게 응답한다.
+    answerStale(granted(stale));
+    await staleAttempt;
+
+    // 늦게 온 스트림은 정리되고, 화면은 새 시도의 것을 그대로 쓴다.
+    expect(mockedStop).toHaveBeenCalledWith(stale);
+    expect(useCameraStore.getState()).toEqual({ stream: fresh, status: 'live' });
+  });
+
   it('거부와 미지원을 구분해 남긴다', async () => {
     mockedRequest.mockResolvedValue({ kind: 'camera', status: 'denied' });
     await acquireCamera();

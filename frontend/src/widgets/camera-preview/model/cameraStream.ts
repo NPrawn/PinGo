@@ -25,6 +25,14 @@ let holders = 0;
 /** 진행 중인 요청. 화면 두 개가 동시에 붙잡아도 카메라를 한 번만 연다. */
 let starting: Promise<void> | null = null;
 let graceTimer: number | null = null;
+/**
+ * 지금 유효한 시도의 세대.
+ *
+ * `stopCamera`가 값을 올려 **진행 중인 시도를 무효로 만든다.** 재시도를 기다리는 사이에
+ * XR 세션이 열리면 그 시도는 결과를 반영해서는 안 된다 — 세션이 카메라를 쓰는 중에 미리보기가
+ * 되살아나면 pose가 끊긴다(11.8).
+ */
+let generation = 0;
 
 /**
  * 마지막 화면이 떠난 뒤 스트림을 정리하기까지 기다리는 시간.
@@ -45,6 +53,22 @@ const GRACE_MS = 1500;
 const REAR_CAMERA: MediaTrackConstraints = { facingMode: { ideal: 'environment' } };
 
 /**
+ * 카메라 열기가 실패했을 때 다시 시도하는 간격.
+ *
+ * **XR 세션이 카메라를 놓는 시차 때문이다.** 안내 화면에서 위치 재인식을 누르면 촬영 화면으로
+ * 넘어가는데, 안내 화면의 언마운트 정리가 `void controller.stop()`으로 세션 종료를 **시작만**
+ * 하고 결과를 기다리지 않는다(`useXrTracking`). `session.end()`가 비동기라서, 새 화면이 곧바로
+ * `getUserMedia`를 부르면 세션이 아직 카메라를 쥐고 있어 `NotReadableError`로 실패할 수 있다.
+ * 실기기에서만 나타나는 경합이다.
+ *
+ * XR 컨트롤러 상태를 직접 들여다보는 대신 재시도로 푼다. 다른 앱이 카메라를 잠깐 잡고 있는
+ * 경우까지 같은 방법으로 덮이고, 위젯이 XR을 알 필요도 없어진다.
+ *
+ * **`denied`·`unsupported`는 다시 시도하지 않는다.** 사용자 결정이거나 환경이라 결과가 같다.
+ */
+const RETRY_DELAYS_MS: readonly number[] = [250, 750];
+
+/**
  * 미리보기를 시작한다. 이미 켜져 있으면 그대로 쓴다.
  *
  * 카메라 흐름 안에서는 화면이 바뀌어도 같은 스트림을 이어 쓴다. 화면마다 새로 열면 권한이
@@ -58,32 +82,89 @@ export async function acquireCamera(): Promise<void> {
   if (starting) return starting;
 
   useCameraStore.setState({ status: 'starting' });
-  starting = requestCameraPermission(REAR_CAMERA)
-    .then((result) => {
-      if (result.status === 'granted' && result.stream) {
-        // 요청이 끝나기 전에 마지막 화면이 떠났다면 그대로 정리한다. 안 그러면 아무도 보지
-        // 않는 카메라가 켜진 채 남는다.
-        if (holders === 0) {
-          stopMediaStream(result.stream);
-          useCameraStore.setState({ stream: null, status: 'idle' });
-          return;
-        }
+  starting = openStream().finally(() => {
+    starting = null;
+  });
 
-        useCameraStore.setState({ stream: result.stream, status: 'live' });
+  return starting;
+}
+
+/**
+ * 스트림을 연다. 일시적 실패는 정해진 횟수만큼 다시 시도한다.
+ *
+ * **어떤 경로로 끝나도 `starting`에 남지 않는다.** 권한 계층은 실패를 결과 객체로 돌려주게
+ * 되어 있지만, 예기치 않은 예외가 새어 나오면 상태가 `starting`에 갇힌다. 그러면 화면은 이유
+ * 없는 대체 그림만 보여주고 — 안내 문구는 `starting`에서 아무것도 그리지 않는다 — 사용자는
+ * 무엇을 해야 하는지 알 수 없다. 처리되지 않은 프로미스 거부도 함께 남는다.
+ */
+async function openStream(): Promise<void> {
+  const mine = generation;
+  /** 이 시도가 아직 유효한지. 아무도 보지 않게 됐거나 `stopCamera`가 끊었으면 거짓이다. */
+  const alive = (): boolean => generation === mine && holders > 0;
+
+  for (let attempt = 0; ; attempt += 1) {
+    const result = await requestCameraPermission(REAR_CAMERA).catch((error: unknown) => ({
+      status: 'error' as const,
+      stream: undefined,
+      error: { name: errorNameOf(error), message: String(error) },
+    }));
+
+    if (result.status === 'granted' && result.stream) {
+      // 요청이 끝나기 전에 화면이 떠났거나 XR이 끼어들었다면 그대로 정리한다. 안 그러면
+      // 아무도 보지 않는 카메라가 켜진 채 남고, XR 세션 중이면 pose가 끊긴다.
+      if (!alive()) {
+        stopMediaStream(result.stream);
+        settleIdle(mine);
         return;
       }
 
-      // `granted`인데 스트림이 없는 경우는 여기로 온다. 실제로는 없지만 타입이 허용하고,
-      // 그 상태를 `live`로 두면 화면이 영상이 있다고 믿는다.
-      const status = result.status === 'granted' ? 'error' : result.status;
+      useCameraStore.setState({ stream: result.stream, status: 'live' });
+      return;
+    }
+
+    // `granted`인데 스트림이 없는 경우는 여기로 온다. 실제로는 없지만 타입이 허용하고,
+    // 그 상태를 `live`로 두면 화면이 영상이 있다고 믿는다.
+    const status: CameraStatus = result.status === 'granted' ? 'error' : result.status;
+
+    if (!alive()) {
+      settleIdle(mine);
+      return;
+    }
+
+    if (status !== 'error' || attempt >= RETRY_DELAYS_MS.length) {
       warnWhyUnavailable(status, result.error);
       useCameraStore.setState({ stream: null, status });
-    })
-    .finally(() => {
-      starting = null;
-    });
+      return;
+    }
 
-  return starting;
+    await wait(RETRY_DELAYS_MS[attempt]);
+
+    if (!alive()) {
+      settleIdle(mine);
+      return;
+    }
+  }
+}
+
+/**
+ * 무효가 된 시도를 조용히 끝낸다.
+ *
+ * **`stopCamera`가 이미 정리했다면 상태를 건드리지 않는다.** 그쪽이 `idle`로 맞춰 두었고,
+ * 그 뒤에 새 시도가 시작됐을 수도 있어 덮으면 그 시도의 상태를 지운다.
+ */
+function settleIdle(mine: number): void {
+  if (generation !== mine) return;
+  useCameraStore.setState({ stream: null, status: 'idle' });
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function errorNameOf(error: unknown): string {
+  return error instanceof Error ? error.name : 'UnknownError';
 }
 
 /** 화면 하나가 미리보기를 놓는다. 마지막이면 잠시 뒤 스트림을 끈다. */
@@ -108,6 +189,15 @@ export function releaseCamera(): void {
 export function stopCamera(): void {
   cancelGrace();
   holders = 0;
+  /**
+   * 진행 중인 시도를 무효로 만든다.
+   *
+   * **세대를 올리고 `starting`을 비운다.** 올리지 않으면 재시도를 기다리던 시도가 나중에
+   * 깨어나 카메라를 열고, XR 세션이 이미 열린 뒤라면 pose가 끊긴다. `starting`을 비우지 않으면
+   * 다음 `acquireCamera`가 그 옛 프로미스를 돌려주어 카메라가 다시 열리지 않는다.
+   */
+  generation += 1;
+  starting = null;
 
   const { stream } = useCameraStore.getState();
   if (stream) stopMediaStream(stream);
