@@ -1,0 +1,25 @@
+/**
+ * 카메라 영역 위에 얹는 안내.
+ *
+ * 어두운 뷰파인더 위에 놓이므로 밝은 글자에 반투명 배경을 둔다. 화면마다 카메라 영역의 크기가
+ * 달라서 위치는 호출부가 `className`으로 정한다. 기본은 영역 가운데다.
+ */
+.notice {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  left: 16px;
+  z-index: 3;
+  padding: 10px 14px;
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: center;
+  color: rgb(223 246 230 / 92%);
+  background: rgb(6 19 16 / 78%);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgb(127 239 195 / 22%);
+  border-radius: 12px;
+  transform: translateY(-50%);
+}

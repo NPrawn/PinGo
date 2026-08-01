@@ -404,9 +404,14 @@ async function requestSingleMediaPermission(
 
 /**
  * 카메라 권한만 요청한다. 허용되면 미리보기에 사용할 수 있는 stream을 함께 반환한다.
+ *
+ * `video` 제약을 호출부가 덮어쓸 수 있다. 권한 화면은 어느 카메라든 상관없지만, 실내 촬영은
+ * 후면 카메라여야 한다 — 기본값인 `{ video: true }`는 폰에서 전면 카메라를 준다.
  */
-export function requestCameraPermission(): Promise<SingleMediaPermissionResult> {
-  return requestSingleMediaPermission('camera', { video: true });
+export function requestCameraPermission(
+  video: MediaTrackConstraints | true = true,
+): Promise<SingleMediaPermissionResult> {
+  return requestSingleMediaPermission('camera', { video });
 }
 
 /**
