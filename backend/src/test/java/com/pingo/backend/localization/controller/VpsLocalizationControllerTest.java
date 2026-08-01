@@ -42,7 +42,9 @@ class VpsLocalizationControllerTest {
                         "loc_01JABC",
                         LocalizationResultStatus.LOW_CONFIDENCE,
                         "YS-2026-07-23.1",
-                        List.of(),
+                        null,
+                        null,
+                        null,
                         List.of(LocalizationFallbackOption.RETRY_CAPTURE),
                         1234
                 ));

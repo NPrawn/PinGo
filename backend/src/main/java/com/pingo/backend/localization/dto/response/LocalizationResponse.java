@@ -29,11 +29,32 @@ public record LocalizationResponse(
         @Schema(description = "위치추정에 사용된 AI 맵 버전", example = "YS-2026-07-23.1")
         String mapVersion,
 
-        @ArraySchema(
-                schema = @Schema(implementation = LocalizationCandidateResponse.class),
-                arraySchema = @Schema(description = "위치 인식 후보 목록. 후보가 없으면 빈 배열을 반환한다.")
+        @Schema(
+                description = """
+                        확정한 실내 위치. 캐노니컬 미터 좌표이며 지도에 점으로 찍는다.
+                        위치를 확정하지 못했거나 해당 층의 좌표 정합이 없으면 null 이다.
+                        """,
+                nullable = true
         )
-        List<LocalizationCandidateResponse> candidates,
+        LocalizedPositionResponse position,
+
+        @Schema(
+                description = """
+                        경로 탐색을 시작할 노드 ID. position 에서 가장 가까운 노드이며
+                        POST /api/routes/indoor 의 startNodeId 로 그대로 넣으면 된다.
+                        위치를 확정하지 못하면 null 이다.
+                        """,
+                example = "123",
+                nullable = true
+        )
+        Long startNodeId,
+
+        @Schema(
+                description = "경로 시작 노드의 표시 이름. 시설이 붙어 있으면 시설명이다.",
+                example = "B2-B3 엘리베이터 A",
+                nullable = true
+        )
+        String startNodeLabel,
 
         @ArraySchema(
                 schema = @Schema(

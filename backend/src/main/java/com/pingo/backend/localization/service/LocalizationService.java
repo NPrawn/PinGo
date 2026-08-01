@@ -1,13 +1,18 @@
 package com.pingo.backend.localization.service;
 
+import com.pingo.backend.localization.anchoring.AnchoredLocation;
+import com.pingo.backend.localization.anchoring.ColmapToCanonicalMapper;
+import com.pingo.backend.localization.anchoring.IndoorPositionResolver;
 import com.pingo.backend.localization.client.AiLocalizationClient;
 import com.pingo.backend.localization.client.AiLocalizationClientErrorType;
 import com.pingo.backend.localization.client.AiLocalizationClientException;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
 import com.pingo.backend.localization.dto.request.LocalizationRequestMetadata;
 import com.pingo.backend.localization.dto.response.LocalizationResponse;
+import com.pingo.backend.localization.dto.response.LocalizedPositionResponse;
 import com.pingo.backend.localization.dto.response.LocalizationResultStatus;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -18,17 +23,23 @@ public class LocalizationService {
     private final AiLocalizationStatusMapper statusMapper;
     private final LocalizationFallbackPolicy fallbackPolicy;
     private final AiLocalizationRequestMapper requestMapper;
+    private final ColmapToCanonicalMapper canonicalMapper;
+    private final IndoorPositionResolver positionResolver;
 
     public LocalizationService(
             AiLocalizationClient aiLocalizationClient,
             AiLocalizationStatusMapper statusMapper,
             LocalizationFallbackPolicy fallbackPolicy,
-            AiLocalizationRequestMapper requestMapper
+            AiLocalizationRequestMapper requestMapper,
+            ColmapToCanonicalMapper canonicalMapper,
+            IndoorPositionResolver positionResolver
     ) {
         this.aiLocalizationClient = aiLocalizationClient;
         this.statusMapper = statusMapper;
         this.fallbackPolicy = fallbackPolicy;
         this.requestMapper = requestMapper;
+        this.canonicalMapper = canonicalMapper;
+        this.positionResolver = positionResolver;
     }
 
     public LocalizationResponse localize(
@@ -57,11 +68,17 @@ public class LocalizationService {
                     aiResponse.failureReason()
             );
 
-            return responseFor(
+            Optional<AnchoredLocation> anchored = anchor(resultStatus, aiResponse, metadata);
+            LocalizationResultStatus finalStatus = withAnchoringOutcome(resultStatus, anchored);
+            return new LocalizationResponse(
                     requestId,
+                    finalStatus,
                     responseMapVersion(aiResponse, metadata),
-                    processingTimeMs(aiResponse),
-                    resultStatus
+                    anchored.map(LocalizationService::toPosition).orElse(null),
+                    anchored.map(AnchoredLocation::startNodeId).orElse(null),
+                    anchored.map(AnchoredLocation::startNodeLabel).orElse(null),
+                    fallbackPolicy.optionsFor(finalStatus),
+                    processingTimeMs(aiResponse)
             );
         } catch (AiLocalizationClientException e) {
             return responseFor(
@@ -71,6 +88,71 @@ public class LocalizationService {
                     mapClientError(e.getErrorType())
             );
         }
+    }
+
+    /**
+     * AI 가 돌려준 COLMAP pose 를 캐노니컬 좌표로 옮기고 경로 진입 노드를 찾는다.
+     *
+     * <p>다음 경우에는 비어 있다.
+     * <ul>
+     *     <li>위치 인식이 성공하지 않은 경우</li>
+     *     <li>AI 가 pose 나 카메라 중심을 주지 않은 경우</li>
+     *     <li><b>해당 역·층의 좌표 정합이 없는 경우</b> — 역삼역 B1 은 COLMAP 커버가 없어 여기 해당한다</li>
+     *     <li>층이나 노드를 찾지 못한 경우</li>
+     * </ul>
+     *
+     * <p>{@code LOW_CONFIDENCE} 는 여기 오지 않는다. AI 가 그 상태를 낼 때
+     * ({@code LOW_GEOMETRIC_QUALITY}) 카메라 중심을 {@code null} 로 비우기 때문이다.
+     */
+    private Optional<AnchoredLocation> anchor(
+            LocalizationResultStatus resultStatus,
+            AiLocalizationResponse aiResponse,
+            LocalizationRequestMetadata metadata
+    ) {
+        if (resultStatus != LocalizationResultStatus.SUCCESS || aiResponse.pose() == null) {
+            return Optional.empty();
+        }
+
+        Long stationId = metadata.stationId();
+        String floorCode = aiResponse.floor();
+        return canonicalMapper.toCanonical(stationId, floorCode, aiResponse.pose().cameraCenter())
+                .flatMap(point -> positionResolver.resolve(
+                        stationId,
+                        floorCode,
+                        point,
+                        canonicalMapper.accuracyOf(stationId, floorCode).orElseThrow()));
+    }
+
+    /**
+     * 위치 인식은 성공했지만 앵커링이 안 된 경우의 상태.
+     *
+     * <p>그대로 {@code SUCCESS} 로 두면 좌표도 경로 진입점도 없는데
+     * {@code fallbackOptions} 까지 비어서 클라이언트가 갈 화면이 없어진다. 실제로 역삼역 B1 은
+     * COLMAP 커버가 없어 AI 가 성공해도 항상 이 상태가 된다.
+     *
+     * <p>{@code MAP_NOT_READY} 로 내린다. 뜻이 "해당 역 또는 층의 VPS 맵이 준비되지 않음"이고
+     * 사용자가 겪는 상황도 같다 — 지도 위에 자기 위치를 찍을 수 없다. 대체 수단은
+     * {@link LocalizationFallbackPolicy} 가 안내한다.
+     */
+    private LocalizationResultStatus withAnchoringOutcome(
+            LocalizationResultStatus resultStatus,
+            Optional<AnchoredLocation> anchored
+    ) {
+        if (resultStatus == LocalizationResultStatus.SUCCESS && anchored.isEmpty()) {
+            return LocalizationResultStatus.MAP_NOT_READY;
+        }
+        return resultStatus;
+    }
+
+    private static LocalizedPositionResponse toPosition(AnchoredLocation anchored) {
+        return new LocalizedPositionResponse(
+                anchored.floorId(),
+                anchored.floorCode(),
+                anchored.mapX(),
+                anchored.mapY(),
+                anchored.mapZ(),
+                anchored.accuracyM()
+        );
     }
 
     private LocalizationResponse responseFor(
@@ -83,7 +165,9 @@ public class LocalizationService {
                 requestId,
                 resultStatus,
                 mapVersion,
-                List.of(),
+                null,
+                null,
+                null,
                 fallbackPolicy.optionsFor(resultStatus),
                 processingTimeMs
         );
