@@ -87,10 +87,17 @@ export function RouteOptionsPage() {
    * `selected`만 옮기면 화면은 갈 수 있는 경로를 가리키는데 스토어에는 갈 수 없는 경로가 남는다.
    * 안내·도착 화면은 스토어를 읽으므로, CTA에 "빠른 경로"라고 적힌 채 엘리베이터 경로의 출구로
    * 안내하게 된다.
+   *
+   * **의존성에 객체가 아니라 유형 문자열을 둔다.** `selected`는 조회 응답 배열의 원소이고
+   * TanStack Query가 structural sharing으로 참조를 지켜 주므로 지금은 객체를 넣어도 리페치마다
+   * 실행되지 않는다. 다만 그것은 라이브러리 동작에 기대는 것이라, `structuralSharing`을 끄거나
+   * `select`로 배열을 가공하는 순간 조용히 매번 실행되기 시작한다. 원시값을 두면 "선택된 경로
+   * 유형이 바뀔 때만"이라는 조건이 그 자체로 성립한다.
    */
+  const selectedRouteType = selected?.routeType;
   useEffect(() => {
-    if (selected && selected.routeType !== route) setRoute(selected.routeType);
-  }, [selected, route, setRoute]);
+    if (selectedRouteType && selectedRouteType !== route) setRoute(selectedRouteType);
+  }, [selectedRouteType, route, setRoute]);
 
   useEffect(() => {
     if (!confirmation) return;
