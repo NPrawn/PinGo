@@ -320,7 +320,7 @@ class FloorMapServiceTest {
         }
         ReflectionTestUtils.setField(station, "id", 1L);
 
-        StationFloor floor = StationFloor.create(station, "B2", "지하 2층", 1);
+        StationFloor floor = StationFloor.create(station, "B2", "지하 2층", 1, null);
         ReflectionTestUtils.setField(floor, "id", floorId);
         return floor;
     }
@@ -354,7 +354,7 @@ class FloorMapServiceTest {
     }
 
     private StationFloor createFloorOf(Long floorId, Station station, String floorCode, int floorOrder) {
-        StationFloor floor = StationFloor.create(station, floorCode, floorCode, floorOrder);
+        StationFloor floor = StationFloor.create(station, floorCode, floorCode, floorOrder, null);
         ReflectionTestUtils.setField(floor, "id", floorId);
         return floor;
     }

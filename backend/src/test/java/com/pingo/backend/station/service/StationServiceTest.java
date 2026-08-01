@@ -139,7 +139,7 @@ class StationServiceTest {
     @Test
     void createFloorNormalizesCodeAndReturnsSavedFloorId() {
         Station station = createStation(1L);
-        FloorCreateRequest request = new FloorCreateRequest(" b2 ", " 지하 2층 ", 1);
+        FloorCreateRequest request = new FloorCreateRequest(" b2 ", " 지하 2층 ", 1, null);
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(station));
         when(stationFloorRepository.existsByStationIdAndFloorCode(1L, "B2")).thenReturn(false);
         when(stationFloorRepository.saveAndFlush(any(StationFloor.class))).thenAnswer(invocation -> {
@@ -156,7 +156,7 @@ class StationServiceTest {
     @Test
     void createFloorThrowsWhenFloorCodeIsDuplicated() {
         Station station = createStation(1L);
-        FloorCreateRequest request = new FloorCreateRequest("B2", "지하 2층", 1);
+        FloorCreateRequest request = new FloorCreateRequest("B2", "지하 2층", 1, null);
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(station));
         when(stationFloorRepository.existsByStationIdAndFloorCode(1L, "B2")).thenReturn(true);
 
@@ -170,7 +170,7 @@ class StationServiceTest {
     void updateFloorThrowsWhenAnotherFloorUsesSameCode() {
         Station station = createStation(1L);
         StationFloor floor = createFloor(2L, station, "B2", 1);
-        FloorUpdateRequest request = new FloorUpdateRequest("B1", "지하 1층", 2);
+        FloorUpdateRequest request = new FloorUpdateRequest("B1", "지하 1층", 2, null);
         when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
         when(stationFloorRepository.existsByStationIdAndFloorCodeAndIdNot(1L, "B1", 2L))
                 .thenReturn(true);
@@ -238,7 +238,7 @@ class StationServiceTest {
     }
 
     private StationFloor createFloor(Long id, Station station, String floorCode, int floorOrder) {
-        StationFloor floor = StationFloor.create(station, floorCode, floorCode, floorOrder);
+        StationFloor floor = StationFloor.create(station, floorCode, floorCode, floorOrder, null);
         ReflectionTestUtils.setField(floor, "id", id);
         return floor;
     }
