@@ -39,8 +39,7 @@
 ```json
 {
   "success": true,
-  "data": {},
-  "message": null
+  "data": {}
 }
 ```
 
@@ -49,11 +48,16 @@
 ```json
 {
   "success": false,
-  "data": null,
-  "message": "오류 메시지",
-  "errorCode": "ERROR_CODE"
+  "code": "ERROR_CODE",
+  "message": "오류 메시지"
 }
 ```
+
+**값이 `null`인 봉투 필드는 응답에서 빠진다.** `ApiResponse`에 `@JsonInclude(NON_NULL)`이 붙어 있어서, 성공 응답에는 `code`가 없고 실패 응답에는 `data`가 없다. 문서의 다른 예시에 `"message": null`처럼 적혀 있는 곳은 실제로는 그 필드가 나오지 않는다.
+
+**이 규칙은 봉투에만 적용된다.** `data` 안쪽 DTO는 `null`도 그대로 실린다. 예를 들어 위치 인식 응답의 `position.forwardMap`은 값이 없으면 `null`로 나온다.
+
+오류 코드 필드 이름은 **`code`**다. `errorCode`가 아니다.
 
 ### 2.3 공통 HTTP 상태 코드
 
@@ -419,8 +423,8 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 {
   "success": false,
   "data": false,
-  "message": "이미 종료된 세션입니다.",
-  "errorCode": "USER_SESSION_ALREADY_ENDED"
+  "code": "USER_SESSION_ALREADY_ENDED",
+  "message": "이미 종료된 세션입니다."
 }
 ```
 
