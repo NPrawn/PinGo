@@ -139,7 +139,7 @@ function pixelToMeter(px, py, floor) {
 
 | 값 | 출처 |
 |---|---|
-| `anchor.x`, `anchor.y`, `anchor.floorId` | 확정된 지도 미터 좌표 (`candidates[].mapX/mapY`) |
+| `anchor.x`, `anchor.y`, `anchor.floorId` | 확정된 지도 미터 좌표 (`position.mapX/mapY/floorId`) |
 | `anchor.xr` = `(X, Z)` | 같은 시점 `XRFrame.getViewerPose()`의 위치. **확정 주기(11.4)로 걸러진 스냅샷이 아니라 그 순간의 원시 pose여야 한다.** 정지 상태 heartbeat가 5초라 스냅샷을 쓰면 앵커가 그만큼 어긋난다 |
 | `anchor.forwardXr` | 같은 시점 단말 전방의 XR 평면 단위벡터. `yawDegOf`가 반환하는 ψ에 대해 `(-sin ψ, -cos ψ)`. WebXR 뷰어의 전방이 `-Z`이기 때문이다 |
 | `anchor.forwardMap` | 같은 시점 단말 전방의 캐노니컬 미터 평면 단위벡터. **위치 인식 응답의 방향 필드에서 받는다(§8.5)** |
@@ -207,6 +207,8 @@ const sinA = f1m.x * f2.y - f1m.y * f2.x;
 | ΔY (앵커 대비) | 층 전환(상승·하강) 감지 |
 | `floorId` | 위치 재인식·수동 선택·경로 단계로 확정 |
 
+층 전환 판정에 쓸 **층별 기준 높이는 `GET /api/stations/{stationId}/maps` 응답의 `nominalZ`** 로 받는다(역삼역 B1=5 · B2=0 · B3=−5). 하드코딩하지 않는다. 다만 이 값은 **그 층 바닥 하나**뿐이라 B0.5처럼 층 안에서 높이가 갈리는 구간은 구분할 수 없다.
+
 층 전환 판정은 **경로 단계와 ΔY를 결합**한다. 경로에 `moveType = stair`·`escalator`·`elevator` 간선이 있으므로, 해당 구간을 지나는 중에 프레임 `z` 차이(B2=0, B3=−5)와 부호·크기가 대체로 일치하는 ΔY가 관측되면 층 전환으로 판정한다. 명목값이 provisional이어도 부호와 대략적 크기만 쓰므로 실측 층고 확정 전에도 동작한다.
 
 ΔY 단독으로는 "몇 층인지"를 정할 수 없고 "올라가는 중/내려가는 중"만 정할 수 있다.
@@ -219,7 +221,7 @@ const sinA = f1m.x * f2.y - f1m.y * f2.x;
 
 | 항목 | 확정 내용 |
 |---|---|
-| 위치 | 위치 인식 응답 `candidates[]` 안쪽. 후보마다 방향이 다르므로 후보별 필드다 |
+| 위치 | 위치 인식 응답 `position` 안쪽. **S15P11A206-128 에서 `candidates[]` 배열을 없애고 좌표 한 점(`position`)으로 바꿨다** — 후보별 필드가 아니라 단일 필드다 |
 | 좌표계 | **캐노니컬.** 즉 같은 응답의 `mapX`/`mapY`와 동일한 프레임이다 |
 | 형태 | **수평면 2D `(x, y)` 단위벡터.** 각도가 아니다 |
 | 산출 | 새로 계산하는 것이 아니다. `HLOC_COLMAP_SPRING_파이프라인_설계서.md` 8.1~8.2가 `forward_colmap = Rᵀ[0,0,1]ᵀ`에 `R_anchor`를 적용해 지도 평면에 투영하는 방법을 이미 정의한다 |
