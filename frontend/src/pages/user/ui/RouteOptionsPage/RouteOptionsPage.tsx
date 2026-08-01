@@ -218,10 +218,17 @@ export function RouteOptionsPage() {
             {/*
               출발·도착 노드가 비어도 조회를 걸 수 없다. 사용자가 할 일이 서로 다르므로
               "경로가 없다"로 뭉뚱그리지 않고 각각 안내한다.
+
+              **목적지 이름이 있는데 노드가 없는 경우를 따로 다룬다.** 목적지 검색은 이름과
+              좌표를 먼저 넣고 노드는 출구 추천·시설 조회를 거쳐 채우는데, 그 호출이 실패하면
+              이름만 남는다. 그때 "목적지를 먼저 선택해 주세요"라고 하면 화면 위에 목적지가
+              적혀 있는 채로 고르라는 말이 되어 사용자가 무엇을 해야 할지 알 수 없다.
             */}
             {stationId !== null && targetNodeId === null && (
-              <p className={styles.notice} role="status">
-                목적지를 먼저 선택해 주세요.
+              <p className={styles.notice} role={destination ? 'alert' : 'status'}>
+                {destination
+                  ? '목적지까지 가는 실내 경로를 찾지 못했어요. 목적지를 다시 선택해 주세요.'
+                  : '목적지를 먼저 선택해 주세요.'}
               </p>
             )}
 
