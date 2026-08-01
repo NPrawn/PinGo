@@ -1,16 +1,7 @@
 import { useNavigationStore } from '@/entities/navigation';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
-import {
-  Blob,
-  BlobHero,
-  BlobPin,
-  ButtonLink,
-  LivePill,
-  Spring,
-  Sub,
-  Title,
-} from '@/shared/ui';
+import { Blob, BlobHero, BlobPin, ButtonLink, LivePill, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './ArrivalPage.module.css';
 
@@ -18,7 +9,8 @@ import styles from './ArrivalPage.module.css';
 export function ArrivalPage() {
   const route = useNavigationStore((state) => state.route);
   const destination = useNavigationStore((state) => state.destination) ?? '선택한 목적지';
-  const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
+  // TODO: 출구는 경로 응답(8.2)의 마지막 노드에서 와야 한다. 프로토타입에서 옮겨온 값이다.
+  const exit = route === 'elevator_only' ? '2번 출입구' : '7번 출입구';
 
   return (
     <PhoneFrame layout="hero" bodyClassName={styles.body}>

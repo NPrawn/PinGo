@@ -109,7 +109,8 @@ export function NavigationPage() {
   useEffect(() => {
     endRelocalize();
   }, [endRelocalize]);
-  const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
+  // TODO(297): 출구는 경로 응답(8.2)의 마지막 노드에서 와야 한다. 프로토타입에서 옮겨온 값이다.
+  const exit = route === 'elevator_only' ? '2번 출입구' : '7번 출입구';
   const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   /** 켜 둔 시설 유형(`facilityType`). null이면 시설을 그리지 않는다. */

@@ -95,8 +95,38 @@ function floorMap(
   };
 }
 
+/**
+ * 경로 옵션. B3 승강장(205)에서 7번 출구(325)로 가는 실제 조합을 담았다.
+ *
+ * 역삼역은 B1↔B2에 엘리베이터가 없어 `elevator_only`가 B1 출구에 도달하지 못한다. 백엔드가
+ * 돌려주는 것이 바로 이 모양이므로, 도달 불가 표시를 여기서 그대로 확인할 수 있다.
+ */
+const ROUTE_OPTIONS = [
+  {
+    routeType: 'fastest',
+    displayName: '빠른 경로',
+    available: true,
+    unavailableReason: null,
+    totalDistanceM: 180,
+    estimatedTimeSec: 240,
+    hasStairsOrEscalator: true,
+  },
+  {
+    routeType: 'elevator_only',
+    displayName: '엘리베이터 이용 경로',
+    available: false,
+    unavailableReason: 'NO_ACCESSIBLE_ROUTE',
+    totalDistanceM: null,
+    estimatedTimeSec: null,
+    hasStairsOrEscalator: false,
+  },
+];
+
 export const handlers = [
   http.get('/health', () => HttpResponse.json({ status: 'ok' })),
+  http.post('*/api/routes/indoor/options', () =>
+    HttpResponse.json({ success: true, data: ROUTE_OPTIONS, message: null }),
+  ),
   http.get('*/api/stations/:stationId/maps', () =>
     HttpResponse.json({ success: true, data: FLOOR_MAPS, message: null }),
   ),

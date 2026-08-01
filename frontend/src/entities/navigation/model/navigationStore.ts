@@ -1,11 +1,16 @@
 import { create } from 'zustand';
-import type { RouteOptionId } from './routeOptions';
+import type { RouteType } from '@/shared/types';
 
 type NavigationStore = {
   /** Destination name the user picked from search. */
   destination: string | null;
-  /** Chosen route strategy. */
-  route: RouteOptionId;
+  /**
+   * 사용자가 고른 경로 유형.
+   *
+   * 값은 백엔드 `RouteType`과 같다. 예전에는 프로토타입 어휘(`fast`·`elev`)를 따로 들고 있어
+   * 응답을 그대로 저장할 수 없었다.
+   */
+  route: RouteType;
   /** Whether the turn-by-turn step list is expanded over the camera view. */
   stepsOpen: boolean;
   /** Optional stops added from the indoor map while navigation is active. */
@@ -25,7 +30,7 @@ type NavigationStore = {
   /** Starts a fresh journey and discards stops from the previous journey. */
   startNewJourney: (destination: string) => void;
   setDestination: (destination: string) => void;
-  setRoute: (route: RouteOptionId) => void;
+  setRoute: (route: RouteType) => void;
   addWaypoint: (waypoint: string) => void;
   removeWaypoint: (waypoint: string) => void;
   clearWaypoints: () => void;
@@ -44,7 +49,7 @@ type NavigationStore = {
  */
 export const useNavigationStore = create<NavigationStore>((set) => ({
   destination: null,
-  route: 'fast',
+  route: 'fastest',
   stepsOpen: false,
   waypoints: [],
   relocalizing: false,

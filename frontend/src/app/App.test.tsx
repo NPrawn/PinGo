@@ -300,7 +300,7 @@ describe('user routes', () => {
    * 역삼역 출구는 B1에 있으므로 B2를 보고 있을 때는 그려지지 않는 것이 정상이다.
    */
   it('목적지 마커는 실제 출구 시설의 이름과 좌표를 쓴다', async () => {
-    useNavigationStore.setState({ route: 'fast' });
+    useNavigationStore.setState({ route: 'fastest' });
     await renderSection('/user/navigation');
     fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
 
@@ -365,41 +365,71 @@ describe('user routes', () => {
     expect(screen.getByRole('button', { name: /다시 연결/ })).toBeInTheDocument();
   });
 
-  it('shows every route option in a list and updates the selected exit', async () => {
-    useNavigationStore.setState({ route: 'fast' });
+  /**
+   * 경로 옵션 화면. (S15P11A206-323)
+   *
+   * 예전에는 옵션 두 개가 컴포넌트 안 상수 배열이었다. 이제 `POST /api/routes/indoor/options`
+   * 응답으로 그리므로, 이름·시간·거리가 모두 응답에서 온 값인지를 본다.
+   */
+  it('경로 옵션을 조회 응답으로 그린다', async () => {
     await renderSection('/user/route');
 
-    const shortestOption = await screen.findByRole('button', {
-      name: /최단 경로/,
-    });
-    const elevatorOption = screen.getByRole('button', {
-      name: /엘리베이터 우선/,
-    });
+    // 응답의 displayName이다. 화면이 들고 있던 `최단 경로`가 아니다.
+    const fastest = await screen.findByRole('button', { name: /빠른 경로/ });
 
-    expect(shortestOption).toHaveAttribute('aria-pressed', 'true');
-    expect(elevatorOption).toHaveAttribute('aria-pressed', 'false');
-    expect(within(shortestOption).getByText('4분')).toBeInTheDocument();
-    expect(within(shortestOption).getByText('180m')).toBeInTheDocument();
-    expect(within(shortestOption).getByText('7번 출입구')).toBeInTheDocument();
-    expect(within(elevatorOption).getByText('6분')).toBeInTheDocument();
-    expect(within(elevatorOption).getByText('240m')).toBeInTheDocument();
-    expect(screen.queryByText('후면 카메라')).toBeNull();
+    expect(fastest).toHaveAttribute('aria-pressed', 'true');
+    // estimatedTimeSec 240 → 4분, totalDistanceM 180 → 180m
+    expect(within(fastest).getByText('4분')).toBeInTheDocument();
+    expect(within(fastest).getByText('180m')).toBeInTheDocument();
+    // FR-U-009 "계단 포함 여부를 표시해야 한다"
+    expect(within(fastest).getByText(/계단·에스컬레이터를 지나요/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '빠른 경로 안내 시작' })).toBeInTheDocument();
     expect(screen.getByText('출발지')).toBeInTheDocument();
     expect(screen.getByText('목적지')).toBeInTheDocument();
+  });
 
-    fireEvent.click(elevatorOption);
+  /**
+   * 도달할 수 없는 옵션은 목록에 남되 고를 수 없다. (명세 8.1)
+   *
+   * 역삼역은 B1↔B2에 엘리베이터가 없어 B3에서 B1 출구로 가는 `elevator_only`가 실제로
+   * `NO_ACCESSIBLE_ROUTE`를 돌려준다. 목록에서 지우면 사용자는 왜 계단으로 안내받는지 모른다.
+   */
+  it('도달할 수 없는 경로는 사유와 함께 남기고 고를 수 없게 한다', async () => {
+    await renderSection('/user/route');
 
-    expect(elevatorOption).toHaveAttribute('aria-pressed', 'true');
-    expect(shortestOption).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('status')).toHaveTextContent('엘리베이터 우선 경로로 설정했습니다.');
-    expect(screen.getByRole('link', { name: '2번 출입구 길 안내 시작' })).toBeInTheDocument();
+    const elevator = await screen.findByRole('button', { name: /엘리베이터 이용 경로/ });
+
+    expect(elevator).toBeDisabled();
+    expect(
+      within(elevator).getByText(
+        '계단·에스컬레이터를 제외한 경로로는 도착지까지 이동할 수 없습니다.',
+      ),
+    ).toBeInTheDocument();
+    // 갈 수 없으므로 시간·거리를 보여주지 않는다.
+    expect(within(elevator).queryByText(/분$/)).toBeNull();
+
+    fireEvent.click(elevator);
+
+    // 눌러도 선택이 옮겨가지 않는다.
+    expect(useNavigationStore.getState().route).toBe('fastest');
+    expect(screen.getByRole('link', { name: '빠른 경로 안내 시작' })).toBeInTheDocument();
+  });
+
+  it('경로를 고르면 응답의 유형이 그대로 저장된다', async () => {
+    await renderSection('/user/route');
+
+    fireEvent.click(await screen.findByRole('button', { name: /빠른 경로/ }));
+
+    // 프로토타입 어휘(`fast`)가 아니라 백엔드 RouteType이다.
+    expect(useNavigationStore.getState().route).toBe('fastest');
+    expect(screen.getByRole('status')).toHaveTextContent('빠른 경로로 설정했습니다.');
     expect(screen.getByRole('link', { name: '상담원 연결' })).toHaveTextContent('?');
   });
 
   it('prioritizes the route header and current maneuver during navigation', async () => {
     useNavigationStore.setState({
       destination: 'GS25 역삼역점',
-      route: 'elev',
+      route: 'elevator_only',
       waypoints: ['화장실', '승차권 충전'],
     });
     await renderSection('/user/navigation');
