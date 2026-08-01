@@ -279,3 +279,70 @@ describe('IndoorMapView 목업 모드', () => {
     expect(screen.getByRole('img', { name: '현재 위치' })).toBeInTheDocument();
   });
 });
+
+/**
+ * 조회가 끝난 뒤에 시점 추종이 켜지는지. (S15P11A206-79 리뷰)
+ *
+ * 실제 경로에서는 첫 렌더가 `isPending`이라 지도 요소를 만들지 않는다. 훅이 화면 크기를
+ * 마운트 한 번에만 재면 그때는 붙을 요소가 없고, 응답이 와서 요소가 생겨도 다시 재지 않는다.
+ * 그러면 크기를 영원히 모르므로 추종이 조용히 꺼지고 복귀 버튼이 상시 노출된다.
+ *
+ * 기존 추종 테스트는 요소를 항상 렌더하는 하네스를 쓰고, 이 파일의 다른 테스트는 조회 상태를
+ * 고정해 둔다. 그래서 **pending → loaded 전이를 태우는 테스트가 없었다.**
+ */
+describe('IndoorMapView 시점 추종', () => {
+  /** jsdom에는 ResizeObserver가 없다. 관찰 즉시 크기를 알려주는 가짜를 심는다. */
+  function stubResizeObserver(box: { width: number; height: number }) {
+    class Stub {
+      callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+
+      observe() {
+        this.callback(
+          [{ contentRect: box } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+
+      unobserve() {}
+      disconnect() {}
+    }
+
+    vi.stubGlobal('ResizeObserver', Stub);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('조회가 끝나고 지도가 생긴 뒤에도 화면 크기를 재서 추종을 켠다', () => {
+    stubResizeObserver({ width: 314, height: 291 });
+    mockedHook.mockReturnValue(hookState({ isPending: true, isError: false }));
+
+    const view = render(
+      <IndoorMapView
+        stationId={1}
+        followCamera
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+      />,
+    );
+
+    // 조회 중에는 지도 요소가 없다. 여기서 크기를 잴 방법이 없는 것이 정상이다.
+    expect(screen.getByText('지도를 불러오는 중입니다')).toBeInTheDocument();
+
+    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [framedMap] }));
+    view.rerender(
+      <IndoorMapView
+        stationId={1}
+        followCamera
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+      />,
+    );
+
+    // 추종 중이면 복귀 버튼을 보이지 않는다. 버튼이 있으면 추종이 꺼진 것이다.
+    expect(screen.queryByRole('button', { name: '내 위치' })).not.toBeInTheDocument();
+  });
+});
