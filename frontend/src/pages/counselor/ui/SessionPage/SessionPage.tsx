@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore, useCounselorQueueStore } from '@/entities/consult';
 import { DEFAULT_FACILITY_TINT, FACILITY_TINTS, FLOOR_FACILITY_PINS } from '@/entities/poi';
@@ -6,7 +6,7 @@ import { useConsultSignaling } from '@/features/consult-signaling';
 import type { FloorId } from '@/shared/types';
 import { useScreenDraw } from '@/features/shared-screen-draw';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { endConsultation } from '@/shared/api';
+import { endConsultation, getCounselorConsultation } from '@/shared/api';
 import {
   Badge,
   Button,
@@ -33,6 +33,8 @@ export function SessionPage() {
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
   const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
   const consultationId = useConsultStore((state) => state.consultationId);
+  const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const {
     localVideoRef,
     remoteVideoRef,
@@ -59,6 +61,26 @@ export function SessionPage() {
 
   const pins = FLOOR_FACILITY_PINS[floor];
 
+  /**
+   * 새로고침하면 signaling 토큰이 남지 않는다(짧은 만료 시간). 방은 알고 있으므로
+   * 상세 조회로 토큰만 다시 받아 WebSocket 접속이 401로 거절되지 않게 한다.
+   */
+  useEffect(() => {
+    if (!consultationId || !signalingRoomId || signalingAccessToken) return;
+
+    void getCounselorConsultation(consultationId)
+      .then((detail) => {
+        if (!detail.signalingRoomId || !detail.signalingAccessToken) {
+          setTokenError('상담 연결 정보를 받지 못했습니다. 상담 요청 목록에서 다시 입장해 주세요.');
+          return;
+        }
+        setSignalingRoom(detail.signalingRoomId, detail.signalingAccessToken);
+      })
+      .catch(() =>
+        setTokenError('상담 연결 정보를 받지 못했습니다. 상담 요청 목록에서 다시 입장해 주세요.'),
+      );
+  }, [consultationId, setSignalingRoom, signalingAccessToken, signalingRoomId]);
+
   /** Marks the request done so the queue shows it as completed, then leaves. */
   const endCall = async () => {
     if (consultationId) {
@@ -74,8 +96,11 @@ export function SessionPage() {
         <div className={styles.main}>
           <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteVideo} />
           <video ref={localVideoRef} autoPlay muted playsInline className={styles.localVideo} />
-          <span className={styles.connectionStatus} role={error ? 'alert' : undefined}>
-            {error ?? `연결 상태: ${status}`}
+          <span
+            className={styles.connectionStatus}
+            role={error ?? tokenError ? 'alert' : undefined}
+          >
+            {error ?? tokenError ?? `연결 상태: ${status}`}
           </span>
           <div className={styles.summary}>
             <div className={styles.summaryBody}>
