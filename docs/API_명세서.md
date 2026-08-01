@@ -13,7 +13,7 @@
 | 상태 | API 영역 |
 | --- | --- |
 | 구현 | 인증·회원가입, 익명 사용자 세션, 역·층·지도·시설, 목적지 검색, 주변 장소·출구 추천, 실내 경로 2종, Kakao 외부 길찾기, 상담 생성·조회·취소·대기 SSE, 상담자 본인/관리자 계정 관리, VPS 위치추정, health, WebSocket signaling |
-| 계획 | 랜드마크 후보·수동 위치 지정, 경로 재탐색 전용 API, 역 주변 장소 목록, 상담자용 상담 큐/수락/거절/종료, 위치 공유, 교통카드 추천, 관리자 상담자 생성 |
+| 계획 | 랜드마크 후보·수동 위치 지정, 역 주변 장소 목록, 상담자용 상담 큐/수락/거절/종료, 위치 공유, 교통카드 추천, 관리자 상담자 생성 |
 
 구현 여부와 최신 요청·응답 schema는 실행 중인 Swagger를 최종 확인 수단으로 사용한다.
 
@@ -1356,43 +1356,6 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. `unavailableMessage`에는 같은 사유를 요청 언어로 쓴 문구가 들어간다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다. 방향(좌/우) 안내는 좌표 기반 계산이 필요하여 현재 범위에서 제외한다.
 
 `mapZ`는 그 노드의 캐노니컬 높이(m)다. **같은 층 안에서 높이가 갈리는 구간을 구분하는 데 쓴다** — 역삼역 B0.5 중간층은 별도 층이 아니라 `floorId`가 B1이면서 `map_z=7.5`인 노드 6개로 돼 있어, 이 값이 없으면 바닥 구간과 중간층 구간이 도면 위 같은 평면에 겹쳐 그려진다. **관리자가 높이를 넣지 않은 노드는 `null`이다.**
-
----
-
-## 8.3 경로 재계산
-
-### POST `/routes/indoor/recalculate`
-
-경로 안내 중 현재 위치가 바뀌었을 때 경로를 다시 계산한다.
-
-> 재계산은 별도 작업(Task)으로 분리되어 있으며 현재 미구현이다.
-
-#### Request
-
-```json
-{
-  "routeId": "rt_12345",
-  "stationId": 1,
-  "currentNodeId": 20,
-  "targetNodeId": 44,
-  "routeType": "fastest"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "routeId": "rt_67890",
-    "distanceM": 150,
-    "estimatedTimeSec": 210,
-    "steps": []
-  },
-  "message": null
-}
-```
 
 ---
 
@@ -2905,7 +2868,7 @@ multipart/form-data
 | 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                                                 |
 | 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits                                  |
 | 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                                                    |
-| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                                                    |
+| 경로        | POST /api/routes/indoor/options, POST /api/routes/indoor                                                    |
 | 외부 지도   | POST /external-maps/directions                                                                                                       |
 | 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                                                |
 | 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}                                     |
