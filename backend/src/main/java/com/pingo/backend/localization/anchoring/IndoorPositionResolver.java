@@ -12,10 +12,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * 캐노니컬 좌표를 사용자에게 보여줄 위치와 경로 탐색 진입 노드로 정리한다(S15P11A206-128).
@@ -78,7 +75,6 @@ public class IndoorPositionResolver {
         }
 
         RouteNode node = nearest.get();
-        Map<Long, String> labels = labelsByNodeId(stationId, floorId);
 
         return Optional.of(new AnchoredLocation(
                 floorId,
@@ -90,7 +86,7 @@ public class IndoorPositionResolver {
                 forward == null ? null : roundDirection(forward.y()),
                 round(accuracyM),
                 node.getId(),
-                labels.getOrDefault(node.getId(), node.getName()),
+                labelOf(stationId, floorId, node),
                 round(distanceTo(node, point))
         ));
     }
@@ -117,14 +113,18 @@ public class IndoorPositionResolver {
 
     /**
      * 노드에 붙은 시설 이름. 경로 진입점을 "개찰구 A"처럼 보여줄 수 있게 한다.
+     *
+     * <p>이 노드에 연결된 시설만 조회한다. 층 전체를 받아 Map 으로 만들면 역삼역 B2 기준 36행을
+     * 읽어 35개를 버리게 된다. 시설이 붙어 있지 않은 노드가 대부분이라 대개 빈 결과다.
+     *
+     * <p>여럿 붙어 있으면 {@code id} 가 가장 작은 것을 쓴다. 층 전체를 Map 으로 모으던 때의
+     * 선택과 같아야 라벨이 바뀌지 않는다.
      */
-    private Map<Long, String> labelsByNodeId(Long stationId, Long floorId) {
-        return facilityRepository.searchActive(stationId, floorId, null).stream()
-                .filter(facility -> facility.getLinkedNodeId() != null)
-                .collect(Collectors.toMap(
-                        Facility::getLinkedNodeId,
-                        Facility::getNameKo,
-                        (first, second) -> first));
+    private String labelOf(Long stationId, Long floorId, RouteNode node) {
+        return facilityRepository.findActiveByLinkedNodeId(stationId, floorId, node.getId()).stream()
+                .findFirst()
+                .map(Facility::getNameKo)
+                .orElseGet(node::getName);
     }
 
     private BigDecimal round(double value) {

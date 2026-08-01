@@ -35,4 +35,24 @@ public interface FacilityRepository extends JpaRepository<Facility, Long> {
             ORDER BY f.floorId ASC, f.id ASC
             """)
     List<Facility> searchActiveByKeyword(@Param("stationId") Long stationId, @Param("keyword") String keyword);
+
+    /**
+     * 특정 경로 노드에 연결된 활성 시설. {@code linked_node_id} 에 외래키 인덱스가 있어 단건으로 좁혀진다.
+     *
+     * <p>한 노드에 시설이 여럿 붙을 수 있어 리스트로 돌려준다. 호출부가 하나만 쓰더라도
+     * {@code ORDER BY f.id ASC} 로 순서가 정해져 있어 매번 같은 시설이 뽑힌다.
+     */
+    @Query("""
+            SELECT f FROM Facility f
+            WHERE f.active = true
+              AND f.stationId = :stationId
+              AND f.floorId = :floorId
+              AND f.linkedNodeId = :nodeId
+            ORDER BY f.id ASC
+            """)
+    List<Facility> findActiveByLinkedNodeId(
+            @Param("stationId") Long stationId,
+            @Param("floorId") Long floorId,
+            @Param("nodeId") Long nodeId
+    );
 }

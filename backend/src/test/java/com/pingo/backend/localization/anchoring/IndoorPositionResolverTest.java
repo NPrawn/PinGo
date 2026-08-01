@@ -47,7 +47,7 @@ class IndoorPositionResolverTest {
         resolver = new IndoorPositionResolver(routeNodeRepository, facilityRepository, stationFloorRepository);
         when(stationFloorRepository.findByStationIdAndFloorCode(STATION, "B2"))
                 .thenReturn(Optional.of(floor(B2_ID, "B2")));
-        when(facilityRepository.searchActive(eq(STATION), any(), any())).thenReturn(List.of());
+        when(facilityRepository.findActiveByLinkedNodeId(eq(STATION), any(), any())).thenReturn(List.of());
     }
 
     @Test
@@ -159,7 +159,7 @@ class IndoorPositionResolverTest {
     @DisplayName("시설이 붙은 노드는 시설 이름으로 표시한다")
     void usesFacilityNameAsStartNodeLabel() {
         givenNodes(node(41L, "B2_F008", "0.000", "0.000", "0.000"));
-        when(facilityRepository.searchActive(eq(STATION), eq(B2_ID), any()))
+        when(facilityRepository.findActiveByLinkedNodeId(eq(STATION), eq(B2_ID), eq(41L)))
                 .thenReturn(List.of(facility(41L, "개찰구 A")));
 
         AnchoredLocation got = resolver
