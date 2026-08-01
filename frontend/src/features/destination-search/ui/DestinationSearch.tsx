@@ -5,7 +5,7 @@ import { PLACES, useDestinationSearch } from '@/entities/poi';
 import type { Poi } from '@/entities/poi';
 import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
-import { getFacility, getRecommendedExits, updateUserSession } from '@/shared/api';
+import { findNearestExit, getFacility, getRecommendedExits, updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Field, Icon3d, Kicker, SelectRow } from '@/shared/ui';
 import type { Icon3dTone, IconName } from '@/shared/ui';
@@ -75,6 +75,33 @@ export function DestinationSearch({
         if (primaryExit?.exitFacilityId != null) {
           const facility = await getFacility(primaryExit.exitFacilityId);
           targetNodeId = facility.linkedNodeId;
+        }
+      }
+
+      /**
+       * 카카오 검색으로만 찾은 장소.
+       *
+       * 등록된 장소가 아니라 `destinationId`가 없어 출구 추천을 물을 수 없다. 대신 좌표는
+       * 있으므로 그 좌표에서 가장 가까운 출구를 서버에 묻고, 그 출구의 연결 노드를 도착점으로
+       * 삼는다. 실내 경로는 출구까지 안내하고 그 뒤는 외부 지도가 이어받는 구조라, 외부
+       * 목적지의 도착점은 어차피 출구다.
+       *
+       * 이것이 없으면 targetNodeId가 비어 경로 옵션 화면이 아무것도 못 그린다.
+       */
+      if (poi.id == null && poi.latitude != null && poi.longitude != null && stationId != null) {
+        const nearestExit = await findNearestExit({
+          stationId,
+          destinationLatitude: poi.latitude,
+          destinationLongitude: poi.longitude,
+        });
+        if (nearestExit.exitFacilityId != null) {
+          const facility = await getFacility(nearestExit.exitFacilityId);
+          targetNodeId = facility.linkedNodeId;
+          // 외부 도보 구간의 출발점은 그 출구의 지상 좌표다. 실내 좌표(mapX/mapY)가 아니다.
+          externalOriginName = facility.nameKo ?? facility.nameEn ?? externalOriginName;
+          externalOriginLatitude = facility.exitDetail?.outsideLatitude ?? externalOriginLatitude;
+          externalOriginLongitude =
+            facility.exitDetail?.outsideLongitude ?? externalOriginLongitude;
         }
       }
     } catch {
