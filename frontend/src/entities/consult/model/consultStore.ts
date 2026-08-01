@@ -55,6 +55,14 @@ export const useConsultStore = create<ConsultStore>()(
     {
       name: 'pingo.consult',
       storage: createJSONStorage(() => sessionStorage),
+      // signaling 토큰은 10분이면 만료된다. 새로고침 뒤에 만료된 토큰으로 접속하면
+      // 서버가 handshake를 거절하므로, 저장하지 않고 상담 화면에서 다시 받는다.
+      partialize: (state) => ({
+        issue: state.issue,
+        satisfaction: state.satisfaction,
+        consultationId: state.consultationId,
+        signalingRoomId: state.signalingRoomId,
+      }),
     },
   ),
 );
