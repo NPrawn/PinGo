@@ -24,6 +24,8 @@ import {
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './ConsultWaitingPage.module.css';
 
+const MISSING_TOKEN_MESSAGE = '상담 연결 정보를 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
+
 /**
  * Screen 19 (FR-U-014) — waiting in the consult queue.
  *
@@ -43,6 +45,10 @@ export function ConsultWaitingPage() {
     void getConsultation(consultationId, userSessionId)
       .then((consultation) => {
         if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
+          if (!consultation.signalingAccessToken) {
+            setStatusMessage(MISSING_TOKEN_MESSAGE);
+            return;
+          }
           setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
           void navigate(USER_ROUTES.CONSULT_SESSION);
           return;
@@ -61,18 +67,21 @@ export function ConsultWaitingPage() {
     const events = subscribeToConsultationWaitingEvents(consultationId);
     const handleAccepted = (event: MessageEvent<string>) => {
       try {
-        const payload = JSON.parse(event.data) as { signalingRoomId?: string };
-        if (payload.signalingRoomId) setSignalingRoom(payload.signalingRoomId);
-        // The SSE payload carries no handshake token, so re-read the consultation
-        // to pick it up before the session screen opens its WebSocket.
+        const acceptedRoomId = (JSON.parse(event.data) as { signalingRoomId?: string })
+          .signalingRoomId;
+        // SSE 이벤트에는 handshake 토큰이 없다. 토큰 없이 상담 화면을 열면 서버가
+        // WebSocket 접속을 거절하므로, 상세 조회로 토큰을 받은 뒤에 넘어간다.
         void getConsultation(consultationId, userSessionId)
           .then((consultation) => {
-            if (consultation.signalingRoomId) {
-              setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
+            const roomId = consultation.signalingRoomId ?? acceptedRoomId;
+            if (!roomId || !consultation.signalingAccessToken) {
+              setStatusMessage(MISSING_TOKEN_MESSAGE);
+              return;
             }
+            setSignalingRoom(roomId, consultation.signalingAccessToken);
+            void navigate(USER_ROUTES.CONSULT_SESSION);
           })
-          .catch(() => undefined);
-        void navigate(USER_ROUTES.CONSULT_SESSION);
+          .catch(() => setStatusMessage(MISSING_TOKEN_MESSAGE));
       } catch {
         setStatusMessage('상담 연결 정보를 읽지 못했습니다.');
       }
