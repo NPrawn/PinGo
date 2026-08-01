@@ -81,6 +81,17 @@ export function RouteOptionsPage() {
     options.find((option) => option.available) ??
     null;
 
+  /**
+   * 물러난 결과를 스토어에도 남긴다.
+   *
+   * `selected`만 옮기면 화면은 갈 수 있는 경로를 가리키는데 스토어에는 갈 수 없는 경로가 남는다.
+   * 안내·도착 화면은 스토어를 읽으므로, CTA에 "빠른 경로"라고 적힌 채 엘리베이터 경로의 출구로
+   * 안내하게 된다.
+   */
+  useEffect(() => {
+    if (selected && selected.routeType !== route) setRoute(selected.routeType);
+  }, [selected, route, setRoute]);
+
   useEffect(() => {
     if (!confirmation) return;
 
@@ -159,7 +170,20 @@ export function RouteOptionsPage() {
           </div>
 
           <div className={styles.optionList} aria-label="경로 선택 목록">
-            {optionsQuery.isPending && (
+            {/*
+              조회를 걸 수 없는 상태를 로딩과 구분한다.
+
+              `stationId`가 없으면 훅이 조회를 끄는데, 꺼진 쿼리는 `isPending`에 머무른다.
+              그것을 로딩으로 읽으면 화면이 "경로를 찾고 있어요"에서 영구히 멈춘다. 실제로
+              불러오는 중인지는 `isLoading`(= pending이면서 fetching)이 답한다.
+            */}
+            {stationId === null && (
+              <p className={styles.notice} role="status">
+                이 역은 아직 실내 경로 정보가 없어요.
+              </p>
+            )}
+
+            {optionsQuery.isLoading && (
               <p className={styles.notice} role="status">
                 경로를 찾고 있어요…
               </p>

@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNavigationStore } from '@/entities/navigation';
 import { usePermissionStore } from '@/entities/permission';
+import { DEFAULT_STATION, DEFAULT_STATION_ID, useStationStore } from '@/entities/station';
 import { i18n } from '@/shared/i18n';
 import { App } from './App';
 
@@ -73,6 +74,8 @@ afterEach(() => {
   // 언어 전환 테스트가 영어로 바꿔 둔 것을 되돌린다. 남으면 뒤 테스트가 영어 라벨을 만난다.
   void i18n.changeLanguage('ko');
   usePermissionStore.setState({ granted: { loc: false, cam: false, mic: false } });
+  // 등록되지 않은 역을 세워 둔 테스트가 뒤 테스트의 지도·시설·경로 조회를 끄지 않도록 되돌린다.
+  useStationStore.setState({ station: DEFAULT_STATION, stationId: DEFAULT_STATION_ID });
 });
 
 function renderAt(path: string) {
@@ -239,6 +242,27 @@ describe('user routes', () => {
     expect(await screen.findByRole('heading', { name: '출발지와 목적지' })).toBeInTheDocument();
     expect(screen.getByLabelText('역삼역에서 GS25 역삼역점까지')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /이 경로로 촬영 시작/ })).toBeInTheDocument();
+  });
+
+  /**
+   * 데이터가 없는 역은 흐름에 들어가기 전에 막는다.
+   *
+   * 지도·시설·경로 API는 모두 역 id를 요구한다. id가 없는 역을 고르게 두면 조회를 걸 수 없는
+   * 상태로 촬영·경로 화면까지 진행하게 된다.
+   */
+  it('등록되지 않은 역은 고를 수 없다', async () => {
+    await renderSection('/user/station');
+
+    const seolleung = await screen.findByRole('button', { name: /선릉역/ });
+    expect(seolleung).toBeDisabled();
+    expect(within(seolleung).getByText('준비 중')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /역삼역.*현재 GPS 위치/ })).toBeEnabled();
+
+    fireEvent.click(seolleung);
+
+    // 눌러도 출발지가 바뀌지 않고 다음 단계도 열리지 않는다.
+    expect(useStationStore.getState().station).toBe(DEFAULT_STATION);
+    expect(screen.queryByRole('heading', { name: '목적지 선택' })).toBeNull();
   });
 
   it('redirects the legacy analyzing route to the combined capture screen', async () => {
@@ -424,6 +448,49 @@ describe('user routes', () => {
     expect(useNavigationStore.getState().route).toBe('fastest');
     expect(screen.getByRole('status')).toHaveTextContent('빠른 경로로 설정했습니다.');
     expect(screen.getByRole('link', { name: '상담원 연결' })).toHaveTextContent('?');
+  });
+
+  /**
+   * 조회를 걸 수 없는 상태와 조회 중을 구분한다.
+   *
+   * 조회를 끈 쿼리는 `isPending`에 머무르므로 그것을 로딩으로 읽으면 화면이 로딩 문구에서
+   * 영구히 멈춘다. 역 선택에서 등록되지 않은 역을 막아 두었지만, 스토어 타입이 `null`을
+   * 허용하는 동안 화면도 그 상태를 스스로 설명해야 한다.
+   */
+  it('등록되지 않은 역에서는 로딩에 갇히지 않는다', async () => {
+    useStationStore.setState({ station: '선릉역', stationId: null });
+
+    renderAt('/user/route');
+
+    expect(await screen.findByText('이 역은 아직 실내 경로 정보가 없어요.')).toBeInTheDocument();
+    expect(screen.queryByText('경로를 찾고 있어요…')).toBeNull();
+    expect(screen.queryByRole('link', { name: /안내 시작/ })).toBeNull();
+  });
+
+  /** 위 구분이 로딩 표시 자체를 잃지 않았는지 함께 고정한다. */
+  it('실제로 조회하는 동안에는 로딩을 보여준다', async () => {
+    renderAt('/user/route');
+
+    expect(await screen.findByText('경로를 찾고 있어요…')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /빠른 경로/ })).toBeInTheDocument();
+    expect(screen.queryByText('경로를 찾고 있어요…')).toBeNull();
+  });
+
+  /**
+   * 물러난 선택은 스토어에도 남아야 한다.
+   *
+   * 안내·도착 화면은 스토어의 `route`로 출구를 정한다. 화면만 갈 수 있는 경로로 옮기고
+   * 스토어를 두면, CTA에 "빠른 경로"라고 적힌 채 엘리베이터 경로의 출구로 안내한다.
+   */
+  it('고른 경로가 도달 불가면 갈 수 있는 경로로 물러나고 스토어도 따라간다', async () => {
+    useNavigationStore.setState({ route: 'elevator_only' });
+
+    await renderSection('/user/route');
+
+    const fastest = await screen.findByRole('button', { name: /빠른 경로/ });
+    expect(fastest).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('link', { name: '빠른 경로 안내 시작' })).toBeInTheDocument();
+    await waitFor(() => expect(useNavigationStore.getState().route).toBe('fastest'));
   });
 
   it('prioritizes the route header and current maneuver during navigation', async () => {

@@ -66,6 +66,20 @@
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 60%);
 }
 
+/* 아직 데이터가 등록되지 않은 역. 현위치 배지와 같은 모양에 색만 죽인다. */
+.pendingBadge {
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--color-sub);
+  background: rgb(0 0 0 / 5%);
+  border-radius: var(--radius-pill);
+}
+
+.row:disabled {
+  opacity: 0.55;
+}
+
 .empty {
   padding: 8px 2px;
   font-size: 12.5px;
