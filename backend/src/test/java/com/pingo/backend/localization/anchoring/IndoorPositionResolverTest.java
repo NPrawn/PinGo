@@ -57,7 +57,7 @@ class IndoorPositionResolverTest {
         givenNodes(node(11L, "B2_R001", "8.000", "0.000", "0.000"));
 
         AnchoredLocation got = resolver
-                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), 0.423)
+                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.423)
                 .orElseThrow();
 
         assertThat(got.mapX()).isEqualByComparingTo("0.000");
@@ -71,12 +71,36 @@ class IndoorPositionResolverTest {
     }
 
     @Test
+    @DisplayName("방향은 좌표와 함께 실어 보내고, 없으면 좌표만 돌려준다")
+    void carriesDirectionAlongsideCoordinate() {
+        givenNodes(node(11L, "B2_R001", "0.000", "0.000", "0.000"));
+        CanonicalPoint point = new CanonicalPoint(0.0, 0.0, 0.0);
+
+        AnchoredLocation withDirection = resolver
+                .resolve(STATION, "B2", point, new CanonicalDirection(0.997524057, -0.070326069), 0.423)
+                .orElseThrow();
+
+        // 성분을 3자리로 자르면 벡터 길이가 1 에서 1e-3 까지 벗어난다. 6자리로 싣는다.
+        assertThat(withDirection.forwardMapX()).isEqualByComparingTo("0.997524");
+        assertThat(withDirection.forwardMapY()).isEqualByComparingTo("-0.070326");
+
+        // 방향을 못 구해도 좌표까지 버리지 않는다. FE 가 WebXR 정렬만 못 하고 위치는 찍는다.
+        AnchoredLocation withoutDirection = resolver
+                .resolve(STATION, "B2", point, null, 0.423)
+                .orElseThrow();
+
+        assertThat(withoutDirection.forwardMapX()).isNull();
+        assertThat(withoutDirection.forwardMapY()).isNull();
+        assertThat(withoutDirection.mapX()).isEqualByComparingTo("0.000");
+    }
+
+    @Test
     @DisplayName("정확도는 그 층 정합 잔차를 그대로 싣는다")
     void carriesFrameResidualAsAccuracy() {
         givenNodes(node(11L, "B2_R001", "0.000", "0.000", "0.000"));
 
         AnchoredLocation got = resolver
-                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), 0.423)
+                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.423)
                 .orElseThrow();
 
         assertThat(got.accuracyM()).isEqualByComparingTo("0.423");
@@ -91,7 +115,7 @@ class IndoorPositionResolverTest {
                 node(13L, "중간", "5.000", "0.000", "0.000"));
 
         AnchoredLocation got = resolver
-                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), 0.5)
+                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.5)
                 .orElseThrow();
 
         assertThat(got.startNodeId()).isEqualTo(12L);
@@ -107,7 +131,7 @@ class IndoorPositionResolverTest {
                 node(22L, "중간층", "0.000", "0.000", "7.500"));
 
         AnchoredLocation got = resolver
-                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 5.0), 0.5)
+                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 5.0), null, 0.5)
                 .orElseThrow();
 
         assertThat(got.startNodeId()).isEqualTo(21L);
@@ -123,7 +147,7 @@ class IndoorPositionResolverTest {
                 node(32L, "같은높이", "1.000", "0.000", "5.000"));
 
         AnchoredLocation got = resolver
-                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 5.0), 0.5)
+                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 5.0), null, 0.5)
                 .orElseThrow();
 
         // 31 번을 z=5 로 보면 3m, 32 번은 1m 라 32 번이 이긴다.
@@ -139,7 +163,7 @@ class IndoorPositionResolverTest {
                 .thenReturn(List.of(facility(41L, "개찰구 A")));
 
         AnchoredLocation got = resolver
-                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), 0.5)
+                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.5)
                 .orElseThrow();
 
         assertThat(got.startNodeLabel()).isEqualTo("개찰구 A");
@@ -151,7 +175,7 @@ class IndoorPositionResolverTest {
         givenNodes(node(51L, "B2_R010", "0.000", "0.000", "0.000"));
 
         AnchoredLocation got = resolver
-                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), 0.5)
+                .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.5)
                 .orElseThrow();
 
         assertThat(got.startNodeLabel()).isEqualTo("B2_R010");
@@ -162,10 +186,10 @@ class IndoorPositionResolverTest {
     void returnsEmptyWhenFloorOrNodesMissing() {
         when(stationFloorRepository.findByStationIdAndFloorCode(STATION, "B9"))
                 .thenReturn(Optional.empty());
-        assertThat(resolver.resolve(STATION, "B9", new CanonicalPoint(0, 0, 0), 0.5)).isEmpty();
+        assertThat(resolver.resolve(STATION, "B9", new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
 
         givenNodes();
-        assertThat(resolver.resolve(STATION, "B2", new CanonicalPoint(0, 0, 0), 0.5)).isEmpty();
+        assertThat(resolver.resolve(STATION, "B2", new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
     }
 
     private void givenNodes(RouteNode... nodes) {

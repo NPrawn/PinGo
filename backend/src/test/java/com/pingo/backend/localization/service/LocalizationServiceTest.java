@@ -188,7 +188,7 @@ class LocalizationServiceTest {
 
         when(aiLocalizationClient.localize(eq("loc-1"), eq("YS-2026-07-23.1"), eq(image), any()))
                 .thenReturn(localizedOnB2());
-        when(positionResolver.resolve(eq(1L), eq("B2"), any(), anyDouble()))
+        when(positionResolver.resolve(eq(1L), eq("B2"), any(), any(), anyDouble()))
                 .thenReturn(Optional.of(anchored()));
 
         var response = service.localize("loc-1", image, metadata);
@@ -204,6 +204,29 @@ class LocalizationServiceTest {
         assertThat(response.position().mapY()).isEqualByComparingTo("27.717");
         assertThat(response.position().mapZ()).isEqualByComparingTo("0.000");
         assertThat(response.position().accuracyM()).isEqualByComparingTo("0.497");
+        assertThat(response.position().forwardMap()).isNotNull();
+        assertThat(response.position().forwardMap().x()).isEqualByComparingTo("0.930418");
+        assertThat(response.position().forwardMap().y()).isEqualByComparingTo("-0.366501");
+    }
+
+    @Test
+    void localizeKeepsPositionWhenDirectionIsUnavailable() {
+        MockMultipartFile image = image();
+        LocalizationRequestMetadata metadata = metadata();
+        LocalizationService service = serviceWithFrame();
+
+        when(aiLocalizationClient.localize(eq("loc-1"), eq("YS-2026-07-23.1"), eq(image), any()))
+                .thenReturn(localizedOnB2());
+        // 방향을 못 구한 경우. 좌표까지 버리면 지도에 위치도 못 찍는다.
+        when(positionResolver.resolve(eq(1L), eq("B2"), any(), any(), anyDouble()))
+                .thenReturn(Optional.of(anchored(null, null)));
+
+        var response = service.localize("loc-1", image, metadata);
+
+        assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.SUCCESS);
+        assertThat(response.position()).isNotNull();
+        assertThat(response.position().mapX()).isEqualByComparingTo("-0.975");
+        assertThat(response.position().forwardMap()).isNull();
     }
 
     @Test
@@ -215,7 +238,7 @@ class LocalizationServiceTest {
         when(aiLocalizationClient.localize(eq("loc-1"), eq("YS-2026-07-23.1"), eq(image), any()))
                 .thenReturn(localizedOnB2());
         // 계수는 있는데 층·노드를 못 찾은 경우. 좌표가 없으므로 SUCCESS 로 두면 안 된다.
-        when(positionResolver.resolve(eq(1L), eq("B2"), any(), anyDouble()))
+        when(positionResolver.resolve(eq(1L), eq("B2"), any(), any(), anyDouble()))
                 .thenReturn(Optional.empty());
 
         var response = service.localize("loc-1", image, metadata);
@@ -270,9 +293,14 @@ class LocalizationServiceTest {
     }
 
     private AnchoredLocation anchored() {
+        return anchored(new BigDecimal("0.930418"), new BigDecimal("-0.366501"));
+    }
+
+    private AnchoredLocation anchored(BigDecimal forwardMapX, BigDecimal forwardMapY) {
         return new AnchoredLocation(
                 2L, "B2",
                 new BigDecimal("-0.975"), new BigDecimal("27.717"), new BigDecimal("0.000"),
+                forwardMapX, forwardMapY,
                 new BigDecimal("0.497"),
                 123L, "B2-B3 엘리베이터 A", new BigDecimal("0.770"));
     }

@@ -16,6 +16,7 @@ class ColmapToCanonicalMapperTest {
 
     private static final Long YEOKSAM = 1L;
     private static final Offset<Double> ONE_METER = Offset.offset(1.0);
+    private static final Offset<Double> UNIT_VECTOR = Offset.offset(1e-6);
 
     // application.yaml 과 같은 값. colmap_aliked_lightglue_v3 의 B2/sparse/0 · B3/sparse/1 재정합 결과.
     private static final FloorFrame B2 = new FloorFrame(YEOKSAM,
@@ -111,5 +112,79 @@ class ColmapToCanonicalMapperTest {
     void exposesNominalHeightPerFloor() {
         assertThat(mapper.nominalZOf(YEOKSAM, "B2")).contains(0.0);
         assertThat(mapper.nominalZOf(YEOKSAM, "B3")).contains(-5.0);
+    }
+
+    // ── forwardMap (FE 스펙 8.5) ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("회전 쿼터니언을 캐노니컬 수평면 단위벡터로 옮긴다")
+    void mapsRotationToCanonicalUnitVector() {
+        // 항등 쿼터니언이면 forward_colmap = Rᵀ[0,0,1]ᵀ = (0,0,1) 이고,
+        // 여기에 B2 선형부 3열 (5.731710, -0.404089) 를 적용해 정규화한 값이다.
+        CanonicalDirection d = mapper
+                .toCanonicalDirection(YEOKSAM, "B2", List.of(0.0, 0.0, 0.0, 1.0))
+                .orElseThrow();
+
+        assertThat(d.x()).isCloseTo(0.997524, UNIT_VECTOR);
+        assertThat(d.y()).isCloseTo(-0.070326, UNIT_VECTOR);
+        assertThat(Math.hypot(d.x(), d.y())).isCloseTo(1.0, UNIT_VECTOR);
+    }
+
+    @Test
+    @DisplayName("수평축 둘레로 고개를 들거나 숙여도 방향이 바뀌지 않는다")
+    void ignoresPitchAboutAHorizontalAxis() {
+        // 선형부의 영공간이 이 층 COLMAP 수직 방향이라 전방의 수직 성분이 정확히 소거된다.
+        // 아래 쿼터니언은 항등에서 지도 수평축 둘레로 35도 기울인 것이다.
+        CanonicalDirection level = mapper
+                .toCanonicalDirection(YEOKSAM, "B2", List.of(0.0, 0.0, 0.0, 1.0))
+                .orElseThrow();
+        CanonicalDirection pitched = mapper
+                .toCanonicalDirection(YEOKSAM, "B2",
+                        List.of(-0.288310402, 0.085446416, 0.0, 0.953716951))
+                .orElseThrow();
+
+        assertThat(pitched.x()).isCloseTo(level.x(), UNIT_VECTOR);
+        assertThat(pitched.y()).isCloseTo(level.y(), UNIT_VECTOR);
+    }
+
+    @Test
+    @DisplayName("카메라가 바닥·천장을 정면으로 보면 방향을 비운다")
+    void returnsEmptyWhenCameraLooksAlongTheVertical() {
+        // 전방이 영공간과 나란하면 수평 방향이 정의되지 않는다. 값이 나오더라도 잡음이다.
+        assertThat(mapper.toCanonicalDirection(YEOKSAM, "B2",
+                List.of(0.627861073, -0.186078886, 0.0, 0.755754670))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("정규화되지 않은 쿼터니언도 같은 방향을 낸다")
+    void normalizesTheIncomingQuaternion() {
+        CanonicalDirection unit = mapper
+                .toCanonicalDirection(YEOKSAM, "B2", List.of(0.0, 0.0, 0.0, 1.0))
+                .orElseThrow();
+        CanonicalDirection scaled = mapper
+                .toCanonicalDirection(YEOKSAM, "B2", List.of(0.0, 0.0, 0.0, 2.5))
+                .orElseThrow();
+
+        assertThat(scaled.x()).isCloseTo(unit.x(), UNIT_VECTOR);
+        assertThat(scaled.y()).isCloseTo(unit.y(), UNIT_VECTOR);
+    }
+
+    @Test
+    @DisplayName("계수가 없거나 회전이 온전하지 않으면 방향을 비운다")
+    void returnsEmptyDirectionForUnusableInput() {
+        List<Double> identity = List.of(0.0, 0.0, 0.0, 1.0);
+
+        // 역삼역 B1 은 계수가 없고, 다른 역에는 역삼역 계수를 쓰지 않는다.
+        assertThat(mapper.toCanonicalDirection(YEOKSAM, "B1", identity)).isEmpty();
+        assertThat(mapper.toCanonicalDirection(2L, "B2", identity)).isEmpty();
+        assertThat(mapper.toCanonicalDirection(null, "B2", identity)).isEmpty();
+        assertThat(mapper.toCanonicalDirection(YEOKSAM, null, identity)).isEmpty();
+
+        // AI 가 회전을 주지 않는 경우가 있다. 좌표만 있고 방향이 없는 응답이 정상 경로다.
+        assertThat(mapper.toCanonicalDirection(YEOKSAM, "B2", null)).isEmpty();
+        assertThat(mapper.toCanonicalDirection(YEOKSAM, "B2", List.of(0.0, 0.0, 1.0))).isEmpty();
+        assertThat(mapper.toCanonicalDirection(YEOKSAM, "B2", Arrays.asList(0.0, null, 0.0, 1.0))).isEmpty();
+        assertThat(mapper.toCanonicalDirection(YEOKSAM, "B2", List.of(0.0, Double.NaN, 0.0, 1.0))).isEmpty();
+        assertThat(mapper.toCanonicalDirection(YEOKSAM, "B2", List.of(0.0, 0.0, 0.0, 0.0))).isEmpty();
     }
 }

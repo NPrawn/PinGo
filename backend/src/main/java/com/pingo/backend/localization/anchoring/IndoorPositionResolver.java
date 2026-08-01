@@ -38,6 +38,14 @@ public class IndoorPositionResolver {
 
     private static final int SCALE = 3;
 
+    /**
+     * 방향 단위벡터 성분의 자리수. 좌표(mm)보다 촘촘하게 둔다.
+     *
+     * <p>두 성분을 따로 반올림하면 벡터 길이가 1 에서 벗어난다. 좌표와 같은 3자리면 오차가
+     * 1e-3 까지 벌어지지만 6자리면 1e-6 수준이라, FE 가 정규화 없이 그대로 써도 무해하다.
+     */
+    private static final int DIRECTION_SCALE = 6;
+
     private final RouteNodeRepository routeNodeRepository;
     private final FacilityRepository facilityRepository;
     private final StationFloorRepository stationFloorRepository;
@@ -46,6 +54,7 @@ public class IndoorPositionResolver {
      * @param stationId 역 ID
      * @param floorCode AI 응답의 층 코드
      * @param point     변환된 캐노니컬 좌표
+     * @param forward   변환된 캐노니컬 방향. 산출하지 못했으면 {@code null} 이며 좌표만 돌려준다
      * @param accuracyM 해당 층 위치 정확도(m). 정합의 leave-one-out 평균이다
      * @return 좌표와 경로 진입 노드. 층이나 노드를 찾지 못하면 비어 있다.
      */
@@ -53,6 +62,7 @@ public class IndoorPositionResolver {
             Long stationId,
             String floorCode,
             CanonicalPoint point,
+            CanonicalDirection forward,
             double accuracyM
     ) {
         Optional<StationFloor> floor = stationFloorRepository.findByStationIdAndFloorCode(stationId, floorCode);
@@ -76,6 +86,8 @@ public class IndoorPositionResolver {
                 round(point.x()),
                 round(point.y()),
                 round(point.z()),
+                forward == null ? null : roundDirection(forward.x()),
+                forward == null ? null : roundDirection(forward.y()),
                 round(accuracyM),
                 node.getId(),
                 labels.getOrDefault(node.getId(), node.getName()),
@@ -117,5 +129,9 @@ public class IndoorPositionResolver {
 
     private BigDecimal round(double value) {
         return BigDecimal.valueOf(value).setScale(SCALE, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal roundDirection(double value) {
+        return BigDecimal.valueOf(value).setScale(DIRECTION_SCALE, RoundingMode.HALF_UP);
     }
 }

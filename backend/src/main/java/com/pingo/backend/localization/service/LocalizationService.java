@@ -1,6 +1,7 @@
 package com.pingo.backend.localization.service;
 
 import com.pingo.backend.localization.anchoring.AnchoredLocation;
+import com.pingo.backend.localization.anchoring.CanonicalDirection;
 import com.pingo.backend.localization.anchoring.ColmapToCanonicalMapper;
 import com.pingo.backend.localization.anchoring.IndoorPositionResolver;
 import com.pingo.backend.localization.client.AiLocalizationClient;
@@ -11,6 +12,7 @@ import com.pingo.backend.localization.dto.request.LocalizationRequestMetadata;
 import com.pingo.backend.localization.dto.response.LocalizationResponse;
 import com.pingo.backend.localization.dto.response.LocalizedPositionResponse;
 import com.pingo.backend.localization.dto.response.LocalizationResultStatus;
+import com.pingo.backend.localization.dto.response.PlanarDirectionResponse;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -103,6 +105,9 @@ public class LocalizationService {
      *
      * <p>{@code LOW_CONFIDENCE} 는 여기 오지 않는다. AI 가 그 상태를 낼 때
      * ({@code LOW_GEOMETRIC_QUALITY}) 카메라 중심을 {@code null} 로 비우기 때문이다.
+     *
+     * <p><b>방향은 실패해도 앵커링을 막지 않는다.</b> 방향이 없으면 FE 가 WebXR 정렬만 못 하고
+     * 지도에 위치를 찍는 것은 그대로 된다. 좌표까지 버리면 잃는 게 더 크다.
      */
     private Optional<AnchoredLocation> anchor(
             LocalizationResultStatus resultStatus,
@@ -115,11 +120,16 @@ public class LocalizationService {
 
         Long stationId = metadata.stationId();
         String floorCode = aiResponse.floor();
+        CanonicalDirection forward = canonicalMapper
+                .toCanonicalDirection(stationId, floorCode, aiResponse.pose().rotationXyzw())
+                .orElse(null);
+
         return canonicalMapper.toCanonical(stationId, floorCode, aiResponse.pose().cameraCenter())
                 .flatMap(point -> positionResolver.resolve(
                         stationId,
                         floorCode,
                         point,
+                        forward,
                         canonicalMapper.accuracyOf(stationId, floorCode).orElseThrow()));
     }
 
@@ -151,8 +161,22 @@ public class LocalizationService {
                 anchored.mapX(),
                 anchored.mapY(),
                 anchored.mapZ(),
+                toForwardMap(anchored),
                 anchored.accuracyM()
         );
+    }
+
+    /**
+     * 방향 두 성분을 응답 객체로 묶는다. 산출하지 못했으면 {@code null} 이다.
+     *
+     * <p>성분 하나만 있는 경우는 없지만 둘 다 확인한다. 한쪽만 채워진 벡터가 나가면 FE 가
+     * 0 으로 읽어 90도 틀어진 방향으로 정렬하는데, 그래도 오류가 나지 않는다.
+     */
+    private static PlanarDirectionResponse toForwardMap(AnchoredLocation anchored) {
+        if (anchored.forwardMapX() == null || anchored.forwardMapY() == null) {
+            return null;
+        }
+        return new PlanarDirectionResponse(anchored.forwardMapX(), anchored.forwardMapY());
     }
 
     private LocalizationResponse responseFor(
