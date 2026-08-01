@@ -89,6 +89,23 @@ describe('smoothMapPoint', () => {
   });
 
   /**
+   * 걷는 동안 남는 지연은 한 스냅샷에서 회복되지 않고 계속 쌓인 채로 유지된다. 스냅샷 자체가
+   * 최대 2m 뒤에 오므로(11.4) 평활이 그 위에 지연을 더 얹으면 체감이 두 배가 된다.
+   * 상시 지연을 데드밴드 아래로 묶어 화면에서 구분되지 않게 한다.
+   */
+  it('보행 중 상시로 남는 지연이 데드밴드 이하다', () => {
+    let walked = 0;
+    let current = { floorId: B2, mapX: 0, mapY: 0 };
+
+    for (let index = 0; index < 30; index += 1) {
+      walked += 2;
+      current = smoothMapPoint(current, { floorId: B2, mapX: walked, mapY: 0 });
+    }
+
+    expect(walked - current.mapX).toBeLessThanOrEqual(PROVISIONAL_DISPLAY_DEADBAND_M);
+  });
+
+  /**
    * 층이 다른 두 좌표를 섞으면 어느 층에도 없는 위치가 나온다. 층 전환은 즉시 반영한다.
    */
   it('층이 바뀌면 평활하지 않고 그대로 옮긴다', () => {
@@ -125,6 +142,6 @@ describe('smoothMapPoint', () => {
 
   it('기본 상수는 provisional 값이다', () => {
     expect(PROVISIONAL_DISPLAY_DEADBAND_M).toBe(0.3);
-    expect(PROVISIONAL_DISPLAY_FOLLOW_RATIO).toBe(0.6);
+    expect(PROVISIONAL_DISPLAY_FOLLOW_RATIO).toBe(0.9);
   });
 });

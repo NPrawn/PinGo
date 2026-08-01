@@ -29,7 +29,7 @@ describe('useMapGestures', () => {
   it('처음에는 변환이 없다', () => {
     const { result } = renderHook(() => useMapGestures());
 
-    expect(result.current.view).toEqual({ scale: 1, x: 0, y: 0 });
+    expect(result.current.view).toEqual({ scale: 1, x: 0, y: 0, rotation: 0 });
     expect(result.current.isTransformed).toBe(false);
   });
 
@@ -45,7 +45,7 @@ describe('useMapGestures', () => {
       result.current.handlers.onPointerMove(pointerEvent(1, 160, 130));
     });
 
-    expect(result.current.view).toEqual({ scale: 1, x: 0, y: 0 });
+    expect(result.current.view).toEqual({ scale: 1, x: 0, y: 0, rotation: 0 });
   });
 
   it('휠로 확대한 뒤에는 밀 수 있다', () => {
@@ -127,7 +127,7 @@ describe('useMapGestures', () => {
       result.current.reset();
     });
 
-    expect(result.current.view).toEqual({ scale: 1, x: 0, y: 0 });
+    expect(result.current.view).toEqual({ scale: 1, x: 0, y: 0, rotation: 0 });
     expect(result.current.isTransformed).toBe(false);
   });
 

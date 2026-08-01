@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** 지도 표시 상태. 배율과 이동량(px)이다. */
+/** 지도 표시 상태. 배율·이동량(px)·회전(도)이다. */
 export interface MapView {
   scale: number;
   x: number;
   y: number;
+  /**
+   * 지도를 돌린 각도. 진행 방향을 화면 위로 세우는 데 쓴다.
+   *
+   * 손 조작으로는 바뀌지 않는다 — 회전은 방향 정보에서만 나오고, 자유 보기로 풀린 뒤에도
+   * 마지막 각도를 유지한다. 보던 방향이 갑자기 돌아가면 어디를 보고 있었는지 잃는다.
+   */
+  rotation: number;
 }
 
-const IDENTITY: MapView = { scale: 1, x: 0, y: 0 };
+const IDENTITY: MapView = { scale: 1, x: 0, y: 0, rotation: 0 };
 
 /**
  * 확대 범위.
@@ -50,6 +57,13 @@ export interface FollowOptions {
    * 화면의 위쪽 3분의 2를 진행 방향에 내준다. 내비게이션의 통례다.
    */
   anchorY: number;
+  /**
+   * 지도를 돌릴 각도. 진행 방향이 화면 위를 향하게 하려면 `-90 - 방향각`이다.
+   *
+   * null이면 방향을 모르는 것이므로 돌리지 않는다. 0으로 대신 채우면 도면이 북쪽 고정인
+   * 것과 구분되지 않는다.
+   */
+  rotationDeg: number | null;
 }
 
 export function useMapGestures(follow?: FollowOptions) {
@@ -99,6 +113,8 @@ export function useMapGestures(follow?: FollowOptions) {
       scale,
       x: Math.min(limitX, Math.max(-limitX, next.x)),
       y: Math.min(limitY, Math.max(-limitY, next.y)),
+      // 회전은 손 조작이 건드리지 않는다. 들어온 값을 그대로 둔다.
+      rotation: next.rotation,
     };
   }, []);
 
@@ -245,7 +261,8 @@ export function useMapGestures(follow?: FollowOptions) {
     /** 시점이 내 위치를 따라가는 중인지. 복귀 버튼을 보일지 판단하는 데 쓴다. */
     isFollowing: following && followView !== null,
     /** 추종이 없을 때 확대·이동된 상태인지. */
-    isTransformed: active.scale !== 1 || active.x !== 0 || active.y !== 0,
+    isTransformed:
+      active.scale !== 1 || active.x !== 0 || active.y !== 0 || active.rotation !== 0,
     handlers: {
       onPointerDown,
       onPointerMove,
@@ -274,14 +291,23 @@ function computeFollowView(
   if (!(fit > 0)) return null;
 
   const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, box.width / (follow.spanPx * fit)));
-  const fitX = box.width / 2 + (follow.target.px - follow.canvas.width / 2) * fit;
-  const fitY = box.height / 2 + (follow.target.py - follow.canvas.height / 2) * fit;
+  const rotation = follow.rotationDeg ?? 0;
+  const radians = (rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  // 변환 기준점(박스 중심)에서 본 목표의 위치. 회전·확대가 이 벡터에 걸린다.
+  const dx = box.width / 2 + (follow.target.px - follow.canvas.width / 2) * fit - box.width / 2;
+  const dy = box.height / 2 + (follow.target.py - follow.canvas.height / 2) * fit - box.height / 2;
+  const rotatedX = scale * (cos * dx - sin * dy);
+  const rotatedY = scale * (sin * dx + cos * dy);
 
   return {
     scale,
+    rotation,
     // 추종 중에는 이동량을 자르지 않는다. 내 위치를 화면 아래쪽에 붙이는 것이 목적이라
     // 도면 가장자리에서는 일부러 여백이 보여야 한다.
-    x: box.width / 2 - scale * (fitX - box.width / 2) - box.width / 2,
-    y: box.height * follow.anchorY - scale * (fitY - box.height / 2) - box.height / 2,
+    x: box.width / 2 - rotatedX - box.width / 2,
+    y: box.height * follow.anchorY - rotatedY - box.height / 2,
   };
 }

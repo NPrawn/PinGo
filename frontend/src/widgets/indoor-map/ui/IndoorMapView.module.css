@@ -20,6 +20,18 @@
   height: 100%;
 }
 
+/*
+ * **stage 변환에는 transition을 걸지 않는다.**
+ *
+ * 내 위치 마커는 이 stage 안에 있고, 추종 중에는 마커의 캔버스 좌표 변화와 stage 이동량이
+ * 서로를 정확히 상쇄해 마커가 앵커에 고정된다. transition을 걸면 마커 좌표만 즉시 바뀌고
+ * stage가 뒤늦게 따라와, 갱신 때마다 마커가 앵커 밖으로 튀어나갔다 돌아온다. 화면에서는
+ * 위치가 흔들리며 늦게 따라오는 것으로 보인다.
+ *
+ * 방향 계단을 펴는 일은 표시 각도 자체를 프레임마다 잇는 쪽에서 한다(useSmoothedRotation).
+ * 그래야 이동량이 같은 각도로 다시 계산돼 마커가 앵커에 붙어 있는다.
+ */
+
 /* stage를 채우되 object-fit: contain으로 원본 비율을 유지한다.
    오버레이 SVG는 같은 박스에서 preserveAspectRatio 기본값(xMidYMid meet)으로 그려지는데,
    이는 contain과 같은 방식으로 여백을 만든다. 따라서 뷰포트가 가로로 넓든 세로로 길든
@@ -54,17 +66,22 @@
 }
 
 /* 확대·이동을 되돌린다. 조작한 뒤에만 나타나므로 기본 화면의 모습은 바뀌지 않는다. */
+/* 내 위치로 돌아가기. 글자 대신 아이콘이라 정사각형으로 둔다. */
 .resetView {
   position: absolute;
   right: 8px;
   bottom: 8px;
   z-index: 6;
-  padding: 6px 10px;
-  font: 800 10px/1 var(--font-family-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   color: var(--color-mint-forest);
   cursor: pointer;
-  background: rgb(255 255 255 / 88%);
+  background: rgb(255 255 255 / 92%);
   border: 0;
-  border-radius: 11px;
-  box-shadow: 0 4px 12px -8px rgb(15 44 34 / 50%);
+  border-radius: 50%;
+  box-shadow: 0 4px 12px -6px rgb(15 44 34 / 55%);
 }

@@ -58,6 +58,14 @@ interface IndoorMapOverlayProps {
    * 좌표는 그대로 두고 크기만 상쇄하므로 마커가 가리키는 지점은 바뀌지 않는다.
    */
   viewScale?: number;
+  /**
+   * 지도에 걸린 회전(도). 기본 0.
+   *
+   * **글자와 아이콘을 이 각도만큼 되돌린다.** 진행 방향을 위로 세우려고 지도를 돌리면
+   * 그 안의 이름표도 함께 누워 읽을 수 없게 된다. 위치를 나타내는 점·선은 돌아야 맞고,
+   * 읽는 요소만 세워 둔다.
+   */
+  mapRotationDeg?: number;
 }
 
 /**
@@ -83,6 +91,7 @@ export function IndoorMapOverlay({
   selectedFacilityId,
   onSelectFacility,
   viewScale = 1,
+  mapRotationDeg = 0,
 }: IndoorMapOverlayProps) {
   const { t } = useTranslation();
   /**
@@ -112,6 +121,12 @@ export function IndoorMapOverlay({
   const labelHaloWidth = LABEL_HALO_WIDTH * sizeUnit;
   const routeWidth = ROUTE_WIDTH * sizeUnit;
   const routeDash = `${ROUTE_DASH[0] * sizeUnit} ${ROUTE_DASH[1] * sizeUnit}`;
+
+  /** 지도가 돌아간 만큼 되돌린다. 읽는 요소는 항상 화면에 바로 서 있어야 한다. */
+  const upright = (point: PixelPoint): string | undefined =>
+    mapRotationDeg === 0
+      ? undefined
+      : `rotate(${-mapRotationDeg} ${point.px} ${point.py})`;
 
   const routeSegments = floorSegments(pathNodes ?? [], floorId, project);
   const currentPoint = pointOnFloor(currentLocation, floorId, project);
@@ -182,6 +197,7 @@ export function IndoorMapOverlay({
               y={point.py - facilityRadius / 2}
               width={facilityRadius}
               height={facilityRadius}
+              transform={upright(point)}
             />
             {/* 이름은 고른 것에만 붙인다. 층당 30여 개를 모두 붙이면 도면이 글자로 덮인다. */}
             {selected && (
@@ -192,6 +208,7 @@ export function IndoorMapOverlay({
                 fontSize={labelFontSize}
                 strokeWidth={labelHaloWidth}
                 textAnchor="middle"
+                transform={upright(point)}
               >
                 {facility.nameKo}
               </text>
@@ -218,6 +235,7 @@ export function IndoorMapOverlay({
               fontSize={labelFontSize}
               strokeWidth={labelHaloWidth}
               textAnchor="middle"
+              transform={upright(destinationPoint)}
             >
               {destinationLabel}
             </text>

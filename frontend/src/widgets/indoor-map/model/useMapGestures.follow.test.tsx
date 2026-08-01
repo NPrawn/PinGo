@@ -55,21 +55,33 @@ function mount(options: FollowOptions) {
   return { state, rerender };
 }
 
-const followOptions = (target: { px: number; py: number } | null): FollowOptions => ({
+const followOptions = (
+  target: { px: number; py: number } | null,
+  rotationDeg: number | null = null,
+): FollowOptions => ({
   target,
   canvas: CANVAS,
   spanPx: SPAN_PX,
   anchorY: ANCHOR_Y,
+  rotationDeg,
 });
 
-/** 변환을 거쳤을 때 목표 지점이 화면 어디에 오는지. 앵커와 같아야 한다. */
+/**
+ * 변환을 거쳤을 때 캔버스 점이 화면 어디에 오는지.
+ *
+ * `translate(x, y) rotate(r) scale(s)`를 박스 중심 기준으로 푼 것이다. 컴포넌트가 stage에
+ * 거는 것과 같은 식이어야 검사가 의미를 갖는다.
+ */
 function screenOf(view: MapView, target: { px: number; py: number }) {
   const fit = Math.min(BOX.width / CANVAS.width, BOX.height / CANVAS.height);
-  const fx = BOX.width / 2 + (target.px - CANVAS.width / 2) * fit;
-  const fy = BOX.height / 2 + (target.py - CANVAS.height / 2) * fit;
+  const dx = BOX.width / 2 + (target.px - CANVAS.width / 2) * fit - BOX.width / 2;
+  const dy = BOX.height / 2 + (target.py - CANVAS.height / 2) * fit - BOX.height / 2;
+  const radians = (view.rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
   return {
-    x: BOX.width / 2 + view.scale * (fx - BOX.width / 2) + view.x,
-    y: BOX.height / 2 + view.scale * (fy - BOX.height / 2) + view.y,
+    x: BOX.width / 2 + view.scale * (cos * dx - sin * dy) + view.x,
+    y: BOX.height / 2 + view.scale * (sin * dx + cos * dy) + view.y,
   };
 }
 
@@ -168,6 +180,48 @@ describe('시점 추종', () => {
     const { state } = mount(followOptions(null));
 
     expect(state.current?.isFollowing).toBe(false);
-    expect(state.current?.view).toEqual({ scale: 1, x: 0, y: 0 });
+    expect(state.current?.view).toEqual({ scale: 1, x: 0, y: 0, rotation: 0 });
+  });
+
+  /** 진행 방향이 화면 위를 향하게 지도를 돌린다. */
+  describe('진행 방향 회전', () => {
+    it('돌려도 내 위치는 앵커에 그대로 있다', () => {
+      // 회전축이 내 위치가 아니면 돌 때마다 내가 화면에서 미끄러진다.
+      const target = { px: 1200, py: 400 };
+      const { state } = mount(followOptions(target, -35));
+
+      expect(state.current!.view.rotation).toBe(-35);
+      const screen = screenOf(state.current!.view, target);
+      expect(screen.x).toBeCloseTo(BOX.width / 2, 0);
+      expect(screen.y).toBeCloseTo(BOX.height * ANCHOR_Y, 0);
+    });
+
+    it('내 앞쪽이 화면 위로 온다', () => {
+      /*
+       * 캔버스에서 0도는 오른쪽, 위는 -90도다. 방향각 φ를 위로 세우려면 -90 - φ만큼 돌린다.
+       * 내 위치에서 진행 방향으로 20m 앞선 점이 화면에서 위쪽에 놓이는지로 확인한다.
+       */
+      const headingDeg = 30;
+      const target = { px: 1200, py: 400 };
+      const aheadPx = 20 / 0.19;
+      const ahead = {
+        px: target.px + aheadPx * Math.cos((headingDeg * Math.PI) / 180),
+        py: target.py + aheadPx * Math.sin((headingDeg * Math.PI) / 180),
+      };
+
+      const { state } = mount(followOptions(target, -90 - headingDeg));
+      const me = screenOf(state.current!.view, target);
+      const front = screenOf(state.current!.view, ahead);
+
+      // 화면 좌표는 아래로 갈수록 커진다. 앞쪽이 위에 있어야 하므로 y가 더 작다.
+      expect(front.y).toBeLessThan(me.y);
+      expect(front.x).toBeCloseTo(me.x, 0);
+    });
+
+    it('방향을 모르면 돌리지 않는다', () => {
+      const { state } = mount(followOptions({ px: 1200, py: 400 }, null));
+
+      expect(state.current!.view.rotation).toBe(0);
+    });
   });
 });

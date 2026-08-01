@@ -49,6 +49,11 @@ function parseCurrentLocation(
  *   예: /user/map?mock=1 (B2) · /user/map?mock=1&floorId=2 (B3)
  * - `x`, `y`, `floor` 현재 위치를 직접 지정한다. 목업 위치보다 우선한다
  *   예: /user/map?mock=1&x=-58.4&y=42.5
+ * - `follow=1` 길안내 화면과 같은 시점 추종을 켠다
+ * - `heading` 진행 방향(도, 미터 프레임 기준). 추종 중이면 그 방향이 화면 위로 온다
+ *   예: /user/map?mock=1&x=0&y=0&follow=1&heading=30
+ *
+ *   방향은 XR에서만 나오므로 기기 없이 회전을 확인할 방법이 이것뿐이다.
  */
 export function IndoorMapPage() {
   const [searchParams] = useSearchParams();
@@ -56,6 +61,8 @@ export function IndoorMapPage() {
   const floorId = parsePositiveInt(searchParams.get('floorId'));
   const useMockData = searchParams.get('mock') === '1';
   const currentLocation = parseCurrentLocation(searchParams, floorId);
+  const followCamera = searchParams.get('follow') === '1';
+  const currentHeadingDeg = parseFiniteFloat(searchParams.get('heading')) ?? null;
 
   return (
     <main className={styles.page}>
@@ -63,6 +70,8 @@ export function IndoorMapPage() {
         stationId={stationId}
         floorId={floorId}
         currentLocation={currentLocation}
+        currentHeadingDeg={currentHeadingDeg}
+        followCamera={followCamera}
         useMockData={useMockData}
       />
     </main>

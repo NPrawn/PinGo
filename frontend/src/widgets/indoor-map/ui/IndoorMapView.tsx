@@ -13,8 +13,10 @@ import {
 } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
 import { resolveAssetUrl } from '@/shared/config';
+import { Icon } from '@/shared/ui';
 import { MOCK_CURRENT_LOCATION, MOCK_DESTINATION, MOCK_PATH_NODES } from '../model/fixtures';
 import { useMapGestures } from '../model/useMapGestures';
+import { useSmoothedRotationDeg } from '../model/useSmoothedRotation';
 import { IndoorMapOverlay } from './IndoorMapOverlay';
 import styles from './IndoorMapView.module.css';
 
@@ -130,6 +132,26 @@ export function IndoorMapView({
       ? meterToPixel(currentLocation.mapX, currentLocation.mapY, PLAN_REFERENCE.frame)
       : null;
 
+  /**
+   * 진행 방향이 화면 위를 향하도록 지도를 돌릴 각도.
+   *
+   * 방향각은 미터 프레임 기준이라 먼저 캔버스 기준으로 옮긴다(`+ angleDeg`). 캔버스에서
+   * 0도는 오른쪽이고 위는 -90도이므로, 방향각 φ를 위로 세우려면 `-90 - φ`만큼 돌린다.
+   *
+   * 방향을 모르면 돌리지 않는다 — 0으로 채우면 북쪽 고정과 구분되지 않는다.
+   */
+  const targetRotationDeg =
+    followCamera && typeof currentHeadingDeg === 'number'
+      ? -90 - (currentHeadingDeg + PLAN_REFERENCE.frame.angleDeg)
+      : null;
+
+  /**
+   * 방향은 5° 데드밴드로 걸러진 계단으로 들어오고, 부호가 ±180°에서 뒤집힌다. 그대로 지도에
+   * 걸면 5.4배로 당겨진 화면이 계단마다 튀고, 경계에서는 한 바퀴 돈다. 각도를 이어 붙이고
+   * 완만하게 편 값을 쓴다.
+   */
+  const mapRotationDeg = useSmoothedRotationDeg(targetRotationDeg);
+
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
   const {
     ref: mapRef,
@@ -143,6 +165,7 @@ export function IndoorMapView({
     canvas: PLAN_CANVAS,
     spanPx: FOLLOW_SPAN_PX,
     anchorY: FOLLOW_ANCHOR_Y,
+    rotationDeg: mapRotationDeg,
   });
   // 목업 모드에서는 목업 지도를 쓰므로 조회하지 않는다.
   const query = useStationFloorMaps(stationId, { enabled: !useMockData });
@@ -212,7 +235,9 @@ export function IndoorMapView({
       <div
         className={styles.stage}
         style={{
-          transform: `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.scale})`,
+          /* 회전을 확대보다 바깥에 둔다. 안쪽에 두면 회전이 확대된 좌표계에서 일어나
+             내 위치를 축으로 돌지 않는다. */
+          transform: `translate(${mapView.x}px, ${mapView.y}px) rotate(${mapView.rotation}deg) scale(${mapView.scale})`,
         }}
       >
         {/* 백엔드에 등록된 도면이 없으면 FE가 들고 있는 평면도로 떨어진다(localPlans).
@@ -275,12 +300,21 @@ export function IndoorMapView({
           /* 지도가 커져도 마커는 화면상 크기를 유지한다. 확대는 도면을 크게 보려는 조작이고,
              마커까지 커지면 가리는 면적만 늘어난다. */
           viewScale={mapView.scale}
+          /* 이름표와 아이콘을 되돌려 세우는 데 쓴다. 점·선은 지도와 함께 돌아야 맞다. */
+          mapRotationDeg={mapView.rotation}
         />
       </div>
-      {/* 추종 중일 때는 버튼이 필요 없다. 손으로 둘러본 뒤에만 돌아갈 곳을 제시한다. */}
+      {/* 추종 중일 때는 버튼이 필요 없다. 손으로 둘러본 뒤에만 돌아갈 곳을 제시한다.
+          글자 대신 아이콘으로 둔다 — 지도를 가리는 면적이 줄고, 내비게이션의 통례다.
+          이름은 화면에 보이지 않으므로 aria-label로만 남긴다. */}
       {(followTarget ? !mapFollowing : mapTransformed) && (
-        <button type="button" className={styles.resetView} onClick={resetMapView}>
-          {t(followTarget ? 'indoorMap.recenter' : 'indoorMap.resetView')}
+        <button
+          type="button"
+          className={styles.resetView}
+          onClick={resetMapView}
+          aria-label={t(followTarget ? 'indoorMap.recenter' : 'indoorMap.resetView')}
+        >
+          <Icon name={followTarget ? 'target' : 'refresh'} size={18} />
         </button>
       )}
     </div>
@@ -309,6 +343,7 @@ function MapOverlay({
   selectedFacilityId,
   onSelectFacility,
   viewScale,
+  mapRotationDeg,
 }: {
   floorId: number;
   placement: PlanPlacement | null;
@@ -321,6 +356,7 @@ function MapOverlay({
   selectedFacilityId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
   viewScale: number;
+  mapRotationDeg: number;
 }) {
   if (!placement) return null;
 
@@ -350,6 +386,7 @@ function MapOverlay({
       selectedFacilityId={selectedFacilityId}
       onSelectFacility={onSelectFacility}
       viewScale={viewScale}
+      mapRotationDeg={mapRotationDeg}
     />
   );
 }
