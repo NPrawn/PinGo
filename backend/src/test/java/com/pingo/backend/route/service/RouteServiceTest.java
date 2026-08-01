@@ -67,7 +67,7 @@ class RouteServiceTest {
             return node;
         });
         RouteNodeCreateRequest request = new RouteNodeCreateRequest(
-                1L, 2L, "junction", "B2 갈림길", new BigDecimal("300"), new BigDecimal("200"), true);
+                1L, 2L, "junction", "B2 갈림길", new BigDecimal("300"), new BigDecimal("200"), null, true);
 
         RouteNodeIdResponse response = routeService.createNode(request);
 
@@ -85,7 +85,7 @@ class RouteServiceTest {
     void createNodeThrowsForUnsupportedNodeType() {
         stubStationAndFloor(1L, 2L);
         RouteNodeCreateRequest request = new RouteNodeCreateRequest(
-                1L, 2L, "weird", null, new BigDecimal("1"), new BigDecimal("1"), null);
+                1L, 2L, "weird", null, new BigDecimal("1"), new BigDecimal("1"), null, null);
 
         assertThatThrownBy(() -> routeService.createNode(request))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -98,7 +98,7 @@ class RouteServiceTest {
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(createStation(1L)));
         when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(createFloor(2L, createStation(99L))));
         RouteNodeCreateRequest request = new RouteNodeCreateRequest(
-                1L, 2L, "normal", null, new BigDecimal("1"), new BigDecimal("1"), null);
+                1L, 2L, "normal", null, new BigDecimal("1"), new BigDecimal("1"), null, null);
 
         assertThatThrownBy(() -> routeService.createNode(request))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
@@ -209,14 +209,14 @@ class RouteServiceTest {
     }
 
     private StationFloor createFloor(Long floorId, Station station) {
-        StationFloor floor = StationFloor.create(station, "B2", "지하 2층", 1);
+        StationFloor floor = StationFloor.create(station, "B2", "지하 2층", 1, null);
         ReflectionTestUtils.setField(floor, "id", floorId);
         return floor;
     }
 
     private RouteNode createNode(Long id, Long stationId) {
         RouteNode node = RouteNode.create(
-                stationId, 2L, "junction", "노드", new BigDecimal("300"), new BigDecimal("200"), false);
+                stationId, 2L, "junction", "노드", new BigDecimal("300"), new BigDecimal("200"), null, false);
         ReflectionTestUtils.setField(node, "id", id);
         return node;
     }
