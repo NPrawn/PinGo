@@ -118,14 +118,51 @@ export function useMapGestures(follow?: FollowOptions) {
     };
   }, []);
 
+  /**
+   * 포인터 하나를 추적에서 놓는다.
+   *
+   * 떼는 것은 지도 요소와 `window` 양쪽에서 받으므로(아래) 같은 포인터에 두 번 불릴 수 있다.
+   * 두 번 지워도 결과는 같다.
+   */
+  const releasePointer = useCallback((pointerId: number) => {
+    pointers.current.delete(pointerId);
+    dragged.current.delete(pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+  }, []);
+
+  /**
+   * 지도 밖에서 손을 떼는 경우. (S15P11A206-79 리뷰)
+   *
+   * 요소 핸들러는 **지도 위에서** 뗀 것만 받는다. 밖에서 떼면 그 포인터가 `pointers`에 남고,
+   * 스스로 빠지는 경로가 없다. 다음에 지도를 누르는 순간 포인터가 둘이 되어 끌기가 확대로
+   * 처리된다 — 실측에서 미는 대신 배율이 1.46에서 2.36으로 뛰었고, 그 뒤로 조작이 계속
+   * 어긋난 채였다. 지도가 안내 화면의 아래 절반이라 위로 쓸어 올리다 떼면 바로 걸린다.
+   *
+   * `window`에서 받으면 지도 위에서 뗀 것도 함께 올라오므로 이 경로 하나로 모두 처리된다.
+   */
+  useEffect(() => {
+    const release = (event: PointerEvent): void => {
+      releasePointer(event.pointerId);
+    };
+
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+
+    return () => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+    };
+  }, [releasePointer]);
+
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
     /**
      * **`setPointerCapture`를 쓰지 않는다.** 두 가지가 깨진다 — 캡처한 뒤에는 `click`의 대상이
      * 캡처한 요소로 바뀌어 지도 위 시설 마커를 눌러도 탭이 마커까지 가지 않고, Chromium에서
      * 후속 `pointermove`가 전달되지 않아(실측: 7개 중 1개) 끌기가 첫 이동에서 멈춘다.
      *
-     * 대신 지도 요소 위에서만 추적한다. 손가락이 지도 밖으로 나가면 이동이 멈추고, 다시
-     * 들어오면 이어진다. 지도가 화면 아래 절반을 채우므로 실사용에서 크게 걸리지 않는다.
+     * 대신 지도 요소 위에서만 **움직임을** 추적한다. 손가락이 지도 밖으로 나가면 이동이
+     * 멈추고, 다시 들어오면 이어진다. 지도가 화면 아래 절반을 채우므로 실사용에서 크게 걸리지
+     * 않는다. 떼는 것은 밖에서도 받아야 하므로 `window`에서 함께 본다(위).
      */
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     dragged.current.delete(event.pointerId);
@@ -172,11 +209,12 @@ export function useMapGestures(follow?: FollowOptions) {
     [clamp, releaseFollow],
   );
 
-  const onPointerUp = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    pointers.current.delete(event.pointerId);
-    dragged.current.delete(event.pointerId);
-    if (pointers.current.size < 2) pinch.current = null;
-  }, []);
+  const onPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      releasePointer(event.pointerId);
+    },
+    [releasePointer],
+  );
 
   /** 데스크톱 확인용. 휠로 배율을 바꾼다. */
   const onWheel = useCallback(

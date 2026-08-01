@@ -145,4 +145,39 @@ describe('useMapGestures', () => {
     expect(result.current.view.x).toBe(0);
     expect(result.current.view.y).toBe(0);
   });
+
+  /**
+   * 지도 밖에서 손을 떼는 경우. (S15P11A206-79 리뷰)
+   *
+   * 요소 핸들러는 지도 위에서 뗀 것만 받는다. 밖에서 뗀 포인터가 남으면 다음에 지도를 누르는
+   * 순간 포인터가 둘이 되어 끌기가 확대로 처리되고, 남은 포인터가 빠지는 경로가 없어 그 뒤로
+   * 계속 어긋난다.
+   */
+  it('지도 밖에서 손을 떼도 다음 끌기가 확대로 바뀌지 않는다', () => {
+    const { result } = renderHook(() => useMapGestures());
+
+    act(() => {
+      for (let i = 0; i < 4; i += 1) result.current.handlers.onWheel(wheelEvent(-1));
+      result.current.handlers.onPointerDown(pointerEvent(1, 100, 100));
+      result.current.handlers.onPointerMove(pointerEvent(1, 140, 120));
+    });
+
+    const dragged = { ...result.current.view };
+
+    // 지도 밖에서 뗀다. 요소 핸들러에는 오지 않고 window까지만 올라온다.
+    act(() => {
+      const up = new Event('pointerup');
+      Object.defineProperty(up, 'pointerId', { value: 1 });
+      window.dispatchEvent(up);
+    });
+
+    act(() => {
+      result.current.handlers.onPointerDown(pointerEvent(2, 200, 100));
+      result.current.handlers.onPointerMove(pointerEvent(2, 240, 100));
+    });
+
+    // 배율은 그대로고 이동만 일어나야 한다.
+    expect(result.current.view.scale).toBeCloseTo(dragged.scale, 6);
+    expect(result.current.view.x).toBeCloseTo(dragged.x + 40);
+  });
 });
