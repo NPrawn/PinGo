@@ -125,6 +125,32 @@ describe('useSmoothedRotationDeg', () => {
     expect(Math.abs(shortestAngleDeltaDeg(result.current!, 90))).toBeLessThan(4);
   });
 
+  /**
+   * 방향 갱신은 effect를 다시 실행시킨다. (S15P11A206-79 리뷰)
+   *
+   * `targetDeg`가 의존성이므로 방향이 올 때마다 정리 함수가 돌고 effect가 새로 걸린다. 마지막
+   * 프레임 시각을 effect 안에 두면 그때마다 초기화되어, 재실행 뒤 첫 프레임의 경과 시간이 0이
+   * 된다. 갱신이 잦을수록 시간을 많이 잃고, 갱신 간격이 프레임 간격에 닿으면 지도가 서 버린다.
+   *
+   * 같은 프레임 타임라인을 두 훅에 흘리고 한쪽에만 갱신을 준다. 본 시간과 목표가 같으므로
+   * 표시 각도도 같아야 한다.
+   */
+  it('방향이 자주 갱신돼도 프레임 시간을 잃지 않는다', () => {
+    const quiet = mount(0);
+    const updated = mount(0);
+    driver.advance(16);
+
+    quiet.rerender({ target: 90 });
+
+    for (let index = 0; index < 10; index += 1) {
+      // 방향 채널이 120ms마다 값을 흘린다. 목표는 사실상 같지만 값이 달라 effect가 다시 실행된다.
+      updated.rerender({ target: 90 + (index % 2 === 0 ? 0.01 : -0.01) });
+      for (let frame = 0; frame < 8; frame += 1) driver.advance(15);
+    }
+
+    expect(updated.result.current!).toBeCloseTo(quiet.result.current!, 1);
+  });
+
   it('경계를 넘어도 짧은 쪽으로 돈다', () => {
     const { result, rerender } = mount(170);
     driver.advance(16);

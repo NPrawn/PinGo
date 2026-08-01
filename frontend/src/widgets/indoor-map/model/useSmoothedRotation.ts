@@ -105,10 +105,26 @@ export function useSmoothedRotationDeg(
   const inputRef = useRef<number | null>(null);
   /** 지금 목표를 따라가는 중인지. 잡아 두는 구간과 따라가는 구간을 가른다. */
   const chasingRef = useRef(false);
+  /**
+   * 마지막으로 돈 프레임의 시각. **effect 지역 변수가 아니라 ref다.**
+   *
+   * `targetDeg`가 의존성이라 방향이 갱신될 때마다 effect가 다시 실행된다. 지역 변수로 두면
+   * 그때마다 null로 돌아가 재실행 뒤 첫 프레임의 경과 시간이 0이 되고, 그 한 프레임만큼
+   * 고르기가 진행되지 않는다. 방향 채널의 최소 간격(120ms, `PROVISIONAL_HEADING_MIN_INTERVAL_MS`)
+   * 에서 시간의 약 6%를 잃고, 그 간격이 프레임 간격까지 좁아지면 **모든** 프레임의 경과 시간이
+   * 0이 되어 지도가 아예 돌지 않는다. 실측으로 확인했다.
+   *
+   * 의존성에서 `targetDeg`를 빼는 것으로는 해결되지 않는다. 루프는 수렴하면 스스로 예약을
+   * 멈추고(아래), 그것을 다시 거는 유일한 계기가 effect 재실행이다. 의존성을 없애면 첫 방향을
+   * 붙여 보여준 뒤 루프가 영영 서 버린다.
+   *
+   * 프레임을 취소하고 곧바로 다시 거는 것은 시간이 이어지는 일이므로 정리 함수에서는 비우지
+   * 않는다. 루프가 **스스로 예약을 멈추는** 자리에서만 비운다.
+   */
+  const previousTimeRef = useRef<DOMHighResTimeStamp | null>(null);
 
   useEffect(() => {
     let frame: number | null = null;
-    let previousTime: DOMHighResTimeStamp | null = null;
 
     const apply = (value: number | null): void => {
       displayRef.current = value;
@@ -122,6 +138,7 @@ export function useSmoothedRotationDeg(
       if (targetDeg === null) {
         chasingRef.current = false;
         inputRef.current = null;
+        previousTimeRef.current = null;
         if (displayRef.current !== null) apply(null);
         return;
       }
@@ -135,12 +152,13 @@ export function useSmoothedRotationDeg(
       if (inputRef.current === null || displayRef.current === null) {
         chasingRef.current = false;
         inputRef.current = targetDeg;
+        previousTimeRef.current = null;
         apply(targetDeg);
         return;
       }
 
-      const elapsed = previousTime === null ? 0 : time - previousTime;
-      previousTime = time;
+      const elapsed = previousTimeRef.current === null ? 0 : time - previousTimeRef.current;
+      previousTimeRef.current = time;
 
       // 1) 고르기.
       const toTarget = shortestAngleDeltaDeg(inputRef.current, targetDeg);
@@ -165,7 +183,11 @@ export function useSmoothedRotationDeg(
       }
 
       // 고르기가 목표에 닿고 따라가기도 끝났으면 프레임을 놓는다. 다음 방향이 오면 다시 건다.
-      if (!chasingRef.current && Math.abs(toTarget) < REDRAW_DEG) return;
+      if (!chasingRef.current && Math.abs(toTarget) < REDRAW_DEG) {
+        // 여기서 루프가 선다. 다시 걸릴 때까지의 공백은 지나간 시간이 아니다.
+        previousTimeRef.current = null;
+        return;
+      }
 
       frame = requestAnimationFrame(step);
     };
