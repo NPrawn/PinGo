@@ -23,8 +23,12 @@ import styles from './NavigationPage.module.css';
  * 1m가 1.2px이고, 그 층 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px이 되어 서로를
  * 덮는다. 유형 하나를 켜면 많아도 13개(계단)라 겹치지 않는다 — FR-U-006의 점진적 공개다.
  *
- * 이름과 아이콘은 프로토타입(`#s-nav`)의 칩 다섯 개를 그대로 유지하고, 각 칩이 실제
- * `facilityType`을 켜도록만 연결했다.
+ * 이름과 아이콘은 프로토타입(`#s-nav`)의 칩 다섯 개에서 출발했고, 각 칩이 실제
+ * `facilityType`을 켜도록 연결했다.
+ *
+ * **에스컬레이터와 계단을 뒤에 붙였다.** 역삼역에서 가장 많은 두 유형인데(B1 기준 각각
+ * 10개·13개) 칩이 없어 지도에 한 번도 뜨지 않았다. 층을 오르내리는 통로라 길안내에서 오히려
+ * 자주 찾는 것들이다. 밀도는 문제되지 않는다 — 위 계산의 상한이 바로 계단 13개다.
  *
  * TODO: `platform`은 역삼역에 등록된 시설이 없어 눌러도 표시할 것이 없다. 승강장 시설이
  * 시드되면 그대로 동작한다(백엔드 요청 예정).
@@ -33,6 +37,8 @@ const MAP_FILTERS: readonly { name: string; icon: IconName; facilityType: string
   { name: '화장실', icon: 'restroom', facilityType: 'restroom' },
   { name: '승차권 충전', icon: 'card', facilityType: 'card_charger' },
   { name: '엘리베이터', icon: 'elevator', facilityType: 'elevator' },
+  { name: '에스컬레이터', icon: 'escalator', facilityType: 'escalator' },
+  { name: '계단', icon: 'stairs', facilityType: 'stair' },
   { name: '내린 위치', icon: 'train', facilityType: 'platform' },
   { name: '출구', icon: 'door', facilityType: 'exit' },
 ];
