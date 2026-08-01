@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import { loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { rm } from 'node:fs/promises';
 import { fileURLToPath, URL } from 'node:url';
@@ -40,17 +41,24 @@ function excludePrototypeFromBuild(): Plugin {
  *
  * 프록시를 타려면 `VITE_API_BASE_URL`을 빈 값으로 두어야 한다. 그러면 앱이 상대 경로로
  * 호출하고, 그 요청이 아래 target으로 전달된다.
+ *
+ * **`.env` 파일도 읽는다.** Vite는 `.env`를 `import.meta.env`에만 넣고 `process.env`에는
+ * 넣지 않으므로, `process.env`만 보면 `.env.local`에 적어 둔 값이 조용히 무시된다.
+ * 실제로 그렇게 502가 났다. 셸 환경변수가 파일보다 우선한다.
  */
-const DEV_API_TARGET = process.env.VITE_DEV_API_TARGET ?? 'http://localhost:8080';
+function devApiTarget(mode: string): string {
+  const fileEnv = loadEnv(mode, process.cwd(), 'VITE_');
+  return process.env.VITE_DEV_API_TARGET ?? fileEnv.VITE_DEV_API_TARGET ?? 'http://localhost:8080';
+}
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), excludePrototypeFromBuild()],
   server: {
     proxy: {
-      '/api': { target: DEV_API_TARGET, changeOrigin: true },
+      '/api': { target: devApiTarget(mode), changeOrigin: true },
       // 지도 도면 등 백엔드가 서빙하는 정적 파일. (API 명세서 2.5)
-      '/uploads': { target: DEV_API_TARGET, changeOrigin: true },
+      '/uploads': { target: devApiTarget(mode), changeOrigin: true },
     },
   },
   resolve: {
@@ -63,5 +71,15 @@ export default defineConfig({
     globals: true,
     setupFiles: './src/test/setup.ts',
     include: ['src/**/*.test.{ts,tsx}'],
+    /**
+     * 테스트가 볼 환경변수를 고정한다.
+     *
+     * Vite가 `.env.local`도 읽으므로, 개발자가 개발용으로 그 파일을 두면 API base URL이
+     * 바뀌어 절대 URL을 기대하는 테스트가 깨졌다. 사람마다 로컬 설정이 다른데 테스트 결과가
+     * 그것에 딸려 가면 안 된다.
+     */
+    env: {
+      VITE_API_BASE_URL: 'http://localhost:8080',
+    },
   },
-});
+}));
