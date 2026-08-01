@@ -153,6 +153,7 @@ erDiagram
 | floor_code | varchar | 층 코드 | 예: B1, B2 |
 | floor_name | varchar | 층 표시명 | nullable |
 | floor_order | int | 층 정렬 순서 | not null |
+| nominal_z | decimal | 캐노니컬 기준 높이(m). 층 바닥 기준 명목값이며 클라이언트 층 전환 판정에 쓴다 | nullable |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |
 
@@ -216,7 +217,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | map_x | decimal | 지도 X 좌표 | not null |
 | map_y | decimal | 지도 Y 좌표 | not null |
 | linked_node_id | bigint | 연결 경로 노드 | FK route_node.node_id, nullable |
-| is_accessible | boolean | 접근성 이용 가능 여부 | default false |
+| is_accessible | boolean | 접근성 이용 가능 여부. 출구는 계단·에스컬레이터 없이 도달 가능한지를 뜻하며 `elevator_only` 도달 여부와 일치시킨다 | default false |
 | is_active | boolean | 사용 여부 | default true |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |

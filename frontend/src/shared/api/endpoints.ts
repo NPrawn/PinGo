@@ -18,6 +18,7 @@ export const ENDPOINTS = {
     nearby: '/api/stations/nearby',
     search: '/api/stations/search',
     detail: (stationId: number) => `/api/stations/${stationId}`,
+    // 5.2 시설 목록 조회
     facilities: (stationId: number) => `/api/stations/${stationId}/facilities`,
   },
   stationFloorMaps: (stationId: number) => `/api/stations/${stationId}/maps`,
@@ -35,6 +36,7 @@ export const ENDPOINTS = {
     localize: '/api/vps/localize',
   },
   routes: {
+    // 8.1 경로 옵션 조회. 조회지만 요청 본문이 필요해 POST다.
     indoorOptions: '/api/routes/indoor/options',
     indoor: '/api/routes/indoor',
   },

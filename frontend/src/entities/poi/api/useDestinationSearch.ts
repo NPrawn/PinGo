@@ -16,14 +16,20 @@ function toIcon(category?: string): IconName {
   return 'pin';
 }
 
-export function useDestinationSearch(stationId: number, keyword: string, enabled: boolean) {
+/**
+ * 목적지 검색.
+ *
+ * 등록되지 않은 역은 `stationId`가 null이라 조회를 걸지 않는다. 역 선택에서 그런 역을 막아
+ * 두었지만 스토어 타입이 null을 허용하는 동안 이쪽도 스스로 막는다.
+ */
+export function useDestinationSearch(stationId: number | null, keyword: string, enabled: boolean) {
   const normalizedKeyword = keyword.trim();
   const language = 'ko';
 
   return useQuery({
-    queryKey: queryKeys.destinationSearch(stationId, normalizedKeyword, language),
+    queryKey: queryKeys.destinationSearch(stationId ?? 0, normalizedKeyword, language),
     queryFn: async (): Promise<Poi[]> => {
-      const destinations = await searchDestinations(stationId, normalizedKeyword, language);
+      const destinations = await searchDestinations(stationId!, normalizedKeyword, language);
 
       return destinations.map((destination) => ({
         id: destination.destinationId,
@@ -37,6 +43,6 @@ export function useDestinationSearch(stationId: number, keyword: string, enabled
         address: destination.address,
       }));
     },
-    enabled: enabled && stationId > 0 && normalizedKeyword.length > 0,
+    enabled: enabled && stationId != null && stationId > 0 && normalizedKeyword.length > 0,
   });
 }

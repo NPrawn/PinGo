@@ -2,9 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createXrSessionController,
   PROVISIONAL_TRACKING_LOST_MS,
+  type XrSessionControllerOptions,
   type XrSessionState,
 } from './session';
 import type { XrPoseSnapshot } from './types';
+
+/**
+ * 렌더 레이어 연결을 성공으로 고정한 컨트롤러.
+ *
+ * `XRWebGLLayer`가 없으면 immersive 세션은 프레임을 만들지 않으므로 컨트롤러가 이 레이어를
+ * 반드시 붙인다(S15P11A206-141). jsdom에는 WebGL이 없어 실제 연결을 시험할 수 없고, 그것은
+ * 실기기 검증 항목이다. 이 파일이 보는 것은 연결 성공·실패가 세션 흐름을 어떻게 가르는지다.
+ */
+function createController(options: XrSessionControllerOptions = {}) {
+  return createXrSessionController({ attachRenderLayer: async () => true, ...options });
+}
 
 /**
  * jsdom에는 WebXR이 없으므로 XRSystem·XRSession·XRFrame을 흉내낸 객체를 주입한다.
@@ -109,9 +121,21 @@ function pose(x: number, z: number, y = 0): XRViewerPose {
   } as unknown as XRViewerPose;
 }
 
+/** +Y축 기준으로 회전한 pose. 방향 채널 검증용이다. */
+function poseYaw(yawDeg: number): XRViewerPose {
+  const half = (yawDeg * Math.PI) / 360;
+
+  return {
+    transform: {
+      position: { x: 0, y: 0, z: 0 },
+      orientation: { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) },
+    },
+  } as unknown as XRViewerPose;
+}
+
 describe('createXrSessionController', () => {
   it('처음 상태는 idle이다', () => {
-    expect(createXrSessionController({ xr: undefined }).getState()).toEqual({
+    expect(createController({ xr: undefined }).getState()).toEqual({
       status: 'idle',
       reason: undefined,
       referenceSpaceType: undefined,
@@ -120,7 +144,7 @@ describe('createXrSessionController', () => {
 
   describe('지원하지 않는 환경', () => {
     it('navigator.xr이 없으면 no-xr-object로 실패한다', async () => {
-      const controller = createXrSessionController({ xr: undefined });
+      const controller = createController({ xr: undefined });
       const originalXr = navigator.xr;
 
       // jsdom에는 애초에 navigator.xr이 없지만, 값이 남아 있을 가능성을 지운다.
@@ -136,7 +160,7 @@ describe('createXrSessionController', () => {
 
     it('immersive-ar 미지원이면 unsupported로 실패한다', async () => {
       const requestSession = vi.fn();
-      const controller = createXrSessionController({
+      const controller = createController({
         xr: fakeXr(requestSession, false),
       });
 
@@ -157,7 +181,7 @@ describe('createXrSessionController', () => {
     it('domOverlayRoot가 없으면 dom-overlay를 요청하지 않는다', async () => {
       const fake = createFakeSession();
       const xr = fakeXr(async () => fake.session);
-      const controller = createXrSessionController({ xr });
+      const controller = createController({ xr });
 
       await controller.start();
 
@@ -169,7 +193,7 @@ describe('createXrSessionController', () => {
     it('domOverlayRoot를 넘기면 domOverlay로 전달한다', async () => {
       const fake = createFakeSession();
       const xr = fakeXr(async () => fake.session);
-      const controller = createXrSessionController({ xr });
+      const controller = createController({ xr });
       const root = document.createElement('div');
 
       await controller.start({ domOverlayRoot: root });
@@ -183,7 +207,7 @@ describe('createXrSessionController', () => {
     it('camera-access는 root와 무관하게 항상 요청한다', async () => {
       const fake = createFakeSession();
       const xr = fakeXr(async () => fake.session);
-      const controller = createXrSessionController({ xr });
+      const controller = createController({ xr });
 
       await controller.start();
       const [, init] = vi.mocked(xr.requestSession).mock.calls[0];
@@ -198,7 +222,7 @@ describe('createXrSessionController', () => {
     it('requestSession 전에 카메라를 반납한다', async () => {
       const order: string[] = [];
       const fake = createFakeSession();
-      const controller = createXrSessionController({
+      const controller = createController({
         xr: fakeXr(async () => {
           order.push('requestSession');
 
@@ -217,7 +241,7 @@ describe('createXrSessionController', () => {
 
     it('카메라 반납이 실패해도 세션 시작을 막지 않는다', async () => {
       const fake = createFakeSession();
-      const controller = createXrSessionController({
+      const controller = createController({
         xr: fakeXr(async () => fake.session),
       });
 
@@ -232,7 +256,7 @@ describe('createXrSessionController', () => {
 
     it('local reference space로 시작하고 warming-up이 된다', async () => {
       const fake = createFakeSession();
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await expect(controller.start()).resolves.toMatchObject({
         status: 'warming-up',
@@ -243,7 +267,7 @@ describe('createXrSessionController', () => {
 
     it('local이 없으면 local-floor로 넘어간다', async () => {
       const fake = createFakeSession(['local-floor']);
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await expect(controller.start()).resolves.toMatchObject({
         referenceSpaceType: 'local-floor',
@@ -260,7 +284,7 @@ describe('createXrSessionController', () => {
      */
     it('viewer 공간만 있으면 상대 위치를 못 구하므로 실패로 처리한다', async () => {
       const fake = createFakeSession(['viewer']);
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await expect(controller.start()).resolves.toMatchObject({
         status: 'failed',
@@ -271,13 +295,37 @@ describe('createXrSessionController', () => {
 
     it('쓸 수 있는 reference space가 없으면 세션을 닫고 실패한다', async () => {
       const fake = createFakeSession([]);
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await expect(controller.start()).resolves.toMatchObject({
         status: 'failed',
         reason: 'no-reference-space',
       });
       expect(fake.endCalls()).toBe(1);
+    });
+
+    /**
+     * `XRWebGLLayer`가 없으면 immersive 세션은 프레임을 만들지 않는다. `requestSession`과
+     * `requestReferenceSpace`가 모두 성공해도 `requestAnimationFrame` 콜백이 오지 않아 pose가
+     * 영원히 없고 카메라 영상도 나오지 않는다.
+     *
+     * **오류도 이벤트도 없이 조용히 실패하는 종류다.** 11.8의 카메라 자원 충돌과 증상이 같아
+     * 세션을 열어 둔 채로는 원인을 구분할 수 없다. 실패로 알려 fallback 경로를 타게 한다.
+     */
+    it('렌더 레이어를 붙이지 못하면 세션을 닫고 실패한다', async () => {
+      const fake = createFakeSession();
+      const controller = createController({
+        xr: fakeXr(async () => fake.session),
+        attachRenderLayer: async () => false,
+      });
+
+      await expect(controller.start()).resolves.toMatchObject({
+        status: 'failed',
+        reason: 'no-render-layer',
+      });
+      expect(fake.endCalls()).toBe(1);
+      // reference space를 구하기 전에 닫는다. 레이어가 없으면 공간을 구해도 쓸 데가 없다.
+      expect(fake.hasPendingFrame()).toBe(false);
     });
   });
 
@@ -289,7 +337,7 @@ describe('createXrSessionController', () => {
     function controllerWithFailure(elapsedMs: number) {
       let calls = 0;
 
-      return createXrSessionController({
+      return createController({
         now: () => {
           calls += 1;
 
@@ -320,7 +368,7 @@ describe('createXrSessionController', () => {
     it('진행 중인 start가 있으면 세션을 두 번 만들지 않는다', async () => {
       const fake = createFakeSession();
       const xr = fakeXr(async () => fake.session);
-      const controller = createXrSessionController({ xr });
+      const controller = createController({ xr });
 
       await Promise.all([controller.start(), controller.start(), controller.start()]);
 
@@ -330,7 +378,7 @@ describe('createXrSessionController', () => {
     it('이미 열려 있으면 현재 상태를 그대로 돌려준다', async () => {
       const fake = createFakeSession();
       const xr = fakeXr(async () => fake.session);
-      const controller = createXrSessionController({ xr });
+      const controller = createController({ xr });
 
       const first = await controller.start();
       const second = await controller.start();
@@ -347,7 +395,7 @@ describe('createXrSessionController', () => {
     it('start 도중에 stop이 호출되면 열린 세션을 즉시 닫는다', async () => {
       const fake = createFakeSession();
       let openSession: ((session: XRSession) => void) | null = null;
-      const controller = createXrSessionController({
+      const controller = createController({
         xr: fakeXr(
           () =>
             new Promise<XRSession>((resolve) => {
@@ -374,7 +422,7 @@ describe('createXrSessionController', () => {
 
     it('종료한 뒤에는 다시 시작할 수 있다', async () => {
       const xr = fakeXr(async () => createFakeSession().session);
-      const controller = createXrSessionController({ xr });
+      const controller = createController({ xr });
 
       await controller.start();
       await controller.stop();
@@ -399,7 +447,7 @@ describe('createXrSessionController', () => {
         async () => fresh.session,
       ];
       let call = 0;
-      const controller = createXrSessionController({
+      const controller = createController({
         xr: fakeXr(() => sessions[call++]()),
       });
 
@@ -424,12 +472,12 @@ describe('createXrSessionController', () => {
 
   describe('세션 식별자', () => {
     it('열려 있지 않으면 null이다', () => {
-      expect(createXrSessionController({ xr: undefined }).getSessionId()).toBeNull();
+      expect(createController({ xr: undefined }).getSessionId()).toBeNull();
     });
 
     it('세션이 열리면 값을 부여하고 종료하면 null로 되돌린다', async () => {
       const fake = createFakeSession();
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await controller.start();
       expect(controller.getSessionId()).not.toBeNull();
@@ -444,7 +492,7 @@ describe('createXrSessionController', () => {
      */
     it('다시 시작하면 다른 값을 부여한다', async () => {
       const xr = fakeXr(async () => createFakeSession().session);
-      const controller = createXrSessionController({ xr });
+      const controller = createController({ xr });
 
       await controller.start();
       const first = controller.getSessionId();
@@ -455,7 +503,7 @@ describe('createXrSessionController', () => {
     });
 
     it('시작에 실패하면 값을 부여하지 않는다', async () => {
-      const controller = createXrSessionController({
+      const controller = createController({
         xr: fakeXr(async () => {
           throw new Error('NotSupportedError');
         }),
@@ -472,13 +520,16 @@ describe('createXrSessionController', () => {
       const fake = createFakeSession();
       const snapshots: XrPoseSnapshot[] = [];
       const states: XrSessionState[] = [];
-      const controller = createXrSessionController({
+      const controller = createController({
         xr: fakeXr(async () => fake.session),
         ...(trackingLostAfterMs === undefined ? {} : { trackingLostAfterMs }),
       });
 
+      const headings: number[] = [];
+
       controller.subscribe((state) => states.push(state));
       controller.subscribeSnapshots((snapshot) => snapshots.push(snapshot));
+      controller.subscribeHeading((yawDeg) => headings.push(yawDeg));
       await controller.start();
 
       /**
@@ -487,7 +538,7 @@ describe('createXrSessionController', () => {
        */
       states.length = 0;
 
-      return { controller, fake, snapshots, states };
+      return { controller, fake, snapshots, states, headings };
     }
 
     /**
@@ -532,6 +583,87 @@ describe('createXrSessionController', () => {
 
       expect(states).toHaveLength(1);
       expect(snapshots).toHaveLength(1);
+    });
+
+    /**
+     * 방향 표시는 위치 확정과 **별도 주기**다. (S15P11A206-141)
+     *
+     * 11.4가 회전을 위치 확정 트리거에서 뺀 대신 "표시 갱신 기준을 따로 정한다"로 남긴 자리다.
+     * 위치 주기(정지 시 5초 heartbeat)로 방향을 갱신하면 제자리에서 몸만 돌렸을 때 최대 5초
+     * 늦는다. 이 채널은 각도만 흘리므로 위치 확정 주기에 영향이 없다.
+     */
+    describe('방향 채널', () => {
+      it('첫 pose의 방향을 기준점으로 내보낸다', async () => {
+        const { fake, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+
+        expect(headings).toHaveLength(1);
+      });
+
+      it('데드밴드 미만 회전은 내보내지 않는다', async () => {
+        const { fake, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+        // 기본 데드밴드는 5도다. 간격은 충분히 벌린다.
+        fake.emitFrame(1600, poseYaw(3));
+
+        expect(headings).toHaveLength(1);
+      });
+
+      it('데드밴드 이상 회전하면 내보낸다', async () => {
+        const { fake, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+        fake.emitFrame(1600, poseYaw(20));
+
+        expect(headings).toHaveLength(2);
+      });
+
+      /** 매 프레임 리렌더는 11.4가 제거한 것이므로 큰 회전에도 상한을 둔다. */
+      it('최소 간격 안에서는 큰 회전도 내보내지 않는다', async () => {
+        const { fake, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+        // 기본 최소 간격은 120ms다. 30fps 프레임 하나(16ms) 뒤에 90도를 돌아도 참지 않는다.
+        fake.emitFrame(1216, poseYaw(90));
+
+        expect(headings).toHaveLength(1);
+      });
+
+      /** 방향 채널이 위치 확정을 늘리지 않아야 한다. 그게 이 분리의 목적이다. */
+      it('제자리 회전은 위치 스냅샷을 만들지 않는다', async () => {
+        const { fake, snapshots, headings } = await startedController();
+
+        fake.emitFrame(1200, poseYaw(0));
+
+        const positionCount = snapshots.length;
+
+        for (let index = 1; index <= 10; index += 1) {
+          fake.emitFrame(1200 + index * 200, poseYaw(index * 20));
+        }
+
+        expect(headings.length).toBeGreaterThan(positionCount);
+        expect(snapshots).toHaveLength(positionCount);
+      });
+
+      it('주입한 기준값을 쓴다', async () => {
+        const fake = createFakeSession();
+        const headings: number[] = [];
+        const controller = createController({
+          xr: fakeXr(async () => fake.session),
+          headingRule: { deadbandDeg: 30, minIntervalMs: 0 },
+        });
+
+        controller.subscribeHeading((yawDeg) => headings.push(yawDeg));
+        await controller.start();
+
+        fake.emitFrame(1200, poseYaw(0));
+        fake.emitFrame(1216, poseYaw(20));
+        fake.emitFrame(1232, poseYaw(40));
+
+        expect(headings).toHaveLength(2);
+      });
     });
 
     it('2m 이상 이동하면 move 스냅샷이 나온다', async () => {
@@ -590,13 +722,13 @@ describe('createXrSessionController', () => {
       fake.emitFrame(3000, null);
       fake.emitFrame(10000, pose(0, -8));
 
-      // 복구 지점(-8)에서 1m만 움직였으므로 확정되지 않는다.
+      // 복구 지점(-8)에서 0.1m만 움직였으므로 확정되지 않는다.
       expect(fake.hasPendingFrame()).toBe(true);
-      fake.emitFrame(12000, pose(0, -9));
+      fake.emitFrame(12000, pose(0, -8.1));
       expect(snapshots).toHaveLength(2);
 
-      // 복구 지점 대비 2m가 되면 move로 확정된다.
-      fake.emitFrame(13000, pose(0, -10));
+      // 복구 지점 대비 갱신 거리를 넘으면 move로 확정된다.
+      fake.emitFrame(13000, pose(0, -8.4));
       expect(snapshots.map((snapshot) => snapshot.trigger)).toEqual(['first', 'first', 'move']);
     });
 
@@ -627,9 +759,9 @@ describe('createXrSessionController', () => {
         const { controller, fake, snapshots } = await startedController();
 
         fake.emitFrame(1200, pose(0, 0));
-        fake.emitFrame(1400, pose(0.5, -1.1));
+        fake.emitFrame(1250, pose(0.5, -1.1));
 
-        // 0.2초·1.2m라 확정 주기(2m/1초)를 통과하지 못한다.
+        // 1.2m를 갔지만 0.05초라 확정 주기의 최소 간격을 통과하지 못한다.
         expect(snapshots).toHaveLength(1);
         expect(controller.getLatestReading()?.position).toEqual({ x: 0.5, y: 0, z: -1.1 });
       });
@@ -664,7 +796,7 @@ describe('createXrSessionController', () => {
   describe('자원 정리', () => {
     it('stop이 세션을 끝내고 프레임 루프와 리스너를 정리한다', async () => {
       const fake = createFakeSession();
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await controller.start();
       fake.emitFrame(1200, pose(0, 0));
@@ -677,7 +809,7 @@ describe('createXrSessionController', () => {
     });
 
     it('열려 있지 않으면 stop은 아무 일도 하지 않는다', async () => {
-      const controller = createXrSessionController({
+      const controller = createController({
         xr: fakeXr(async () => createFakeSession().session),
       });
 
@@ -691,7 +823,7 @@ describe('createXrSessionController', () => {
      */
     it('브라우저가 세션을 끊으면 ended가 되고 자원을 정리한다', async () => {
       const fake = createFakeSession();
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await controller.start();
       fake.fireEnd();
@@ -703,7 +835,7 @@ describe('createXrSessionController', () => {
 
     it('화면을 벗어나면(pagehide) 세션을 끝낸다', async () => {
       const fake = createFakeSession();
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await controller.start();
       window.dispatchEvent(new Event('pagehide'));
@@ -716,7 +848,7 @@ describe('createXrSessionController', () => {
 
     it('정리 후에는 pagehide가 세션을 다시 끊지 않는다', async () => {
       const fake = createFakeSession();
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
 
       await controller.start();
       await controller.stop();
@@ -727,7 +859,7 @@ describe('createXrSessionController', () => {
 
     it('구독은 해제할 수 있다', async () => {
       const fake = createFakeSession();
-      const controller = createXrSessionController({ xr: fakeXr(async () => fake.session) });
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
       const snapshots: XrPoseSnapshot[] = [];
       const unsubscribe = controller.subscribeSnapshots((snapshot) => snapshots.push(snapshot));
 

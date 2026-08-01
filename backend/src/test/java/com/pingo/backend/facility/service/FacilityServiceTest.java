@@ -213,7 +213,7 @@ class FacilityServiceTest {
     }
 
     private StationFloor createFloor(Long floorId, Station station) {
-        StationFloor floor = StationFloor.create(station, "B2", "지하 2층", 1);
+        StationFloor floor = StationFloor.create(station, "B2", "지하 2층", 1, null);
         ReflectionTestUtils.setField(floor, "id", floorId);
         return floor;
     }

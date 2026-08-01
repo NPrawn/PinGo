@@ -11,8 +11,11 @@ import styles from './LocateSuccessPage.module.css';
 export function LocateSuccessPage() {
   const station = useStationStore((state) => state.station);
   const floor = useStationStore((state) => state.floor);
+  /** 위치 인식이 준 경로 시작 노드의 이름. 역·층 표기보다 구체적이다. */
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const locationText = currentLocationLabel ?? `${station} · ${floor}`;
+  /** 안내 중 재인식으로 왔는지. 돌아갈 화면을 가른다. (S15P11A206-141) */
+  const relocalizing = useNavigationStore((state) => state.relocalizing);
 
   return (
     <PhoneFrame layout="flush" bodyClassName={styles.body} statusBarClassName={styles.statusBar}>
@@ -96,7 +99,18 @@ export function LocateSuccessPage() {
           </Card>
 
           <div className={styles.actions}>
-            <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>이 위치에서 경로 선택하기 →</ButtonLink>
+            {/*
+              안내 중 재인식으로 온 경우에는 경로를 다시 고르지 않고 안내로 돌아간다.
+              (S15P11A206-141, 화면 정의서 U-10 "현재 위치 다시 인식")
+
+              목적지와 경로는 이미 정해져 있고 바뀐 것은 현재 위치뿐이다. 기본 CTA로 보내면
+              사용자가 목적지 선택부터 다시 밟는다.
+            */}
+            {relocalizing ? (
+              <ButtonLink to={USER_ROUTES.NAVIGATION}>이 위치에서 안내 계속하기 →</ButtonLink>
+            ) : (
+              <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>이 위치에서 경로 선택하기 →</ButtonLink>
+            )}
             <GhostLink to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.retake}>
               이 위치가 아니에요 · 다시 촬영
             </GhostLink>

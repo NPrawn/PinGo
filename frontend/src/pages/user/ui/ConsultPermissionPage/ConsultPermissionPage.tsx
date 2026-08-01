@@ -95,6 +95,11 @@ export function ConsultPermissionPage() {
     if (!userSessionId) {
       return;
     }
+    // 상담은 역 단위로 배정된다. 등록되지 않은 역이면 보낼 상담자가 없다.
+    if (stationId == null) {
+      setErrorMessage('이 역은 아직 상담을 지원하지 않습니다.');
+      return;
+    }
 
     setSubmitting(true);
     setErrorMessage('');

@@ -11,7 +11,8 @@ export function ArrivalPage() {
   const destination = useNavigationStore((state) => state.destination) ?? '선택한 목적지';
   const destinationLatitude = useNavigationStore((state) => state.destinationLatitude);
   const destinationLongitude = useNavigationStore((state) => state.destinationLongitude);
-  const exit = route === 'elev' ? '2번 출입구' : '7번 출입구';
+  // TODO: 출구는 경로 응답(8.2)의 마지막 노드에서 와야 한다. 프로토타입에서 옮겨온 값이다.
+  const exit = route === 'elevator_only' ? '2번 출입구' : '7번 출입구';
 
   return (
     <PhoneFrame layout="hero" bodyClassName={styles.body}>

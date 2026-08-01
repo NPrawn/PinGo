@@ -885,44 +885,54 @@ export interface components {
       message?: string;
       data?: components['schemas']['LocalizationResponse'];
     };
-    LocalizationCandidateResponse: {
+    /** @description 캐노니컬 수평면의 2D 단위벡터. 길이 1 로 정규화돼 있다. */
+    PlanarDirectionResponse: {
       /**
-       * Format: int64
-       * @description 위치 후보 노드 ID
-       * @example 101
+       * @description 캐노니컬 X 성분
+       * @example 0.93
        */
-      nodeId?: number;
+      x?: number;
+      /**
+       * @description 캐노니컬 Y 성분
+       * @example -0.36
+       */
+      y?: number;
+    };
+    /** @description 위치 인식으로 확정한 실내 위치. 캐노니컬 미터 좌표이며 지도에 그대로 표시한다. */
+    LocalizedPositionResponse: {
       /**
        * Format: int64
-       * @description 위치 후보가 속한 층 ID
-       * @example 3
+       * @description 층 ID
+       * @example 2
        */
       floorId?: number;
       /**
-       * @description 사용자에게 표시할 위치 후보 이름
-       * @example 강남역 2호선 개찰구 앞
+       * @description 층 코드
+       * @example B2
        */
-      label?: string;
+      floorCode?: string;
       /**
-       * @description 실내 지도 기준 X 좌표
-       * @example 127.45
+       * @description 캐노니컬 X (m)
+       * @example -0.975
        */
       mapX?: number;
       /**
-       * @description 실내 지도 기준 Y 좌표
-       * @example 82.3
+       * @description 캐노니컬 Y (m)
+       * @example 27.717
        */
       mapY?: number;
       /**
-       * @description 위치 인식 신뢰도 점수
-       * @example 0.72
+       * @description 캐노니컬 Z (m). 해당 층의 기준 높이이며 위치추정으로 얻은 값이 아니다.
+       * @example 0.0
        */
-      confidenceScore?: number;
+      mapZ?: number;
+      /** @description 앵커 시점 단말이 향한 방향. 캐노니컬 수평면 2D 단위벡터다. AI 가 회전을 주지 않으면 null 이다. */
+      forwardMap?: components['schemas']['PlanarDirectionResponse'] | null;
       /**
-       * @description 위치 인식 신뢰도 라벨
-       * @example LOW
+       * @description 위치 정확도(m). 해당 층 좌표 정합의 leave-one-out 평균이다.
+       * @example 0.497
        */
-      confidenceLabel?: string;
+      accuracyM?: number;
     };
     LocalizationResponse: {
       /**
@@ -951,7 +961,19 @@ export interface components {
        * @example YS-2026-07-23.1
        */
       mapVersion?: string;
-      candidates?: components['schemas']['LocalizationCandidateResponse'][];
+      /** @description 확정된 실내 위치. 위치를 확정하지 못했거나 해당 층의 좌표 정합이 없으면 null 이다. */
+      position?: components['schemas']['LocalizedPositionResponse'] | null;
+      /**
+       * Format: int64
+       * @description 경로 탐색의 시작점 노드 ID. position 에서 가장 가까운 노드다. 위치를 확정하지 못하면 null 이다.
+       * @example 123
+       */
+      startNodeId?: number | null;
+      /**
+       * @description 경로 시작 노드의 표시 이름. 시설에 붙어 있으면 시설명이다.
+       * @example B2-B3 엘리베이터 A
+       */
+      startNodeLabel?: string | null;
       fallbackOptions?: (
         | 'retry_capture'
         | 'select_landmark'

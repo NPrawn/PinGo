@@ -68,7 +68,8 @@ export function CapturePortraitPage() {
     }
 
     async function captureAndLocalize() {
-      if (disposed || timedOutRef.current || !userSessionId) return;
+      // 등록되지 않은 역은 VPS 맵도 없다. 촬영해도 물어볼 곳이 없다.
+      if (disposed || timedOutRef.current || !userSessionId || stationId == null) return;
       if (captureInFlight.current) {
         scheduleNextCapture();
         return;
@@ -108,23 +109,25 @@ export function CapturePortraitPage() {
             intrinsicsSource: 'browser',
           },
         });
-        const candidate = result.candidates?.[0];
+        // 앵커링에 성공하면 서버가 경로 시작 노드와 캐노니컬 좌표를 함께 준다.
+        // 좌표 정합이 없는 층(역삼역 B1)은 status가 map_not_ready로 내려온다. (S15P11A206-128)
+        const position = result.position;
 
         if (disposed || timedOutRef.current) return;
         if (
           result.resultStatus === 'success' &&
-          candidate?.nodeId != null &&
-          candidate.floorId != null
+          result.startNodeId != null &&
+          position?.floorId != null
         ) {
           localized = true;
           setCurrentLocation({
-            nodeId: candidate.nodeId,
-            floorId: candidate.floorId,
-            label: candidate.label,
-            mapX: candidate.mapX,
-            mapY: candidate.mapY,
+            nodeId: result.startNodeId,
+            floorId: position.floorId,
+            label: result.startNodeLabel ?? undefined,
+            mapX: position.mapX,
+            mapY: position.mapY,
           });
-          const floorCode = maps.find((map) => map.floorId === candidate.floorId)?.floorCode;
+          const floorCode = maps.find((map) => map.floorId === position.floorId)?.floorCode;
           if (
             floorCode === '1F' ||
             floorCode === 'B1' ||
@@ -133,7 +136,7 @@ export function CapturePortraitPage() {
           ) {
             setFloor(floorCode);
           }
-          await updateUserSession(userSessionId, { currentNodeId: candidate.nodeId });
+          await updateUserSession(userSessionId, { currentNodeId: result.startNodeId });
           navigate(USER_ROUTES.LOCATE_SUCCESS, { replace: true });
           return;
         }

@@ -47,7 +47,7 @@ class IndoorRouteControllerTest {
     @DisplayName("옵션 조회 정상 요청은 200과 옵션 목록을 반환한다")
     void getRouteOptionsReturnsOptions() throws Exception {
         when(indoorRouteService.getRouteOptions(any())).thenReturn(List.of(
-                RouteOptionResponse.available(RouteType.FASTEST, BigDecimal.valueOf(15), 240),
+                RouteOptionResponse.available(RouteType.FASTEST, BigDecimal.valueOf(15), 240, true),
                 RouteOptionResponse.unavailable(RouteType.ELEVATOR_ONLY,
                         RouteUnavailableReason.NO_ACCESSIBLE_ROUTE)));
 
@@ -60,9 +60,11 @@ class IndoorRouteControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].routeType").value("fastest"))
                 .andExpect(jsonPath("$.data[0].available").value(true))
+                .andExpect(jsonPath("$.data[0].hasStairsOrEscalator").value(true))
                 .andExpect(jsonPath("$.data[1].routeType").value("elevator_only"))
                 .andExpect(jsonPath("$.data[1].available").value(false))
-                .andExpect(jsonPath("$.data[1].unavailableReason").value("NO_ACCESSIBLE_ROUTE"));
+                .andExpect(jsonPath("$.data[1].unavailableReason").value("NO_ACCESSIBLE_ROUTE"))
+                .andExpect(jsonPath("$.data[1].hasStairsOrEscalator").value(false));
     }
 
     @Test
@@ -71,7 +73,8 @@ class IndoorRouteControllerTest {
         RouteResponse response = RouteResponse.available(
                 RouteType.FASTEST, 1L, 4L, BigDecimal.valueOf(15), 240,
                 List.of(new RouteStep(1, 1L, 2L, BigDecimal.valueOf(10), 120, "walkway", "10m 직진하세요.")),
-                List.of(new RoutePathNode(1L, 1L, BigDecimal.valueOf(10), BigDecimal.valueOf(20))));
+                List.of(new RoutePathNode(
+                        1L, 1L, BigDecimal.valueOf(10), BigDecimal.valueOf(20), BigDecimal.valueOf(5))));
         when(indoorRouteService.createRoute(any())).thenReturn(response);
 
         mockMvc.perform(post("/api/routes/indoor")
@@ -84,7 +87,9 @@ class IndoorRouteControllerTest {
                 .andExpect(jsonPath("$.data.routeType").value("fastest"))
                 .andExpect(jsonPath("$.data.available").value(true))
                 .andExpect(jsonPath("$.data.steps[0].order").value(1))
-                .andExpect(jsonPath("$.data.pathNodes[0].nodeId").value(1L));
+                .andExpect(jsonPath("$.data.pathNodes[0].nodeId").value(1L))
+                // 같은 층 안에서 높이가 갈리는 구간(역삼역 B0.5)을 FE 가 구분하려면 필요하다.
+                .andExpect(jsonPath("$.data.pathNodes[0].mapZ").value(5));
     }
 
     @Test

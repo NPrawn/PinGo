@@ -5,6 +5,7 @@
  */
 
 export const ICON_NAMES = [
+  'arcade',
   'arrow-right',
   'bolt',
   'bottle',
@@ -23,9 +24,12 @@ export const ICON_NAMES = [
   'door',
   'elevator',
   'eraser',
+  'escalator',
+  'exchange',
   'eye',
   'eye-off',
   'flag',
+  'gate',
   'gear',
   'globe',
   'gov',

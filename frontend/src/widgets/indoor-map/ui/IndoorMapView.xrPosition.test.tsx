@@ -12,6 +12,15 @@ import type {
 import { IndoorMapView } from './IndoorMapView';
 
 /**
+ * 시설 조회는 이 테스트의 관심사가 아니다. QueryClient 없이 렌더하므로 훅만 비워 둔다.
+ * 시설 마커 렌더링은 IndoorMapOverlay 테스트가 검사한다.
+ */
+vi.mock('@/entities/facility', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/facility')>()),
+  useStationFacilities: vi.fn(() => ({ data: undefined })),
+}));
+
+/**
  * WebXR 위치 훅과 282 지도 오버레이의 연동 검증. (S15P11A206-296)
  *
  * 두 조각이 실제로 맞물리는지만 본다 — 훅이 내는 좌표가 `IndoorMapView`의 `currentLocation`
@@ -69,6 +78,10 @@ function createFakeController() {
       return () => {
         snapshotListeners.delete(listener);
       };
+    },
+    subscribeHeading() {
+      // 이 파일은 좌표 배선만 본다. 방향은 useXrMapPosition.test.ts가 검사한다.
+      return () => undefined;
     },
     async start() {
       return state;

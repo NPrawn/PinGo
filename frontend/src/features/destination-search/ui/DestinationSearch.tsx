@@ -94,7 +94,7 @@ export function DestinationSearch({
     });
     if (userSessionId && poi.id != null) {
       void updateUserSession(userSessionId, {
-        selectedStationId: stationId,
+        selectedStationId: stationId ?? undefined,
         destinationId: poi.id,
         destinationType: poi.destinationType?.toLowerCase() ?? poi.kind,
       }).catch(() => undefined);

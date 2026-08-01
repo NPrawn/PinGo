@@ -588,6 +588,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
       "originPxX": 594,
       "originPxY": 501,
       "frameAngleDeg": -21.28,
+      "nominalZ": 0.0,
       "version": "v1"
     }
   ],
@@ -682,6 +683,14 @@ function pixelToMeter(px, py, frame) {
 ```
 
 `mapX`·`mapY`는 **캐노니컬 미터**다(픽셀이 아니다). 음수가 정상이며, 원점 기준 상대 위치다. 지도에 그릴 때는 §5.1의 좌표 프레임으로 변환한다.
+
+#### 출구의 `isAccessible`
+
+출구 시설의 `isAccessible`은 **역 안에서 계단·에스컬레이터 없이 그 출구까지 갈 수 있는지**를 뜻한다. `elevator_only` 경로 옵션(§8.1)의 도달 가능 여부와 같은 기준이며, 두 값은 항상 일치해야 한다.
+
+역삼역은 B1↔B2 구간에 엘리베이터가 없어 **3번·4번 출구(B2)만 `true`**이고, B1 출구 7개(1·2·5·6·7·8번·GFC몰 연결통로)는 `false`다.
+
+이 값은 장소-출구 추천에서 "엘리베이터로 갈 수 있는 최근접 출구"를 고르는 후보 필터로 쓴다. 그래프에서 파생된 사실을 컬럼에 담은 것이므로, **간선을 바꾸는 마이그레이션에서는 이 플래그도 함께 다시 봐야 한다.**
 
 ---
 
@@ -974,23 +983,65 @@ multipart/form-data
     "requestId": "loc_01JABC",
     "resultStatus": "success",
     "mapVersion": "YS-2026-07-23.1",
-    "candidates": [
-      {
-        "nodeId": 15,
-        "floorId": 2,
-        "label": "B2 개찰구 앞",
-        "mapX": 320.5,
-        "mapY": 180.2,
-        "confidenceScore": 0.87,
-        "confidenceLabel": "high"
-      }
-    ],
+    "position": {
+      "floorId": 2,
+      "floorCode": "B2",
+      "mapX": -0.975,
+      "mapY": 27.717,
+      "mapZ": 0.0,
+      "forwardMap": { "x": 0.930418, "y": -0.366501 },
+      "accuracyM": 0.497
+    },
+    "startNodeId": 123,
+    "startNodeLabel": "B2-B3 엘리베이터 A",
     "fallbackOptions": [],
     "processingTimeMs": 2310
   },
   "message": null
 }
 ```
+
+#### 위치와 경로 진입 노드를 나눠 주는 이유
+
+`position`은 **지도에 점으로 찍는 값**이다. 캐노니컬 미터 좌표(§5.1)이며 노드에 붙이지 않은 날 좌표다. 경로 노드는 20~30m 간격의 경유점이라 거기에 스냅해서 표시하면 실제 위치와 최대 10m 어긋난다.
+
+`startNodeId`는 **경로 탐색 진입점**이다. `POST /api/routes/indoor/options`와 `/indoor`가 `startNodeId`를 요구하므로, `position`에서 가장 가까운 노드를 골라 함께 내려준다. 클라이언트는 그대로 넣어 쓰면 된다. 가장 가까운 노드가 몇 미터 떨어져 있어도 경로 결과는 거의 달라지지 않는다.
+
+`accuracyM`은 위치 정확도(m)이며 GPS 정확도 원처럼 쓰면 된다. **leave-one-out 평균**이다 — 기준점 위에서 잰 in-sample 잔차(B2 0.423 · B3 0.594)는 그 기준점으로 맞춘 값이라 낙관적이어서, 일반화 오차 쪽을 싣는다. 현재 값은 **B2 0.497 · B3 1.095**다.
+
+`mapZ`는 그 층의 기준 높이이며 위치추정으로 얻은 값이 아니다. 정합 기준점이 모두 같은 층 바닥 높이라 높이 방향은 데이터가 결정해주지 않는다. 따라서 **같은 층 안에서 높이가 갈리는 구간(역삼역 B0.5, `map_z=7.5`)은 이 값으로 구분할 수 없다.**
+
+#### `forwardMap` — 앵커 시점의 방향
+
+**앵커를 잡은 순간 단말이 향한 방향**이다. `mapX`·`mapY`와 같은 캐노니컬 프레임의 **수평면 2D 단위벡터**이며 각도가 아니다.
+
+FE가 WebXR 좌표를 지도에 정렬하려면 이 값이 필요하다(FE 좌표연동 스펙 §8.2·§8.5). FE는 같은 순간의 WebXR 전방(`forwardXr`)을 스스로 알고 있고, **둘의 각도 차가 XR↔지도 회전**이다. 그게 있어야 WebXR이 주는 이동량을 지도 위 이동으로 바꿀 수 있다. 지도 기준 방향은 VPS 포즈에만 들어 있어 클라이언트가 스스로 구할 수 없다.
+
+| 항목 | 확정 |
+| --- | --- |
+| 위치 | `position` 안쪽. 좌표와 한 쌍이어야 의미가 있다 |
+| 형태 | `{ "x": number, "y": number }`. 길이 1 |
+| 정규화 | **백엔드가 한다.** 클라이언트가 다시 정규화할 필요 없다 |
+| 축척 | 단위벡터라 캐노니컬 미터의 축척과 무관하다 |
+
+**`null`일 수 있다.** AI가 회전(`rotationXyzw`)을 주지 않거나, 카메라가 바닥·천장을 정면으로 봐서 수평 방향이 정의되지 않을 때다. 이때도 **좌표는 그대로 채워진다** — 방향이 없으면 WebXR 정렬만 못 하고 지도에 위치를 찍는 것은 된다. 즉 `resultStatus`가 `success`라도 `forwardMap`은 `null` 검사가 필요하다.
+
+방향이 틀려도 오류가 나지 않고 마커만 엉뚱한 쪽으로 움직인다. `null`이면 WebXR 정렬을 시작하지 않는 편이 안전하다.
+
+#### 좌표 정합이 없는 층
+
+`position`과 `startNodeId`는 **해당 역·층의 COLMAP 좌표 정합이 있을 때만** 채워진다. 현재 역삼역은 **B2·B3만** 정합돼 있고 **B1은 COLMAP 커버가 없다.**
+
+**AI 위치 인식이 성공해도 앵커링을 못 하면 `resultStatus`가 `map_not_ready`로 내려간다.** `success`로 두면 좌표도 경로 진입점도 없는데 `fallbackOptions`까지 비어서 클라이언트가 갈 화면이 없어지기 때문이다. 즉 `success`면 `position`이 항상 채워져 있다고 보아도 된다.
+
+앵커링이 실패하는 경우는 다음과 같다.
+
+| 상황 | 예 |
+| --- | --- |
+| 해당 역·층의 정합 계수가 없음 | 역삼역 B1 |
+| 요청한 역과 계수의 역이 다름 | 다른 역에서 `B2` 요청 |
+| AI 가 카메라 중심을 주지 않음 | |
+| 층이나 경로 노드를 찾지 못함 | |
 
 #### 실패 또는 낮은 신뢰도 Response
 
@@ -1002,16 +1053,29 @@ multipart/form-data
 | requestId | string | 위치추정 요청 추적 ID |
 | resultStatus | string | 위치 인식 처리 결과 |
 | mapVersion | string | 위치추정에 사용된 AI 맵 버전 |
-| candidates | array | 표시 가능한 위치 후보. 후보가 없으면 빈 배열 |
+| position | object | 확정한 실내 위치(캐노니컬 미터). 확정하지 못했거나 해당 층 정합이 없으면 `null` |
+| startNodeId | number | 경로 탐색 시작 노드 ID. 위치를 확정하지 못하면 `null` |
+| startNodeLabel | string | 경로 시작 노드 표시 이름. 시설이 붙어 있으면 시설명 |
 | fallbackOptions | string[] | 사용자에게 제공할 대체 행동 목록 |
 | processingTimeMs | number | AI 위치추정 처리 시간(ms). AI 호출 실패로 측정할 수 없으면 `null` 또는 생략 |
+
+`position` 내부 필드.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| floorId | number | 층 ID |
+| floorCode | string | 층 코드(`B1`·`B2`·`B3`) |
+| mapX / mapY | number | 캐노니컬 좌표(m) |
+| mapZ | number | 그 층의 기준 높이(m). 위치추정으로 얻은 값이 아니다 |
+| forwardMap | object | 앵커 시점 단말이 향한 방향. `{ x, y }` 캐노니컬 수평면 단위벡터. **산출하지 못하면 `null`** |
+| accuracyM | number | 위치 정확도(m). 정합의 leave-one-out 평균 |
 
 ##### resultStatus
 
 | 값 | 의미 | 기본 fallbackOptions |
 | --- | --- | --- |
-| success | 위치 후보를 정상 반환함 | - |
-| low_confidence | 후보는 있으나 신뢰도가 낮아 사용자 확인 또는 대체 선택이 필요함 | `retry_capture`, `select_landmark`, `select_on_map`, `request_consultation` |
+| success | 위치를 확정함. `position`·`startNodeId` 가 채워진다 | - |
+| low_confidence | 매칭 품질이 낮아 위치를 확정하지 못함. **`position`·`startNodeId` 는 `null`** 이며 `fallbackOptions` 로 분기한다 | `retry_capture`, `select_landmark`, `select_on_map`, `request_consultation` |
 | no_match | 이미지와 매칭되는 위치 후보를 찾지 못함 | `retry_capture`, `select_landmark`, `select_on_map`, `request_consultation` |
 | timeout | AI 서버 또는 위치 인식 처리가 제한 시간 내 완료되지 않음 | `retry_capture`, `select_on_map`, `request_consultation` |
 | ai_server_unavailable | AI 서버 호출이 불가능함 | `select_on_map`, `request_consultation` |
@@ -1057,7 +1121,9 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
     "requestId": "loc_01JABC",
     "resultStatus": "low_confidence",
     "mapVersion": "YS-2026-07-23.1",
-    "candidates": [],
+    "position": null,
+    "startNodeId": null,
+    "startNodeLabel": null,
     "fallbackOptions": [
       "retry_capture",
       "select_landmark",
@@ -1079,7 +1145,9 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
     "requestId": "loc_01JABC",
     "resultStatus": "no_match",
     "mapVersion": "YS-2026-07-23.1",
-    "candidates": [],
+    "position": null,
+    "startNodeId": null,
+    "startNodeLabel": null,
     "fallbackOptions": [
       "retry_capture",
       "select_landmark",
@@ -1101,7 +1169,9 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
     "requestId": "loc_01JABC",
     "resultStatus": "ai_server_unavailable",
     "mapVersion": "YS-2026-07-23.1",
-    "candidates": [],
+    "position": null,
+    "startNodeId": null,
+    "startNodeLabel": null,
     "fallbackOptions": [
       "select_on_map",
       "request_consultation"
@@ -1225,7 +1295,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
       "available": true,
       "unavailableReason": null,
       "totalDistanceM": 180,
-      "estimatedTimeSec": 240
+      "estimatedTimeSec": 240,
+      "hasStairsOrEscalator": true
     },
     {
       "routeType": "elevator_only",
@@ -1233,7 +1304,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
       "available": false,
       "unavailableReason": "NO_ACCESSIBLE_ROUTE",
       "totalDistanceM": null,
-      "estimatedTimeSec": null
+      "estimatedTimeSec": null,
+      "hasStairsOrEscalator": false
     }
   ],
   "message": null
@@ -1241,6 +1313,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 ```
 
 이용 불가한 옵션도 목록에서 제외하지 않고 `available=false`와 `unavailableReason`으로 표현한다. `unavailableReason`은 `NO_ROUTE`(연결된 경로 없음) 또는 `NO_ACCESSIBLE_ROUTE`(계단·에스컬레이터 제외 시 도달 불가)이다. `estimatedTimeSec`은 경로상 모든 간선에 예상 시간이 있을 때만 채워지며, 하나라도 없으면 `null`이다.
+
+`hasStairsOrEscalator`는 그 경로가 계단이나 에스컬레이터를 지나는지다(FR-U-009 "계단 포함 여부"). 상세 조회와 달리 옵션 조회에는 `steps`가 없어 클라이언트가 스스로 판단할 수 없으므로 함께 내려준다. `elevator_only`는 정의상 항상 `false`이고, `available=false`인 옵션도 `false`다. 실질적으로는 **`fastest`가 왜 `elevator_only`보다 짧은지를 설명하는 값**이다. 휠체어·유모차 기준으로는 에스컬레이터도 계단과 같은 장벽이라 하나로 묶는다.
 
 ---
 
@@ -1291,7 +1365,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
         "nodeId": 15,
         "floorId": 2,
         "mapX": 320.5,
-        "mapY": 180.2
+        "mapY": 180.2,
+        "mapZ": 0.0
       }
     ]
   },
@@ -1300,6 +1375,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 ```
 
 도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다. 방향(좌/우) 안내는 좌표 기반 계산이 필요하여 현재 범위에서 제외한다.
+
+`mapZ`는 그 노드의 캐노니컬 높이(m)다. **같은 층 안에서 높이가 갈리는 구간을 구분하는 데 쓴다** — 역삼역 B0.5 중간층은 별도 층이 아니라 `floorId`가 B1이면서 `map_z=7.5`인 노드 6개로 돼 있어, 이 값이 없으면 바닥 구간과 중간층 구간이 도면 위 같은 평면에 겹쳐 그려진다. **관리자가 높이를 넣지 않은 노드는 `null`이다.**
 
 ---
 
@@ -2231,6 +2308,8 @@ WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 
 
 층별 지도 이미지를 업로드한다. 파일은 서버 정적 디렉토리에 저장하고 DB에는 상대 URL(`/uploads/maps/{fileName}`)을 저장한다. 같은 층에 이미 활성 지도가 있으면 자동으로 비활성화하고 새 지도를 활성 지도로 등록한다. `version`은 `v1`, `v2` 순으로 자동 부여한다.
 
+**`mapFile`은 선택 사항이다.** `map_url`이 nullable이므로(§5.1) 백엔드가 좌표 프레임만 내려주고 도면 이미지는 클라이언트 자산을 쓰는 구성이 가능하다. 역삼역 B1·B2·B3가 그렇게 등록돼 있다. 파일을 생략하면 `mapUrl`은 `null`로 저장한다. 다만 **파일과 좌표 프레임이 모두 없으면 `400 EMPTY_FLOOR_MAP`으로 거부한다.** 아무 내용 없는 행이 생기면서 기존 활성 지도만 비활성화되기 때문이다.
+
 #### Content-Type
 
 ```text
@@ -2242,7 +2321,7 @@ multipart/form-data
 | 이름          | 타입   | 필수 | 설명                                           |
 | ------------- | ------ | ---- | ---------------------------------------------- |
 | mapType       | string | Y    | image, svg                                     |
-| mapFile       | file   | Y    | 지도 파일                                      |
+| mapFile       | file   | N    | 지도 파일. 생략하면 `mapUrl`이 `null`인 프레임 전용 행 |
 | width         | number | N    | 지도 너비                                      |
 | height        | number | N    | 지도 높이                                      |
 | scaleMPerPx   | number | N    | 픽셀당 실제 거리(m)                            |
@@ -2264,6 +2343,7 @@ multipart/form-data
 | 4필드 전부 생략 + 기존 지도에도 프레임 없음 | 통과 (오버레이 없는 지도) |
 | **4필드 중 일부만 지정** | **`400 INCOMPLETE_COORDINATE_FRAME`** |
 | **4필드 전부 생략 + 기존 활성 지도에 프레임 있음** | **`400 COORDINATE_FRAME_WOULD_BE_LOST`** |
+| **4필드 전부 생략 + `mapFile`도 없음** | **`400 EMPTY_FLOOR_MAP`** |
 
 **기존 프레임을 자동으로 물려주지 않는다.** 프레임은 특정 이미지에 대한 값이라, 다른 이미지에 그대로 적용하면 오버레이가 켜진 채로 틀린 위치에 그려진다. 조용히 틀린 좌표가 조용히 꺼진 기능보다 나쁘다. 이미지를 교체할 때는 새 이미지 기준으로 프레임을 다시 재서 함께 보내야 한다.
 
@@ -2288,6 +2368,7 @@ multipart/form-data
 | INVALID_MAP_FILE | 400 | 파일이 비어 있거나 올바르지 않음 |
 | INCOMPLETE_COORDINATE_FRAME | 400 | 프레임 4필드 중 일부만 지정 |
 | COORDINATE_FRAME_WOULD_BE_LOST | 400 | 기존 프레임이 있는데 새 요청에 프레임이 없음 |
+| EMPTY_FLOOR_MAP | 400 | `mapFile`과 프레임 4필드가 모두 없음 |
 
 ---
 
@@ -2481,9 +2562,14 @@ multipart/form-data
   "name": "B2 갈림길 1",
   "mapX": 300.0,
   "mapY": 200.0,
+  "mapZ": 0.0,
   "isLandmark": true
 }
 ```
+
+`mapZ`는 캐노니컬 높이(m)이며 선택 입력이다. 층 바닥이 기준이고 역삼역은 **B1 = 5 · B2 = 0 · B3 = −5**다.
+
+**되도록 넣는다.** 같은 층 안에서 높이가 갈리는 구간이 있기 때문이다 — 역삼역 B1 개찰구 위 중간층(B0.5)은 별도 층이 아니라 `floorId`가 B1이면서 `mapZ = 7.5`인 노드 6개로 모델링돼 있다. 값이 비어 있으면 위치 인식의 노드 스냅이 그 노드를 바닥에 있는 것으로 보고 잘못 고를 수 있다. 현재 역삼역 노드 142개는 모두 값이 있다.
 
 #### Response
 
@@ -2512,6 +2598,7 @@ multipart/form-data
     "name": "B2 갈림길 1",
     "mapX": 300.0,
     "mapY": 200.0,
+    "mapZ": 0.0,
     "isLandmark": true
   },
   "message": null

@@ -6,6 +6,7 @@ import com.pingo.backend.route.dto.request.RouteOptionsRequest;
 import com.pingo.backend.route.dto.response.RouteOptionResponse;
 import com.pingo.backend.route.dto.response.RouteResponse;
 import com.pingo.backend.route.service.IndoorRouteService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,6 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/routes")
 @RequiredArgsConstructor
+@Tag(name = "실내 경로 API", description = "비로그인 사용자가 실내 경로 옵션과 상세 경로를 조회하는 API")
 public class IndoorRouteController {
 
     private final IndoorRouteService indoorRouteService;

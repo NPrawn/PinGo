@@ -71,6 +71,58 @@ class IndoorRouteServiceTest {
                         tuple("elevator_only", true));
         assertThat(options.get(0).totalDistanceM()).isEqualByComparingTo(BigDecimal.valueOf(15));
         assertThat(options.get(1).totalDistanceM()).isEqualByComparingTo(BigDecimal.valueOf(30));
+        // 빠른 경로는 계단(2→4)을 지나고, 엘리베이터 이용 경로는 정의상 지나지 않는다.
+        assertThat(options.get(0).hasStairsOrEscalator()).isTrue();
+        assertThat(options.get(1).hasStairsOrEscalator()).isFalse();
+    }
+
+    @Test
+    @DisplayName("에스컬레이터를 지나는 경로도 계단 포함으로 본다")
+    void marksEscalatorPathAsHavingStairs() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L), node(3L), node(4L));
+        givenEdges(1L,
+                edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 4L, 5, RouteMoveType.ESCALATOR),
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR));
+
+        List<RouteOptionResponse> options =
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L));
+
+        // 휠체어·유모차 기준으로는 에스컬레이터도 계단과 같은 장벽이다.
+        assertThat(options.get(0).hasStairsOrEscalator()).isTrue();
+        assertThat(options.get(1).hasStairsOrEscalator()).isFalse();
+    }
+
+    @Test
+    @DisplayName("통로만 지나는 경로는 계단 포함이 아니다")
+    void marksWalkwayOnlyPathAsStepFree() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L), node(3L));
+        givenEdges(1L,
+                edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY));
+
+        List<RouteOptionResponse> options =
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 3L));
+
+        assertThat(options).allSatisfy(option ->
+                assertThat(option.hasStairsOrEscalator()).isFalse());
+    }
+
+    @Test
+    @DisplayName("도달 불가 옵션의 계단 포함 여부는 false로 내려간다")
+    void unavailableOptionHasFalseStairsFlag() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
+
+        List<RouteOptionResponse> options =
+                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L));
+
+        assertThat(options.get(1).available()).isFalse();
+        assertThat(options.get(1).hasStairsOrEscalator()).isFalse();
     }
 
     @Test
@@ -185,7 +237,7 @@ class IndoorRouteServiceTest {
 
     private RouteNode node(long id) {
         RouteNode node = RouteNode.create(1L, 1L, "normal", "노드" + id,
-                new BigDecimal("10.0"), new BigDecimal("20.0"), false);
+                new BigDecimal("10.0"), new BigDecimal("20.0"), null, false);
         ReflectionTestUtils.setField(node, "id", id);
         return node;
     }

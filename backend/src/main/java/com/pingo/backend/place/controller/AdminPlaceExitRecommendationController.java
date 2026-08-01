@@ -5,6 +5,7 @@ import com.pingo.backend.place.dto.request.PlaceExitRecommendationCreateRequest;
 import com.pingo.backend.place.dto.response.PlaceExitRecommendationIdResponse;
 import com.pingo.backend.place.dto.response.PlaceExitRecommendationResponse;
 import com.pingo.backend.place.service.AdminPlaceService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/place-exit-recommendations")
 @RequiredArgsConstructor
+@Tag(name = "관리자 - 장소-출구 추천 관리 API", description = "관리자가 주변 장소와 추천 출구의 연결을 등록·조회·삭제하는 API")
 public class AdminPlaceExitRecommendationController {
 
     private final AdminPlaceService adminPlaceService;

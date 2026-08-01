@@ -39,7 +39,9 @@ export function LocateManualPage() {
 
   const mapsQuery = useQuery({
     queryKey: ['station-maps', stationId],
-    queryFn: () => getStationMaps(stationId),
+    queryFn: () => getStationMaps(stationId!),
+    // 등록되지 않은 역은 층별 지도가 없다.
+    enabled: stationId != null,
   });
   const selectedMap = useMemo(
     () => mapsQuery.data?.find((map) => map.floorCode === floor) ?? mapsQuery.data?.[0],
@@ -47,8 +49,8 @@ export function LocateManualPage() {
   );
   const facilitiesQuery = useQuery({
     queryKey: ['station-facilities', stationId, selectedMap?.floorId],
-    queryFn: () => getStationFacilities(stationId, { floorId: selectedMap!.floorId }),
-    enabled: selectedMap?.floorId != null,
+    queryFn: () => getStationFacilities(stationId!, { floorId: selectedMap!.floorId }),
+    enabled: stationId != null && selectedMap?.floorId != null,
   });
   const facilities = (facilitiesQuery.data ?? []).filter(
     (facility) => facility.facilityId != null && facility.linkedNodeId != null,

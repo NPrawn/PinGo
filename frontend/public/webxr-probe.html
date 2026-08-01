@@ -52,6 +52,15 @@
         font-size: 12px;
         margin-bottom: 12px;
       }
+      .note {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 0 0 8px;
+        padding-left: 0;
+      }
+      ol.note {
+        padding-left: 18px;
+      }
       section {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -152,6 +161,69 @@
         margin-top: 8px;
         width: 100%;
       }
+
+      /* ── 6. dom-overlay 제스처 (S15P11A206-141) ─────────────────────────────
+         경로 안내 화면은 하단 지도를 dom-overlay에 얹는다. 지도를 끌고 확대하는
+         제스처가 세션 안에서 살아남는지, XR select와 부딪히는지는 실기기에서만
+         알 수 있다. 아래 세 상자가 각각 팬·핀치, 네이티브 스크롤, 고정폭 렌더를
+         확인한다. */
+
+      /* 지도 팬·핀치 대역. touch-action: none은 실제 지도 구현이 쓰는 설정이다 —
+         브라우저 기본 제스처를 끄고 pointer 이벤트로 직접 처리하기 위한 것이다. */
+      #gPan {
+        margin-top: 8px;
+        height: 96px;
+        position: relative;
+        overflow: hidden;
+        background: repeating-linear-gradient(45deg, #182430 0 10px, #131c26 10px 20px);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        touch-action: none;
+      }
+      #gPanDot {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        background: #3eb489;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        pointer-events: none;
+      }
+      #gPanHint {
+        position: absolute;
+        inset: auto 6px 4px 6px;
+        font-size: 10px;
+        color: #8b98a5;
+        text-align: center;
+        pointer-events: none;
+      }
+
+      /* 네이티브 스크롤 대역. touch-action을 건드리지 않아 브라우저 기본 동작이다. */
+      #gScroll {
+        margin-top: 8px;
+        height: 72px;
+        overflow-y: auto;
+        background: #0d1117;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+      #gScroll div {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      /* 고정폭 자식. 앱의 PhoneFrame이 342px 고정이라, 오버레이 root 안에서 이 폭이
+         어떻게 렌더되는지가 141의 레이아웃 판단을 가른다. */
+      #gShell {
+        margin-top: 8px;
+        width: 342px;
+        padding: 6px;
+        background: #1f6feb22;
+        border: 1px dashed #1f6feb;
+        border-radius: 6px;
+        font-size: 10px;
+      }
     </style>
   </head>
   <body>
@@ -210,7 +282,22 @@
     </section>
 
     <section>
-      <h2>6. 로그</h2>
+      <h2>6. dom-overlay 제스처 (S15P11A206-141)</h2>
+      <p class="note">
+        세션을 시작하면 오버레이 안에 검증 상자 세 개가 나타난다. 순서대로 조작한 뒤
+        <code>제스처 결과 기록</code>을 누른다.
+      </p>
+      <ol class="note">
+        <li>초록 점 상자를 한 손가락으로 끌어 본다 (지도 팬)</li>
+        <li>같은 상자를 두 손가락으로 벌리고 좁혀 본다 (지도 확대·축소)</li>
+        <li>목록 상자를 위아래로 스크롤해 본다 (브라우저 기본 동작)</li>
+        <li>파란 점선 상자의 폭이 화면을 넘는지, 잘리는지 본다 (342px 고정폭)</li>
+      </ol>
+      <table id="gesture"></table>
+    </section>
+
+    <section>
+      <h2>7. 로그</h2>
       <pre id="log"></pre>
       <div class="btns" style="margin-top: 10px">
         <button id="btnCopy">로그 복사</button>
@@ -220,6 +307,23 @@
 
     <div id="overlay">
       <div id="overlayText">pose 대기 중</div>
+
+      <!-- 6장 제스처 검증 대역. 세션 밖에서는 보이지 않는다. -->
+      <div id="gPan">
+        <div id="gPanDot" style="left: 50%; top: 50%"></div>
+        <div id="gPanHint">한 손가락 끌기 · 두 손가락 확대</div>
+      </div>
+      <div id="gScroll">
+        <div>스크롤 1</div>
+        <div>스크롤 2</div>
+        <div>스크롤 3</div>
+        <div>스크롤 4</div>
+        <div>스크롤 5</div>
+        <div>스크롤 6</div>
+      </div>
+      <div id="gShell">342px 고정폭 상자 (PhoneFrame과 같은 폭)</div>
+      <button id="btnGesture">제스처 결과 기록</button>
+
       <button id="btnMark">지금 값 기록</button>
       <button id="btnEndOverlay">세션 종료</button>
     </div>
@@ -629,9 +733,23 @@
         }
 
         session.addEventListener('end', onEnd);
+        /**
+         * 오버레이 안의 끌기·스크롤이 XR select로도 해석되는지 본다(6장).
+         * 같은 입력이 두 번 해석되면 지도를 끌 때마다 안내가 오작동한다.
+         */
+        session.addEventListener('selectstart', onXrSelect);
+        session.addEventListener('select', onXrSelect);
         btnStart.disabled = true;
         btnEnd.disabled = false;
         overlay.classList.add('on');
+        /**
+         * 오버레이 크기는 컴포지터가 자리를 잡은 뒤에 재야 한다. 세션 직후 값은
+         * 아직 전환 중일 수 있어 한 박자 뒤에 한 번 더 잰다.
+         */
+        measureOverlayBox();
+        setTimeout(() => {
+          if (session) measureOverlayBox();
+        }, 500);
         frames = 0;
         posesMissing = 0;
         fixCount = 0;
@@ -788,7 +906,263 @@
         }
       }
 
+      // ── 6. dom-overlay 제스처 (S15P11A206-141) ──────────────────────────────
+      /**
+       * 경로 안내 화면은 하단 지도를 dom-overlay에 얹는다. 세션 안에서 DOM 버튼이
+       * 눌리는 것은 2차 검증에서 확인됐지만(3.5), 끌기·확대·스크롤은 확인되지 않았다.
+       * 버튼과 달리 이 제스처들은 XR 입력과 같은 채널을 두고 다툴 수 있다.
+       *
+       * 판정은 "이벤트가 몇 개 도착했는가"로 한다. 제스처가 막히면 예외가 아니라
+       * 이벤트 부재로 드러나기 때문이다 — 11.8의 카메라 충돌이 그랬던 것과 같다.
+       */
+      const gPan = document.getElementById('gPan');
+      const gPanDot = document.getElementById('gPanDot');
+      const gScroll = document.getElementById('gScroll');
+      const gShell = document.getElementById('gShell');
+
+      const gesture = {
+        /** pointermove 수. 0이면 끌기가 아예 전달되지 않은 것이다. */
+        panMoves: 0,
+        /** 끌어서 이동한 누적 거리(px). 점이 손가락을 따라오는지의 척도다. */
+        panDistancePx: 0,
+        /** 관측된 pointerType. touch가 아니면 실기기 검증이 성립하지 않는다. */
+        pointerTypes: new Set(),
+        /** 두 손가락 touchmove 수와 관측된 배율 범위. */
+        pinchMoves: 0,
+        pinchScaleMin: null,
+        pinchScaleMax: null,
+        /** 네이티브 스크롤 발생 수와 최대 스크롤 위치. */
+        scrollEvents: 0,
+        scrollMaxTop: 0,
+        /** XR select 계열 이벤트 수. DOM 조작 직후에 오면 충돌이다. */
+        xrSelects: 0,
+        /** DOM 조작과 겹친 select 수. 1 이상이면 beforexrselect 처리가 필요하다. */
+        xrSelectsDuringTouch: 0,
+        /** beforexrselect가 실제로 발생하는지. 발생하지 않으면 그 수단을 쓸 수 없다. */
+        beforeXrSelects: 0,
+        /** 마지막 DOM 조작 시각. select와의 겹침 판정에 쓴다. */
+        lastTouchAt: null,
+        /** 오버레이 root와 342px 자식의 실측 크기. */
+        rootSize: null,
+        shellSize: null,
+        shellClipped: null,
+      };
+
+      function renderGesture() {
+        const scale =
+          gesture.pinchScaleMin === null
+            ? '—'
+            : `${gesture.pinchScaleMin.toFixed(2)}~${gesture.pinchScaleMax.toFixed(2)}`;
+
+        renderTable('gesture', [
+          [
+            '끌기 (pointermove)',
+            `${gesture.panMoves}회 · ${Math.round(gesture.panDistancePx)}px`,
+            gesture.panMoves > 0 ? 'ok' : 'warn',
+          ],
+          [
+            'pointerType',
+            gesture.pointerTypes.size ? [...gesture.pointerTypes].join(', ') : '—',
+            gesture.pointerTypes.has('touch') ? 'ok' : 'warn',
+          ],
+          [
+            '두 손가락 (touchmove)',
+            `${gesture.pinchMoves}회 · 배율 ${scale}`,
+            gesture.pinchMoves > 0 ? 'ok' : 'warn',
+          ],
+          [
+            '네이티브 스크롤',
+            `${gesture.scrollEvents}회 · 최대 ${Math.round(gesture.scrollMaxTop)}px`,
+            gesture.scrollEvents > 0 ? 'ok' : 'warn',
+          ],
+          [
+            'XR select',
+            `${gesture.xrSelects}회 (조작 중 ${gesture.xrSelectsDuringTouch}회)`,
+            gesture.xrSelectsDuringTouch > 0 ? 'warn' : 'ok',
+          ],
+          [
+            'beforexrselect',
+            gesture.beforeXrSelects ? `${gesture.beforeXrSelects}회 발생` : '발생 안 함',
+            gesture.beforeXrSelects ? 'ok' : '',
+          ],
+          ['오버레이 root 크기', gesture.rootSize || '—'],
+          [
+            '342px 자식',
+            gesture.shellSize || '—',
+            gesture.shellClipped === null ? '' : gesture.shellClipped ? 'warn' : 'ok',
+          ],
+        ]);
+      }
+
+      /** 조작 시각을 남긴다. XR select가 이 직후에 오면 같은 입력이 두 번 해석된 것이다. */
+      function markTouch() {
+        gesture.lastTouchAt = performance.now();
+      }
+
+      /**
+       * XR select 계열 이벤트. 조작 직후 500ms 안에 오면 같은 입력이 두 번 해석된 것으로 본다.
+       * 손을 뗀 뒤 select가 오는 경우도 있어 여유를 둔다.
+       */
+      function onXrSelect(event) {
+        const sinceTouch =
+          gesture.lastTouchAt === null ? null : performance.now() - gesture.lastTouchAt;
+        const duringTouch = sinceTouch !== null && sinceTouch < 500;
+
+        gesture.xrSelects += 1;
+        if (duringTouch) gesture.xrSelectsDuringTouch += 1;
+        renderGesture();
+        log(duringTouch ? 'WARN' : 'INFO', `XR ${event.type}`, {
+          sinceTouchMs: sinceTouch === null ? null : Math.round(sinceTouch),
+          duringTouch,
+        });
+      }
+
+      let panPointerId = null;
+      let panDotX = 0.5;
+      let panDotY = 0.5;
+      let panLast = null;
+
+      gPan.addEventListener('pointerdown', (event) => {
+        panPointerId = event.pointerId;
+        panLast = { x: event.clientX, y: event.clientY };
+        gesture.pointerTypes.add(event.pointerType);
+        markTouch();
+        gPan.setPointerCapture(event.pointerId);
+        log('INFO', '제스처: pointerdown', { pointerType: event.pointerType });
+        renderGesture();
+      });
+
+      gPan.addEventListener('pointermove', (event) => {
+        if (panPointerId !== event.pointerId || !panLast) return;
+
+        const dx = event.clientX - panLast.x;
+        const dy = event.clientY - panLast.y;
+
+        panLast = { x: event.clientX, y: event.clientY };
+        gesture.panMoves += 1;
+        gesture.panDistancePx += Math.hypot(dx, dy);
+        markTouch();
+
+        const rect = gPan.getBoundingClientRect();
+
+        // 상자를 벗어나지 않게 가둔다. 점이 손가락을 따라오는지만 보면 된다.
+        panDotX = Math.min(1, Math.max(0, panDotX + dx / rect.width));
+        panDotY = Math.min(1, Math.max(0, panDotY + dy / rect.height));
+        gPanDot.style.left = `${panDotX * 100}%`;
+        gPanDot.style.top = `${panDotY * 100}%`;
+        renderGesture();
+      });
+
+      const endPan = (event) => {
+        if (panPointerId !== event.pointerId) return;
+        panPointerId = null;
+        panLast = null;
+      };
+
+      gPan.addEventListener('pointerup', endPan);
+      gPan.addEventListener('pointercancel', endPan);
+
+      /**
+       * 핀치는 pointer 이벤트로는 배율을 알 수 없어 touch 이벤트로 본다.
+       * touch-action: none이라 브라우저가 확대하지 않으므로, 두 접점이 도착하는지와
+       * 배율을 계산할 수 있는지가 확인 대상이다.
+       */
+      let pinchStartDist = null;
+
+      const touchDistance = (touches) =>
+        Math.hypot(
+          touches[0].clientX - touches[1].clientX,
+          touches[0].clientY - touches[1].clientY,
+        );
+
+      gPan.addEventListener('touchstart', (event) => {
+        if (event.touches.length !== 2) return;
+        pinchStartDist = touchDistance(event.touches);
+        markTouch();
+        log('INFO', '제스처: 두 손가락 시작', { startDist: Math.round(pinchStartDist) });
+      });
+
+      gPan.addEventListener('touchmove', (event) => {
+        if (event.touches.length !== 2 || !pinchStartDist) return;
+
+        const scale = touchDistance(event.touches) / pinchStartDist;
+
+        gesture.pinchMoves += 1;
+        gesture.pinchScaleMin =
+          gesture.pinchScaleMin === null ? scale : Math.min(gesture.pinchScaleMin, scale);
+        gesture.pinchScaleMax =
+          gesture.pinchScaleMax === null ? scale : Math.max(gesture.pinchScaleMax, scale);
+        markTouch();
+        renderGesture();
+      });
+
+      gPan.addEventListener('touchend', () => {
+        if (pinchStartDist) pinchStartDist = null;
+      });
+
+      gScroll.addEventListener('scroll', () => {
+        gesture.scrollEvents += 1;
+        gesture.scrollMaxTop = Math.max(gesture.scrollMaxTop, gScroll.scrollTop);
+        markTouch();
+        renderGesture();
+      });
+
+      /**
+       * beforexrselect는 오버레이 안의 조작이 XR select로도 해석되는 것을 막는 수단이다.
+       * 이 페이지에서는 막지 않고 발생 여부만 기록한다 — 막아 버리면 충돌이 있었는지
+       * 알 수 없게 된다. 실제 구현에서 필요하면 preventDefault를 건다.
+       */
+      for (const target of [gPan, gScroll, gShell]) {
+        target.addEventListener('beforexrselect', () => {
+          gesture.beforeXrSelects += 1;
+          renderGesture();
+        });
+      }
+
+      /** 오버레이 root와 342px 자식이 실제로 어떤 크기로 렌더되는지 잰다. */
+      function measureOverlayBox() {
+        const root = overlay.getBoundingClientRect();
+        const shell = gShell.getBoundingClientRect();
+
+        gesture.rootSize = `${Math.round(root.width)}×${Math.round(root.height)} (창 ${window.innerWidth}×${window.innerHeight})`;
+        gesture.shellSize = `${Math.round(shell.width)}px 폭`;
+        // root를 넘치면 잘리거나 스크롤이 생긴다. 앱의 PhoneFrame이 이 경우다.
+        gesture.shellClipped = shell.width > root.width + 1;
+        renderGesture();
+        log('INFO', '오버레이 크기 실측', {
+          root: [Math.round(root.width), Math.round(root.height)],
+          shell: Math.round(shell.width),
+          innerWidth: window.innerWidth,
+          screen: [screen.width, screen.height],
+          dpr: window.devicePixelRatio,
+        });
+      }
+
+      window.addEventListener('resize', () => {
+        if (session) measureOverlayBox();
+      });
+
       // ── 버튼 ────────────────────────────────────────────────────────────────
+      document.getElementById('btnGesture').addEventListener('click', () => {
+        log('OK', '제스처 결과', {
+          panMoves: gesture.panMoves,
+          panDistancePx: Math.round(gesture.panDistancePx),
+          pointerTypes: [...gesture.pointerTypes],
+          pinchMoves: gesture.pinchMoves,
+          pinchScale:
+            gesture.pinchScaleMin === null
+              ? null
+              : [+gesture.pinchScaleMin.toFixed(2), +gesture.pinchScaleMax.toFixed(2)],
+          scrollEvents: gesture.scrollEvents,
+          scrollMaxTop: Math.round(gesture.scrollMaxTop),
+          xrSelects: gesture.xrSelects,
+          xrSelectsDuringTouch: gesture.xrSelectsDuringTouch,
+          beforeXrSelects: gesture.beforeXrSelects,
+          rootSize: gesture.rootSize,
+          shellSize: gesture.shellSize,
+          shellClipped: gesture.shellClipped,
+        });
+      });
       document.getElementById('btnDetect').addEventListener('click', detect);
       btnStart.addEventListener('click', start);
       btnEnd.addEventListener('click', end);
@@ -839,6 +1213,7 @@
 
       renderTable('support', [['상태', '탐지 대기 중', 'warn']]);
       renderTable('pose', [['상태', '세션 시작 전', 'warn']]);
+      renderGesture();
       renderCamera();
       detect();
     </script>
