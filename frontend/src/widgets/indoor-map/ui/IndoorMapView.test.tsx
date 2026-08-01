@@ -255,6 +255,52 @@ describe('IndoorMapView 목업 모드', () => {
     expect(screen.queryByRole('img', { name: '현재 위치' })).not.toBeInTheDocument();
   });
 
+  /**
+   * 실제 응답은 `mapUrl`이 null이다. (S15P11A206-281 연동 확인)
+   *
+   * 백엔드는 **좌표 프레임만** 준다. 도면 이미지는 관리자 업로드 전까지 FE 자산으로 간다.
+   * 배포 서버 `GET /api/stations/1/maps`가 지금 세 층 모두 `mapUrl: null`을 돌려준다.
+   *
+   * 지금까지 이 경로를 검사한 테스트가 없었다. 기존 테스트는 전부 `useMockData`를 켜거나
+   * `mapUrl`이 채워진 표본을 썼다. 연동 담당이 크래시를 우려한 지점이라 실제 응답 모양으로
+   * 고정해 둔다.
+   */
+  it('mapUrl이 null이어도 FE 도면으로 그린다', () => {
+    mockedHook.mockReturnValue(
+      hookState({
+        isPending: false,
+        isError: false,
+        // 배포 서버 응답 그대로다. floorId는 B1=3·B2=1·B3=2로 내려온다.
+        data: [
+          {
+            mapId: 2,
+            floorId: 1,
+            floorCode: 'B2',
+            mapType: 'image',
+            mapUrl: null,
+            width: 1624,
+            height: 969,
+            scaleMPerPx: 0.19,
+            originPxX: 622,
+            originPxY: 512,
+            frameAngleDeg: -21.28,
+            version: 'v1',
+          },
+        ],
+      }),
+    );
+
+    render(<IndoorMapView stationId={1} floorId={1} />);
+
+    const plan = screen.getByRole('img', { name: 'B2 실내 지도' });
+    const image = plan.querySelector('image');
+
+    // 서버 URL이 아니라 FE 자산으로 떨어진다. 빈 화면도, 크래시도 아니다.
+    expect(image).toBeInTheDocument();
+    expect(image?.getAttribute('href')).toMatch(/B2/);
+    expect(image?.getAttribute('href')).not.toContain('null');
+  });
+
   it('목업 모드에서 B3 층을 지정하면 현재 위치가 나타난다', () => {
     mockedHook.mockReturnValue(hookState({ isPending: true, isError: false }));
     render(<IndoorMapView stationId={1} floorId={2} useMockData />);

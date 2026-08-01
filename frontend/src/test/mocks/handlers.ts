@@ -31,7 +31,13 @@ const FACILITIES = [
     linkedNodeId: 123,
     isAccessible: true,
   },
-  /** 출구는 B1(floorId 3)에 있다. B2를 보고 있을 때 목적지 마커가 없는 것이 정상이다. */
+  /**
+   * 출구는 B1(floorId 3)에 있다. B2를 보고 있을 때 목적지 마커가 없는 것이 정상이다.
+   *
+   * `linkedNodeId`는 V8 시드 재구축 뒤의 실제 값이다. 7번 출구가 325인 것은 경로 옵션 화면의
+   * 임시 도착 노드와 같은 값이어야 한다 — 목업이 다른 노드를 가리키면 이 흐름을 목업으로
+   * 따라가는 사람이 잘못된 결론을 얻는다.
+   */
   {
     facilityId: 25,
     stationId: 1,
@@ -41,7 +47,7 @@ const FACILITIES = [
     nameEn: 'Exit 7',
     mapX: 149.166,
     mapY: -33.989,
-    linkedNodeId: 44,
+    linkedNodeId: 325,
     isAccessible: false,
   },
   {
@@ -53,7 +59,7 @@ const FACILITIES = [
     nameEn: 'Exit 2',
     mapX: 99.725,
     mapY: 48.451,
-    linkedNodeId: 60,
+    linkedNodeId: 341,
     isAccessible: false,
   },
 ];
@@ -95,8 +101,38 @@ function floorMap(
   };
 }
 
+/**
+ * 경로 옵션. B3 승강장(205)에서 7번 출구(325)로 가는 실제 조합을 담았다.
+ *
+ * 역삼역은 B1↔B2에 엘리베이터가 없어 `elevator_only`가 B1 출구에 도달하지 못한다. 백엔드가
+ * 돌려주는 것이 바로 이 모양이므로, 도달 불가 표시를 여기서 그대로 확인할 수 있다.
+ */
+const ROUTE_OPTIONS = [
+  {
+    routeType: 'fastest',
+    displayName: '빠른 경로',
+    available: true,
+    unavailableReason: null,
+    totalDistanceM: 180,
+    estimatedTimeSec: 240,
+    hasStairsOrEscalator: true,
+  },
+  {
+    routeType: 'elevator_only',
+    displayName: '엘리베이터 이용 경로',
+    available: false,
+    unavailableReason: 'NO_ACCESSIBLE_ROUTE',
+    totalDistanceM: null,
+    estimatedTimeSec: null,
+    hasStairsOrEscalator: false,
+  },
+];
+
 export const handlers = [
   http.get('/health', () => HttpResponse.json({ status: 'ok' })),
+  http.post('*/api/routes/indoor/options', () =>
+    HttpResponse.json({ success: true, data: ROUTE_OPTIONS, message: null }),
+  ),
   http.get('*/api/stations/:stationId/maps', () =>
     HttpResponse.json({ success: true, data: FLOOR_MAPS, message: null }),
   ),

@@ -27,26 +27,44 @@ export function StationSearch({ onSelect }: StationSearchProps) {
   const results = searchStations(query);
   const showResults = searched;
 
-  const renderRow = (item: Station, tone: BlobTone) => (
-    <SelectRow
-      key={item.name}
-      className={styles.row}
-      selected={item.name === station}
-      indicator={item.here ? 'none' : 'check'}
-      onClick={() => {
-        setStation(item.name);
-        onSelect?.(item.name);
-      }}
-    >
-      <Blob tone={tone} style={{ width: 28, height: 28 }} />
-      <span className={styles.rowBody}>
-        <b className={styles.name}>{item.name}</b> <span className={styles.line}>{item.line}</span>
-        <br />
-        <span className={styles.dist}>{item.dist}</span>
-      </span>
-      {item.here && <span className={styles.hereBadge}>현위치</span>}
-    </SelectRow>
-  );
+  const renderRow = (item: Station, tone: BlobTone) => {
+    /**
+     * 백엔드 id가 없는 역은 고를 수 없다.
+     *
+     * 고르게 두면 지도·시설·경로 조회를 걸 수 없는 상태로 흐름에 들어간다. 조회를 끈 쿼리는
+     * `pending`에 머무르므로 뒤 화면들은 "아직 물어볼 수 없다"와 "물어보는 중"을 구분하지
+     * 못하고 로딩 문구에 갇힌다. 흐름에 들어가기 전에 막는 편이 확실하다.
+     */
+    const registered = item.stationId !== null;
+
+    return (
+      <SelectRow
+        key={item.name}
+        className={styles.row}
+        selected={item.name === station}
+        indicator={item.here || !registered ? 'none' : 'check'}
+        disabled={!registered}
+        onClick={
+          registered
+            ? () => {
+                setStation(item.name, item.stationId);
+                onSelect?.(item.name);
+              }
+            : undefined
+        }
+      >
+        <Blob tone={tone} style={{ width: 28, height: 28 }} />
+        <span className={styles.rowBody}>
+          <b className={styles.name}>{item.name}</b>{' '}
+          <span className={styles.line}>{item.line}</span>
+          <br />
+          <span className={styles.dist}>{item.dist}</span>
+        </span>
+        {item.here && <span className={styles.hereBadge}>현위치</span>}
+        {!registered && <span className={styles.pendingBadge}>준비 중</span>}
+      </SelectRow>
+    );
+  };
 
   return (
     <>
