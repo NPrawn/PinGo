@@ -50,6 +50,15 @@ interface IndoorMapViewProps {
   /** 시설 마커를 눌렀을 때. */
   onSelectFacility?: (facility: Facility) => void;
   /**
+   * 시점이 현재 위치를 따라가게 한다. 길안내 화면용이다.
+   *
+   * 켜면 전체 조망 대신 내 주변 60m를 화면 아래쪽 기준으로 보여준다. 지도를 밀거나 확대하면
+   * 추종이 풀려 전체까지 자유롭게 볼 수 있고, `내 위치` 버튼으로 되돌아온다.
+   *
+   * 지도를 훑어보는 화면(`/user/map`)에서는 꺼 둔다 — 거기서는 조망이 목적이다.
+   */
+  followCamera?: boolean;
+  /**
    * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
    * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
    *
@@ -76,6 +85,18 @@ function selectFloorMap(maps: readonly FloorMap[], floorId?: number): FloorMap |
 }
 
 /**
+ * 시점 추종이 화면 가로에 담을 캔버스 픽셀. 60m에 해당한다(기준 프레임 mpp 0.19).
+ *
+ * 전체 조망은 화면 폭에 320m가 들어가 1m가 1화면px이 채 안 된다. 20m를 걸어도 19px밖에
+ * 움직이지 않아 이동하고 있다는 것이 보이지 않는다. 60m로 좁히면 같은 20m가 100px 넘게
+ * 움직인다 — 내비게이션이 걷기 안내에서 쓰는 범위다.
+ */
+const FOLLOW_SPAN_PX = 60 / 0.19;
+
+/** 내 위치를 화면 세로 68% 지점에 둔다. 위쪽 3분의 2를 진행 방향에 내주는 배치다. */
+const FOLLOW_ANCHOR_Y = 0.68;
+
+/**
  * 특정 역·층의 실내 지도 이미지를 렌더링하고, 그 위에 현재 위치·목적지·경로를 겹쳐 그린다.
  *
  * 지도 이미지는 stage를 채우되 `object-fit: contain`으로 원본 비율을 유지한다.
@@ -93,17 +114,36 @@ export function IndoorMapView({
   facilityType,
   selectedFacilityId,
   onSelectFacility,
+  followCamera = false,
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
+
+  /**
+   * 시점 추종의 목표. 현재 위치를 표시 캔버스 좌표로 옮긴 값이다.
+   *
+   * 층 판정은 하지 않는다 — 다른 층에 있으면 그 층 지도를 보고 있는 것이므로 따라갈 이유가
+   * 없고, 아래에서 표시 층과 다르면 목표를 비운다.
+   */
+  const followTarget =
+    followCamera && currentLocation
+      ? meterToPixel(currentLocation.mapX, currentLocation.mapY, PLAN_REFERENCE.frame)
+      : null;
+
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
   const {
     ref: mapRef,
     view: mapView,
     reset: resetMapView,
+    isFollowing: mapFollowing,
     isTransformed: mapTransformed,
     handlers: mapHandlers,
-  } = useMapGestures();
+  } = useMapGestures({
+    target: followTarget,
+    canvas: PLAN_CANVAS,
+    spanPx: FOLLOW_SPAN_PX,
+    anchorY: FOLLOW_ANCHOR_Y,
+  });
   // 목업 모드에서는 목업 지도를 쓰므로 조회하지 않는다.
   const query = useStationFloorMaps(stationId, { enabled: !useMockData });
 
@@ -237,9 +277,10 @@ export function IndoorMapView({
           viewScale={mapView.scale}
         />
       </div>
-      {mapTransformed && (
+      {/* 추종 중일 때는 버튼이 필요 없다. 손으로 둘러본 뒤에만 돌아갈 곳을 제시한다. */}
+      {(followTarget ? !mapFollowing : mapTransformed) && (
         <button type="button" className={styles.resetView} onClick={resetMapView}>
-          {t('indoorMap.resetView')}
+          {t(followTarget ? 'indoorMap.recenter' : 'indoorMap.resetView')}
         </button>
       )}
     </div>

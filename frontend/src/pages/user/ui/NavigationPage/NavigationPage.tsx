@@ -369,6 +369,9 @@ export function NavigationPage() {
                   floorId={displayedFloorId}
                   currentLocation={currentLocation}
                   currentHeadingDeg={headingDeg}
+                  /* 길안내 화면이므로 시점이 내 위치를 따라간다. 밀거나 확대하면 풀리고
+                     `내 위치` 버튼으로 돌아온다. */
+                  followCamera
                   /* 실제 시설 좌표를 넘긴다. 목업 목적지를 쓰지 않는다 — 좌표와 이름이
                      다른 곳을 가리키던 원인이다. 다른 층의 목적지는 오버레이가 걸러낸다. */
                   destination={

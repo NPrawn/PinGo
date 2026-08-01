@@ -32,6 +32,7 @@ export const ko = {
       floorNotFound: '해당 층의 지도가 없습니다',
       imageAlt: '{{floorCode}} 실내 지도',
       resetView: '지도 초기화',
+      recenter: '내 위치',
       overlay: {
         currentLocation: '현재 위치',
         destination: '목적지',

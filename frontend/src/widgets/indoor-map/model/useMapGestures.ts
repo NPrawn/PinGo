@@ -17,7 +17,11 @@ const IDENTITY: MapView = { scale: 1, x: 0, y: 0 };
  * 시설 마커가 4px 간격까지 붙는데(역삼역 B2), 4배면 16px가 되어 손가락으로 구분해 누를 수 있다.
  */
 const MIN_SCALE = 1;
-const MAX_SCALE = 4;
+/**
+ * 시점 추종이 폭 60m를 담으려면 안내 화면 지도 박스에서 약 5.4배가 필요하다
+ * (1m가 0.97화면px인 전체 조망 기준). 손으로도 그만큼은 당길 수 있어야 하므로 6으로 둔다.
+ */
+const MAX_SCALE = 6;
 
 /** 탭과 끌기를 가르는 이동량. 이보다 작게 움직이면 탭으로 본다. */
 const DRAG_THRESHOLD_PX = 4;
@@ -31,8 +35,35 @@ const DRAG_THRESHOLD_PX = 4;
  * 포인터 이벤트로 구현한다. 마우스·터치·펜이 같은 경로를 타므로 분기가 없고, 두 손가락
  * 확대도 포인터 두 개를 추적해 처리한다.
  */
-export function useMapGestures() {
+/** 시점 추종에 필요한 값. 넘기지 않으면 예전처럼 전체 조망에서 시작한다. */
+export interface FollowOptions {
+  /** 따라갈 지점. 표시 캔버스 픽셀 좌표다. 모르면 null이며 추종하지 않는다. */
+  target: { px: number; py: number } | null;
+  /** 표시 캔버스 크기. 화면 배치를 계산하는 데 쓴다. */
+  canvas: { width: number; height: number };
+  /** 화면 가로에 담을 캔버스 픽셀. 내비처럼 앞쪽을 보려면 좁게 잡는다. */
+  spanPx: number;
+  /**
+   * 따라갈 지점을 화면 세로 어디에 둘지(0이 위, 1이 아래).
+   *
+   * 가운데가 아니라 아래쪽에 둔다. 걷는 사람에게 필요한 것은 지나온 뒤가 아니라 갈 앞쪽이라
+   * 화면의 위쪽 3분의 2를 진행 방향에 내준다. 내비게이션의 통례다.
+   */
+  anchorY: number;
+}
+
+export function useMapGestures(follow?: FollowOptions) {
   const [view, setView] = useState<MapView>(IDENTITY);
+  /**
+   * 시점이 내 위치를 따라가는 중인지.
+   *
+   * 손으로 밀거나 확대하면 풀린다 — 사용자가 다른 곳을 보려는 것이므로 시점을 도로 끌어오면
+   * 안 된다. 풀린 뒤에는 전체 조망까지 자유롭게 볼 수 있고, 버튼으로 다시 붙인다.
+   */
+  const [following, setFollowing] = useState(true);
+  /** 추종이 풀리는 순간의 화면을 이어받기 위해 마지막 추종 시점을 들고 있는다. */
+  const lastFollowView = useRef<MapView | null>(null);
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
   /** 현재 눌려 있는 포인터들. 두 개가 되면 확대 제스처로 본다. */
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   /** 확대 제스처 시작 시점의 두 손가락 거리와 배율. */
@@ -42,6 +73,15 @@ export function useMapGestures() {
 
   const reset = useCallback(() => {
     setView(IDENTITY);
+    setFollowing(true);
+  }, []);
+
+  /** 손으로 조작하면 추종이 풀린다. 풀리는 순간의 화면을 그대로 이어받아야 튀지 않는다. */
+  const releaseFollow = useCallback(() => {
+    setFollowing((wasFollowing) => {
+      if (wasFollowing && lastFollowView.current) setView(lastFollowView.current);
+      return false;
+    });
   }, []);
 
   /**
@@ -95,6 +135,8 @@ export function useMapGestures() {
       }
 
       pointers.current.set(event.pointerId, current);
+      // 사용자가 다른 곳을 보려는 것이므로 시점을 도로 끌어오지 않는다.
+      releaseFollow();
 
       if (pointers.current.size >= 2 && pinch.current) {
         const [a, b] = [...pointers.current.values()];
@@ -111,7 +153,7 @@ export function useMapGestures() {
         clamp({ ...v, x: v.x + (current.x - previous.x), y: v.y + (current.y - previous.y) }, box),
       );
     },
-    [clamp],
+    [clamp, releaseFollow],
   );
 
   const onPointerUp = useCallback((event: React.PointerEvent<HTMLElement>) => {
@@ -125,9 +167,10 @@ export function useMapGestures() {
     (event: React.WheelEvent<HTMLElement>) => {
       const box = event.currentTarget.getBoundingClientRect();
       const ratio = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+      releaseFollow();
       setView((v) => clamp({ ...v, scale: v.scale * ratio }, box));
     },
-    [clamp],
+    [clamp, releaseFollow],
   );
 
   /**
@@ -151,17 +194,58 @@ export function useMapGestures() {
 
     element.addEventListener('beforexrselect', block);
 
+    /**
+     * 시점 추종은 화면 크기를 알아야 계산된다.
+     *
+     * **먼저 한 번 직접 잰다.** ResizeObserver가 없거나(jsdom) 어떤 이유로 보고하지 않아도
+     * 추종이 조용히 꺼지지 않게 하기 위해서다. 관찰은 회전·분할 화면 같은 이후 변화를 위한
+     * 것이고, 첫 값까지 거기에 맡기면 관찰이 실패하는 환경에서 기능 전체가 사라진다.
+     */
+    const measure = (width: number, height: number): void => {
+      setBox((previous) =>
+        previous && previous.width === width && previous.height === height
+          ? previous
+          : { width, height },
+      );
+    };
+
+    const rect = element.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) measure(rect.width, rect.height);
+
+    if (typeof ResizeObserver === 'undefined') {
+      return () => {
+        element.removeEventListener('beforexrselect', block);
+      };
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      measure(width, height);
+    });
+    observer.observe(element);
+
     return () => {
       element.removeEventListener('beforexrselect', block);
+      observer.disconnect();
     };
   }, []);
 
+  const followView = computeFollowView(follow, box);
+
+  useEffect(() => {
+    if (followView) lastFollowView.current = followView;
+  }, [followView]);
+
+  const active = following && followView ? followView : view;
+
   return {
     ref,
-    view,
+    view: active,
     reset,
-    /** 확대·이동된 상태인지. 되돌리기 버튼을 보일지 판단하는 데 쓴다. */
-    isTransformed: view.scale !== 1 || view.x !== 0 || view.y !== 0,
+    /** 시점이 내 위치를 따라가는 중인지. 복귀 버튼을 보일지 판단하는 데 쓴다. */
+    isFollowing: following && followView !== null,
+    /** 추종이 없을 때 확대·이동된 상태인지. */
+    isTransformed: active.scale !== 1 || active.x !== 0 || active.y !== 0,
     handlers: {
       onPointerDown,
       onPointerMove,
@@ -169,5 +253,35 @@ export function useMapGestures() {
       onPointerCancel: onPointerUp,
       onWheel,
     },
+  };
+}
+
+/**
+ * 따라갈 지점이 화면 앵커에 오도록 이동량과 배율을 구한다.
+ *
+ * 도면은 `contain`으로 박스에 맞춰진 뒤 `translate(x, y) scale(s)`를 받는다. 변환 기준점이
+ * 박스 중심이므로, 캔버스 점 p의 화면 위치는 `center + s·(fit(p) − center) + (x, y)`다.
+ * 이것을 앵커와 같게 두고 x·y를 푼다.
+ */
+function computeFollowView(
+  follow: FollowOptions | undefined,
+  box: { width: number; height: number } | null,
+): MapView | null {
+  if (!follow?.target || !box) return null;
+  if (box.width <= 0 || box.height <= 0) return null;
+
+  const fit = Math.min(box.width / follow.canvas.width, box.height / follow.canvas.height);
+  if (!(fit > 0)) return null;
+
+  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, box.width / (follow.spanPx * fit)));
+  const fitX = box.width / 2 + (follow.target.px - follow.canvas.width / 2) * fit;
+  const fitY = box.height / 2 + (follow.target.py - follow.canvas.height / 2) * fit;
+
+  return {
+    scale,
+    // 추종 중에는 이동량을 자르지 않는다. 내 위치를 화면 아래쪽에 붙이는 것이 목적이라
+    // 도면 가장자리에서는 일부러 여백이 보여야 한다.
+    x: box.width / 2 - scale * (fitX - box.width / 2) - box.width / 2,
+    y: box.height * follow.anchorY - scale * (fitY - box.height / 2) - box.height / 2,
   };
 }

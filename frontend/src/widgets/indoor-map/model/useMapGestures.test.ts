@@ -93,14 +93,15 @@ describe('useMapGestures', () => {
     expect(result.current.view.scale).toBe(1);
   });
 
-  it('확대는 4배에서 멈춘다', () => {
+  it('확대는 6배에서 멈춘다', () => {
+    // 시점 추종이 폭 60m를 담으려면 약 5.4배가 필요하다. 손으로도 그만큼은 당길 수 있어야 한다.
     const { result } = renderHook(() => useMapGestures());
 
     act(() => {
       for (let i = 0; i < 40; i += 1) result.current.handlers.onWheel(wheelEvent(-1));
     });
 
-    expect(result.current.view.scale).toBe(4);
+    expect(result.current.view.scale).toBe(6);
   });
 
   it('두 손가락 간격이 벌어지면 확대된다', () => {
