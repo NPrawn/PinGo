@@ -46,6 +46,87 @@ describe('planPlacementOf', () => {
   });
 });
 
+/**
+ * SVG transform 문자열을 실제로 적용한다. 값을 다시 계산해 비교하면 구현과 같은 식을 두 번
+ * 쓰는 것이라 아무것도 검증하지 못한다. 화면에 나가는 문자열 그대로를 푼다.
+ */
+function applyTransform(transform: string, point: { px: number; py: number }) {
+  const steps = [...transform.matchAll(/(translate|rotate|scale)\(([^)]*)\)/g)];
+  let { px, py } = point;
+
+  // transform 목록은 왼쪽이 바깥이다. 점에는 오른쪽부터 적용한다.
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const [, op, rawArgs] = steps[index];
+    const args = rawArgs.trim().split(/[\s,]+/).map(Number);
+
+    if (op === 'translate') {
+      px += args[0];
+      py += args[1] ?? 0;
+    } else if (op === 'scale') {
+      px *= args[0];
+      py *= args[1] ?? args[0];
+    } else {
+      const radians = (args[0] * Math.PI) / 180;
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+      const rotatedX = cos * px - sin * py;
+      py = sin * px + cos * py;
+      px = rotatedX;
+    }
+  }
+
+  return { px, py };
+}
+
+/**
+ * 마커가 도면에서 밀리지 않는지. (S15P11A206-79 점검)
+ *
+ * 오버레이는 **기준 프레임 하나로** 시설·경로·현재 위치를 찍고, 도면은 **자기 프레임으로**
+ * 기준 캔버스에 얹힌다. 서로 다른 경로다. 둘이 정확히 같은 점으로 가지 않으면 시설 마커가
+ * 도면 위에서 밀린다 — 층 전환 정합을 잡으려고 넣은 변환이 마킹을 망가뜨리는 경우다.
+ *
+ * 층별 프레임을 고쳐도 이 관계는 유지되어야 한다. 프레임 값이 맞는지는 별개의 문제이며
+ * (B1은 13장 미검증 항목), 여기서 보는 것은 **변환이 마커를 옮기지 않는다**는 것이다.
+ */
+describe('도면과 마커', () => {
+  const samples: readonly (readonly [number, number])[] = [
+    [0, 0],
+    [150, 0],
+    [-50.079, 6.468],
+    [130.012, 24.742],
+    [113.6, 43.7],
+  ];
+
+  it('시설 좌표는 그 층 도면에서 원래 있던 자리에 그대로 남는다', () => {
+    for (const plan of localPlanList()) {
+      const placement = planPlacementOf({
+        ...baseMap,
+        floorCode: plan.floorCode,
+        width: plan.width,
+        height: plan.height,
+        scaleMPerPx: plan.frame.mpp,
+        originPxX: plan.frame.originPx[0],
+        originPxY: plan.frame.originPx[1],
+        frameAngleDeg: plan.frame.angleDeg,
+      });
+
+      for (const [mapX, mapY] of samples) {
+        // 도면 안에서의 자리 → 기준 캔버스로 옮긴 자리
+        const onPlan = meterToPixel(mapX, mapY, plan.frame);
+        // 오버레이가 마커를 찍는 자리
+        const drawn = meterToPixel(mapX, mapY, PLAN_REFERENCE.frame);
+        expect(onPlan).not.toBeNull();
+        expect(drawn).not.toBeNull();
+
+        const moved = applyTransform(placement!.transform, onPlan!);
+
+        expect(moved.px).toBeCloseTo(drawn!.px, 6);
+        expect(moved.py).toBeCloseTo(drawn!.py, 6);
+      }
+    }
+  });
+});
+
 describe('기준 캔버스', () => {
   /**
    * 캔버스가 좁으면 넘치는 층이 잘린다. 층을 바꿀 때 잘린 가장자리가 나타났다 사라져
