@@ -34,7 +34,7 @@ export function StationSearch({ onSelect }: StationSearchProps) {
       selected={item.name === station}
       indicator={item.here ? 'none' : 'check'}
       onClick={() => {
-        setStation(item.name);
+        setStation(item.name, item.stationId);
         onSelect?.(item.name);
       }}
     >

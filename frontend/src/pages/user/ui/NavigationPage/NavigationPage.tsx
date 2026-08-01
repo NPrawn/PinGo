@@ -80,6 +80,13 @@ function matchExitByName(exits: readonly Facility[], name: string): Facility | n
 /** Camera guidance with an interactive indoor map and up to two stops. */
 export function NavigationPage() {
   const station = useStationStore((state) => state.station);
+  /**
+   * 확정된 역의 백엔드 id. 예전에는 이 화면이 `1`을 직접 적어 썼다.
+   *
+   * 등록되지 않은 역이면 null이다. 조회 훅은 양수가 아닌 id에서 요청을 걸지 않으므로
+   * (`useStationFloorMaps`) 0으로 넘겨 조회를 끈다.
+   */
+  const stationId = useStationStore((state) => state.stationId);
   const setFloor = useStationStore((state) => state.setFloor);
   const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
   const route = useNavigationStore((state) => state.route);
@@ -139,7 +146,7 @@ export function NavigationPage() {
    * `1F`를 눌러도 보여줄 지도가 없었다. `floor_id`는 auto-increment라 코드↔id 매핑을 상수로
    * 두면 시드가 바뀔 때 조용히 어긋나므로 응답에서 찾는다.
    */
-  const floorMapsQuery = useStationFloorMaps(1);
+  const floorMapsQuery = useStationFloorMaps(stationId ?? 0);
   const floorMaps = floorMapsQuery.data ?? [];
   /** 사용자가 탭으로 고른 층. null이면 현재 위치를 따라간다. */
   const [pickedFloorCode, setPickedFloorCode] = useState<string | null>(null);
@@ -163,7 +170,7 @@ export function NavigationPage() {
    * TODO(297): 경로 조회가 붙으면 목적지는 경로 응답의 마지막 노드에서 온다. 그때 이 조회와
    * 이름 대조를 지운다.
    */
-  const exitsQuery = useStationFacilities(1, { facilityType: 'exit' });
+  const exitsQuery = useStationFacilities(stationId ?? 0, { facilityType: 'exit' });
   const [pickedDestination, setPickedDestination] = useState<Facility | null>(null);
   const destinationFacility =
     pickedDestination ?? matchExitByName(exitsQuery.data ?? [], activeDestination);
@@ -370,7 +377,7 @@ export function NavigationPage() {
                   업로드되지 않아(mapUrl이 null) 목업 도면으로 마커 움직임을 확인한다. */}
               <div className={styles.mapCanvas}>
                 <IndoorMapView
-                  stationId={1}
+                  stationId={stationId ?? 0}
                   floorId={displayedFloorId}
                   currentLocation={currentLocation}
                   currentHeadingDeg={headingDeg}
