@@ -103,16 +103,16 @@ describe('useSmoothedRotationDeg', () => {
 
   /**
    * 회전 표시의 핵심이다. 방향각은 `atan2`라 `(-180, 180]`을 도는데, 미터 프레임 +X 반대쪽을
-   * 보면 그 경계 위에서 흔들린다. 경계를 넘을 때 값을 그대로 쓰면 2° 흔들림이 358° 회전으로
-   * 그려져 지도가 한 바퀴 돈다.
+   * 보면 그 경계 위에서 흔들린다. 경계를 넘을 때 값을 그대로 쓰면 30° 회전이 330° 역회전으로
+   * 그려져 지도가 반대로 크게 돈다.
    */
-  it('경계를 넘어도 한 바퀴 돌지 않는다', () => {
+  it('경계를 넘어도 짧은 쪽으로 돈다', () => {
     const { result, rerender } = renderHook(({ deg }) => useSmoothedRotationDeg(deg, 180), {
-      initialProps: { deg: 179 },
+      initialProps: { deg: 170 },
     });
     advance(16);
 
-    rerender({ deg: -179 });
+    rerender({ deg: -160 });
 
     const path: number[] = [];
     for (let index = 0; index < 120; index += 1) {
@@ -120,13 +120,71 @@ describe('useSmoothedRotationDeg', () => {
       path.push(result.current!);
     }
 
-    // 지나온 각도가 모두 179°와 181° 사이다. 반대쪽으로 돌았다면 0°를 지났을 것이다.
+    // 지나온 각도가 모두 170°와 200° 사이다. 반대쪽으로 돌았다면 0°를 지났을 것이다.
     path.forEach((deg) => {
-      expect(deg).toBeGreaterThanOrEqual(179);
-      expect(deg).toBeLessThanOrEqual(181);
+      expect(deg).toBeGreaterThanOrEqual(170);
+      expect(deg).toBeLessThanOrEqual(200);
     });
-    // 181°는 -179°와 같은 방향이다. 한 바퀴를 더 감지 않고 그 자리에 선다.
-    expect(result.current).toBeCloseTo(181, 3);
+    // 200°는 -160°와 같은 방향이다. 한 바퀴를 더 감지 않고 그 자리에 선다.
+    expect(result.current).toBeCloseTo(200, 1);
+  });
+
+  /**
+   * 걷는 동안 손에 든 단말의 yaw는 걸음마다 좌우로 오간다. 그 폭에 지도가 반응하면 5.4배로
+   * 당겨진 화면에서 도면이 계속 쓸린다. 시간 상수로는 갈라낼 수 없어(실제 회전과 시간 규모가
+   * 겹친다) 크기로 가른다.
+   */
+  describe('걸음 흔들림', () => {
+    it('문턱 안에서 오가는 동안은 지도를 잡아 둔다', () => {
+      const { result, rerender } = renderHook(
+        ({ deg }) => useSmoothedRotationDeg(deg, 250, 12),
+        { initialProps: { deg: 0 } },
+      );
+      advance(16);
+
+      for (let cycle = 0; cycle < 5; cycle += 1) {
+        rerender({ deg: -5 });
+        for (let index = 0; index < 30; index += 1) advance(16);
+        rerender({ deg: 5 });
+        for (let index = 0; index < 30; index += 1) advance(16);
+      }
+
+      expect(result.current).toBe(0);
+    });
+
+    it('문턱을 넘으면 따라간다', () => {
+      const { result, rerender } = renderHook(
+        ({ deg }) => useSmoothedRotationDeg(deg, 250, 12),
+        { initialProps: { deg: 0 } },
+      );
+      advance(16);
+
+      rerender({ deg: 90 });
+      for (let index = 0; index < 120; index += 1) advance(16);
+
+      expect(result.current).toBeCloseTo(90, 1);
+    });
+
+    /**
+     * 한 번 돌기 시작하면 목표에 닿을 때까지 따라간다. 문턱에서 멈춰 서면 실제로 돈 뒤에도
+     * 최대 12°가 어긋난 채로 남는다.
+     */
+    it('돌기 시작하면 문턱보다 작게 남은 차이도 마저 따라간다', () => {
+      const { result, rerender } = renderHook(
+        ({ deg }) => useSmoothedRotationDeg(deg, 250, 12),
+        { initialProps: { deg: 0 } },
+      );
+      advance(16);
+
+      rerender({ deg: 30 });
+      for (let index = 0; index < 8; index += 1) advance(16);
+      // 아직 가는 중이다. 남은 차이가 곧 문턱 아래로 내려간다.
+      expect(result.current).toBeLessThan(30);
+
+      // 문턱 아래로 내려가도 멈추지 않고 목표까지 간다.
+      for (let index = 0; index < 120; index += 1) advance(16);
+      expect(result.current).toBeCloseTo(30, 1);
+    });
   });
 
   it('방향을 잃으면 다시 잡을 때 그 각도에서 시작한다', () => {
