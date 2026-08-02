@@ -13,7 +13,7 @@
 | 상태 | API 영역 |
 | --- | --- |
 | 구현 | 인증·회원가입, 익명 사용자 세션, 역·층·지도·시설, 목적지 검색, 주변 장소·출구 추천, 실내 경로 2종, Kakao 외부 길찾기, 상담 생성·조회·취소·대기 SSE, 상담자 본인/관리자 계정 관리, VPS 위치추정, health, WebSocket signaling |
-| 계획 | 랜드마크 후보·수동 위치 지정, 경로 재탐색 전용 API, 역 주변 장소 목록, 상담자용 상담 큐/수락/거절/종료, 위치 공유, 교통카드 추천, 관리자 상담자 생성 |
+| 계획 | 랜드마크 후보·수동 위치 지정, 역 주변 장소 목록, 상담자용 상담 큐/수락/거절/종료, 위치 공유, 교통카드 추천, 관리자 상담자 생성 |
 
 구현 여부와 최신 요청·응답 schema는 실행 중인 Swagger를 최종 확인 수단으로 사용한다.
 
@@ -39,8 +39,7 @@
 ```json
 {
   "success": true,
-  "data": {},
-  "message": null
+  "data": {}
 }
 ```
 
@@ -49,11 +48,16 @@
 ```json
 {
   "success": false,
-  "data": null,
-  "message": "오류 메시지",
-  "errorCode": "ERROR_CODE"
+  "code": "ERROR_CODE",
+  "message": "오류 메시지"
 }
 ```
+
+**값이 `null`인 봉투 필드는 응답에서 빠진다.** `ApiResponse`에 `@JsonInclude(NON_NULL)`이 붙어 있어서, 성공 응답에는 `code`가 없고 실패 응답에는 `data`가 없다. 문서의 다른 예시에 `"message": null`처럼 적혀 있는 곳은 실제로는 그 필드가 나오지 않는다.
+
+**이 규칙은 봉투에만 적용된다.** `data` 안쪽 DTO는 `null`도 그대로 실린다. 예를 들어 위치 인식 응답의 `position.forwardMap`은 값이 없으면 `null`로 나온다.
+
+오류 코드 필드 이름은 **`code`**다. `errorCode`가 아니다.
 
 ### 2.3 공통 HTTP 상태 코드
 
@@ -65,8 +69,14 @@
 | 401  | 인증 필요   |
 | 403  | 권한 없음   |
 | 404  | 리소스 없음 |
+| 405  | 지원하지 않는 요청 방식 |
 | 409  | 상태 충돌   |
+| 415  | 지원하지 않는 요청 형식 |
 | 500  | 서버 오류   |
+
+**405는 경로는 맞고 메서드가 다를 때, 415는 `Content-Type`을 서버가 읽을 수 없을 때다.** 둘 다 `code`가 각각 `METHOD_NOT_ALLOWED`·`UNSUPPORTED_MEDIA_TYPE`이다.
+
+**404는 두 경우에 나온다.** 매핑된 엔드포인트가 없으면 `ENDPOINT_NOT_FOUND`, 엔드포인트는 있고 자원을 못 찾으면 도메인 코드(`FACILITY_NOT_FOUND` 등)다. 인증이 필요한 접두사 밖의 경로는 시큐리티가 먼저 막아 401이 나간다.
 
 ### 2.4 인증 정책
 
@@ -164,7 +174,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 상담자와 관리자는 별도 엔드포인트가 아닌 하나의 통합 로그인 API를 공유한다. 응답의 `accountType` 값(`COUNSELOR` | `ADMIN`)으로 프론트엔드가 역할을 구분해 라우팅한다.
 
-### POST `/auth/login`
+### POST `/api/auth/login`
 
 #### Request
 
@@ -209,11 +219,11 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 }
 ```
 
-> 이전 초안에서는 `/counselors/login`, `/admins/login`을 별도로 정의했으나(11.1, 13.1 참고), account 테이블 통합(ERD\_초안.md 5.6 참고)에 맞춰 `POST /auth/login` 하나로 합쳤다. 응답도 `counselor`/`admin` 중첩 객체가 아니라 평평한(flat) 구조이며, 관리자 세부 역할 구분 필드(`role`: admin/super_admin)는 아직 구현되지 않았다 — 필요해지면 추가 논의 필요.
+> 이전 초안에서는 `/counselors/login`, `/admins/login`을 별도로 정의했으나(11.1, 13.1 참고), account 테이블 통합(ERD\_초안.md 5.6 참고)에 맞춰 `POST /api/auth/login` 하나로 합쳤다. 응답도 `counselor`/`admin` 중첩 객체가 아니라 평평한(flat) 구조이며, 관리자 세부 역할 구분 필드(`role`: admin/super_admin)는 아직 구현되지 않았다 — 필요해지면 추가 논의 필요.
 
 ## 2.9 상담자(역무원) 회원가입
 
-### POST `/auth/signup`
+### POST `/api/auth/signup`
 
 상담자만 자가 회원가입이 가능하다. 관리자 계정은 회원가입 API로 생성하지 않는다(13.10 참고). 가입 즉시 로그인 가능한 상태가 아니라 **승인 대기(비활성)** 상태로 생성되며, 관리자 승인 후에만 로그인할 수 있다.
 
@@ -247,7 +257,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 ## 2.10 중복 아이디 체크
 
-### GET `/auth/check-login-id`
+### GET `/api/auth/check-login-id`
 
 회원가입 폼에서 아이디를 입력하는 시점에 실시간으로 중복 여부를 확인하기 위한 API다. 이 API를 호출하지 않고 바로 `/auth/signup`을 호출해도 되며, 최종 중복 검증은 signup API 쪽에서 다시 수행한다(위 참고).
 
@@ -275,7 +285,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 ## 3.1 사용자 세션 생성
 
-### POST `/user-sessions`
+### POST `/api/user-sessions`
 
 비로그인 사용자의 임시 세션을 생성한다.
 
@@ -305,7 +315,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 ## 3.2 사용자 세션 조회
 
-### GET `/user-sessions/{userSessionId}`
+### GET `/api/user-sessions/{userSessionId}`
 
 저장해 둔 세션 ID로 현재 세션 상태를 조회한다. 새로고침·앱 재실행 등으로 클라이언트가 들고 있던 상태가 사라졌을 때 복구 용도로 사용한다.
 
@@ -329,17 +339,17 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 응답 필드 구성은 3.3 사용자 세션 갱신과 동일하며, 아직 설정되지 않은 항목은 `null`로 내려간다.
 
-조회는 활동 시각을 갱신하지 않는다. `last_active_at`과 `expires_at`은 `PATCH /user-sessions/{userSessionId}` 호출 시에만 연장되므로, 이 API를 반복 호출해도 세션 만료를 늦출 수 없다.
+조회는 활동 시각을 갱신하지 않는다. `last_active_at`과 `expires_at`은 `PATCH /api/user-sessions/{userSessionId}` 호출 시에만 연장되므로, 이 API를 반복 호출해도 세션 만료를 늦출 수 없다.
 
 만료·종료된 세션이거나 존재하지 않는 ID이면 `USER_SESSION_NOT_FOUND`를 반환한다. 클라이언트는 이 응답을 받으면 세션을 새로 생성하고 `language`를 다시 전송해 흐름을 이어간다.
 
-역·목적지의 표시 이름이 필요하면 `GET /stations/{stationId}`(4.3), `GET /facilities/{facilityId}`(5.3)로 별도 조회한다. 세션 응답은 ID만 반환한다.
+역·목적지의 표시 이름이 필요하면 `GET /api/stations/{stationId}`(4.3), `GET /api/facilities/{facilityId}`(5.3)로 별도 조회한다. 세션 응답은 ID만 반환한다.
 
 ---
 
 ## 3.3 사용자 세션 갱신
 
-### PATCH `/user-sessions/{userSessionId}`
+### PATCH `/api/user-sessions/{userSessionId}`
 
 사용자의 선택 언어, 현재 역, 현재 위치, 목적지 등을 갱신한다.
 
@@ -397,7 +407,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 ## 3.4 사용자 세션 종료
 
-### DELETE `/user-sessions/{userSessionId}`
+### DELETE `/api/user-sessions/{userSessionId}`
 
 경로 안내가 정상적으로 끝났을 때 세션을 즉시 종료한다. 앱 종료·네트워크 끊김처럼 종료 요청이 도달하지 않는 경우는 세션 만료 정책(18. 확정된 구현 사항 참고)으로 처리한다.
 
@@ -417,8 +427,8 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 {
   "success": false,
   "data": false,
-  "message": "이미 종료된 세션입니다.",
-  "errorCode": "USER_SESSION_ALREADY_ENDED"
+  "code": "USER_SESSION_ALREADY_ENDED",
+  "message": "이미 종료된 세션입니다."
 }
 ```
 
@@ -434,7 +444,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 ## 4.1 주변 역 조회
 
-### GET `/stations/nearby`
+### GET `/api/stations/nearby`
 
 GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
@@ -467,7 +477,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ## 4.2 역 검색
 
-### GET `/stations/search`
+### GET `/api/stations/search`
 
 역 이름으로 역을 검색한다.
 
@@ -499,7 +509,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ## 4.3 역 상세 조회
 
-### GET `/stations/{stationId}`
+### GET `/api/stations/{stationId}`
 
 선택한 역의 기본 정보와 층 정보를 조회한다.
 
@@ -532,7 +542,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 ## 5.1 층별 지도 조회
 
-### GET `/stations/{stationId}/maps`
+### GET `/api/stations/{stationId}/maps`
 
 역의 층별 지도 정보를 조회한다. 응답에는 **좌표 프레임**이 포함된다 — 노드·경로·현재위치 좌표는 캐노니컬 미터로 내려가므로, 지도 위에 그리려면 이 값으로 픽셀로 변환해야 한다.
 
@@ -613,7 +623,7 @@ function pixelToMeter(px, py, frame) {
 
 ## 5.2 시설 목록 조회
 
-### GET `/stations/{stationId}/facilities`
+### GET `/api/stations/{stationId}/facilities`
 
 역 내부 시설 목록을 조회한다.
 
@@ -662,7 +672,7 @@ function pixelToMeter(px, py, frame) {
 
 ## 5.3 시설 상세 조회
 
-### GET `/facilities/{facilityId}`
+### GET `/api/facilities/{facilityId}`
 
 시설 상세 정보를 조회한다.
 
@@ -700,7 +710,7 @@ function pixelToMeter(px, py, frame) {
 
 ## 5.4 출구 도착 판정
 
-### POST `/facilities/{facilityId}/arrival-check`
+### POST `/api/facilities/{facilityId}/arrival-check`
 
 사용자가 목적지로 정한 출구에 도착했는지 판정한다 (FR-U-011).
 
@@ -789,7 +799,7 @@ B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
 
 ## 6.1 목적지 통합 검색
 
-### GET `/destinations/search`
+### GET `/api/destinations/search`
 
 역 내부 시설과 역 주변 장소를 이름 키워드로 통합 검색한다. 활성 시설(`facility`)을 먼저, 이어서 활성 주변 장소(`place`)를 반환한다. `category`는 시설이면 `facilityType`, 장소면 장소 카테고리다.
 
@@ -830,7 +840,7 @@ B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
 
 ## 6.2 역 주변 장소 목록 조회
 
-### GET `/stations/{stationId}/places`
+### GET `/api/stations/{stationId}/places`
 
 역 주변 장소 목록을 조회한다.
 
@@ -865,7 +875,7 @@ B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
 
 ## 6.3 추천 출구 조회
 
-### GET `/places/{placeId}/recommended-exits`
+### GET `/api/places/{placeId}/recommended-exits`
 
 역 주변 장소와 연결된 추천 출구를 우선순위(`priority` 오름차순)로 조회한다. 관리자가 등록한 장소-출구 추천(`place_exit_recommendation`)을 기준으로 하며, 추천 출구 시설이 비활성/삭제된 경우 결과에서 제외한다. `exitLocation`은 출구 상세(`exit_detail`)의 외부 좌표이며 좌표가 없으면 `null`이다. 장소가 없거나 비활성이면 `PLACE_NOT_FOUND`.
 
@@ -1152,7 +1162,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ## 7.2 랜드마크 후보 조회
 
-### GET `/stations/{stationId}/landmarks`
+### GET `/api/stations/{stationId}/landmarks`
 
 위치 인식 실패 시 사용자가 선택할 수 있는 랜드마크 후보를 조회한다.
 
@@ -1184,7 +1194,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ## 7.3 수동 위치 확정
 
-### POST `/localization/manual`
+### POST `/api/localization/manual`
 
 사용자가 지도에서 직접 선택한 위치를 현재 위치로 확정한다.
 
@@ -1228,6 +1238,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ### POST `/api/routes/indoor/options`
 
+> **`language`** — 이용 불가 사유 문구(`unavailableMessage`)의 언어다. `ko`·`en`·`ja`·`zh` 중 하나이며 생략하면 `en`이다. 이 요청에는 세션 ID가 없어 서버가 사용자의 언어를 알 수 없으므로 클라이언트가 실어 보낸다. 목적지 검색·편의시설·역 검색 API가 쓰는 `language`와 같은 값이다. **현재 문구는 한국어와 영어만 있고 `ja`·`zh`는 영어로 내려간다**(FR-U-001 범위). 아래 `POST /api/routes/indoor`도 같다.
+
 출발 노드에서 도착 노드까지 가능한 경로 옵션을 조회한다. 도착지는 실내 노드 ID(`targetNodeId`)로 직접 지정하며, 외부 목적지 검색·출구 추천은 이 API 범위 밖이다. 응답은 옵션별 요약이며 상세 `steps`·`pathNodes`는 포함하지 않는다.
 
 #### Request
@@ -1236,7 +1248,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 {
   "stationId": 1,
   "startNodeId": 15,
-  "targetNodeId": 44
+  "targetNodeId": 44,
+  "language": "en"
 }
 ```
 
@@ -1260,6 +1273,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
       "displayName": "빠른 경로",
       "available": true,
       "unavailableReason": null,
+      "unavailableMessage": null,
       "totalDistanceM": 180,
       "estimatedTimeSec": 240,
       "hasStairsOrEscalator": true
@@ -1269,6 +1283,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
       "displayName": "엘리베이터 이용 경로",
       "available": false,
       "unavailableReason": "NO_ACCESSIBLE_ROUTE",
+      "unavailableMessage": "The destination cannot be reached without using stairs or escalators.",
       "totalDistanceM": null,
       "estimatedTimeSec": null,
       "hasStairsOrEscalator": false
@@ -1278,7 +1293,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 }
 ```
 
-이용 불가한 옵션도 목록에서 제외하지 않고 `available=false`와 `unavailableReason`으로 표현한다. `unavailableReason`은 `NO_ROUTE`(연결된 경로 없음) 또는 `NO_ACCESSIBLE_ROUTE`(계단·에스컬레이터 제외 시 도달 불가)이다. `estimatedTimeSec`은 경로상 모든 간선에 예상 시간이 있을 때만 채워지며, 하나라도 없으면 `null`이다.
+이용 불가한 옵션도 목록에서 제외하지 않고 `available=false`와 `unavailableReason`으로 표현한다. `unavailableReason`은 `NO_ROUTE`(연결된 경로 없음) 또는 `NO_ACCESSIBLE_ROUTE`(계단·에스컬레이터 제외 시 도달 불가)이다. `unavailableMessage`는 같은 사유를 **요청 언어로 쓴 문구**이며 그대로 화면에 보여주면 된다. `unavailableReason`은 언어와 무관한 코드이므로 분기에는 이쪽을 쓴다. 이용 가능한 옵션은 둘 다 `null`이다. `estimatedTimeSec`은 경로상 모든 간선에 예상 시간이 있을 때만 채워지며, 하나라도 없으면 `null`이다.
 
 `hasStairsOrEscalator`는 그 경로가 계단이나 에스컬레이터를 지나는지다(FR-U-009 "계단 포함 여부"). 상세 조회와 달리 옵션 조회에는 `steps`가 없어 클라이언트가 스스로 판단할 수 없으므로 함께 내려준다. `elevator_only`는 정의상 항상 `false`이고, `available=false`인 옵션도 `false`다. 실질적으로는 **`fastest`가 왜 `elevator_only`보다 짧은지를 설명하는 값**이다. 휠체어·유모차 기준으로는 에스컬레이터도 계단과 같은 장벽이라 하나로 묶는다.
 
@@ -1297,7 +1312,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "stationId": 1,
   "startNodeId": 15,
   "targetNodeId": 44,
-  "routeType": "elevator_only"
+  "routeType": "elevator_only",
+  "language": "en"
 }
 ```
 
@@ -1311,6 +1327,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
     "displayName": "엘리베이터 이용 경로",
     "available": true,
     "unavailableReason": null,
+    "unavailableMessage": null,
     "startNodeId": 15,
     "targetNodeId": 44,
     "totalDistanceM": 230,
@@ -1340,46 +1357,9 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 }
 ```
 
-도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다. 방향(좌/우) 안내는 좌표 기반 계산이 필요하여 현재 범위에서 제외한다.
+도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. `unavailableMessage`에는 같은 사유를 요청 언어로 쓴 문구가 들어간다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다. 방향(좌/우) 안내는 좌표 기반 계산이 필요하여 현재 범위에서 제외한다.
 
 `mapZ`는 그 노드의 캐노니컬 높이(m)다. **같은 층 안에서 높이가 갈리는 구간을 구분하는 데 쓴다** — 역삼역 B0.5 중간층은 별도 층이 아니라 `floorId`가 B1이면서 `map_z=7.5`인 노드 6개로 돼 있어, 이 값이 없으면 바닥 구간과 중간층 구간이 도면 위 같은 평면에 겹쳐 그려진다. **관리자가 높이를 넣지 않은 노드는 `null`이다.**
-
----
-
-## 8.3 경로 재계산
-
-### POST `/routes/indoor/recalculate`
-
-경로 안내 중 현재 위치가 바뀌었을 때 경로를 다시 계산한다.
-
-> 재계산은 별도 작업(Task)으로 분리되어 있으며 현재 미구현이다.
-
-#### Request
-
-```json
-{
-  "routeId": "rt_12345",
-  "stationId": 1,
-  "currentNodeId": 20,
-  "targetNodeId": 44,
-  "routeType": "fastest"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "routeId": "rt_67890",
-    "distanceM": 150,
-    "estimatedTimeSec": 210,
-    "steps": []
-  },
-  "message": null
-}
-```
 
 ---
 
@@ -1387,7 +1367,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ## 9.1 카카오맵 길찾기 링크 생성
 
-### POST `/external-maps/directions`
+### POST `/api/external-maps/directions`
 
 사용자의 실제 현재 GPS 위치를 출발지로 사용하여 카카오맵 도보 길찾기 링크를 생성한다.
 
@@ -1431,7 +1411,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ## 10.1 상담 요청 생성
 
-### POST `/consultations`
+### POST `/api/consultations`
 
 사용자가 상담 요청을 생성한다.
 
@@ -1468,7 +1448,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ## 10.2 상담 상태 조회
 
-### GET `/consultations/{consultationId}`
+### GET `/api/consultations/{consultationId}`
 
 사용자가 상담 요청 상태를 확인한다.
 
@@ -1492,7 +1472,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ## 10.3 상담 요청 취소
 
-### DELETE `/consultations/{consultationId}`
+### DELETE `/api/consultations/{consultationId}`
 
 사용자가 상담 요청을 취소한다.
 
@@ -1743,13 +1723,13 @@ Event Name: `DATA_CHANNEL`
 
 ## 11.1 상담자 로그인
 
-로그인은 상담자/관리자 공통 통합 로그인 API(`POST /auth/login`, 2.8절 참고)를 사용한다. 별도의 `/counselors/login` 엔드포인트는 존재하지 않는다.
+로그인은 상담자/관리자 공통 통합 로그인 API(`POST /api/auth/login`, 2.8절 참고)를 사용한다. 별도의 `/counselors/login` 엔드포인트는 존재하지 않는다.
 
 ---
 
 ## 11.2 상담 요청 목록 조회
 
-### GET `/counselors/consultations`
+### GET `/api/counselors/consultations`
 
 상담자가 담당 역의 상담 요청 목록을 조회한다.
 
@@ -1788,7 +1768,7 @@ Authorization: Bearer {accessToken}
 ---
 ## 11.3 상담 요청 상세 조회
 
-### GET `/counselors/consultations/{consultationId}`
+### GET `/api/counselors/consultations/{consultationId}`
 
 상담자가 담당 역의 상담 요청 상세를 조회한다.
 
@@ -1832,7 +1812,7 @@ Authorization: Bearer {accessToken}
 --- 
 ## 11.4 상담 수락
 
-### POST `/consultations/{consultationId}/accept`
+### POST `/api/consultations/{consultationId}/accept`
 
 상담자가 상담 요청을 수락한다.
 
@@ -1863,7 +1843,7 @@ Authorization: Bearer {accessToken}
 
 ## 11.5 상담 거절
 
-### POST `/consultations/{consultationId}/reject`
+### POST `/api/consultations/{consultationId}/reject`
 
 상담자가 상담 요청을 거절한다.
 
@@ -1884,7 +1864,7 @@ Authorization: Bearer {accessToken}
 
 ## 11.6 상담 종료
 
-### POST `/consultations/{consultationId}/end`
+### POST `/api/consultations/{consultationId}/end`
 
 상담자가 수락한 상담을 종료한다.
 
@@ -1925,7 +1905,7 @@ Authorization: Bearer {accessToken}
 
 ## 11.7 상담자 본인 계정 조회
 
-### GET `/counselors/me`
+### GET `/api/counselors/me`
 
 로그인한 상담자가 자신의 계정 정보를 조회한다.
 
@@ -1957,7 +1937,7 @@ Authorization: Bearer {accessToken}
 
 ## 11.8 상담자 본인 계정 수정
 
-### PATCH `/counselors/me`
+### PATCH `/api/counselors/me`
 
 로그인한 상담자가 자신의 이름, 비밀번호, 상담 가능 상태를 수정한다. 담당 역 지정과 계정 활성화·비활성화는 이 API로 변경할 수 없으며, 관리자 전용 API(13.6 상담자 계정 관리 참고)에서만 처리한다.
 
@@ -2182,7 +2162,7 @@ WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 
 
 ## 13.1 관리자 로그인
 
-로그인은 상담자/관리자 공통 통합 로그인 API(`POST /auth/login`, 2.8절 참고)를 사용한다. 별도의 `/admins/login` 엔드포인트는 존재하지 않는다.
+로그인은 상담자/관리자 공통 통합 로그인 API(`POST /api/auth/login`, 2.8절 참고)를 사용한다. 별도의 `/admins/login` 엔드포인트는 존재하지 않는다.
 
 ---
 
@@ -2263,7 +2243,7 @@ WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 
 
 ## 13.4 지도 등록·조회
 
-### POST `/admin/floors/{floorId}/maps`
+### POST `/api/admin/floors/{floorId}/maps`
 
 층별 지도 이미지를 업로드한다. 파일은 서버 정적 디렉토리에 저장하고 DB에는 상대 URL(`/uploads/maps/{fileName}`)을 저장한다. 같은 층에 이미 활성 지도가 있으면 자동으로 비활성화하고 새 지도를 활성 지도로 등록한다. `version`은 `v1`, `v2` 순으로 자동 부여한다.
 
@@ -2331,7 +2311,7 @@ multipart/form-data
 
 ---
 
-### GET `/admin/floors/{floorId}/maps`
+### GET `/api/admin/floors/{floorId}/maps`
 
 관리자 화면에서 등록된 지도를 미리보기 위해 해당 층의 활성 지도 목록을 조회한다.
 
@@ -2374,7 +2354,7 @@ multipart/form-data
 | PATCH  | `/admin/facilities/{facilityId}` | 시설 수정                                                             |
 | DELETE | `/admin/facilities/{facilityId}` | 시설 비활성화                                                         |
 
-### POST `/admin/facilities`
+### POST `/api/admin/facilities`
 
 #### Request
 
@@ -2409,7 +2389,7 @@ multipart/form-data
 }
 ```
 
-### GET `/admin/facilities`
+### GET `/api/admin/facilities`
 
 #### Query
 
@@ -2442,7 +2422,7 @@ multipart/form-data
 }
 ```
 
-### GET `/admin/facilities/{facilityId}`
+### GET `/api/admin/facilities/{facilityId}`
 
 #### Response
 
@@ -2472,7 +2452,7 @@ multipart/form-data
 }
 ```
 
-### PATCH `/admin/facilities/{facilityId}`
+### PATCH `/api/admin/facilities/{facilityId}`
 
 수정 요청은 `stationId`·`floorId`를 제외한 필드로 구성한다. `facilityType`이 `exit`가 아닌 값으로 변경되면 기존 `exitDetail`은 삭제된다.
 
@@ -2509,7 +2489,7 @@ multipart/form-data
 | PATCH  | `/admin/route-nodes/{nodeId}` | 노드 수정                                              |
 | DELETE | `/admin/route-nodes/{nodeId}` | 노드 삭제                                              |
 
-### POST `/admin/route-nodes`
+### POST `/api/admin/route-nodes`
 
 #### Request
 
@@ -2542,7 +2522,7 @@ multipart/form-data
 }
 ```
 
-### GET `/admin/route-nodes/{nodeId}`
+### GET `/api/admin/route-nodes/{nodeId}`
 
 #### Response
 
@@ -2578,7 +2558,7 @@ multipart/form-data
 | PATCH  | `/admin/route-edges/{edgeId}` | 간선 수정                         |
 | DELETE | `/admin/route-edges/{edgeId}` | 간선 비활성화                     |
 
-### POST `/admin/route-edges`
+### POST `/api/admin/route-edges`
 
 #### Request
 
@@ -2607,7 +2587,7 @@ multipart/form-data
 }
 ```
 
-### GET `/admin/route-edges/{edgeId}`
+### GET `/api/admin/route-edges/{edgeId}`
 
 #### Response
 
@@ -2635,7 +2615,7 @@ multipart/form-data
 
 주변 장소(역 외부 목적지)를 등록·조회·수정·삭제한다. 좌표(위경도)는 실외 GPS·관리자 입력값을 그대로 저장하며 서버에서 계산하지 않는다. 위도는 −90~90, 경도는 −180~180 범위를 벗어나면 `INVALID_REQUEST`. 단건 조회·수정·삭제는 **활성 장소만** 대상으로 하며, 비활성 장소는 `PLACE_NOT_FOUND`. 삭제는 물리 삭제 대신 `is_active=false` 처리하고, **연결된 장소-출구 추천도 함께 삭제**한다.
 
-### POST `/admin/nearby-places`
+### POST `/api/admin/nearby-places`
 
 주변 장소를 등록한다. 성공 시 `201`과 생성된 `placeId`를 반환한다.
 
@@ -2654,19 +2634,19 @@ multipart/form-data
 }
 ```
 
-### GET `/admin/nearby-places?stationId={stationId}`
+### GET `/api/admin/nearby-places?stationId={stationId}`
 
 역별 주변 장소 목록을 조회한다. 관리자용이므로 비활성 장소도 포함한다. `stationId` 누락 시 `INVALID_REQUEST`.
 
-### GET `/admin/nearby-places/{placeId}`
+### GET `/api/admin/nearby-places/{placeId}`
 
 주변 장소 상세를 조회한다. 없으면 `PLACE_NOT_FOUND`.
 
-### PATCH `/admin/nearby-places/{placeId}`
+### PATCH `/api/admin/nearby-places/{placeId}`
 
 주변 장소를 수정한다. 소속 역(`stationId`)은 변경 대상이 아니다.
 
-### DELETE `/admin/nearby-places/{placeId}`
+### DELETE `/api/admin/nearby-places/{placeId}`
 
 주변 장소를 비활성화(`is_active=false`)한다.
 
@@ -2697,7 +2677,7 @@ multipart/form-data
 
 주변 장소와 추천 출구(시설)를 연결·조회·삭제한다. 대상 장소는 **활성 장소**여야 하며 아니면 `PLACE_NOT_FOUND`. `exitFacilityId`는 **장소와 같은 역의 활성 출구(`facilityType=exit`) 시설**이어야 하며, 각각 없음/출구 아님/다른 역이면 `FACILITY_NOT_FOUND`·`UNSUPPORTED_FACILITY_TYPE`·`INVALID_REQUEST`로 거부한다. 동일한 `(placeId, exitFacilityId)` 조합을 중복 등록하면 `DUPLICATE_EXIT_RECOMMENDATION`. `isPrimary=true`로 등록하면 같은 장소의 **기존 대표 추천은 자동 해제**되어 대표는 항상 하나만 유지된다. `priority`는 0 이상이어야 한다. 추천은 물리 삭제한다. (수정은 삭제 후 재등록으로 대체하며 PATCH는 제공하지 않는다.)
 
-### POST `/admin/place-exit-recommendations`
+### POST `/api/admin/place-exit-recommendations`
 
 장소-출구 추천을 등록한다. 성공 시 `201`과 생성된 `recommendationId`를 반환한다.
 
@@ -2715,11 +2695,11 @@ multipart/form-data
 }
 ```
 
-### GET `/admin/place-exit-recommendations?placeId={placeId}`
+### GET `/api/admin/place-exit-recommendations?placeId={placeId}`
 
 장소별 추천 목록을 우선순위(`priority` 오름차순) 순으로 조회한다. `placeId` 누락 시 `INVALID_REQUEST`, 장소가 없으면 `PLACE_NOT_FOUND`.
 
-### DELETE `/admin/place-exit-recommendations/{recommendationId}`
+### DELETE `/api/admin/place-exit-recommendations/{recommendationId}`
 
 장소-출구 추천을 삭제한다. 없으면 `EXIT_RECOMMENDATION_NOT_FOUND`.
 
@@ -2727,7 +2707,7 @@ multipart/form-data
 
 ## 13.10 상담자 계정 등록
 
-### POST `/admin/counselors`
+### POST `/api/admin/counselors`
 
 #### Request
 
@@ -2748,7 +2728,7 @@ multipart/form-data
 
 ## 14.1 위치 공유 링크 생성
 
-### POST `/location-shares`
+### POST `/api/location-shares`
 
 #### Request
 
@@ -2779,7 +2759,7 @@ multipart/form-data
 
 ## 14.2 공유 위치 조회
 
-### GET `/location-shares/{shareId}`
+### GET `/api/location-shares/{shareId}`
 
 #### Response
 
@@ -2810,7 +2790,7 @@ multipart/form-data
 
 ## 15.1 교통카드 추천
 
-### POST `/transport-cards/recommend`
+### POST `/api/transport-cards/recommend`
 
 #### Request
 
@@ -2887,19 +2867,19 @@ multipart/form-data
 
 | 구분        | API                                                                                                                                  |
 | ----------- |--------------------------------------------------------------------------------------------------------------------------------------|
-| 사용자 세션 | POST /user-sessions, GET /user-sessions/{userSessionId}, PATCH /user-sessions/{userSessionId}, DELETE /user-sessions/{userSessionId} |
-| 역          | GET /stations/nearby, GET /stations/search, GET /stations/{stationId}                                                                |
-| 지도/시설   | GET /stations/{stationId}/maps, GET /stations/{stationId}/facilities                                                                 |
-| 목적지      | GET /destinations/search, GET /stations/{stationId}/places, GET /places/{placeId}/recommended-exits                                  |
-| 위치 인식   | POST /api/vps/localize, POST /localization/manual                                                                                    |
-| 경로        | POST /routes/indoor/options, POST /routes/indoor, POST /routes/indoor/recalculate                                                    |
-| 외부 지도   | POST /external-maps/directions                                                                                                       |
-| 위치 공유   | POST /location-shares, GET /location-shares/{shareId}                                                                                |
-| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}                                     |
-| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                                                        |
-| 상담자      | GET /counselors/consultations, POST /consultations/{id}/accept, GET /counselors/me, PATCH /counselors/me                             |
+| 사용자 세션 | POST /api/user-sessions, GET /api/user-sessions/{userSessionId}, PATCH /api/user-sessions/{userSessionId}, DELETE /api/user-sessions/{userSessionId} |
+| 역          | GET /api/stations/nearby, GET /api/stations/search, GET /api/stations/{stationId}                                                                |
+| 지도/시설   | GET /api/stations/{stationId}/maps, GET /api/stations/{stationId}/facilities                                                                 |
+| 목적지      | GET /api/destinations/search, GET /api/stations/{stationId}/places, GET /api/places/{placeId}/recommended-exits                                  |
+| 위치 인식   | POST /api/vps/localize, POST /api/localization/manual                                                                                    |
+| 경로        | POST /api/routes/indoor/options, POST /api/routes/indoor                                                    |
+| 외부 지도   | POST /api/external-maps/directions                                                                                                       |
+| 위치 공유   | POST /api/location-shares, GET /api/location-shares/{shareId}                                                                                |
+| 상담        | POST /api/consultations, GET /api/consultations/{consultationId}, DELETE /api/consultations/{consultationId}                                     |
+| 인증        | POST /api/auth/login, POST /api/auth/signup, GET /api/auth/check-login-id                                                                        |
+| 상담자      | GET /api/counselors/consultations, POST /api/consultations/{id}/accept, GET /api/counselors/me, PATCH /api/counselors/me                             |
 | WebRTC      | WS /ws/signaling                                                                                                                     |
-| 교통카드    | POST /transport-cards/recommend                                                                                                      |
+| 교통카드    | POST /api/transport-cards/recommend                                                                                                      |
 | 관리자      | 관리자 데이터 등록 API 전체 구현                                                                                                                 |
 
 ---
