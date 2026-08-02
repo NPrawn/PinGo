@@ -77,8 +77,6 @@ class ConsultationSummaryServiceTest {
         given(accountRepository.findById(COUNSELOR_ID)).willReturn(Optional.of(counselor));
         given(consultationSummaryRepository.findByConsultationId(CONSULTATION_ID))
                 .willReturn(Optional.empty());
-        given(consultationSummaryRepository.existsByConsultationId(CONSULTATION_ID))
-                .willReturn(false);
         given(consultationSummaryRepository.save(any(ConsultationSummary.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
         given(consultationTranscriptRepository.saveAll(any()))

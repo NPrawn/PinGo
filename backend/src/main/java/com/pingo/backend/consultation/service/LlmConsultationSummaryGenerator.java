@@ -67,8 +67,8 @@ public class LlmConsultationSummaryGenerator implements ConsultationSummaryGener
                 ),
                 "generationConfig", Map.of(
                         "temperature", 0.2,
-                        "maxOutputTokens", 300,
-                        "thinkingConfig", Map.of("thinkingBudget", 0)
+                        "maxOutputTokens", 1000,
+                        "thinkingConfig", Map.of("thinkingBudget", 0) // 2.5 전용 필드. 3.x 로 올릴 땐 thinkingLevel 로 교체
                 )
         );
 
@@ -80,7 +80,11 @@ public class LlmConsultationSummaryGenerator implements ConsultationSummaryGener
 
         String text = extractText(response);
         if (text == null || text.isBlank()) {
-            throw new IllegalStateException("요약 생성 응답이 비어 있습니다.");
+            String finishReason = (response != null && response.candidates() != null
+                    && !response.candidates().isEmpty())
+                    ? response.candidates().get(0).finishReason()
+                    : null;
+            throw new IllegalStateException("요약 생성 응답이 비어 있습니다. finishReason=" + finishReason);
         }
 
         String summary = text.trim();

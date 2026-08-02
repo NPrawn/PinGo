@@ -60,7 +60,7 @@ public class SecurityConfig {
                                 HttpMethod.POST,
                                 "/api/consultations/*/accept",
                                 "/api/consultations/*/reject",
-                                "/api/consultations/*/summary"
+                                "/api/consultations/*/transcript"
                         )
                         .hasRole("COUNSELOR")
                         .requestMatchers(

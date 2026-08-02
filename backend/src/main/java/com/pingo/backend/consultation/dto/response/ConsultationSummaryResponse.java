@@ -1,6 +1,7 @@
 package com.pingo.backend.consultation.dto.response;
 
 import com.pingo.backend.consultation.domain.ConsultationSummary;
+import com.pingo.backend.consultation.domain.SummaryStatus;
 import com.pingo.backend.usersession.domain.Language;
 
 import java.time.LocalDateTime;
@@ -8,6 +9,7 @@ import java.util.List;
 
 public record ConsultationSummaryResponse(
         String consultationId,
+        SummaryStatus status,
         String counselorName,
         LocalDateTime endedAt,
         Language language,
@@ -17,7 +19,8 @@ public record ConsultationSummaryResponse(
         String guidedExitLabel,
         String routeType,
         List<TranscriptSegmentResponse> transcript,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        LocalDateTime completedAt
 ) {
     public static ConsultationSummaryResponse of(ConsultationSummary summary,
                                                  String counselorName,
@@ -26,6 +29,7 @@ public record ConsultationSummaryResponse(
                                                  List<TranscriptSegmentResponse> transcript) {
         return new ConsultationSummaryResponse(
                 summary.getConsultationId(),
+                summary.getStatus(),
                 counselorName,
                 endedAt,
                 language,
@@ -35,7 +39,8 @@ public record ConsultationSummaryResponse(
                 summary.getGuidedExitLabel(),
                 summary.getRouteType(),
                 transcript,
-                summary.getCreatedAt()
+                summary.getCreatedAt(),
+                summary.getCompletedAt()
         );
     }
 }

@@ -63,11 +63,6 @@ class ConsultationSessionServiceTest {
     @InjectMocks
     private ConsultationSessionService consultationSessionService;
 
-    @MockitoBean
-    private ConsultationSummaryService consultationSummaryService;
-
-    @MockitoBean
-    private ConsultationRatingService consultationRatingService;
 
     private static final String USER_SESSION_ID = "usr_9f3a2b";
     private static final String OTHER_USER_SESSION_ID = "usr_other0";
