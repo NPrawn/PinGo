@@ -98,9 +98,7 @@ export function useConsultSignaling(
     const localCandidates: RTCIceCandidateInit[] = [];
     const peer = new RTCPeerConnection(rtcConfiguration());
     const wsBase = env.VITE_WS_BASE_URL.replace(/\/$/, '');
-    const socket = new WebSocket(
-      `${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`,
-    );
+    const socket = new WebSocket(`${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`);
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
     /** 정리된 뒤에 도착한 이벤트로 화면에 실패를 남기지 않는다. */
     const fail = (message: string) => {
@@ -238,8 +236,18 @@ export function useConsultSignaling(
       setError(null);
       send('JOIN');
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        if (disposed) return;
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        /**
+         * 기다리는 사이에 화면을 벗어났으면 여기서 직접 끈다.
+         *
+         * 정리 함수는 이미 지나갔고 그때 `localStream`은 아직 비어 있었다. 그대로 반환하면
+         * 아무도 이 스트림을 모르는 채 카메라와 마이크가 계속 켜져 있게 된다.
+         */
+        if (disposed) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        localStream = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
         localStream.getTracks().forEach((track) => peer.addTrack(track, localStream!));
         startCaptions();
