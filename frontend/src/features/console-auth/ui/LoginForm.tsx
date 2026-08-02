@@ -1,35 +1,54 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { COUNSELOR_ROUTES } from '@/shared/config';
-import { Blob, Button, Field } from '@/shared/ui';
-import { authenticate } from '../model/demoAccounts';
+import { ADMIN_ROUTES, COUNSELOR_ROUTES } from '@/shared/config';
+import { ApiError, setAuthSession } from '@/shared/api';
+import { Blob, Button, Field, PasswordField } from '@/shared/ui';
+import { useLogin } from '../api/useAuthMutations';
 import styles from './LoginForm.module.css';
 
 /**
  * Combined counselor/admin sign-in.
  *
- * The prototype routed by credential; that behaviour is preserved, but no
- * session is stored — see the TODO on `DEMO_ACCOUNTS`.
+ * Uses the shared backend login endpoint and routes by the returned account type.
  */
 export function LoginForm() {
   const navigate = useNavigate();
+  const loginMutation = useLogin();
   const [id, setId] = useState('');
   const [pw, setPw] = useState('');
-  const [failed, setFailed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const submit = () => {
-    const account = authenticate(id, pw);
-    if (!account) {
-      setFailed(true);
+    if (!id.trim() || !pw) {
+      setErrorMessage('아이디와 비밀번호를 입력해 주세요.');
       return;
     }
-    void navigate(account.landing);
-  };
 
-  const fill = (nextId: string) => {
-    setId(nextId);
-    setPw('1234');
-    setFailed(false);
+    setErrorMessage('');
+    loginMutation.mutate(
+      { loginId: id.trim(), password: pw },
+      {
+        onSuccess: (account) => {
+          setAuthSession({
+            accessToken: account.accessToken,
+            accountType: account.accountType,
+            accountId: account.accountId,
+            name: account.name,
+            stationId: account.stationId ?? undefined,
+            status: account.status ?? undefined,
+          });
+
+          void navigate(
+            account.accountType === 'ADMIN' ? ADMIN_ROUTES.CONSOLE : COUNSELOR_ROUTES.REQUESTS,
+          );
+        },
+        onError: (error) => {
+          setErrorMessage(
+            error instanceof ApiError ? error.message : '로그인 중 오류가 발생했습니다.',
+          );
+        },
+      },
+    );
   };
 
   return (
@@ -71,43 +90,30 @@ export function LoginForm() {
           aria-label="아이디"
           onChange={(event) => {
             setId(event.target.value);
-            setFailed(false);
+            setErrorMessage('');
           }}
         />
-        <Field
-          type="password"
+        <PasswordField
           placeholder="비밀번호"
           value={pw}
           aria-label="비밀번호"
           onChange={(event) => {
             setPw(event.target.value);
-            setFailed(false);
+            setErrorMessage('');
           }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') submit();
           }}
         />
-        {failed && <p className={styles.error}>아이디와 비밀번호를 확인해 주세요.</p>}
+        {errorMessage && <p className={styles.error}>{errorMessage}</p>}
 
         <div className={styles.actions}>
           <Button variant="secondary" onClick={() => void navigate(COUNSELOR_ROUTES.SIGNUP)}>
             회원가입
           </Button>
-          <Button onClick={submit}>로그인</Button>
-        </div>
-
-        <div className={styles.demo}>
-          <b className={styles.demoTitle}>데모 계정</b>
-          <br />
-          상담자 →{' '}
-          <button type="button" className={styles.demoFill} onClick={() => fill('counselor')}>
-            counselor / 1234
-          </button>
-          <br />
-          관리자 →{' '}
-          <button type="button" className={styles.demoFill} onClick={() => fill('admin')}>
-            admin / 1234
-          </button>
+          <Button onClick={submit} disabled={loginMutation.isPending}>
+            {loginMutation.isPending ? '로그인 중...' : '로그인'}
+          </Button>
         </div>
       </div>
     </div>

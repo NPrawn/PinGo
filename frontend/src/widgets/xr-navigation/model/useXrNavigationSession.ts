@@ -32,6 +32,16 @@ export interface UseXrNavigationSessionOptions {
   currentIndoorLocation?: IndoorPoint | null;
   /** 테스트에서 가짜 컨트롤러를 주입한다. */
   controller?: XrSessionController;
+  /**
+   * 세션을 열기 직전에 앱의 카메라 스트림을 반납하는 함수. (11.8)
+   *
+   * **호출부가 넘긴다.** 카메라 미리보기는 다른 위젯이 소유하고, 이 저장소는 같은 레이어끼리
+   * import하지 않는다. 화면이 두 위젯을 모두 알고 있으므로 연결도 화면이 한다.
+   *
+   * 넘기지 않으면 정리가 일어나지 않는다. 미리보기를 켠 채 세션을 열면 세션은 오류 없이 열리고
+   * pose만 영원히 들어오지 않는다.
+   */
+  releaseCamera?: () => void | Promise<void>;
 }
 
 export interface UseXrNavigationSessionValue extends UseXrMapPositionValue {
@@ -89,6 +99,7 @@ export interface UseXrNavigationSessionValue extends UseXrMapPositionValue {
 export function useXrNavigationSession({
   currentIndoorLocation = null,
   controller = xrSessionController,
+  releaseCamera,
 }: UseXrNavigationSessionOptions = {}): UseXrNavigationSessionValue {
   const tracking = useXrMapPosition({ currentIndoorLocation, controller });
 
@@ -127,17 +138,19 @@ export function useXrNavigationSession({
      *
      * 컨트롤러가 root 유무로 `optionalFeatures`를 가른다 — 없이 요청하면 어차피 부여되지
      * 않으면서 동의 프롬프트만 하나 더 뜬다(11.7).
-     *
-     * TODO(11.8): `requestSession` 전에 앱의 `getUserMedia` 카메라 트랙을 정리하는
-     * `releaseCamera`를 넘겨야 한다. 지금은 살아 있는 스트림을 앱 어디에서도 들고 있지 않아
-     * 넘길 대상이 없다. 11.8이 요구한 "미디어 스트림 생명주기를 전용 훅으로 모아 관리"가
-     * 만들어지면 그 훅의 정리 함수를 여기에 연결한다. 정리가 빠지면 세션은 오류 없이 열리고
-     * pose만 영원히 들어오지 않는다.
      */
     if (root) options.domOverlayRoot = root;
+    /**
+     * 앞 화면들이 켜 둔 카메라를 반납한다. (11.8)
+     *
+     * 촬영·위치 확인·경로 선택이 모두 후면 카메라 미리보기를 쓴다. 그 스트림이 살아 있는 채로
+     * 세션을 열면 세션·reference space·dom-overlay가 모두 성공하는데 pose만 들어오지 않는다.
+     * 컨트롤러가 `requestSession` 직전에 이 함수를 await한다.
+     */
+    if (releaseCamera) options.releaseCamera = releaseCamera;
 
     void start(options);
-  }, [start]);
+  }, [start, releaseCamera]);
 
   const continueWithoutTracking = useCallback(() => {
     setPhase('without-tracking');
@@ -215,7 +228,9 @@ export function useXrNavigationSession({
    * 배경을 되돌리면 화면이 깜빡인다. 위치 갱신이 멈춘 것은 배지가 알린다(11.7).
    */
   const isSessionOpen =
-    tracking.status === 'warming-up' || tracking.status === 'tracking' || tracking.status === 'lost';
+    tracking.status === 'warming-up' ||
+    tracking.status === 'tracking' ||
+    tracking.status === 'lost';
 
   return {
     ...tracking,

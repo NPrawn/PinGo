@@ -12,12 +12,14 @@ import org.springframework.stereotype.Service;
 public class ExternalMapService {
 
     private static final String KAKAO_PROVIDER = "kakao";
-    private static final String WALKING_MODE = "walking";
+    private static final String WALKING_MODE = "foot";
+    private static final String LEGACY_WALKING_MODE = "walking";
     private static final String KAKAO_WALKING_MODE = "foot";
 
     public ExternalDirectionResponse createDirection(ExternalDirectionRequest request) {
-        if (!KAKAO_PROVIDER.equalsIgnoreCase(request.provider())
-        || !WALKING_MODE.equalsIgnoreCase(request.mode())) {
+        boolean isWalkingMode = WALKING_MODE.equalsIgnoreCase(request.mode())
+                || LEGACY_WALKING_MODE.equalsIgnoreCase(request.mode());
+        if (!KAKAO_PROVIDER.equalsIgnoreCase(request.provider()) || !isWalkingMode) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 

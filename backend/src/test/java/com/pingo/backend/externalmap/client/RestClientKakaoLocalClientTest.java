@@ -62,6 +62,57 @@ class RestClientKakaoLocalClientTest {
     }
 
     @Test
+    void searchSubwayStationsNarrowsToSubwayCategoryWithoutCenterCoordinates() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        RestClientKakaoLocalClient client = new RestClientKakaoLocalClient(
+                builder.build(),
+                new KakaoLocalProperties("https://dapi.kakao.com", "test-key", 1000, 3000)
+        );
+
+        server.expect(requestTo(containsString("category_group_code=SW8")))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "KakaoAK test-key"))
+                .andRespond(withSuccess("""
+                        {
+                          "documents": [
+                            {
+                              "id": "21160338",
+                              "place_name": "선릉역 2호선",
+                              "category_name": "교통,수송 > 지하철,전철 > 수도권2호선",
+                              "address_name": "서울 강남구 삼성동 172-66",
+                              "road_address_name": "서울 강남구 테헤란로 340",
+                              "x": "127.048913",
+                              "y": "37.504520",
+                              "distance": ""
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        List<KakaoPlaceSearchResult> results = client.searchSubwayStations("선릉");
+
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.name()).isEqualTo("선릉역 2호선");
+            assertThat(result.address()).isEqualTo("서울 강남구 테헤란로 340");
+            assertThat(result.distanceMeters()).isNull();
+        });
+        server.verify();
+    }
+
+    @Test
+    void searchSubwayStationsReturnsEmptyWhenApiKeyIsMissing() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        RestClientKakaoLocalClient client = new RestClientKakaoLocalClient(
+                builder.build(),
+                new KakaoLocalProperties("https://dapi.kakao.com", "", 1000, 3000)
+        );
+
+        assertThat(client.searchSubwayStations("선릉")).isEmpty();
+        server.verify();
+    }
+
+    @Test
     void searchPlacesReturnsEmptyWhenApiKeyIsMissing() {
         RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

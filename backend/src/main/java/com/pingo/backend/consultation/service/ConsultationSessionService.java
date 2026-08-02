@@ -71,6 +71,7 @@ public class ConsultationSessionService {
                 request.audioConsent()
         );
         consultationSessionRepository.save(session);
+        consultationWaitingEventPublisher.publishWaiting(session.getConsultationId());
         return ConsultationCreateResponse.from(session);
     }
 
@@ -91,6 +92,7 @@ public class ConsultationSessionService {
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_CANCELABLE);
         }
         session.cancel();
+        consultationWaitingEventPublisher.publishCanceled(session.getConsultationId());
         return ConsultationCancelResponse.from(session);
     }
 
@@ -134,7 +136,9 @@ public class ConsultationSessionService {
     @Transactional(readOnly = true)
     public List<ConsultationListResponse> getConsultationsForCounselor(Long counselorAccountId, ConsultationStatus status){
         Account counselor = findActiveCounselor(counselorAccountId);
-        List<ConsultationStatus> statuses = status != null ? List.of(status) : ACTIVE_STATUSES;
+        // status를 지정하지 않으면 이력 화면이 쓸 수 있도록 담당 역의 모든 상담을 준다.
+        List<ConsultationStatus> statuses =
+                status != null ? List.of(status) : List.of(ConsultationStatus.values());
         return consultationSessionRepository.findByStationIdAndStatusIn(counselor.getStationId(), statuses).stream()
                 .map(ConsultationListResponse::from)
                 .toList();

@@ -52,8 +52,6 @@ export function canAttemptXrSession(support: XrSupport): boolean {
  */
 export function canRetryXrSession(reason: XrFailureReason | undefined): boolean {
   return (
-    reason === 'request-rejected' ||
-    reason === 'no-reference-space' ||
-    reason === 'no-render-layer'
+    reason === 'request-rejected' || reason === 'no-reference-space' || reason === 'no-render-layer'
   );
 }

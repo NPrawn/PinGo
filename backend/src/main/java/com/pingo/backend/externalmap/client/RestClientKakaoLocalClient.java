@@ -18,6 +18,8 @@ public class RestClientKakaoLocalClient implements KakaoLocalClient {
 
     private static final int SEARCH_RADIUS_METERS = 3_000;
     private static final int SEARCH_RESULT_SIZE = 15;
+    /** 카카오 로컬 카테고리 그룹 코드: 지하철역. */
+    private static final String SUBWAY_CATEGORY_GROUP_CODE = "SW8";
 
     private final RestClient restClient;
     private final KakaoLocalProperties properties;
@@ -51,6 +53,37 @@ public class RestClientKakaoLocalClient implements KakaoLocalClient {
                             .queryParam("y", centerLatitude.toPlainString())
                             .queryParam("radius", SEARCH_RADIUS_METERS)
                             .queryParam("sort", "distance")
+                            .queryParam("size", SEARCH_RESULT_SIZE)
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, "KakaoAK " + properties.restApiKey())
+                    .retrieve()
+                    .body(KakaoLocalSearchResponse.class);
+
+            if (response == null || response.documents() == null) {
+                return List.of();
+            }
+
+            return response.documents().stream()
+                    .map(this::toSearchResult)
+                    .toList();
+        } catch (RestClientException | NumberFormatException exception) {
+            throw new BusinessException(ErrorCode.EXTERNAL_PLACE_SEARCH_FAILED);
+        }
+    }
+
+    @Override
+    public List<KakaoPlaceSearchResult> searchSubwayStations(String keyword) {
+        if (isApiKeyMissing()) {
+            logMissingApiKeyOnce();
+            return List.of();
+        }
+
+        try {
+            KakaoLocalSearchResponse response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/v2/local/search/keyword.json")
+                            .queryParam("query", keyword)
+                            .queryParam("category_group_code", SUBWAY_CATEGORY_GROUP_CODE)
                             .queryParam("size", SEARCH_RESULT_SIZE)
                             .build())
                     .header(HttpHeaders.AUTHORIZATION, "KakaoAK " + properties.restApiKey())

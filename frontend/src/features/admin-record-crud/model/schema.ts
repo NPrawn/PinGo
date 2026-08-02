@@ -7,7 +7,6 @@ export type AdminColumn = {
   label: string;
   flex: number;
   weight?: number;
-  /** Render the value as a status badge. */
   badge?: boolean;
 };
 
@@ -18,163 +17,208 @@ export type AdminField =
 export type AdminTableSchema = {
   title: string;
   desc: string;
-  newLabel: string;
+  /** Omitted on tabs where records are not created from the console. */
+  newLabel?: string;
   cols: readonly AdminColumn[];
   fields: readonly AdminField[];
-  /** Values a freshly created row starts with. */
   blank: Record<string, string>;
 };
 
-/** Tabs that render a CRUD table. `map` is handled by its own screen. */
 export type AdminTableTab = Exclude<AdminTab, 'map'>;
 
 export function isTableTab(tab: AdminTab): tab is AdminTableTab {
   return tab !== 'map';
 }
 
-/**
- * Column and form definitions per admin tab.
- *
- * Ported from the prototype's `aSchema()`.
- *
- * TODO: Once the admin APIs are agreed, derive these from the API schema
- * instead of hard-coding Korean labels and option lists here.
- */
 export const ADMIN_SCHEMA: Record<AdminTableTab, AdminTableSchema> = {
   station: {
     title: '역 관리',
-    desc: '서비스 대상 역과 노선·운영 층 정보를 관리해요.',
+    desc: '서비스 대상 역의 기본 정보를 관리합니다.',
     newLabel: '역 추가',
     cols: [
       { k: 'name', label: '역명', flex: 1.4, weight: 700 },
-      { k: 'line', label: '노선', flex: 1.4 },
-      { k: 'floors', label: '운영 층', flex: 1 },
-      { k: 'status', label: '상태', flex: 1, badge: true },
+      { k: 'line', label: '노선', flex: 1.2 },
+      { k: 'floors', label: '층', flex: 0.8 },
+      { k: 'status', label: '상태', flex: 0.8, badge: true },
     ],
     fields: [
-      { k: 'name', label: '역명', type: 'text', ph: '예) 역삼역' },
-      { k: 'line', label: '노선', type: 'text', ph: '예) 2호선' },
-      { k: 'floors', label: '운영 층', type: 'text', ph: '예) 1F·B1·B2' },
-      { k: 'status', label: '서비스 상태', type: 'select', opts: ['운영중', '준비중', '중단'] },
+      { k: 'name', label: '한글 역명', type: 'text' },
+      { k: 'nameEn', label: '영문 역명', type: 'text' },
+      { k: 'line', label: '노선 정보', type: 'text' },
+      { k: 'latitude', label: '위도', type: 'text' },
+      { k: 'longitude', label: '경도', type: 'text' },
     ],
-    blank: { name: '', line: '2호선', floors: '1F·B1·B2', status: '준비중' },
+    blank: { name: '', nameEn: '', line: '', latitude: '', longitude: '' },
   },
   route: {
-    title: '경로 관리',
-    desc: '출발–도착 구간의 추천 경로와 이동 옵션을 관리해요.',
-    newLabel: '경로 추가',
+    title: '경로 그래프 관리',
+    desc: '경로 노드와 두 노드 사이의 간선을 관리합니다.',
+    newLabel: '노드/간선 추가',
     cols: [
-      { k: 'name', label: '구간', flex: 1.8, weight: 700 },
-      { k: 'option', label: '이동 옵션', flex: 1.2 },
-      { k: 'dist', label: '거리·시간', flex: 1 },
-      { k: 'status', label: '상태', flex: 1, badge: true },
+      { k: 'kind', label: '종류', flex: 0.6, badge: true },
+      { k: 'name', label: '이름/구간', flex: 1.4, weight: 700 },
+      { k: 'graphType', label: '유형', flex: 1 },
+      { k: 'status', label: '접근성', flex: 0.8, badge: true },
     ],
     fields: [
-      { k: 'name', label: '구간', type: 'text', ph: '예) B1 대합실 → 3번 출구' },
+      { k: 'kind', label: '종류', type: 'select', opts: ['node', 'edge'] },
+      { k: 'stationId', label: '역 ID', type: 'text' },
+      { k: 'floorId', label: '층 ID(노드)', type: 'text' },
       {
-        k: 'option',
-        label: '이동 옵션',
+        k: 'nodeType',
+        label: '노드 유형',
         type: 'select',
-        opts: ['빠른 경로', '엘리베이터 중심', '계단 없는 경로', '에스컬레이터 중심'],
+        opts: ['normal', 'junction', 'facility', 'floor_transition', 'exit'],
       },
-      { k: 'dist', label: '거리·시간', type: 'text', ph: '예) 210m · 4분' },
-      { k: 'status', label: '상태', type: 'select', opts: ['운영중', '점검중', '폐쇄'] },
+      { k: 'name', label: '노드 이름', type: 'text' },
+      { k: 'mapX', label: '지도 X(노드)', type: 'text' },
+      { k: 'mapY', label: '지도 Y(노드)', type: 'text' },
+      { k: 'landmark', label: '랜드마크', type: 'select', opts: ['true', 'false'] },
+      { k: 'fromNodeId', label: '출발 노드 ID', type: 'text' },
+      { k: 'toNodeId', label: '도착 노드 ID', type: 'text' },
+      { k: 'distance', label: '거리(m)', type: 'text' },
+      { k: 'seconds', label: '예상 시간(초)', type: 'text' },
+      {
+        k: 'moveType',
+        label: '이동 수단',
+        type: 'select',
+        opts: ['walk', 'elevator', 'stair', 'escalator', 'gate'],
+      },
+      { k: 'accessible', label: '접근 가능', type: 'select', opts: ['true', 'false'] },
+      { k: 'bidirectional', label: '양방향', type: 'select', opts: ['true', 'false'] },
     ],
-    blank: { name: '', option: '빠른 경로', dist: '', status: '운영중' },
+    blank: {
+      kind: 'node',
+      name: '새 노드',
+      stationId: '',
+      floorId: '',
+      nodeType: 'normal',
+      mapX: '0',
+      mapY: '0',
+      landmark: 'false',
+      fromNodeId: '',
+      toNodeId: '',
+      distance: '',
+      seconds: '',
+      moveType: 'walk',
+      accessible: 'true',
+      bidirectional: 'true',
+    },
   },
   facility: {
     title: '시설 · 출구 관리',
-    desc: '출구·개찰구·엘리베이터 등 시설 위치와 운영 상태를 관리해요.',
+    desc: '시설 위치와 연결 경로 노드를 관리합니다.',
     newLabel: '시설 추가',
     cols: [
-      { k: 'name', label: '시설명', flex: 1.6, weight: 700 },
+      { k: 'name', label: '시설명', flex: 1.4, weight: 700 },
       { k: 'type', label: '유형', flex: 1 },
-      { k: 'floor', label: '층', flex: 0.8 },
-      { k: 'status', label: '상태', flex: 1, badge: true },
+      { k: 'floor', label: '층 ID', flex: 0.7 },
+      { k: 'status', label: '접근성', flex: 0.8, badge: true },
     ],
     fields: [
-      { k: 'name', label: '시설명', type: 'text', ph: '예) 3번 출구' },
+      { k: 'stationId', label: '역 ID', type: 'text' },
+      { k: 'floor', label: '층 ID', type: 'text' },
+      { k: 'name', label: '한글명', type: 'text' },
+      { k: 'nameEn', label: '영문명', type: 'text' },
       {
         k: 'type',
-        label: '유형',
+        label: '시설 유형',
         type: 'select',
-        opts: ['출구', '개찰구', '엘리베이터', '에스컬레이터', '편의시설'],
+        opts: ['exit', 'gate', 'elevator', 'escalator', 'restroom', 'information'],
       },
-      { k: 'floor', label: '층', type: 'select', opts: ['1F', 'B1', 'B2', 'B2↔1F'] },
-      { k: 'status', label: '운영 상태', type: 'select', opts: ['운영중', '점검중', '폐쇄'] },
+      { k: 'mapX', label: '지도 X', type: 'text' },
+      { k: 'mapY', label: '지도 Y', type: 'text' },
+      { k: 'linkedNodeId', label: '연결 노드 ID', type: 'text' },
+      { k: 'accessible', label: '접근 가능', type: 'select', opts: ['true', 'false'] },
     ],
-    blank: { name: '', type: '출구', floor: '1F', status: '운영중' },
+    blank: {
+      stationId: '',
+      floor: '',
+      name: '',
+      nameEn: '',
+      type: 'information',
+      mapX: '0',
+      mapY: '0',
+      linkedNodeId: '',
+      accessible: 'true',
+    },
   },
   place: {
-    title: '주변 장소 관리',
-    desc: '역 주변 장소와 연결 추천 출구를 관리해요.',
-    newLabel: '장소 추가',
+    title: '주변 장소·추천 출구 관리',
+    desc: '역 주변 목적지와 장소별 추천 출구를 관리합니다.',
+    newLabel: '장소/추천 추가',
     cols: [
-      { k: 'name', label: '장소명', flex: 1.6, weight: 700 },
+      { k: 'kind', label: '종류', flex: 0.6, badge: true },
+      { k: 'name', label: '장소명', flex: 1.4, weight: 700 },
       { k: 'cat', label: '카테고리', flex: 1 },
-      { k: 'exit', label: '추천 출구', flex: 1 },
-      { k: 'walk', label: '도보', flex: 0.8 },
+      { k: 'stationId', label: '역 ID', flex: 0.7 },
+      { k: 'status', label: '상태', flex: 0.7, badge: true },
     ],
     fields: [
-      { k: 'name', label: '장소명', type: 'text', ph: '예) 스타벅스 역삼점' },
-      {
-        k: 'cat',
-        label: '카테고리',
-        type: 'select',
-        opts: ['카페', '음식점', '쇼핑', '오피스', '관공서', '병원'],
-      },
-      {
-        k: 'exit',
-        label: '추천 출구',
-        type: 'select',
-        opts: [
-          '1번 출구',
-          '2번 출구',
-          '3번 출구',
-          '4번 출구',
-          '5번 출구',
-          '6번 출구',
-          '7번 출구',
-          '8번 출구',
-        ],
-      },
-      { k: 'walk', label: '도보 시간', type: 'text', ph: '예) 도보 3분' },
+      { k: 'kind', label: '종류', type: 'select', opts: ['place', 'recommendation'] },
+      { k: 'stationId', label: '역 ID', type: 'text' },
+      { k: 'name', label: '한글명', type: 'text' },
+      { k: 'nameEn', label: '영문명', type: 'text' },
+      { k: 'cat', label: '카테고리', type: 'text' },
+      { k: 'address', label: '주소', type: 'text' },
+      { k: 'latitude', label: '위도', type: 'text' },
+      { k: 'longitude', label: '경도', type: 'text' },
+      { k: 'externalMapUrl', label: '외부 지도 URL', type: 'text' },
+      { k: 'placeId', label: '장소 ID(추천)', type: 'text' },
+      { k: 'exitFacilityId', label: '출구 시설 ID(추천)', type: 'text' },
+      { k: 'priority', label: '추천 우선순위', type: 'text' },
+      { k: 'walkingTimeMin', label: '도보 시간(분)', type: 'text' },
+      { k: 'reasonKo', label: '추천 이유', type: 'text' },
+      { k: 'isPrimary', label: '대표 출구', type: 'select', opts: ['true', 'false'] },
     ],
-    blank: { name: '', cat: '카페', exit: '1번 출구', walk: '도보 1분' },
+    blank: {
+      kind: 'place',
+      stationId: '',
+      name: '',
+      nameEn: '',
+      cat: '',
+      address: '',
+      latitude: '',
+      longitude: '',
+      externalMapUrl: '',
+      placeId: '',
+      exitFacilityId: '',
+      priority: '1',
+      walkingTimeMin: '',
+      reasonKo: '',
+      isPrimary: 'false',
+    },
   },
   counselor: {
-    title: '상담자 계정 관리',
-    desc: '상담자 계정과 담당 역·상담 가능 상태를 관리해요.',
-    newLabel: '계정 추가',
+    title: '상담원 계정 관리',
+    desc: '가입한 상담원의 담당 역과 활성 상태를 관리합니다.',
     cols: [
       { k: 'name', label: '이름', flex: 1, weight: 700 },
-      { k: 'account', label: '계정', flex: 1.6 },
-      { k: 'station', label: '담당 역', flex: 1 },
-      { k: 'status', label: '상태', flex: 1, badge: true },
+      { k: 'account', label: '계정', flex: 1.2 },
+      { k: 'stationId', label: '역 ID', flex: 0.6 },
+      { k: 'status', label: '승인', flex: 0.8, badge: true },
+      { k: 'consultStatus', label: '상담 상태', flex: 0.9, badge: true },
     ],
     fields: [
-      { k: 'name', label: '이름', type: 'text', ph: '예) 김상담' },
-      { k: 'account', label: '계정 (이메일)', type: 'text', ph: 'name@pingo.kr' },
-      {
-        k: 'station',
-        label: '담당 역',
-        type: 'select',
-        opts: ['역삼역', '선릉역', '강남역', '삼성역'],
-      },
-      {
-        k: 'status',
-        label: '상태',
-        type: 'select',
-        opts: ['상담 가능', '상담 중', '승인 대기', '비활성'],
-      },
+      { k: 'name', label: '이름(읽기 전용)', type: 'text' },
+      { k: 'account', label: '계정(읽기 전용)', type: 'text' },
+      { k: 'stationId', label: '담당 역 ID', type: 'text' },
+      { k: 'active', label: '활성 상태', type: 'select', opts: ['true', 'false'] },
     ],
-    blank: { name: '', account: '', station: '역삼역', status: '상담 가능' },
+    blank: { name: '', account: '', stationId: '', active: 'false' },
   },
 };
 
-/** Badge colours for status values. Ported from the prototype's `badgeTone`. */
 export function badgeTone(value: string): { bg: string; fg: string } {
-  if (/운영중|상담 가능/.test(value)) return { bg: '#d9f0df', fg: '#0f5a3e' };
-  if (/점검중|상담 중|준비중|승인 대기/.test(value)) return { bg: '#fbf0db', fg: '#8a6412' };
+  if (/상담 중/.test(value)) return { bg: '#e4e0fb', fg: '#4a3ba8' };
+  if (/운영|활성|가능|true/i.test(value)) return { bg: '#d9f0df', fg: '#0f5a3e' };
+  if (/대기|준비|false/i.test(value)) return { bg: '#fbf0db', fg: '#8a6412' };
   return { bg: '#f1f3f7', fg: '#6b7a72' };
 }
+
+/** 상담자 계정 목록에 표시할 상담 상태 라벨. */
+export const COUNSELOR_STATUS_LABELS: Record<string, string> = {
+  AVAILABLE: '상담 가능',
+  BUSY: '상담 중',
+  OFFLINE: '오프라인',
+};

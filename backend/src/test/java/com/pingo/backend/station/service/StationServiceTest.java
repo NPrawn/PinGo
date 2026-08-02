@@ -1,5 +1,7 @@
 package com.pingo.backend.station.service;
 
+import com.pingo.backend.externalmap.client.KakaoLocalClient;
+import com.pingo.backend.externalmap.client.KakaoPlaceSearchResult;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.station.domain.Station;
@@ -45,11 +47,14 @@ class StationServiceTest {
     @Mock
     private StationFloorRepository stationFloorRepository;
 
+    @Mock
+    private KakaoLocalClient kakaoLocalClient;
+
     private StationService stationService;
 
     @BeforeEach
     void setUp() {
-        stationService = new StationService(stationRepository, stationFloorRepository);
+        stationService = new StationService(stationRepository, stationFloorRepository, kakaoLocalClient);
     }
 
     @Test
@@ -76,6 +81,7 @@ class StationServiceTest {
     void searchStationsTrimsKeywordAndMapsResults() {
         Station station = createStation(1L);
         when(stationRepository.searchActiveByKeyword("역삼")).thenReturn(List.of(station));
+        when(kakaoLocalClient.searchSubwayStations("역삼")).thenReturn(List.of());
 
         List<StationSearchResponse> responses = stationService.searchStations("  역삼  ");
 
@@ -85,18 +91,115 @@ class StationServiceTest {
     }
 
     @Test
-    void searchStationsThrowsWhenKeywordIsBlank() {
-        assertThatThrownBy(() -> stationService.searchStations("   "))
-                .isInstanceOfSatisfying(BusinessException.class, exception ->
-                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    void searchStationsAppendsExternalStationsAsNotServiceReady() {
+        when(stationRepository.searchActiveByKeyword("선릉")).thenReturn(List.of());
+        when(kakaoLocalClient.searchSubwayStations("선릉")).thenReturn(List.of(
+                createKakaoStation("1", "선릉역 2호선"),
+                createKakaoStation("2", "선릉역 수인분당선")
+        ));
+
+        List<StationSearchResponse> responses = stationService.searchStations("선릉");
+
+        assertThat(responses).singleElement().satisfies(response -> {
+            assertThat(response.stationId()).isNull();
+            assertThat(response.nameKo()).isEqualTo("선릉역");
+            assertThat(response.lineInfo()).isEqualTo("2호선·수인분당선");
+            assertThat(response.provider()).isEqualTo("kakao");
+            assertThat(response.serviceReady()).isFalse();
+        });
+    }
+
+    @Test
+    void searchStationsDropsExternalStationsWhoseNameDoesNotContainKeyword() {
+        when(stationRepository.searchActiveByKeyword("사당")).thenReturn(List.of());
+        when(kakaoLocalClient.searchSubwayStations("사당")).thenReturn(List.of(
+                createKakaoStation("1", "사당역 2호선"),
+                // 카카오는 검색어를 지역으로도 읽어 이름이 다른 주변 역까지 끼워 준다.
+                createKakaoStation("2", "이수역 7호선"),
+                createKakaoStation("3", "남성역 7호선")
+        ));
+
+        List<StationSearchResponse> responses = stationService.searchStations("사당");
+
+        assertThat(responses)
+                .extracting(StationSearchResponse::nameKo)
+                .containsExactly("사당역");
+    }
+
+    @Test
+    void searchStationsKeepsWholeNameWhenExternalResultHasNoLineSuffix() {
+        when(stationRepository.searchActiveByKeyword("선릉")).thenReturn(List.of());
+        when(kakaoLocalClient.searchSubwayStations("선릉")).thenReturn(List.of(
+                createKakaoStation("1", "선릉역")
+        ));
+
+        List<StationSearchResponse> responses = stationService.searchStations("선릉");
+
+        assertThat(responses).singleElement().satisfies(response -> {
+            assertThat(response.nameKo()).isEqualTo("선릉역");
+            assertThat(response.lineInfo()).isNull();
+        });
+    }
+
+    @Test
+    void searchStationsKeepsRegisteredStationWhenExternalResultHasSameName() {
+        Station station = createStation(1L);
+        when(stationRepository.searchActiveByKeyword("역삼")).thenReturn(List.of(station));
+        when(kakaoLocalClient.searchSubwayStations("역삼")).thenReturn(List.of(
+                createKakaoStation("1", "역삼역 2호선")
+        ));
+
+        List<StationSearchResponse> responses = stationService.searchStations("역삼");
+
+        assertThat(responses)
+                .extracting(StationSearchResponse::nameKo, StationSearchResponse::serviceReady)
+                .containsExactly(tuple("역삼역", true));
+    }
+
+    @Test
+    void searchStationsReturnsRegisteredStationsWhenExternalSearchFails() {
+        Station station = createStation(1L);
+        when(stationRepository.searchActiveByKeyword("역삼")).thenReturn(List.of(station));
+        when(kakaoLocalClient.searchSubwayStations("역삼"))
+                .thenThrow(new BusinessException(ErrorCode.EXTERNAL_PLACE_SEARCH_FAILED));
+
+        List<StationSearchResponse> responses = stationService.searchStations("역삼");
+
+        assertThat(responses)
+                .extracting(StationSearchResponse::nameKo)
+                .containsExactly("역삼역");
+    }
+
+    @Test
+    void searchStationsSkipsExternalSearchWhenKeywordIsBlank() {
+        when(stationRepository.findAllByActiveTrueOrderByNameKoAsc()).thenReturn(List.of(createStation(1L)));
+
+        stationService.searchStations("  ");
+
+        verify(kakaoLocalClient, never()).searchSubwayStations(any());
+    }
+
+    @Test
+    void searchStationsReturnsAllActiveStationsWhenKeywordIsBlank() {
+        Station station = createStation(1L);
+        when(stationRepository.findAllByActiveTrueOrderByNameKoAsc()).thenReturn(List.of(station));
+
+        List<StationSearchResponse> responses = stationService.searchStations("   ");
+
+        assertThat(responses)
+                .extracting(StationSearchResponse::stationId, StationSearchResponse::nameKo)
+                .containsExactly(tuple(1L, "역삼역"));
         verify(stationRepository, never()).searchActiveByKeyword(any());
     }
 
     @Test
-    void searchStationsThrowsWhenKeywordIsNull() {
-        assertThatThrownBy(() -> stationService.searchStations(null))
-                .isInstanceOfSatisfying(BusinessException.class, exception ->
-                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    void searchStationsReturnsAllActiveStationsWhenKeywordIsNull() {
+        Station station = createStation(1L);
+        when(stationRepository.findAllByActiveTrueOrderByNameKoAsc()).thenReturn(List.of(station));
+
+        List<StationSearchResponse> responses = stationService.searchStations(null);
+
+        assertThat(responses).hasSize(1);
         verify(stationRepository, never()).searchActiveByKeyword(any());
     }
 
@@ -226,6 +329,18 @@ class StationServiceTest {
         );
         ReflectionTestUtils.setField(station, "id", id);
         return station;
+    }
+
+    private KakaoPlaceSearchResult createKakaoStation(String placeId, String placeName) {
+        return new KakaoPlaceSearchResult(
+                placeId,
+                placeName,
+                "교통,수송 > 지하철,전철",
+                "서울 강남구 테헤란로 340",
+                new BigDecimal("37.5045000"),
+                new BigDecimal("127.0489000"),
+                null
+        );
     }
 
     private Station createStationAt(Long id, String nameKo, String latitude, String longitude) {

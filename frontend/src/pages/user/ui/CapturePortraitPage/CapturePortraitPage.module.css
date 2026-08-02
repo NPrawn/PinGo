@@ -36,12 +36,29 @@
     0 12px 28px -20px rgb(0 0 0 / 75%);
 }
 
+.cameraVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .scene {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   opacity: 0.55;
+}
+
+/* 카메라 영상. 대체 그림과 같은 자리를 채운다. 비율이 달라 cover로 자른다. */
+.feed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .band {

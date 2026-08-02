@@ -75,24 +75,24 @@ class StationControllerTest {
     }
 
     @Test
-    void searchStationsReturnsBadRequestForBlankKeyword() throws Exception {
+    void searchStationsReturnsAllStationsForBlankKeyword() throws Exception {
         when(stationService.searchStations("  "))
-                .thenThrow(new BusinessException(ErrorCode.INVALID_REQUEST));
+                .thenReturn(List.of(new StationSearchResponse(1L, "역삼역", "Yeoksam Station", "2호선")));
 
         mockMvc.perform(get("/api/stations/search").param("keyword", "  "))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].stationId").value(1L));
     }
 
     @Test
-    void searchStationsReturnsBadRequestForMissingKeyword() throws Exception {
+    void searchStationsReturnsAllStationsForMissingKeyword() throws Exception {
         when(stationService.searchStations(null))
-                .thenThrow(new BusinessException(ErrorCode.INVALID_REQUEST));
+                .thenReturn(List.of(new StationSearchResponse(1L, "역삼역", "Yeoksam Station", "2호선")));
 
         mockMvc.perform(get("/api/stations/search"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].nameKo").value("역삼역"));
     }
 }

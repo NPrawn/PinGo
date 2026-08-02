@@ -1,23 +1,48 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useConsultStore } from '@/entities/consult';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
+import { useUserSessionStore } from '@/entities/user-session';
+import { useConsultSignaling } from '@/features/consult-signaling';
+import { getConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { HeadingMarker, Icon, MapPreview } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './ConsultSessionPage.module.css';
 
-/**
- * Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side.
- *
- * TODO: Replace the mocked camera panel and translation caption with the real
- * WebRTC media stream and STT/translation data channel.
- */
+/** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
+  const consultationId = useConsultStore((state) => state.consultationId);
+  const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
+  const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
+  const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const { localVideoRef, remoteVideoRef, status, error, remoteCaption, captionsSupported } =
+    useConsultSignaling(signalingRoomId, 'USER', signalingAccessToken);
   const station = useStationStore((state) => state.station);
   const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
   const waypoints = useNavigationStore((state) => state.waypoints);
   const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
+
+  /**
+   * 새로고침하면 signaling 토큰이 남지 않는다(짧은 만료 시간). 방은 알고 있으므로
+   * 상세 조회로 토큰만 다시 받아 WebSocket 접속이 401로 거절되지 않게 한다.
+   */
+  useEffect(() => {
+    if (!consultationId || !userSessionId || !signalingRoomId || signalingAccessToken) return;
+
+    void getConsultation(consultationId, userSessionId)
+      .then((consultation) => {
+        if (!consultation.signalingRoomId || !consultation.signalingAccessToken) {
+          setTokenError('상담 연결 정보를 받지 못했습니다.');
+          return;
+        }
+        setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
+      })
+      .catch(() => setTokenError('상담 연결 정보를 받지 못했습니다.'));
+  }, [consultationId, setSignalingRoom, signalingAccessToken, signalingRoomId, userSessionId]);
 
   return (
     <PhoneFrame dark layout="flush">
@@ -37,11 +62,16 @@ export function ConsultSessionPage() {
         </div>
 
         <div className={styles.cam}>
+          <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteVideo} />
+          <video ref={localVideoRef} autoPlay muted playsInline className={styles.localVideo} />
+          <span
+            className={styles.connectionStatus}
+            role={error ?? tokenError ? 'alert' : undefined}
+          >
+            {error ?? tokenError ?? `연결 상태: ${status}`}
+          </span>
           <div
-            className={[
-              styles.routeHeader,
-              waypoints.length > 0 && styles.routeHeaderCompact,
-            ]
+            className={[styles.routeHeader, waypoints.length > 0 && styles.routeHeaderCompact]
               .filter(Boolean)
               .join(' ')}
             aria-label="상담 중인 경로"
@@ -69,10 +99,7 @@ export function ConsultSessionPage() {
                     ×
                   </button>
                   <span className={styles.routeLabel}>
-                    <span
-                      className={`${styles.pointDot} ${styles.pointDotWaypoint}`}
-                      aria-hidden
-                    />
+                    <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
                     <small>경유 {index + 1}</small>
                   </span>
                   <strong title={waypoint}>{waypoint}</strong>
@@ -93,10 +120,13 @@ export function ConsultSessionPage() {
           <div className={styles.translation}>
             <div className={styles.translationLabel}>
               <Icon name="globe" size={13} />
-              Live voice translation · Counselor
+              실시간 자막 · 상담원
             </div>
             <div className={styles.translationPrimary}>
-              Go to the elevator on your left, using pillar 12 as a reference.
+              {remoteCaption ||
+                (captionsSupported
+                  ? '상담원의 음성을 인식하고 있습니다.'
+                  : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
             </div>
           </div>
         </div>

@@ -62,7 +62,8 @@ public class Account {
         account.passwordHash = passwordHash;
         account.name = name;
         account.stationId = stationId;
-        account.status = null;
+        // 승인 전에도 상담 가능이 기본값이다. 승인 후 상담자가 직접 바꿀 수 있다.
+        account.status = CounselorStatus.AVAILABLE;
         account.isActive = false;
         return account;
     }

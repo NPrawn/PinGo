@@ -1,9 +1,25 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import type { RouteResponse } from '@/shared/api';
 import type { RouteType } from '@/shared/types';
 
 type NavigationStore = {
   /** Destination name the user picked from search. */
   destination: string | null;
+  destinationId: number | null;
+  destinationType: string | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
+  destinationAddress: string | null;
+  targetNodeId: number | null;
+  /** 도착 출구의 표시 이름. 안내·도착 화면이 목적지 자리에 쓴다. */
+  targetExitLabel: string | null;
+  currentNodeId: number | null;
+  currentFloorId: number | null;
+  currentLocationLabel: string | null;
+  currentMapX: number | null;
+  currentMapY: number | null;
+  routeResult: RouteResponse | null;
   /**
    * 사용자가 고른 경로 유형.
    *
@@ -28,9 +44,36 @@ type NavigationStore = {
    */
   relocalizing: boolean;
   /** Starts a fresh journey and discards stops from the previous journey. */
-  startNewJourney: (destination: string) => void;
+  startNewJourney: (
+    destination: string,
+    details?: {
+      destinationId?: number;
+      destinationType?: string;
+      targetNodeId?: number;
+      destinationLatitude?: number;
+      destinationLongitude?: number;
+      destinationAddress?: string;
+    },
+  ) => void;
   setDestination: (destination: string) => void;
+  setCurrentLocation: (location: {
+    nodeId: number;
+    floorId: number;
+    label?: string;
+    mapX?: number;
+    mapY?: number;
+  }) => void;
   setRoute: (route: RouteType) => void;
+  /**
+   * 고른 경로가 도착할 실내 노드와 그 출구 이름.
+   *
+   * 경로 유형마다 나가는 출구가 다르다 — 최단은 목적지에서 가장 가까운 출구로, 엘리베이터
+   * 우선은 계단 없이 닿는 출구 중 가장 가까운 곳으로 나간다. 목적지 검색이 넣어 둔 값은
+   * 최단 기준이므로, 유형을 고른 뒤 그 유형의 도착점으로 덮어써야 안내·도착 화면이 같은
+   * 곳을 가리킨다.
+   */
+  setTargetNode: (targetNodeId: number, exitLabel: string | null) => void;
+  setRouteResult: (route: RouteResponse | null) => void;
   addWaypoint: (waypoint: string) => void;
   removeWaypoint: (waypoint: string) => void;
   clearWaypoints: () => void;
@@ -47,28 +90,90 @@ type NavigationStore = {
  * Crosses pages: destination search sets the target, the route screen picks a
  * strategy, and the navigation and arrival screens read both.
  */
-export const useNavigationStore = create<NavigationStore>((set) => ({
-  destination: null,
-  route: 'fastest',
-  stepsOpen: false,
-  waypoints: [],
-  relocalizing: false,
-  // 새 여정은 재인식 중 상태를 물려받지 않는다.
-  startNewJourney: (destination) => set({ destination, waypoints: [], relocalizing: false }),
-  setDestination: (destination) => set({ destination }),
-  setRoute: (route) => set({ route }),
-  addWaypoint: (waypoint) =>
-    set((state) => {
-      if (state.waypoints.includes(waypoint) || state.waypoints.length >= 2) {
-        return state;
-      }
+export const useNavigationStore = create<NavigationStore>()(
+  persist(
+    (set) => ({
+      destination: null,
+      destinationId: null,
+      destinationType: null,
+      destinationLatitude: null,
+      destinationLongitude: null,
+      destinationAddress: null,
+      targetNodeId: null,
+      targetExitLabel: null,
+      currentNodeId: null,
+      currentFloorId: null,
+      currentLocationLabel: null,
+      currentMapX: null,
+      currentMapY: null,
+      routeResult: null,
+      route: 'fastest',
+      stepsOpen: false,
+      waypoints: [],
+      relocalizing: false,
+      // 새 여정은 재인식 중 상태를 물려받지 않는다.
+      startNewJourney: (destination, details) =>
+        set({
+          destination,
+          destinationId: details?.destinationId ?? null,
+          destinationType: details?.destinationType ?? null,
+          destinationLatitude: details?.destinationLatitude ?? null,
+          destinationLongitude: details?.destinationLongitude ?? null,
+          destinationAddress: details?.destinationAddress ?? null,
+          targetNodeId: details?.targetNodeId ?? null,
+          targetExitLabel: null,
+          routeResult: null,
+          waypoints: [],
+          relocalizing: false,
+        }),
+      setDestination: (destination) =>
+        set({
+          destination,
+          destinationId: null,
+          destinationType: null,
+          destinationLatitude: null,
+          destinationLongitude: null,
+          destinationAddress: null,
+          targetNodeId: null,
+          targetExitLabel: null,
+          routeResult: null,
+        }),
+      setCurrentLocation: (location) =>
+        set({
+          currentNodeId: location.nodeId,
+          currentFloorId: location.floorId,
+          currentLocationLabel: location.label ?? null,
+          currentMapX: location.mapX ?? null,
+          currentMapY: location.mapY ?? null,
+          routeResult: null,
+        }),
+      setRoute: (route) => set({ route }),
+      // 도착점이 바뀌면 이전 유형으로 받아 둔 상세 경로는 더 이상 그 경로가 아니다.
+      setTargetNode: (targetNodeId, exitLabel) =>
+        set((state) =>
+          state.targetNodeId === targetNodeId && state.targetExitLabel === exitLabel
+            ? state
+            : { targetNodeId, targetExitLabel: exitLabel, routeResult: null },
+        ),
+      setRouteResult: (routeResult) => set({ routeResult }),
+      addWaypoint: (waypoint) =>
+        set((state) => {
+          if (state.waypoints.includes(waypoint) || state.waypoints.length >= 2) {
+            return state;
+          }
 
-      return { waypoints: [...state.waypoints, waypoint] };
+          return { waypoints: [...state.waypoints, waypoint] };
+        }),
+      removeWaypoint: (waypoint) =>
+        set((state) => ({ waypoints: state.waypoints.filter((item) => item !== waypoint) })),
+      clearWaypoints: () => set({ waypoints: [] }),
+      toggleSteps: () => set((state) => ({ stepsOpen: !state.stepsOpen })),
+      beginRelocalize: () => set({ relocalizing: true }),
+      endRelocalize: () => set({ relocalizing: false }),
     }),
-  removeWaypoint: (waypoint) =>
-    set((state) => ({ waypoints: state.waypoints.filter((item) => item !== waypoint) })),
-  clearWaypoints: () => set({ waypoints: [] }),
-  toggleSteps: () => set((state) => ({ stepsOpen: !state.stepsOpen })),
-  beginRelocalize: () => set({ relocalizing: true }),
-  endRelocalize: () => set({ relocalizing: false }),
-}));
+    {
+      name: 'pingo.navigation',
+      storage: createJSONStorage(() => sessionStorage),
+    },
+  ),
+);

@@ -1,14 +1,18 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { facilityIconOf, useStationFacilities, type Facility } from '@/entities/facility';
-import { floorCodeOf, floorIdOf, MOCK_FLOOR_ID, useStationFloorMaps } from '@/entities/floor-map';
+import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
 import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
+import { routeUnavailableText } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
+import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
-import type { FloorId } from '@/shared/types';
+import type { FloorId, RouteUnavailableReason } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
+import { stopCamera } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -43,28 +47,6 @@ const MAP_FILTERS: readonly { name: string; icon: IconName; facilityType: string
 ];
 
 /**
- * 안내 진입 시점의 확정 실내 위치.
- *
- * **모듈 상수로 둔다.** 296 훅이 이 값을 진입 시점에 고정된 입력으로 다루므로(앵커가 생긴 뒤
- * 바꾸면 조용히 무시된다) 렌더마다 새 객체를 만들면 앵커 발화 effect가 불필요하게 다시 돈다.
- *
- * 좌표는 B2 대합실 통로 위, 어느 시설과도 30m 이상 떨어진 지점이다.
- *
- * **원점 `(0, 0)`을 쓰지 않는다.** 그 지점은 좌표계의 기준으로 삼은 `B2-B3 엘리베이터 B`가
- * 실제로 서 있는 자리다. 거기에 현재 위치를 두면 시설 마커와 정확히 겹쳐, 엘리베이터를 고르는
- * 순간 내 위치에 테두리가 쳐진 것처럼 보인다. 가까운 시설도 마찬가지라 넉넉히 띄운다.
- *
- * TODO: 위치 인식(FR-U-004)·수동 선택(FR-U-007) 결과를 받는 경로가 아직 없다. 확정 좌표를
- * 담는 스토어가 없어서(navigationStore는 목적지 문자열만 갖는다) 여기서 목업으로 채운다.
- * 그 흐름이 생기면 이 상수를 지우고 응답 좌표를 넘긴다.
- */
-const MOCK_CONFIRMED_LOCATION: IndoorPoint = {
-  floorId: MOCK_FLOOR_ID.B2,
-  mapX: -30,
-  mapY: 10,
-};
-
-/**
  * 화면이 들고 있는 출구 이름으로 실제 출구 시설을 찾는다.
  *
  * 화면은 `7번 출입구`, 응답은 `7번 출구`로 표기가 다르다. 출구 번호만 뽑아 맞춘다.
@@ -90,6 +72,15 @@ export function NavigationPage() {
   const setFloor = useStationStore((state) => state.setFloor);
   const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
   const route = useNavigationStore((state) => state.route);
+  const currentNodeId = useNavigationStore((state) => state.currentNodeId);
+  const targetNodeId = useNavigationStore((state) => state.targetNodeId);
+  const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
+  const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const currentFloorId = useNavigationStore((state) => state.currentFloorId);
+  const currentMapX = useNavigationStore((state) => state.currentMapX);
+  const currentMapY = useNavigationStore((state) => state.currentMapY);
+  const setTargetNode = useNavigationStore((state) => state.setTargetNode);
+  const setRouteResult = useNavigationStore((state) => state.setRouteResult);
   const waypoints = useNavigationStore((state) => state.waypoints);
   const addWaypoint = useNavigationStore((state) => state.addWaypoint);
   const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
@@ -109,14 +100,58 @@ export function NavigationPage() {
   useEffect(() => {
     endRelocalize();
   }, [endRelocalize]);
-  // TODO(297): 출구는 경로 응답(8.2)의 마지막 노드에서 와야 한다. 프로토타입에서 옮겨온 값이다.
-  const exit = route === 'elevator_only' ? '2번 출입구' : '7번 출입구';
+  /**
+   * 안내를 시작할 때의 출입구. 경로 옵션 화면이 유형별로 정해 스토어에 남긴 값이다.
+   *
+   * 예전에는 `route === 'elevator_only' ? '2번 출입구' : '7번 출입구'`로 적어 두었는데,
+   * 지도에 그려지는 경로는 실제 도착 노드를 따라가므로 헤더와 지도가 서로 다른 곳을
+   * 가리켰다.
+   *
+   * **진입 시점 값으로 고정한다.** 지도에서 시설을 새 목적지로 지정하면 스토어의 출구 정보가
+   * 지워지는데, 되돌리기 버튼은 처음 출구로 돌아가는 수단이라 그 이름을 계속 알아야 한다.
+   * `initialDestination`을 ref로 잡아 두는 것과 같은 이유다.
+   */
+  const [exit] = useState(() => targetExitLabel ?? '출입구');
+  /** 되돌리기가 복원할 도착 노드. `exit`과 같은 이유로 진입 시점 값에 고정한다. */
+  const [initialTarget] = useState(() => ({ nodeId: targetNodeId, label: targetExitLabel }));
   const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   /** 켜 둔 시설 유형(`facilityType`). null이면 시설을 그리지 않는다. */
   const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
+  /** 선택한 경로의 상세 안내. 출발·도착 노드가 모두 있어야 조회할 수 있다. */
+  const routeQuery = useQuery({
+    queryKey: ['indoor-route', stationId, currentNodeId, targetNodeId, route],
+    queryFn: () =>
+      createIndoorRoute({
+        stationId: stationId!,
+        startNodeId: currentNodeId!,
+        targetNodeId: targetNodeId!,
+        routeType: route,
+      }),
+    enabled: stationId != null && currentNodeId != null && targetNodeId != null,
+    retry: false,
+  });
+  const routeResult = routeQuery.data;
+  const firstStep = routeResult?.steps?.[0];
+
+  /**
+   * 안내 진입 시점의 확정 실내 위치. 위치 인식(FR-U-004)이 앵커링해 준 좌표다.
+   *
+   * **첫 렌더 값에 고정한다.** 296 훅이 이 값을 진입 시점에 고정된 입력으로 다루므로(앵커가
+   * 생긴 뒤 바꾸면 조용히 무시된다) 렌더마다 새 객체를 만들면 앵커 발화 effect가 불필요하게
+   * 다시 돈다. 지연 초기화 `useState`를 쓰는 이유는 ref를 렌더 중에 읽지 않기 위해서다.
+   *
+   * 좌표 정합이 없는 층(역삼역 B1)은 위치 인식이 좌표를 주지 못해 null이다. 그때는 XR 앵커링
+   * 없이 안내만 한다 — 훅이 null을 그대로 받는다.
+   */
+  const [confirmedLocation] = useState<IndoorPoint | null>(() =>
+    currentFloorId != null && currentMapX != null && currentMapY != null
+      ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
+      : null,
+  );
+
   /**
    * XR 세션 게이트. 진입 시 안내를 띄우고 사용자가 확인하면 세션을 연다(11.7).
    *
@@ -138,7 +173,15 @@ export function NavigationPage() {
     headingDeg,
     source,
     anchorStatus,
-  } = useXrNavigationSession({ currentIndoorLocation: MOCK_CONFIRMED_LOCATION });
+  } = useXrNavigationSession({
+    currentIndoorLocation: confirmedLocation,
+    /**
+     * 앞 화면들이 켜 둔 카메라를 세션 직전에 반납한다. (11.8)
+     *
+     * 두 위젯을 잇는 자리가 화면이다 — 위젯끼리는 서로를 import하지 않는다.
+     */
+    releaseCamera: stopCamera,
+  });
 
   /**
    * 층 탭. **목록을 지도 응답에서 만든다.** (S15P11A206-280)
@@ -151,7 +194,7 @@ export function NavigationPage() {
   const floorMaps = floorMapsQuery.data ?? [];
   /** 사용자가 탭으로 고른 층. null이면 현재 위치를 따라간다. */
   const [pickedFloorCode, setPickedFloorCode] = useState<string | null>(null);
-  const followedFloorId = currentLocation?.floorId ?? MOCK_CONFIRMED_LOCATION.floorId;
+  const followedFloorId = currentLocation?.floorId ?? confirmedLocation?.floorId ?? 0;
   const displayedFloorId =
     (pickedFloorCode === null ? undefined : floorIdOf(floorMaps, pickedFloorCode)) ??
     followedFloorId;
@@ -176,6 +219,75 @@ export function NavigationPage() {
   const destinationFacility =
     pickedDestination ?? matchExitByName(exitsQuery.data ?? [], activeDestination);
 
+  /**
+   * 안내 카드 문구.
+   *
+   * **경로를 모를 때 구체적인 지시를 쓰지 않는다.** 예전에는 조회를 걸 수 없는 상태에서
+   * `직진 25m` · `개찰구를 지나 에스컬레이터 방향으로 이동`을 그대로 띄웠다. 프로토타입에서
+   * 옮겨온 문구인데, 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
+   *
+   * **`isPending`이 아니라 `isLoading`으로 로딩을 판단한다.** 출발·도착 노드가 없으면 훅이
+   * 조회를 끄는데, 꺼진 쿼리는 `isPending`에 머무른다. 그것을 로딩으로 읽으면 카드가
+   * `경로 계산 중`에서 영구히 멈춘다.
+   */
+  const instruction = ((): { eyebrow: string; title: string; meta: string } => {
+    if (currentNodeId == null) {
+      return {
+        eyebrow: '안내 준비 중',
+        title: '현재 위치를 확인해 주세요',
+        meta: '어디서 출발하는지 알아야 경로를 계산할 수 있어요.',
+      };
+    }
+    if (targetNodeId == null) {
+      return {
+        eyebrow: '안내 준비 중',
+        title: '목적지를 선택해 주세요',
+        meta: '어디로 갈지 정하면 경로를 안내해 드려요.',
+      };
+    }
+    if (routeQuery.isLoading) {
+      return {
+        eyebrow: '다음 안내 · 계산 중',
+        title: '경로를 찾고 있어요',
+        meta: '잠시만 기다려 주세요.',
+      };
+    }
+    if (routeQuery.isError) {
+      return {
+        eyebrow: '다음 안내 · -',
+        title: '경로를 불러오지 못했어요',
+        meta: '잠시 후 다시 시도해 주세요.',
+      };
+    }
+    if (routeResult && routeResult.available === false) {
+      return {
+        eyebrow: '다음 안내 · -',
+        title: '이 경로로는 갈 수 없어요',
+        meta:
+          routeUnavailableText(
+            (routeResult.unavailableReason ?? null) as RouteUnavailableReason | null,
+          ) ?? '다른 경로를 선택해 주세요.',
+      };
+    }
+    if (!firstStep) {
+      return {
+        eyebrow: '다음 안내 · -',
+        title: '안내할 구간이 없어요',
+        meta: '출발지와 목적지가 같은 지점일 수 있어요.',
+      };
+    }
+
+    const totalDistance = Math.round(routeResult?.totalDistanceM ?? 0);
+    const totalMinutes = Math.max(1, Math.ceil((routeResult?.estimatedTimeSec ?? 0) / 60));
+    return {
+      eyebrow: recalculated
+        ? '다음 안내 · 경로 업데이트 완료'
+        : `다음 안내 · ${Math.round(firstStep.distanceM ?? 0)}m`,
+      title: firstStep.instruction ?? '경로를 따라 이동하세요',
+      meta: `총 ${totalDistance}m · 약 ${totalMinutes}분`,
+    };
+  })();
+
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
     ? waypoints.includes(selectedFacility.nameKo)
@@ -183,6 +295,10 @@ export function NavigationPage() {
   const selectedFacilityIsDestination = selectedFacility
     ? selectedFacility.nameKo === activeDestination
     : false;
+
+  useEffect(() => {
+    if (routeResult) setRouteResult(routeResult);
+  }, [routeResult, setRouteResult]);
 
   return (
     <PhoneFrame
@@ -257,6 +373,17 @@ export function NavigationPage() {
                   setActiveDestination(selectedFacility.nameKo);
                   // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
                   setPickedDestination(selectedFacility);
+                  /**
+                   * 도착 노드도 그 시설로 옮긴다.
+                   *
+                   * `setDestination`은 이름만 바꾸고 도착 노드를 비운다 — 이름과 노드가 다른
+                   * 곳을 가리키는 것을 막기 위해서다. 여기서는 고른 시설의 노드를 알고 있으므로
+                   * 곧바로 채워 경로를 다시 계산하게 한다. 비워 둔 채로 두면 안내 카드가
+                   * "목적지를 선택해 주세요"로 돌아가 방금 고른 것이 무시된 것처럼 보인다.
+                   */
+                  if (selectedFacility.linkedNodeId != null) {
+                    setTargetNode(selectedFacility.linkedNodeId, selectedFacility.nameKo);
+                  }
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -291,7 +418,7 @@ export function NavigationPage() {
                 <span className={styles.pointDot} aria-hidden />
                 <small>출발지</small>
               </span>
-              <strong>{station} B1</strong>
+              <strong>{currentLocationLabel ?? station}</strong>
             </div>
             {waypoints.map((waypoint, index) => (
               <Fragment key={waypoint}>
@@ -331,6 +458,10 @@ export function NavigationPage() {
                     setDestination(initialDestination.current);
                     setActiveDestination(exit);
                     setPickedDestination(null);
+                    // 처음 안내를 시작한 출구로 도착 노드도 함께 돌린다.
+                    if (initialTarget.nodeId != null) {
+                      setTargetNode(initialTarget.nodeId, initialTarget.label);
+                    }
                     setRecalculated(true);
                   }}
                   aria-label={`목적지를 ${exit}로 되돌리기`}
@@ -352,13 +483,9 @@ export function NavigationPage() {
               <Icon name="arrow-right" size={16} className={styles.upArrow} />
             </span>
             <div className={styles.instructionBody}>
-              <span className={styles.instructionEyebrow}>
-                다음 안내 · {recalculated ? '경로 업데이트 완료' : '25m'}
-              </span>
-              <strong className={styles.instructionTitle}>직진 25m</strong>
-              <span className={styles.instructionMeta}>
-                개찰구를 지나 에스컬레이터 방향으로 이동
-              </span>
+              <span className={styles.instructionEyebrow}>{instruction.eyebrow}</span>
+              <strong className={styles.instructionTitle}>{instruction.title}</strong>
+              <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
           </div>
           <div className={styles.arrow}>↑</div>
@@ -504,11 +631,19 @@ export function NavigationPage() {
 
             {stepsOpen && (
               <div className={styles.steps}>
-                <div className={styles.step}>
-                  <span className={styles.stepIcon}>↑</span>
-                  <b>직진 25m</b>
-                  <span>개찰구 지나 계속</span>
-                </div>
+                {routeResult?.steps?.map((step) => (
+                  <div
+                    key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
+                    className={styles.step}
+                  >
+                    <span className={styles.stepIcon}>↑</span>
+                    <b>{step.instruction ?? step.moveType ?? '이동'}</b>
+                    <span>
+                      {Math.round(step.distanceM ?? 0)}m · 약{' '}
+                      {Math.max(1, Math.ceil((step.estimatedTimeSec ?? 0) / 60))}분
+                    </span>
+                  </div>
+                ))}
                 {waypoints.map((waypoint) => (
                   <div key={waypoint} className={styles.step}>
                     <span className={styles.stepIcon}>

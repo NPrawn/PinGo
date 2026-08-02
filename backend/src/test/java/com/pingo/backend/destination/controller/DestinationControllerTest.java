@@ -76,7 +76,8 @@ class DestinationControllerTest {
         NearestExitRequest request = new NearestExitRequest(
                 1L,
                 new BigDecimal("37.500029"),
-                new BigDecimal("127.036431")
+                new BigDecimal("127.036431"),
+                null
         );
         when(nearestExitService.findNearestExit(request))
                 .thenReturn(new NearestExitResponse(10L, "5"));

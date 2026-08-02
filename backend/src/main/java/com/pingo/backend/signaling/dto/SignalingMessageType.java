@@ -6,5 +6,6 @@ public enum SignalingMessageType {
     OFFER,
     ANSWER,
     ICE_CANDIDATE,
+    CAPTION,
     ERROR,
 }

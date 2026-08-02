@@ -1,9 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { http, HttpResponse } from 'msw';
+import { server } from '@/test/mocks/server';
 import { useNavigationStore } from '@/entities/navigation';
+import { useConsultStore } from '@/entities/consult';
 import { usePermissionStore } from '@/entities/permission';
 import { DEFAULT_STATION, DEFAULT_STATION_ID, useStationStore } from '@/entities/station';
+import { setAuthSession } from '@/shared/api';
 import { i18n } from '@/shared/i18n';
 import { App } from './App';
 
@@ -89,6 +93,16 @@ function renderAt(path: string) {
   );
 }
 
+function authenticateAs(role: 'COUNSELOR' | 'ADMIN') {
+  setAuthSession({
+    accessToken: `${role.toLowerCase()}-access-token`,
+    accountType: role,
+    accountId: 1,
+    name: '테스트 계정',
+    stationId: role === 'COUNSELOR' ? 1 : undefined,
+  });
+}
+
 /**
  * `/user`, `/counselor` and `/admin` are lazy chunks. Loading them on demand
  * inside a test can take longer than the default query timeout, so import them
@@ -116,12 +130,12 @@ describe('App', () => {
 
   it('signs into a console from the landing page', async () => {
     renderAt('/');
-    fireEvent.click(screen.getByRole('button', { name: /관리자/ }));
+    fireEvent.click(screen.getByRole('link', { name: /관리자/ }));
 
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('아이디'), { target: { value: 'admin' } });
-    fireEvent.change(within(dialog).getByLabelText('비밀번호'), { target: { value: '1234' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '로그인' }));
+    expect(await screen.findByRole('heading', { name: 'PinGo 콘솔 로그인' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('아이디'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: '로그인' }));
 
     expect(await screen.findByRole('heading', { name: '시설 · 출구 관리' })).toBeInTheDocument();
   });
@@ -136,6 +150,33 @@ describe('App', () => {
 });
 
 describe('user routes', () => {
+  /**
+   * 위치 인식을 마치고 목적지를 고른 상태로 시작한다.
+   *
+   * 경로 옵션 화면은 출발 노드와 **목적지 좌표**가 있어야 조회를 건다. 유형마다 나갈 출구를
+   * 그 좌표로 찾기 때문이다(`useExitRoute`). 세워 두지 않으면 사용자가 아직 할 일이 남은
+   * 상태로 읽혀 안내 문구만 뜬다.
+   *
+   * 출발 노드는 V8 시드의 B3 승강장(205)이고, 도착 노드·출구 이름은 경로 유형을 고르는
+   * 순간 화면이 덮어쓴다. 여기 값은 안내 화면이 단독으로 열릴 때 쓰는 초기값이다.
+   *
+   * 좌표는 B2 대합실 통로 위, 어느 시설과도 30m 이상 떨어진 지점이다. **원점 `(0, 0)`을 쓰지
+   * 않는다** — 그 자리는 좌표계 기준인 `B2-B3 엘리베이터 B`라 시설 마커와 정확히 겹친다.
+   * `floorId` 1이 B2다(auto-increment라 층 순서와 다르다).
+   */
+  beforeEach(() => {
+    useNavigationStore.setState({
+      currentNodeId: 205,
+      targetNodeId: 325,
+      targetExitLabel: '7번 출입구',
+      destinationLatitude: 37.5007,
+      destinationLongitude: 127.0365,
+      currentFloorId: 1,
+      currentMapX: -30,
+      currentMapY: 10,
+    });
+  });
+
   it('redirects /user to the splash screen', async () => {
     await renderSection('/user');
     expect(await screen.findByRole('link', { name: 'Get Started' })).toBeInTheDocument();
@@ -229,7 +270,7 @@ describe('user routes', () => {
     expect(screen.getByRole('heading', { name: '출발지 선택' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '목적지 선택' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /역삼역.*현재 GPS 위치/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /역삼역.*실내 안내 가능/ }));
     useNavigationStore.setState({ waypoints: ['화장실'] });
 
     expect(screen.getAllByText('출발지')).not.toHaveLength(0);
@@ -250,17 +291,21 @@ describe('user routes', () => {
    * 지도·시설·경로 API는 모두 역 id를 요구한다. id가 없는 역을 고르게 두면 조회를 걸 수 없는
    * 상태로 촬영·경로 화면까지 진행하게 된다.
    */
-  it('등록되지 않은 역은 고를 수 없다', async () => {
+  it('lists stations found only by the external provider without letting them be picked', async () => {
     await renderSection('/user/station');
 
-    const seolleung = await screen.findByRole('button', { name: /선릉역/ });
-    expect(seolleung).toBeDisabled();
-    expect(within(seolleung).getByText('준비 중')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /역삼역.*현재 GPS 위치/ })).toBeEnabled();
+    expect(await screen.findByRole('heading', { name: '출발지 선택' })).toBeInTheDocument();
 
-    fireEvent.click(seolleung);
+    fireEvent.change(screen.getByLabelText('역 이름 검색'), { target: { value: '선릉' } });
+    fireEvent.click(screen.getByRole('button', { name: '검색' }));
 
-    // 눌러도 출발지가 바뀌지 않고 다음 단계도 열리지 않는다.
+    const externalRow = await screen.findByRole('button', { name: /선릉역/ });
+    expect(externalRow).toBeDisabled();
+    expect(within(externalRow).getByText('준비 중')).toBeInTheDocument();
+    expect(within(externalRow).getByText('2호선·수인분당선')).toBeInTheDocument();
+
+    // 선택이 막혀 있으니 다음 단계로 넘어가지 않는다.
+    fireEvent.click(externalRow);
     expect(useStationStore.getState().station).toBe(DEFAULT_STATION);
     expect(screen.queryByRole('heading', { name: '목적지 선택' })).toBeNull();
   });
@@ -390,64 +435,68 @@ describe('user routes', () => {
   });
 
   /**
+   * 경로 유형마다 나가는 출입구가 다르다. (S15P11A206-303)
+   *
+   * 최단 경로는 목적지에서 가장 가까운 출구로, 엘리베이터 우선은 계단 없이 닿는 출구 중
+   * 가장 가까운 곳으로 나간다. 화면이 정하지 않고 `POST /api/destinations/nearest-exit`가
+   * `accessibleOnly` 여부에 따라 서로 다른 출구를 고른다.
+   */
+  it('경로 유형마다 서로 다른 출입구를 안내한다', async () => {
+    useNavigationStore.setState({ route: 'fastest', destination: '강남파이낸스센터' });
+    await renderSection('/user/route');
+
+    const fastest = await screen.findByRole('button', { name: /최단 경로/ });
+    const elevator = await screen.findByRole('button', { name: /엘리베이터 우선/ });
+
+    // 전체 출구에서 고른 결과와, 엘리베이터로 닿는 출구만 두고 고른 결과가 다르다.
+    expect(within(fastest).getByText('7번 출입구')).toBeInTheDocument();
+    expect(within(elevator).getByText('3번 출입구')).toBeInTheDocument();
+    // 어디로 나가서 어디로 가는지가 한 줄로 읽힌다.
+    expect(within(fastest).getAllByText('강남파이낸스센터').length).toBeGreaterThan(0);
+  });
+
+  /**
    * 경로 옵션 화면. (S15P11A206-323)
    *
-   * 예전에는 옵션 두 개가 컴포넌트 안 상수 배열이었다. 이제 `POST /api/routes/indoor/options`
-   * 응답으로 그리므로, 이름·시간·거리가 모두 응답에서 온 값인지를 본다.
+   * 시간·거리는 `POST /api/routes/indoor/options` 응답에서 온다. 유형별로 도착 노드가
+   * 다르므로 조회도 유형별로 따로 나간다.
    */
   it('경로 옵션을 조회 응답으로 그린다', async () => {
     await renderSection('/user/route');
 
-    // 응답의 displayName이다. 화면이 들고 있던 `최단 경로`가 아니다.
-    const fastest = await screen.findByRole('button', { name: /빠른 경로/ });
+    const fastest = await screen.findByRole('button', { name: /최단 경로/ });
 
     expect(fastest).toHaveAttribute('aria-pressed', 'true');
     // estimatedTimeSec 240 → 4분, totalDistanceM 180 → 180m
     expect(within(fastest).getByText('4분')).toBeInTheDocument();
     expect(within(fastest).getByText('180m')).toBeInTheDocument();
-    // FR-U-009 "계단 포함 여부를 표시해야 한다"
-    expect(within(fastest).getByText(/계단·에스컬레이터를 지나요/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '빠른 경로 안내 시작' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '7번 출입구 길 안내 시작' })).toBeInTheDocument();
     expect(screen.getByText('출발지')).toBeInTheDocument();
     expect(screen.getByText('목적지')).toBeInTheDocument();
   });
 
   /**
-   * 도달할 수 없는 옵션은 목록에 남되 고를 수 없다. (명세 8.1)
+   * 계단 없이 닿는 출구가 있으면 엘리베이터 경로도 고를 수 있다.
    *
-   * 역삼역은 B1↔B2에 엘리베이터가 없어 B3에서 B1 출구로 가는 `elevator_only`가 실제로
-   * `NO_ACCESSIBLE_ROUTE`를 돌려준다. 목록에서 지우면 사용자는 왜 계단으로 안내받는지 모른다.
+   * 예전에는 두 유형이 같은 도착 노드를 써서, 그 노드가 계단으로만 닿으면 엘리베이터 경로가
+   * 늘 도달 불가로 나왔다. 실제로는 갈 수 있는 다른 출구가 있는데도 없다고 안내한 셈이다.
    */
-  it('도달할 수 없는 경로는 사유와 함께 남기고 고를 수 없게 한다', async () => {
+  it('엘리베이터 우선 경로를 고르면 그 유형의 출구로 도착점이 바뀐다', async () => {
     await renderSection('/user/route');
 
-    const elevator = await screen.findByRole('button', { name: /엘리베이터 이용 경로/ });
-
-    expect(elevator).toBeDisabled();
-    expect(
-      within(elevator).getByText(
-        '계단·에스컬레이터를 제외한 경로로는 도착지까지 이동할 수 없습니다.',
-      ),
-    ).toBeInTheDocument();
-    // 갈 수 없으므로 시간·거리를 보여주지 않는다.
-    expect(within(elevator).queryByText(/분$/)).toBeNull();
+    const elevator = await screen.findByRole('button', { name: /엘리베이터 우선/ });
+    expect(elevator).toBeEnabled();
 
     fireEvent.click(elevator);
 
-    // 눌러도 선택이 옮겨가지 않는다.
-    expect(useNavigationStore.getState().route).toBe('fastest');
-    expect(screen.getByRole('link', { name: '빠른 경로 안내 시작' })).toBeInTheDocument();
-  });
-
-  it('경로를 고르면 응답의 유형이 그대로 저장된다', async () => {
-    await renderSection('/user/route');
-
-    fireEvent.click(await screen.findByRole('button', { name: /빠른 경로/ }));
-
-    // 프로토타입 어휘(`fast`)가 아니라 백엔드 RouteType이다.
-    expect(useNavigationStore.getState().route).toBe('fastest');
-    expect(screen.getByRole('status')).toHaveTextContent('빠른 경로로 설정했습니다.');
-    expect(screen.getByRole('link', { name: '상담원 연결' })).toHaveTextContent('?');
+    expect(useNavigationStore.getState().route).toBe('elevator_only');
+    expect(screen.getByRole('status')).toHaveTextContent('엘리베이터 우선로 설정했습니다.');
+    // 도착 노드도 그 출구로 옮겨간다. 안내 화면이 이 값으로 상세 경로를 조회한다.
+    await waitFor(() => expect(useNavigationStore.getState().targetNodeId).toBe(153));
+    expect(useNavigationStore.getState().targetExitLabel).toBe('3번 출입구');
+    expect(
+      await screen.findByRole('link', { name: '3번 출입구 길 안내 시작' }),
+    ).toBeInTheDocument();
   });
 
   /**
@@ -462,34 +511,85 @@ describe('user routes', () => {
 
     renderAt('/user/route');
 
-    expect(await screen.findByText('이 역은 아직 실내 경로 정보가 없어요.')).toBeInTheDocument();
-    expect(screen.queryByText('경로를 찾고 있어요…')).toBeNull();
+    expect(await screen.findByText('이 역은 아직 실내 경로가 없어요')).toBeInTheDocument();
+    expect(screen.queryByText('경로를 찾고 있어요')).toBeNull();
     expect(screen.queryByRole('link', { name: /안내 시작/ })).toBeNull();
+    // 막다른 화면으로 두지 않는다. 빠져나갈 길을 함께 준다.
+    expect(screen.getByRole('link', { name: '다른 역 선택하기' })).toBeInTheDocument();
   });
 
   /** 위 구분이 로딩 표시 자체를 잃지 않았는지 함께 고정한다. */
   it('실제로 조회하는 동안에는 로딩을 보여준다', async () => {
     renderAt('/user/route');
 
-    expect(await screen.findByText('경로를 찾고 있어요…')).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: /빠른 경로/ })).toBeInTheDocument();
-    expect(screen.queryByText('경로를 찾고 있어요…')).toBeNull();
+    expect(await screen.findByText('경로를 찾고 있어요')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /최단 경로/ })).toBeInTheDocument();
+    expect(screen.queryByText('경로를 찾고 있어요')).toBeNull();
+  });
+
+  /**
+   * 데이터가 없어도 화면이 무너지지 않아야 한다.
+   *
+   * 카드가 채우던 자리에 문구 한 줄만 남기면 패널에 빈 칸이 생긴다. 이유와 다음 행동을 함께
+   * 주는 블록으로 그 자리를 채운다.
+   */
+  it('목적지 좌표가 없으면 이유와 다음 행동을 함께 보여준다', async () => {
+    useNavigationStore.setState({
+      destination: '스타벅스 역삼점',
+      destinationLatitude: null,
+      destinationLongitude: null,
+    });
+
+    renderAt('/user/route');
+
+    const empty = await screen.findByRole('alert');
+    expect(within(empty).getByText('목적지 위치를 알 수 없어요')).toBeInTheDocument();
+    expect(within(empty).getByText(/스타벅스 역삼점의 좌표를/)).toBeInTheDocument();
+    expect(within(empty).getByRole('link', { name: '목적지 다시 선택하기' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /안내 시작/ })).toBeNull();
   });
 
   /**
    * 물러난 선택은 스토어에도 남아야 한다.
    *
-   * 안내·도착 화면은 스토어의 `route`로 출구를 정한다. 화면만 갈 수 있는 경로로 옮기고
-   * 스토어를 두면, CTA에 "빠른 경로"라고 적힌 채 엘리베이터 경로의 출구로 안내한다.
+   * 안내·도착 화면은 스토어의 `route`와 `targetExitLabel`로 목적지를 적는다. 화면만 갈 수 있는
+   * 경로로 옮기고 스토어를 두면, 헤더에 엘리베이터 경로의 출구가 적힌 채 최단 경로로 안내한다.
    */
   it('고른 경로가 도달 불가면 갈 수 있는 경로로 물러나고 스토어도 따라간다', async () => {
+    // 계단 없이 나갈 수 있는 출구가 하나도 없는 역을 흉내낸다.
+    server.use(
+      http.post('*/api/destinations/nearest-exit', async ({ request }) => {
+        const body = (await request.json()) as { accessibleOnly?: boolean };
+        if (body.accessibleOnly) {
+          return HttpResponse.json(
+            {
+              success: false,
+              code: 'EXIT_LOCATION_NOT_FOUND',
+              message: '출구를 찾을 수 없습니다.',
+            },
+            { status: 404 },
+          );
+        }
+
+        return HttpResponse.json({
+          success: true,
+          data: { exitFacilityId: 25, exitNumber: '7' },
+        });
+      }),
+    );
     useNavigationStore.setState({ route: 'elevator_only' });
 
     await renderSection('/user/route');
 
-    const fastest = await screen.findByRole('button', { name: /빠른 경로/ });
+    const elevator = await screen.findByRole('button', { name: /엘리베이터 우선/ });
+    expect(elevator).toBeDisabled();
+    expect(
+      within(elevator).getByText('계단 없이 나갈 수 있는 출입구가 없어요.'),
+    ).toBeInTheDocument();
+
+    const fastest = screen.getByRole('button', { name: /최단 경로/ });
     expect(fastest).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('link', { name: '빠른 경로 안내 시작' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '7번 출입구 길 안내 시작' })).toBeInTheDocument();
     await waitFor(() => expect(useNavigationStore.getState().route).toBe('fastest'));
   });
 
@@ -497,6 +597,8 @@ describe('user routes', () => {
     useNavigationStore.setState({
       destination: 'GS25 역삼역점',
       route: 'elevator_only',
+      // 경로 옵션 화면에서 엘리베이터 우선을 고르면 그 유형의 출구가 여기 남는다.
+      targetExitLabel: '2번 출입구',
       waypoints: ['화장실', '승차권 충전'],
     });
     await renderSection('/user/navigation');
@@ -559,9 +661,21 @@ describe('user routes', () => {
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '승차권 충전 경유지 삭제' }));
     expect(within(routeHeader).queryByText('승차권 충전')).toBeNull();
-    expect(screen.getByText('직진 25m')).toBeInTheDocument();
-    expect(screen.getByText('개찰구를 지나 에스컬레이터 방향으로 이동')).toBeInTheDocument();
-    expect(screen.queryByText(/2번 출입구까지 210m/)).toBeNull();
+    /**
+     * 안내 문구는 경로 응답의 첫 구간에서 온다.
+     *
+     * 예전에는 경로를 모를 때도 `직진 25m`·`개찰구를 지나 에스컬레이터 방향으로 이동`을
+     * 그대로 띄웠다. 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
+     */
+    /**
+     * 안내 문구는 경로 응답의 첫 구간에서 온다.
+     *
+     * 예전에는 경로를 모를 때도 `직진 25m`·`개찰구를 지나 에스컬레이터 방향으로 이동`을
+     * 그대로 띄웠다. 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
+     */
+    expect(await screen.findByText('개찰구 방향으로 25m 직진하세요')).toBeInTheDocument();
+    expect(screen.getByText('다음 안내 · 경로 업데이트 완료')).toBeInTheDocument();
+    expect(screen.getByText('총 224m · 약 5분')).toBeInTheDocument();
   });
 
   it('returns to the station main page after a satisfaction rating', async () => {
@@ -581,27 +695,21 @@ describe('counselor routes', () => {
     expect(await screen.findByRole('heading', { name: 'PinGo 콘솔 로그인' })).toBeInTheDocument();
   });
 
-  // These two run in order: accepting marks the request active, ending the
-  // session marks the same request done. Each step re-renders the queue to
-  // prove the status survived navigating away.
-  it('marks a request in progress after it is accepted', async () => {
+  it('opens the connecting screen after the API accepts a request', async () => {
+    authenticateAs('COUNSELOR');
     await renderSection('/counselor/requests');
     fireEvent.click(await screen.findByRole('button', { name: '상담 수락' }));
-    cleanup();
-
-    await renderSection('/counselor/requests');
-    expect(await screen.findByText('상담 진행 중')).toBeInTheDocument();
-    expect(screen.getByText('상담중')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '사용자와 연결하고 있어요' }),
+    ).toBeInTheDocument();
   });
 
-  it('marks a request complete after the session ends', async () => {
+  it('returns to the API-backed queue after ending the session', async () => {
+    authenticateAs('COUNSELOR');
+    useConsultStore.setState({ consultationId: 'cs_test', signalingRoomId: null });
     await renderSection('/counselor/session');
     fireEvent.click(await screen.findByRole('button', { name: '상담 종료' }));
-    cleanup();
-
-    await renderSection('/counselor/requests');
-    expect(await screen.findByText('상담 완료')).toBeInTheDocument();
-    expect(screen.getByText('완료')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '상담 수락' })).toBeInTheDocument();
   });
 
   it('rejects unknown credentials', async () => {
@@ -620,11 +728,13 @@ describe('admin routes', () => {
   });
 
   it('redirects the console root to the facility tab', async () => {
+    authenticateAs('ADMIN');
     await renderSection('/admin/console');
     expect(await screen.findByRole('heading', { name: '시설 · 출구 관리' })).toBeInTheDocument();
   });
 
   it('renders the requested console tab', async () => {
+    authenticateAs('ADMIN');
     await renderSection('/admin/console/station');
     expect(await screen.findByRole('heading', { name: '역 관리' })).toBeInTheDocument();
   });

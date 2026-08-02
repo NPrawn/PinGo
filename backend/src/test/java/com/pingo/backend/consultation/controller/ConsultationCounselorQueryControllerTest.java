@@ -43,7 +43,7 @@ class ConsultationCounselorQueryControllerTest {
     void getConsultations_성공() throws Exception {
         ConsultationListResponse response = new ConsultationListResponse(
                 CONSULTATION_ID, 1L, ProblemType.CANNOT_FIND_EXIT, ConsultationStatus.WAITING,
-                null, null, LocalDateTime.now()
+                null, null, null, null, null, LocalDateTime.now()
         );
         given(consultationSessionService.getConsultationsForCounselor(any(), isNull()))
                 .willReturn(List.of(response));

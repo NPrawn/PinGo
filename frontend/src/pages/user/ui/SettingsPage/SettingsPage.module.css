@@ -50,10 +50,6 @@
   border-bottom: none;
 }
 
-.toggleRow {
-  padding: 12px 0;
-}
-
 .rowLabel {
   flex: 1;
   font-size: 13.5px;

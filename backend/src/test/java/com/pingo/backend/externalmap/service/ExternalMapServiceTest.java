@@ -34,7 +34,7 @@ public class ExternalMapServiceTest {
                         new BigDecimal("127.0592"),
                         "서울특별시 강남구 영동대로 513"
                 ),
-                "walking"
+                "foot"
         );
 
         ExternalDirectionResponse response = externalMapService.createDirection(request);
@@ -46,6 +46,24 @@ public class ExternalMapServiceTest {
                 .isEqualTo(
                         "https://map.kakao.com/link/by/walk/%ED%98%84%EC%9E%AC%20%EC%9C%84%EC%B9%98,37.4982,127.0281/COEX%20Mall,37.5118,127.0592");
 
+    }
+
+    @Test
+    void createDirectionStillAcceptsLegacyWalkingMode() {
+        ExternalDirectionRequest request = new ExternalDirectionRequest(
+                "kakao",
+                new GeoPointRequest(new BigDecimal("37.4982"), new BigDecimal("127.0281")),
+                new ExternalDestinationRequest(
+                        3L,
+                        "COEX Mall",
+                        new BigDecimal("37.5118"),
+                        new BigDecimal("127.0592"),
+                        null
+                ),
+                "walking"
+        );
+
+        assertThat(externalMapService.createDirection(request).provider()).isEqualTo("kakao");
     }
 
     @Test
