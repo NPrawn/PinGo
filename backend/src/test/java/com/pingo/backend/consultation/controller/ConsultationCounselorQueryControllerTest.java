@@ -35,6 +35,8 @@ class ConsultationCounselorQueryControllerTest {
     @MockitoBean
     private ConsultationSessionService consultationSessionService;
 
+
+
     private static final String CONSULTATION_ID = "cs_abc123";
 
     @Test

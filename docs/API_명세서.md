@@ -1,6 +1,6 @@
 # 외국인 관광객 대상 지하철 실내 내비게이션 API 명세서
 
-> 최신화: 2026-07-30
+> 최신화: 2026-08-02
 
 ## 1. 문서 목적
 
@@ -128,8 +128,8 @@ API 책임자는 `PinGo_역할분배_최종기획안_v4.md`를 따른다.
 | API 영역                                                                         | 최종 책임 |
 | -------------------------------------------------------------------------------- | --------- |
 | 역·지도·시설·목적지 검색·출구 추천·경로                                          | 신재령    |
-| 인증·상담·상담자·관리자 로그인·WebRTC signaling·DataChannel 계약                 | 오서현    |
-| VPS 이미지 요청·AI Adapter·위치 인식 상태 판정·외부 지도·위치 공유·배포 네트워크 | 이정우    |
+| 인증·상담·상담 요약·상담자·관리자 로그인                 | 오서현    |
+| VPS 이미지 요청·AI Adapter·위치 인식 상태 판정·외부 지도·위치 공유·배포 네트워크·WebRTC signaling·DataChannel 계약 | 이정우    |
 | 카메라·IMU·실시간 방향 보정·화면 표시                                            | 김은지    |
 | 교통카드 추천 UX·정적 룰·문구                                                    | 최주연    |
 
@@ -1753,6 +1753,62 @@ Event Name: `DATA_CHANNEL`
 
 ---
 
+## 10.7 상담 만족도 평가
+
+### POST `/api/consultations/{consultationId}/rating`
+
+사용자가 종료된 상담에 대해 1~5점의 만족도를 남긴다. 평가는 선택 사항이다.
+
+#### 인증
+
+비로그인 접근 허용. 본문의 `userSessionId`가 해당 상담을 요청한 세션과 일치해야 한다.
+
+#### Request
+
+```json
+{
+  "userSessionId": "usr_9f3a2b",
+  "score": 5
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `userSessionId` | string | Y | 상담을 요청한 사용자 세션 ID |
+| `score` | number | Y | 만족도 점수. 1~5 정수 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "score": 5,
+    "ratedAt": "2026-07-31T05:20:00Z"
+  },
+  "message": null
+}
+```
+
+#### Error
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
+| 상담을 요청한 세션이 아님 | 403 | `CONSULTATION_SESSION_MISMATCH` |
+| `ENDED` 상태가 아닌 상담 | 409 | `CONSULTATION_NOT_ENDED` |
+| 이미 평가한 상담 | 409 | `CONSULTATION_ALREADY_RATED` |
+| `score`가 1~5 범위 밖 | 400 | `INVALID_RATING_SCORE` |
+
+#### 비고
+
+- 평가는 상담당 1회만 가능하며 수정·취소할 수 없다.
+- 평가 결과는 상담자 통계 집계에만 사용한다.
+- 사용자 세션이 만료된 뒤에는 평가할 수 없으므로 상담 종료 화면에서 즉시 평가를 유도한다.
+
+---
+
 ## 11. 상담자 API
 
 ## 11.1 상담자 로그인
@@ -1944,7 +2000,150 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.7 상담자 본인 계정 조회
+## 11.7 상담 전문 저장 및 요약 생성 요청
+
+### POST `/api/consultations/{consultationId}/transcript`
+
+상담자가 종료된 상담의 STT 전문과 안내 정보를 저장한다. Backend는 저장 직후 응답하고, 상담 요약은 백그라운드에서 비동기로 생성한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+#### Request
+
+```json
+{
+  "transcript": [
+    { "seq": 1, "speaker": "USER", "content": "지금 여기가 어딘지 모르겠어요." },
+    { "seq": 2, "speaker": "COUNSELOR", "content": "주변에 12번 기둥 보이시나요?" }
+  ],
+  "startLocationLabel": "B1 대합실 12번 기둥 부근",
+  "guidedExitFacilityId": 25,
+  "guidedExitLabel": "7번 출구",
+  "routeType": "elevator_only"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `transcript` | array | 조건부 | STT 발화 기록. 최초 저장 시 필수(1~500개). 재시도 호출에서는 생략한다 |
+| `transcript[].seq` | number | Y | 발화 순서. 1부터 시작하며 상담 내 중복 불가 |
+| `transcript[].speaker` | string | Y | `USER`, `COUNSELOR` 중 하나 |
+| `transcript[].content` | string | Y | 발화 내용. 최대 2000자 |
+| `startLocationLabel` | string | N | 상담 중 확정된 실제 출발 위치 라벨. 최대 200자 |
+| `guidedExitFacilityId` | number | N | 안내한 출구의 시설 ID |
+| `guidedExitLabel` | string | N | 안내한 출구 라벨. 최대 100자 |
+| `routeType` | string | N | `fastest`, `elevator_only` 중 하나 |
+
+요약 문장은 Backend가 전문을 근거로 생성한다. 라벨과 경로 옵션은 상담자 클라이언트가 보유한 값을 그대로 전달하며 생성 모델이 추론하지 않는다.
+
+라벨 필드는 저장 시점의 표시 문자열을 스냅샷한다. `route_node`·`facility` 재시딩으로 ID가 변경되어도 과거 상담 이력이 깨지지 않게 하기 위함이다.
+
+#### Response
+
+`202 Accepted`
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "PENDING"
+  }
+}
+```
+
+#### Error
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
+| 담당 역 상담자가 아님 | 403 | `CONSULTATION_STATION_MISMATCH` |
+| 상담을 수락한 상담자가 아님 | 403 | `CONSULTATION_COUNSELOR_MISMATCH` |
+| `ENDED` 상태가 아닌 상담 | 409 | `CONSULTATION_NOT_ENDED` |
+| 이미 전문이 저장된 상담 | 409 | `CONSULTATION_SUMMARY_ALREADY_EXISTS` |
+| `transcript`가 비어 있음 | 400 | `EMPTY_TRANSCRIPT` |
+| `seq` 중복 또는 500개 초과 | 400 | `INVALID_REQUEST` |
+| 지원하지 않는 `routeType` | 400 | `UNSUPPORTED_ROUTE_TYPE` |
+
+#### 비고
+
+- 전문 저장과 요약 생성은 분리된다. 요약 생성에 실패해도 전문은 보존되며 상태만 `FAILED`가 된다.
+- 상담당 1건만 저장되며, `consultation_summary.consultation_id`의 UNIQUE 제약으로 보장한다.
+- 전문과 요약은 상담자 전용 정보이며 사용자(관광객) 응답에는 포함하지 않는다.
+- 요약 생성이 `FAILED`인 상담은 같은 endpoint를 본문 `{}`로 다시 호출해 재시도한다. 저장된 전문을 그대로 사용하므로 전문을 다시 보내지 않으며, 상태만 `PENDING`으로 돌아간다.
+- `PENDING`이나 `COMPLETED` 상태에서 다시 호출하면 `CONSULTATION_SUMMARY_ALREADY_EXISTS`(409)를 반환한다. 재시도는 `FAILED`에서만 가능하다.
+
+---
+
+## 11.8 상담 요약 조회
+
+### GET `/api/consultations/{consultationId}/summary`
+
+상담자가 상담 요약과 STT 전문을 조회한다. 상담 이력 상세 화면에 필요한 정보를 한 번에 반환하며, 요약 생성이 끝나지 않았어도 `status`와 전문을 반환한다.
+
+#### Header
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "consultationId": "cs_abc123",
+    "status": "COMPLETED",
+    "counselorName": "김상담",
+    "endedAt": "2026-07-18T09:24:00Z",
+    "language": "ko",
+    "summaryText": "12번 기둥 랜드마크로 위치를 재지정하고 엘리베이터 경로로 7번 출구까지 안내 완료",
+    "startLocationLabel": "B1 대합실 12번 기둥 부근",
+    "guidedExitFacilityId": 25,
+    "guidedExitLabel": "7번 출구",
+    "routeType": "elevator_only",
+    "transcript": [
+      { "seq": 1, "speaker": "USER", "content": "지금 여기가 어딘지 모르겠어요." },
+      { "seq": 2, "speaker": "COUNSELOR", "content": "주변에 12번 기둥 보이시나요?" }
+    ],
+    "createdAt": "2026-07-18T09:26:00Z",
+    "completedAt": "2026-07-18T09:26:04Z"
+  }
+}
+```
+
+`counselorName`, `endedAt`, `language`는 각각 `account`, `consultation_session`, `user_session`에서 조회한 값이다.
+
+`status`가 `PENDING`이나 `FAILED`이면 `summaryText`와 `completedAt`은 `null`이다. 클라이언트는 `PENDING`일 때 3초 간격으로 최대 10회까지 재조회하고, 그 이후에도 `PENDING`이면 안내 문구를 표시한다.
+
+#### status 값
+
+| 값 | 설명 |
+| --- | --- |
+| PENDING | 요약 생성 중 |
+| COMPLETED | 요약 생성 완료 |
+| FAILED | 요약 생성 실패 |
+
+#### Error
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| 존재하지 않는 상담 | 404 | `CONSULTATION_NOT_FOUND` |
+| 담당 역 상담자가 아님 | 403 | `CONSULTATION_STATION_MISMATCH` |
+| 전문이 저장되지 않은 상담 | 404 | `CONSULTATION_SUMMARY_NOT_FOUND` |
+
+#### 비고
+
+- 저장과 달리 조회는 같은 역 상담자면 모두 허용한다. 상담 인수인계 시 다른 상담자가 이전 상담 이력을 확인할 수 있어야 하기 때문이다.
+
+---
+
+## 11.9 상담자 본인 계정 조회
 
 ### GET `/api/counselors/me`
 
@@ -1976,7 +2175,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11.8 상담자 본인 계정 수정
+## 11.10 상담자 본인 계정 수정
 
 ### PATCH `/api/counselors/me`
 
@@ -2154,7 +2353,7 @@ room과 역할은 query parameter가 아니라 모든 메시지의 `sessionId`, 
 
 ---
 
-## 12.2 DataChannel 이벤트(계약, Frontend 미구현)
+## 12.3 DataChannel 이벤트(계약, Frontend 미구현)
 
 WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 목표다. 현재 Frontend에는
 `RTCDataChannel` 송수신이 연결되지 않았으므로 상세 이벤트는
@@ -2863,44 +3062,105 @@ multipart/form-data
 
 ---
 
-## 16. 오류 코드 초안
+## 16. 오류 코드
 
-| 코드                            | 설명                                    |
-| ------------------------------- | --------------------------------------- |
-| INVALID_REQUEST                 | 요청 형식이 잘못됨                      |
-| DUPLICATE_LOGIN_ID              | 이미 사용 중인 로그인 ID                |
-| STATION_NOT_FOUND               | 역을 찾을 수 없음                       |
-| FACILITY_NOT_FOUND              | 시설을 찾을 수 없음                     |
-| UNSUPPORTED_FACILITY_TYPE       | 지원하지 않는 시설 유형                 |
-| FLOOR_NOT_FOUND                 | 층을 찾을 수 없음                       |
-| INVALID_MAP_FILE                | 지도 파일이 비어 있거나 올바르지 않음   |
-| UNSUPPORTED_MAP_TYPE            | 지원하지 않는 지도 유형                 |
-| FILE_STORAGE_FAILED             | 파일 저장 실패                          |
-| PLACE_NOT_FOUND                 | 주변 장소를 찾을 수 없음                |
-| EXIT_RECOMMENDATION_NOT_FOUND   | 장소-출구 추천을 찾을 수 없음           |
-| DUPLICATE_EXIT_RECOMMENDATION   | 이미 등록된 장소-출구 추천              |
-| USER_SESSION_NOT_FOUND          | 사용자 세션을 찾을 수 없음              |
-| INVALID_DESTINATION             | 목적지 유형과 ID 중 하나만 전달됨       |
-| USER_SESSION_ALREADY_ENDED      | 이미 종료·만료된 세션                   |
-| USER_SESSION_IN_CONSULTATION    | 진행 중인 상담이 있어 세션을 종료할 수 없음 |
-| LOCALIZATION_FAILED             | 위치 인식 실패                          |
-| ROUTE_NOT_FOUND                 | 경로를 찾을 수 없음                     |
-| ROUTE_NODE_NOT_FOUND            | 경로 노드를 찾을 수 없음                |
-| ROUTE_EDGE_NOT_FOUND            | 경로 간선을 찾을 수 없음                |
-| ROUTE_NODE_IN_USE               | 사용 중인 경로 노드는 삭제할 수 없음    |
-| UNSUPPORTED_NODE_TYPE           | 지원하지 않는 노드 유형                 |
-| UNSUPPORTED_MOVE_TYPE           | 지원하지 않는 이동 유형                 |
-| UNSUPPORTED_ROUTE_TYPE          | 지원하지 않는 경로 옵션 유형            |
-| CONSULTATION_NOT_FOUND          | 상담 세션을 찾을 수 없음                |
-| CONSULTATION_NOT_ENDABLE        | 종료할 수 없는 상담 상태                |
-| CONSULTATION_COUNSELOR_MISMATCH | 담당 상담자가 아님                      |
-| COUNSELOR_NOT_AVAILABLE         | 상담자가 상담 가능한 상태가 아님        |
-| INVALID_CREDENTIALS             | 로그인 ID 또는 비밀번호가 올바르지 않음 |
-| INVALID_CURRENT_PASSWORD        | 현재 비밀번호가 올바르지 않음           |
-| ACCOUNT_NOT_FOUND               | 계정을 찾을 수 없음                     |
-| INACTIVE_ACCOUNT                | 비활성화된 계정으로 로그인 시도         |
-| WEBRTC_SIGNALING_FAILED         | WebRTC signaling 실패                   |
-| EXTERNAL_MAP_LINK_FAILED        | 외부 지도 링크 생성 실패                |
+실제 `ErrorCode` enum 기준이다. 응답의 오류 코드 필드 이름은 `code`다(2.2절 참고).
+
+### 공통
+
+| 코드 | HTTP | 설명 |
+| --- | --- | --- |
+| INVALID_REQUEST | 400 | 요청 형식이 올바르지 않음 |
+| ENDPOINT_NOT_FOUND | 404 | 요청한 경로를 찾을 수 없음 |
+| METHOD_NOT_ALLOWED | 405 | 지원하지 않는 요청 방식 |
+| UNSUPPORTED_MEDIA_TYPE | 415 | 지원하지 않는 요청 형식 |
+| INTERNAL_SERVER_ERROR | 500 | 서버 내부 오류 |
+
+### 인증·계정
+
+| 코드 | HTTP | 설명 |
+| --- | --- | --- |
+| INVALID_CREDENTIALS | 401 | 아이디 또는 비밀번호가 올바르지 않음 |
+| UNAUTHENTICATED | 401 | 인증이 필요함 |
+| ACCESS_DENIED | 403 | 접근 권한이 없음 |
+| INACTIVE_ACCOUNT | 403 | 비활성화된 계정 |
+| INVALID_CURRENT_PASSWORD | 400 | 현재 비밀번호가 올바르지 않음 |
+| ACCOUNT_NOT_FOUND | 404 | 계정을 찾을 수 없음 |
+| DUPLICATE_LOGIN_ID | 409 | 이미 사용 중인 로그인 ID |
+
+### 사용자 세션
+
+| 코드 | HTTP | 설명 |
+| --- | --- | --- |
+| INVALID_DESTINATION | 400 | 목적지 양식이 올바르지 않음 |
+| USER_SESSION_NOT_FOUND | 404 | 사용자 세션을 찾을 수 없음 |
+| USER_SESSION_ALREADY_ENDED | 409 | 이미 종료된 세션 |
+| USER_SESSION_IN_CONSULTATION | 409 | 진행 중인 상담이 있어 세션을 종료할 수 없음 |
+
+### 상담
+
+| 코드 | HTTP | 설명 |
+| --- | --- | --- |
+| EMPTY_TRANSCRIPT | 400 | 상담 전문이 비어 있음 |
+| INVALID_RATING_SCORE | 400 | 만족도 점수가 1~5 범위를 벗어남 |
+| CONSULTATION_NOT_CANCELABLE | 400 | 취소할 수 없는 상담 상태 |
+| CONSULTATION_STATION_MISMATCH | 403 | 담당 역의 상담 요청이 아님 |
+| CONSULTATION_COUNSELOR_MISMATCH | 403 | 담당 상담자가 아님 |
+| CONSULTATION_SESSION_MISMATCH | 403 | 해당 상담을 요청한 사용자가 아님 |
+| CONSULTATION_NOT_FOUND | 404 | 상담 세션을 찾을 수 없음 |
+| CONSULTATION_SUMMARY_NOT_FOUND | 404 | 상담 요약을 찾을 수 없음 |
+| CONSULTATION_ALREADY_IN_PROGRESS | 409 | 이미 대기 중이거나 진행 중인 상담이 있음 |
+| CONSULTATION_NOT_ACCEPTABLE | 409 | 수락할 수 없는 상담 상태 |
+| CONSULTATION_NOT_REJECTABLE | 409 | 거절할 수 없는 상담 상태 |
+| CONSULTATION_NOT_ENDABLE | 409 | 종료할 수 없는 상담 상태 |
+| CONSULTATION_NOT_ENDED | 409 | 종료되지 않은 상담 |
+| CONSULTATION_SUMMARY_ALREADY_EXISTS | 409 | 이미 상담 전문·요약이 저장됨 |
+| CONSULTATION_ALREADY_RATED | 409 | 이미 평가한 상담 |
+| COUNSELOR_NOT_AVAILABLE | 409 | 상담자가 상담 가능한 상태가 아님 |
+
+### 역·층·시설
+
+| 코드 | HTTP | 설명 |
+| --- | --- | --- |
+| UNSUPPORTED_FACILITY_TYPE | 400 | 지원하지 않는 시설 유형 |
+| NOT_EXIT_FACILITY | 400 | 출구가 아닌 시설 |
+| STATION_NOT_FOUND | 404 | 역을 찾을 수 없음 |
+| FLOOR_NOT_FOUND | 404 | 층을 찾을 수 없음 |
+| FACILITY_NOT_FOUND | 404 | 시설을 찾을 수 없음 |
+| DUPLICATE_FLOOR_CODE | 409 | 해당 역에 동일한 층 코드가 존재함 |
+| FLOOR_IN_USE | 409 | 사용 중인 층은 삭제할 수 없음 |
+
+### 장소·출구 추천
+
+| 코드 | HTTP | 설명 |
+| --- | --- | --- |
+| PLACE_NOT_FOUND | 404 | 주변 장소를 찾을 수 없음 |
+| EXIT_RECOMMENDATION_NOT_FOUND | 404 | 장소-출구 추천을 찾을 수 없음 |
+| EXIT_LOCATION_NOT_FOUND | 404 | 외부 좌표가 등록된 출구를 찾을 수 없음 |
+| DUPLICATE_EXIT_RECOMMENDATION | 409 | 이미 등록된 장소-출구 추천 |
+
+### 지도·파일
+
+| 코드 | HTTP | 설명 |
+| --- | --- | --- |
+| INVALID_MAP_FILE | 400 | 지도 파일이 비어 있거나 올바르지 않음 |
+| UNSUPPORTED_MAP_TYPE | 400 | 지원하지 않는 지도 유형 |
+| INCOMPLETE_COORDINATE_FRAME | 400 | 좌표 프레임 4필드 중 일부만 지정됨 |
+| COORDINATE_FRAME_WOULD_BE_LOST | 400 | 기존 좌표 프레임이 있는데 새 요청에 프레임이 없음 |
+| EMPTY_FLOOR_MAP | 400 | 도면 파일과 좌표 프레임이 모두 없음 |
+| EXTERNAL_PLACE_SEARCH_FAILED | 502 | 외부 장소 검색 실패 |
+| FILE_STORAGE_FAILED | 500 | 파일 저장 실패 |
+
+### 경로
+
+| 코드 | HTTP | 설명 |
+| --- | --- | --- |
+| UNSUPPORTED_NODE_TYPE | 400 | 지원하지 않는 노드 유형 |
+| UNSUPPORTED_MOVE_TYPE | 400 | 지원하지 않는 이동 유형 |
+| UNSUPPORTED_ROUTE_TYPE | 400 | 지원하지 않는 경로 옵션 유형 |
+| ROUTE_NODE_NOT_FOUND | 404 | 경로 노드를 찾을 수 없음 |
+| ROUTE_EDGE_NOT_FOUND | 404 | 경로 간선을 찾을 수 없음 |
+| ROUTE_NODE_IN_USE | 409 | 사용 중인 경로 노드는 삭제할 수 없음 |
 
 ---
 
@@ -2916,9 +3176,9 @@ multipart/form-data
 | 경로        | POST /api/routes/indoor/options, POST /api/routes/indoor                                                    |
 | 외부 지도   | POST /api/external-maps/directions                                                                                                       |
 | 위치 공유   | POST /api/location-shares, GET /api/location-shares/{shareId}                                                                                |
-| 상담        | POST /api/consultations, GET /api/consultations/{consultationId}, DELETE /api/consultations/{consultationId}                                     |
-| 인증        | POST /api/auth/login, POST /api/auth/signup, GET /api/auth/check-login-id                                                                        |
-| 상담자      | GET /api/counselors/consultations, POST /api/consultations/{id}/accept, GET /api/counselors/me, PATCH /api/counselors/me                             |
+| 인증        | POST /auth/login, POST /auth/signup, GET /auth/check-login-id                                                                        |
+| 상담        | POST /consultations, GET /consultations/{consultationId}, DELETE /consultations/{consultationId}, POST /consultations/{consultationId}/rating |
+| 상담자      | GET /counselors/consultations, POST /consultations/{id}/accept, POST /consultations/{id}/summary, GET /consultations/{id}/summary, GET /counselors/me, PATCH /counselors/me |
 | WebRTC      | WS /ws/signaling                                                                                                                     |
 | 교통카드    | POST /api/transport-cards/recommend                                                                                                      |
 | 관리자      | 관리자 데이터 등록 API 전체 구현                                                                                                                 |

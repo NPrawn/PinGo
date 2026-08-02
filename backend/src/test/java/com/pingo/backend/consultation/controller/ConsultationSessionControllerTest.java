@@ -19,7 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
-
+import com.pingo.backend.consultation.service.ConsultationRatingService;
 import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -40,6 +40,9 @@ class ConsultationSessionControllerTest {
 
     @MockitoBean
     private ConsultationSessionService consultationSessionService;
+
+    @MockitoBean
+    private ConsultationRatingService consultationRatingService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
