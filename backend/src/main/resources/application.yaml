@@ -77,3 +77,9 @@ webrtc:
     turn-urls: ${WEBRTC_TURN_URLS:}
     turn-username: ${WEBRTC_TURN_USERNAME:}
     turn-credential: ${WEBRTC_TURN_CREDENTIAL:}
+
+summary:
+  api:
+    base-url : ${SUMMARY_API_BASE_URL:}
+    key : ${SUMMARY_API_KEY:}
+    model : ${SUMMARY_API_MODEL:}
