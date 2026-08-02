@@ -33,6 +33,7 @@ import {
   updateAdminRouteEdge,
   updateAdminRouteNode,
   updateAdminStation,
+  ApiError,
 } from '@/shared/api';
 import {
   ADMIN_SCHEMA,
@@ -62,6 +63,16 @@ function numberValue(value: string, required = true): number | undefined {
 
 function boolValue(value: string) {
   return value === 'true';
+}
+
+/**
+ * 실패 원인을 화면에 쓸 문장으로 바꾼다.
+ *
+ * 서버가 어떤 필드가 왜 거절됐는지 알려주는데, 이를 버리고 "확인해 주세요"만 띄우면
+ * 관리자가 무엇을 고쳐야 할지 알 수 없다. 서버 메시지를 우선 쓰고 없을 때만 기본 문구로 떨어진다.
+ */
+function reasonOf(error: unknown, fallback: string) {
+  return error instanceof ApiError && error.message ? error.message : fallback;
 }
 
 function valuesOf(row: AdminRecord) {
@@ -97,6 +108,27 @@ export function useAdminRecords(tab: AdminTableTab) {
     toastTimer.current = setTimeout(() => setToast(''), TOAST_MS);
   }, []);
 
+  /**
+   * 역 단위로만 조회할 수 있는 목록을 모든 역에 대해 모은다.
+   *
+   * 경로·주변 장소·시설 조회는 `stationId`가 있어야 한다. OpenAPI 문서에는 선택 항목으로
+   * 적혀 있지만 서버가 null을 400으로 거절한다(RouteService.requireStationId,
+   * AdminPlaceService.requireStationId). 콘솔은 역을 가리지 않고 전부 보여주므로
+   * 역 목록을 먼저 받아 역마다 호출한다.
+   */
+  const forEachStation = useCallback(
+    async <T>(fetchOne: (stationId: number) => Promise<T[]>): Promise<T[]> => {
+      const stations = await getAdminStations();
+      const groups = await Promise.all(
+        stations
+          .filter((station) => station.stationId != null)
+          .map((station) => fetchOne(station.stationId!)),
+      );
+      return groups.flat();
+    },
+    [],
+  );
+
   const load = useCallback(async (): Promise<AdminRecord[]> => {
     if (tab === 'station') {
       const stations = await getAdminStations();
@@ -114,14 +146,8 @@ export function useAdminRecords(tab: AdminTableTab) {
         }));
     }
     if (tab === 'facility') {
-      const stations = await getAdminStations();
-      const groups = await Promise.all(
-        stations
-          .filter((station) => station.stationId != null)
-          .map((station) => getAdminFacilities({ stationId: station.stationId! })),
-      );
-      return groups
-        .flat()
+      const facilities = await forEachStation((stationId) => getAdminFacilities({ stationId }));
+      return facilities
         .filter((facility) => facility.facilityId != null)
         .map((facility) => ({
           id: facility.facilityId!,
@@ -138,7 +164,10 @@ export function useAdminRecords(tab: AdminTableTab) {
         }));
     }
     if (tab === 'route') {
-      const [nodes, edges] = await Promise.all([getAdminRouteNodes(), getAdminRouteEdges()]);
+      const [nodes, edges] = await Promise.all([
+        forEachStation((stationId) => getAdminRouteNodes({ stationId })),
+        forEachStation((stationId) => getAdminRouteEdges(stationId)),
+      ]);
       const nodeRows = nodes
         .filter((node) => node.nodeId != null)
         .map((node) => ({
@@ -183,10 +212,15 @@ export function useAdminRecords(tab: AdminTableTab) {
       return [...nodeRows, ...edgeRows];
     }
     if (tab === 'place') {
-      const [places, recommendations] = await Promise.all([
-        getAdminNearbyPlaces(),
-        getAdminPlaceExitRecommendations(),
-      ]);
+      const places = await forEachStation((stationId) => getAdminNearbyPlaces(stationId));
+      // 추천 출구는 역이 아니라 장소 단위로만 조회된다(placeId 필수). 비활성 장소는 서버가
+      // 404로 막으므로 건너뛰고, 남은 한 곳이 실패해도 목록 전체를 잃지 않도록 개별 처리한다.
+      const recommendationGroups = await Promise.all(
+        places
+          .filter((place) => place.placeId != null && place.active !== false)
+          .map((place) => getAdminPlaceExitRecommendations(place.placeId!).catch(() => [])),
+      );
+      const recommendations = recommendationGroups.flat();
       const placeRows = places
         .filter((place) => place.placeId != null)
         .map((place) => ({
@@ -240,7 +274,7 @@ export function useAdminRecords(tab: AdminTableTab) {
         // 상태가 없는 계정을 '상담 가능'으로 보여주면 안 된다.
         consultStatus: COUNSELOR_STATUS_LABELS[account.status ?? ''] ?? '-',
       }));
-  }, [tab]);
+  }, [tab, forEachStation]);
 
   const recordsQuery = useQuery({
     queryKey: ['admin-records', tab],
@@ -249,6 +283,13 @@ export function useAdminRecords(tab: AdminTableTab) {
     refetchInterval: tab === 'counselor' ? 5000 : false,
   });
   const rows = useMemo(() => recordsQuery.data ?? [], [recordsQuery.data]);
+  // 조회 실패를 빈 배열로 흘려보내면 "항목이 없다"와 구분되지 않는다. 서버 메시지를 그대로
+  // 올려 화면이 실패·빈 목록·로딩 중을 각각 다르게 말할 수 있게 한다.
+  const loadError = recordsQuery.isError
+    ? recordsQuery.error instanceof ApiError
+      ? recordsQuery.error.message
+      : '목록을 불러오지 못했습니다.'
+    : null;
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
@@ -276,8 +317,8 @@ export function useAdminRecords(tab: AdminTableTab) {
       else if (tab === 'route') await getAdminRouteEdge(rawId);
       else if (tab === 'place' && row.kind !== 'recommendation') await getAdminNearbyPlace(rawId);
       else if (tab === 'counselor') await getAdminCounselor(rawId);
-    } catch {
-      flash('상세 정보를 불러오지 못했습니다.');
+    } catch (error) {
+      flash(reasonOf(error, '상세 정보를 불러오지 못했습니다.'));
       return;
     }
     setDraft({ id, values: valuesOf(row) });
@@ -411,9 +452,9 @@ export function useAdminRecords(tab: AdminTableTab) {
       setDraft(null);
       flash(draft.id == null ? '항목을 등록했습니다.' : '변경 사항을 저장했습니다.');
       await queryClient.invalidateQueries({ queryKey: ['admin-records', tab] });
-    } catch {
+    } catch (error) {
       setInvalid(true);
-      flash('입력값을 확인해 주세요.');
+      flash(reasonOf(error, '입력값을 확인해 주세요.'));
     }
   };
 
@@ -436,8 +477,8 @@ export function useAdminRecords(tab: AdminTableTab) {
       setDeletingId(null);
       flash(tab === 'counselor' ? '계정을 비활성화했습니다.' : '항목을 삭제했습니다.');
       await queryClient.invalidateQueries({ queryKey: ['admin-records', tab] });
-    } catch {
-      flash('참조 중인 항목은 삭제할 수 없습니다.');
+    } catch (error) {
+      flash(reasonOf(error, '참조 중인 항목은 삭제할 수 없습니다.'));
     }
   };
 
@@ -447,8 +488,8 @@ export function useAdminRecords(tab: AdminTableTab) {
       await updateAdminCounselor(id, { isActive: true });
       flash('계정을 승인했습니다.');
       await queryClient.invalidateQueries({ queryKey: ['admin-records', tab] });
-    } catch {
-      flash('계정을 승인하지 못했습니다.');
+    } catch (error) {
+      flash(reasonOf(error, '계정을 승인하지 못했습니다.'));
     }
   };
 
@@ -458,6 +499,9 @@ export function useAdminRecords(tab: AdminTableTab) {
   return {
     schema,
     rows: visibleRows,
+    isLoading: recordsQuery.isPending,
+    loadError,
+    retryLoad: () => void recordsQuery.refetch(),
     query,
     setQuery,
     draft,
