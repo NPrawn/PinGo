@@ -113,9 +113,7 @@ function createFakeController(initial: XrSessionState) {
 }
 
 function renderSession(controller: XrSessionController) {
-  return renderHook(() =>
-    useXrNavigationSession({ controller, currentIndoorLocation: CONFIRMED }),
-  );
+  return renderHook(() => useXrNavigationSession({ controller, currentIndoorLocation: CONFIRMED }));
 }
 
 const TRACKING: XrSessionState = { status: 'tracking', referenceSpaceType: 'local' };

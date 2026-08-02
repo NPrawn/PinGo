@@ -20,6 +20,7 @@ export { LivePill } from './LivePill';
 export { MapPreview } from './MapPreview';
 export { FloorRail, MapToggle, FacilityPin, HeadingMarker } from './MapControls';
 export { PagerDots } from './PagerDots';
+export { PasswordField } from './PasswordField';
 export { Pill, PillButton } from './Pill';
 export { ProgressSteps } from './ProgressSteps';
 export { SelectRow } from './SelectRow';

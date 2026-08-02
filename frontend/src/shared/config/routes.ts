@@ -29,8 +29,12 @@ export const USER_ROUTES = {
   CAPTURE_PORTRAIT: `${USER}/capture/portrait`, // s-cam-port
   /** Legacy deep link. Redirects to the combined capture and matching screen. */
   ANALYZING: `${USER}/analyzing`,
-  LOCATE_FAILED: `${USER}/locate/failed`, // s-fail
-  LOCATE_MANUAL: `${USER}/locate/manual`, // s-mapselect
+  /**
+   * 위치 인식은 카메라 촬영만 쓴다.
+   *
+   * 프로토타입의 실패 화면(s-fail)과 지도 직접 선택(s-mapselect)은 두지 않는다. 촬영이
+   * 실패하면 촬영 화면이 시트로 재촬영·상담을 안내한다.
+   */
   LOCATE_SUCCESS: `${USER}/locate/success`, // s-success
   ROUTE_OPTIONS: `${USER}/route`, // s-route
   NAVIGATION: `${USER}/navigation`, // s-nav
@@ -56,7 +60,6 @@ export const COUNSELOR_ROUTES = {
   CONNECT_FAILED: `${COUNSELOR}/session/failed`, // c-failed
   SESSION: `${COUNSELOR}/session`, // c-rtc
   HISTORY: `${COUNSELOR}/history`, // c-history
-  STATS: `${COUNSELOR}/stats`, // c-stats
 } as const;
 
 /** Admin console. Prototype id `a-console`, one screen with six tabs. */

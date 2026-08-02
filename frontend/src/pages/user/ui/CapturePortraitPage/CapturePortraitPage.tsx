@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useNavigationStore } from '@/entities/navigation';
+import { useStationStore } from '@/entities/station';
+import { useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
+import { getStationMaps, localize, updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
 import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
@@ -8,6 +13,7 @@ import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './CapturePortraitPage.module.css';
 
 const CAPTURE_SECONDS = 15;
+const CAPTURE_RETRY_DELAY_MS = 1200;
 
 const DIRECTIONS = [
   {
@@ -33,25 +39,167 @@ const DIRECTIONS = [
 /**
  * Camera capture and VPS matching happen together on this screen.
  *
- * TODO: Replace the elapsed-time phases with real camera capture progress and
- * navigate to `LOCATE_SUCCESS` as soon as the VPS matching response succeeds.
+ * Samples camera frames until the 15-second deadline and navigates to
+ * `LOCATE_SUCCESS` as soon as one VPS matching response succeeds.
  */
 export function CapturePortraitPage() {
+  const navigate = useNavigate();
+  const stationId = useStationStore((state) => state.stationId);
+  const setFloor = useStationStore((state) => state.setFloor);
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const setCurrentLocation = useNavigationStore((state) => state.setCurrentLocation);
+  /**
+   * 카메라는 위젯이 소유한다. 이 화면은 프레임만 떠 간다.
+   *
+   * 촬영 흐름의 여러 화면이 같은 스트림을 이어 쓰고 XR 진입 때 한 곳에서 끊어야 하므로,
+   * 화면이 직접 `getUserMedia`를 부르지 않는다(11.8).
+   */
   const camera = useCameraPreview();
+  const captureInFlight = useRef(false);
+  const timedOutRef = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
   const [currentDirection, setCurrentDirection] = useState(1);
   const direction = DIRECTIONS[currentDirection];
   const remaining = Math.max(CAPTURE_SECONDS - elapsed, 0);
+  /**
+   * 카메라를 켤 수 없는 상태. 거부·미지원·실패를 함께 다룬다.
+   *
+   * 어느 쪽이든 뜰 프레임이 없어 15초를 기다릴 이유가 없다. 곧바로 재시도·상담 안내를 띄운다.
+   */
+  const cameraBlocked =
+    camera.status === 'denied' || camera.status === 'unsupported' || camera.status === 'error';
 
   useEffect(() => {
+    let disposed = false;
+    let captureTimer: number | undefined;
+
+    function scheduleNextCapture(delay = CAPTURE_RETRY_DELAY_MS) {
+      if (disposed || timedOutRef.current) return;
+      captureTimer = window.setTimeout(() => void captureAndLocalize(), delay);
+    }
+
+    async function captureAndLocalize() {
+      // 등록되지 않은 역은 VPS 맵도 없다. 촬영해도 물어볼 곳이 없다.
+      if (disposed || timedOutRef.current || !userSessionId || stationId == null) return;
+      if (captureInFlight.current) {
+        scheduleNextCapture();
+        return;
+      }
+
+      const video = camera.videoRef.current;
+      if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+        scheduleNextCapture();
+        return;
+      }
+      // 위치추정은 카메라가 실제로 본 화면과 내부 파라미터가 맞아야 한다. 화면 표시 크기가
+      // 아니라 원본 해상도를 그대로 보낸다.
+      const frameWidth = video.videoWidth;
+      const frameHeight = video.videoHeight;
+
+      captureInFlight.current = true;
+      let localized = false;
+      try {
+        const blob = await camera.capture();
+        if (!blob) throw new Error('Camera frame encoding failed');
+
+        const maps = await getStationMaps(stationId);
+        const mapVersion = maps.find((map) => map.version)?.version;
+        if (!mapVersion) throw new Error('VPS map is not ready');
+
+        const result = await localize(new File([blob], 'capture.jpg', { type: 'image/jpeg' }), {
+          userSessionId,
+          stationId,
+          mapVersion,
+          capturedAt: new Date().toISOString(),
+          camera: {
+            model: 'PINHOLE',
+            width: frameWidth,
+            height: frameHeight,
+            intrinsicsSource: 'browser',
+          },
+        });
+        // 앵커링에 성공하면 서버가 경로 시작 노드와 캐노니컬 좌표를 함께 준다.
+        // 좌표 정합이 없는 층(역삼역 B1)은 status가 map_not_ready로 내려온다. (S15P11A206-128)
+        const position = result.position;
+
+        if (disposed || timedOutRef.current) return;
+        if (
+          result.resultStatus === 'success' &&
+          result.startNodeId != null &&
+          position?.floorId != null
+        ) {
+          localized = true;
+          setCurrentLocation({
+            nodeId: result.startNodeId,
+            floorId: position.floorId,
+            label: result.startNodeLabel ?? undefined,
+            mapX: position.mapX,
+            mapY: position.mapY,
+          });
+          const floorCode = maps.find((map) => map.floorId === position.floorId)?.floorCode;
+          if (
+            floorCode === '1F' ||
+            floorCode === 'B1' ||
+            floorCode === 'B2' ||
+            floorCode === 'B3'
+          ) {
+            setFloor(floorCode);
+          }
+          await updateUserSession(userSessionId, { currentNodeId: result.startNodeId });
+          navigate(USER_ROUTES.LOCATE_SUCCESS, { replace: true });
+          return;
+        }
+      } catch {
+        // A single frame can fail while the user is still turning the camera.
+        // Keep sampling until the shared 15-second deadline expires.
+      } finally {
+        captureInFlight.current = false;
+        if (!localized) scheduleNextCapture();
+      }
+    }
+
+    /**
+     * 카메라가 켜질 때까지 기다렸다가 촬영을 시작한다.
+     *
+     * 위젯이 스트림을 잡는 동안에는 `videoWidth`가 0이라 뜰 프레임이 없다. 위의
+     * `captureAndLocalize`가 그 경우 스스로 다시 예약하므로 곧바로 걸어도 된다.
+     *
+     * 카메라를 아예 켤 수 없으면 촬영을 걸지 않는다. 안내는 `cameraBlocked`가 화면에서
+     * 바로 띄우므로 여기서 상태를 건드리지 않는다.
+     */
+    if (cameraBlocked) {
+      timedOutRef.current = true;
+    } else {
+      scheduleNextCapture(0);
+    }
+
+    return () => {
+      disposed = true;
+      if (captureTimer) window.clearTimeout(captureTimer);
+    };
+  }, [
+    attempt,
+    camera,
+    cameraBlocked,
+    navigate,
+    setCurrentLocation,
+    setFloor,
+    stationId,
+    userSessionId,
+  ]);
+
+  useEffect(() => {
+    timedOutRef.current = false;
+
     const timer = window.setInterval(() => {
       setElapsed((value) => {
         const next = value + 1;
 
         if (next >= CAPTURE_SECONDS) {
           window.clearInterval(timer);
+          timedOutRef.current = true;
           setTimeoutOpen(true);
           return CAPTURE_SECONDS;
         }
@@ -63,17 +211,21 @@ export function CapturePortraitPage() {
     return () => window.clearInterval(timer);
   }, [attempt]);
 
+  /** 안내 시트가 떠 있으면 촬영 방향 안내를 돌리지 않는다. */
+  const noticeOpen = timeoutOpen || cameraBlocked;
+
   useEffect(() => {
-    if (timeoutOpen) return;
+    if (noticeOpen) return;
 
     const guideTimer = window.setTimeout(() => {
       setCurrentDirection((value) => (value + 1) % DIRECTIONS.length);
     }, 2500);
 
     return () => window.clearTimeout(guideTimer);
-  }, [currentDirection, timeoutOpen]);
+  }, [currentDirection, noticeOpen]);
 
   const retryCapture = () => {
+    timedOutRef.current = false;
     setTimeoutOpen(false);
     setElapsed(0);
     setCurrentDirection(1);
@@ -86,7 +238,7 @@ export function CapturePortraitPage() {
       bodyClassName={styles.body}
       statusBarClassName={styles.statusBar}
       overlay={
-        timeoutOpen ? (
+        noticeOpen ? (
           <Sheet placement="center" label="현재 위치를 찾지 못했어요">
             <BlobHero className={styles.timeoutHero}>
               <Blob tone="coral" slot="main" style={{ width: 76, height: 76 }} />

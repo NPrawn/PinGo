@@ -10,11 +10,8 @@ export { useConsultStore } from './model/consultStore';
 export { useCounselorQueueStore } from './model/counselorQueueStore';
 export type { RequestStatus } from './model/counselorQueueStore';
 export {
-  STAT_TILES,
-  ISSUE_BREAKDOWN,
-  LANGUAGE_BREAKDOWN,
-  HOURLY_VOLUME,
-  TOP_EXITS,
-  AVERAGE_SATISFACTION,
-} from './model/statsFixtures';
-export type { StatTile, BarDatum, LanguageDatum } from './model/statsFixtures';
+  CONSULTATION_STATUS_LABELS,
+  CONSULTATION_PROBLEM_LABELS,
+  consultationStatusLabel,
+  consultationProblemLabel,
+} from './model/statusLabels';

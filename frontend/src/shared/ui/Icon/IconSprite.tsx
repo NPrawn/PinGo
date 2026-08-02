@@ -151,6 +151,34 @@ export function IconSprite() {
             d="M2.8 6.4H15V3.4l6.2 4L15 11.4V8.6H2.8V6.4Zm18.4 9H9v-3l-6.2 4 6.2 4v-2.8h12.2v-2.2Z"
           />
         </symbol>
+        {/* `eye`/`eye-off` are stroked outlines — added for password reveal
+            toggles, which the prototype did not have. */}
+        <symbol id="i-eye" viewBox="0 0 24 24">
+          <g
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M1.5 12S5.4 5 12 5s10.5 7 10.5 7-3.9 7-10.5 7S1.5 12 1.5 12Z" />
+            <circle cx="12" cy="12" r="3.1" />
+          </g>
+        </symbol>
+        <symbol id="i-eye-off" viewBox="0 0 24 24">
+          <g
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M17.9 17.9A10.8 10.8 0 0 1 12 19.5C5.4 19.5 1.5 12 1.5 12a19.6 19.6 0 0 1 4.9-5.7" />
+            <path d="M9.9 4.8A11.4 11.4 0 0 1 12 4.5c6.6 0 10.5 7.5 10.5 7.5a19.7 19.7 0 0 1-2.3 3.4" />
+            <path d="M14.1 14.1a3.1 3.1 0 1 1-4.2-4.2" />
+            <path d="M2.6 2.6l18.8 18.8" />
+          </g>
+        </symbol>
         <symbol id="i-flag" viewBox="0 0 24 24">
           <path fillRule="evenodd" d="M4.4 1.8h14.8l-3.4 5.2 3.4 5.2H6.6v10H4.4V1.8Z" />
         </symbol>

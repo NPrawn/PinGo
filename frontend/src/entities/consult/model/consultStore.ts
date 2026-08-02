@@ -1,12 +1,21 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 type ConsultStore = {
   /** Index into `CONSULT_ISSUES`, or null before the user picks one. */
   issue: number | null;
   /** 1–5 star rating collected when the consultation ends. */
   satisfaction: number;
+  consultationId: string | null;
+  signalingRoomId: string | null;
+  /** Signaling WebSocket handshake token issued with the room. */
+  signalingAccessToken: string | null;
   selectIssue: (index: number) => void;
   rate: (score: number) => void;
+  setConsultation: (consultationId: string) => void;
+  setSignalingRoom: (signalingRoomId: string, signalingAccessToken?: string | null) => void;
+  /** 진행 중인 상담 정보만 비운다. 선택한 문의 유형은 유지한다. */
+  clearConsultation: () => void;
   reset: () => void;
 };
 
@@ -19,10 +28,41 @@ type ConsultStore = {
  * The prototype reused its `landmark` field for the issue type, which coupled
  * the consult flow to the location-recognition flow; they are separate here.
  */
-export const useConsultStore = create<ConsultStore>((set) => ({
-  issue: null,
-  satisfaction: 0,
-  selectIssue: (issue) => set({ issue }),
-  rate: (satisfaction) => set({ satisfaction }),
-  reset: () => set({ issue: null, satisfaction: 0 }),
-}));
+export const useConsultStore = create<ConsultStore>()(
+  persist(
+    (set) => ({
+      issue: null,
+      satisfaction: 0,
+      consultationId: null,
+      signalingRoomId: null,
+      signalingAccessToken: null,
+      selectIssue: (issue) => set({ issue }),
+      rate: (satisfaction) => set({ satisfaction }),
+      setConsultation: (consultationId) => set({ consultationId }),
+      setSignalingRoom: (signalingRoomId, signalingAccessToken = null) =>
+        set({ signalingRoomId, signalingAccessToken }),
+      clearConsultation: () =>
+        set({ consultationId: null, signalingRoomId: null, signalingAccessToken: null }),
+      reset: () =>
+        set({
+          issue: null,
+          satisfaction: 0,
+          consultationId: null,
+          signalingRoomId: null,
+          signalingAccessToken: null,
+        }),
+    }),
+    {
+      name: 'pingo.consult',
+      storage: createJSONStorage(() => sessionStorage),
+      // signaling 토큰은 10분이면 만료된다. 새로고침 뒤에 만료된 토큰으로 접속하면
+      // 서버가 handshake를 거절하므로, 저장하지 않고 상담 화면에서 다시 받는다.
+      partialize: (state) => ({
+        issue: state.issue,
+        satisfaction: state.satisfaction,
+        consultationId: state.consultationId,
+        signalingRoomId: state.signalingRoomId,
+      }),
+    },
+  ),
+);

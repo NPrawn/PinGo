@@ -11,6 +11,13 @@ type AdminTableProps = {
   onCreate: () => void;
   onEdit: (id: number) => void;
   onDelete: (id: number) => void;
+  /** Rows this returns true for get an extra approve action. */
+  isApprovable?: (row: AdminRecord) => boolean;
+  onApprove?: (id: number) => void;
+  /** Label of the destructive action. Defaults to 삭제. */
+  deleteLabel?: string;
+  /** Hides the destructive action for rows this returns false for. */
+  isDeletable?: (row: AdminRecord) => boolean;
 };
 
 /** The searchable CRUD table shared by five of the six admin tabs. */
@@ -22,6 +29,10 @@ export function AdminTable({
   onCreate,
   onEdit,
   onDelete,
+  isApprovable,
+  onApprove,
+  deleteLabel = '삭제',
+  isDeletable,
 }: AdminTableProps) {
   return (
     <>
@@ -30,9 +41,11 @@ export function AdminTable({
           <h2 className={styles.title}>{schema.title}</h2>
           <p className={styles.desc}>{schema.desc}</p>
         </div>
-        <Button size="sm" className={styles.newButton} onClick={onCreate}>
-          ＋ {schema.newLabel}
-        </Button>
+        {schema.newLabel && (
+          <Button size="sm" className={styles.newButton} onClick={onCreate}>
+            ＋ {schema.newLabel}
+          </Button>
+        )}
       </div>
 
       <div className={styles.toolbar}>
@@ -91,12 +104,19 @@ export function AdminTable({
               );
             })}
             <span className={styles.actions}>
+              {onApprove && isApprovable?.(row) && (
+                <button type="button" className={styles.approve} onClick={() => onApprove(row.id)}>
+                  수락
+                </button>
+              )}
               <button type="button" className={styles.edit} onClick={() => onEdit(row.id)}>
                 수정
               </button>
-              <button type="button" className={styles.delete} onClick={() => onDelete(row.id)}>
-                삭제
-              </button>
+              {(isDeletable?.(row) ?? true) && (
+                <button type="button" className={styles.delete} onClick={() => onDelete(row.id)}>
+                  {deleteLabel}
+                </button>
+              )}
             </span>
           </div>
         ))}

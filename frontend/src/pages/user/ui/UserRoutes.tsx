@@ -1,4 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useUserSessionBootstrap } from '@/entities/user-session';
 import { USER_ROUTES } from '@/shared/config';
 import { ArrivalPage } from './ArrivalPage/ArrivalPage';
 import { BackstagePage } from './BackstagePage/BackstagePage';
@@ -10,8 +12,6 @@ import { ConsultRequestPage } from './ConsultRequestPage/ConsultRequestPage';
 import { ConsultSessionPage } from './ConsultSessionPage/ConsultSessionPage';
 import { ConsultWaitingPage } from './ConsultWaitingPage/ConsultWaitingPage';
 import { LanguagePage } from './LanguagePage/LanguagePage';
-import { LocateFailedPage } from './LocateFailedPage/LocateFailedPage';
-import { LocateManualPage } from './LocateManualPage/LocateManualPage';
 import { LocateSuccessPage } from './LocateSuccessPage/LocateSuccessPage';
 import { NavigationPage } from './NavigationPage/NavigationPage';
 import { OfflinePage } from './OfflinePage/OfflinePage';
@@ -33,6 +33,9 @@ const rel = (path: string) => path.slice('/user/'.length);
  * The legacy hash id for each route is recorded in `shared/config/routes.ts`.
  */
 export function UserRoutes() {
+  const { i18n } = useTranslation();
+  useUserSessionBootstrap(i18n.language);
+
   return (
     <Routes>
       <Route index element={<Navigate to={USER_ROUTES.SPLASH} replace />} />
@@ -50,8 +53,19 @@ export function UserRoutes() {
         path={rel(USER_ROUTES.ANALYZING)}
         element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
       />
-      <Route path={rel(USER_ROUTES.LOCATE_FAILED)} element={<LocateFailedPage />} />
-      <Route path={rel(USER_ROUTES.LOCATE_MANUAL)} element={<LocateManualPage />} />
+      {/*
+        위치 인식은 카메라 촬영만 쓴다. 실패하면 촬영 화면이 시트를 띄워 재촬영·상담으로
+        보내므로, 지도에서 직접 고르는 화면(locate/manual)과 실패 전용 화면(locate/failed)은
+        두지 않는다. 예전 링크는 촬영 화면으로 돌린다.
+      */}
+      <Route
+        path="locate/failed"
+        element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
+      />
+      <Route
+        path="locate/manual"
+        element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
+      />
       <Route path={rel(USER_ROUTES.LOCATE_SUCCESS)} element={<LocateSuccessPage />} />
 
       {/* Destination and routing */}
@@ -61,6 +75,8 @@ export function UserRoutes() {
       <Route path={rel(USER_ROUTES.BACKSTAGE)} element={<BackstagePage />} />
       <Route path={rel(USER_ROUTES.NAVIGATION_REROUTE)} element={<ReroutePage />} />
       <Route path={rel(USER_ROUTES.ARRIVAL)} element={<ArrivalPage />} />
+      {/* 역 밖 도보 안내는 다루지 않는다. 안내는 출입구에서 끝난다. */}
+      <Route path="external-map" element={<Navigate to={USER_ROUTES.STATION} replace />} />
 
       {/* Consultation */}
       <Route path={rel(USER_ROUTES.CONSULT_REQUEST)} element={<ConsultRequestPage />} />

@@ -11,6 +11,10 @@ import styles from './LocateSuccessPage.module.css';
 /** Keep the live camera visible while the user confirms the matched position. */
 export function LocateSuccessPage() {
   const station = useStationStore((state) => state.station);
+  const floor = useStationStore((state) => state.floor);
+  /** 위치 인식이 준 경로 시작 노드의 이름. 역·층 표기보다 구체적이다. */
+  const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const locationText = currentLocationLabel ?? `${station} · ${floor}`;
   /** 안내 중 재인식으로 왔는지. 돌아갈 화면을 가른다. (S15P11A206-141) */
   const relocalizing = useNavigationStore((state) => state.relocalizing);
   const camera = useCameraPreview();
@@ -73,7 +77,7 @@ export function LocateSuccessPage() {
               <Icon name="check" size={22} />
             </span>
             <strong>현재 위치를 찾았어요</strong>
-            <span>{station} · B1 대합실</span>
+            <span>{locationText}</span>
           </div>
 
           <div className={styles.cameraMeta}>
@@ -100,7 +104,7 @@ export function LocateSuccessPage() {
             <div className={styles.locationRow}>
               <Icon3d name="pin" iconSize={20} className={styles.mark} />
               <div className={styles.locationBody}>
-                <b>{station} · B1 대합실</b>
+                <b>{locationText}</b>
                 <span>3번 출구 방면 · 12번 기둥 부근</span>
               </div>
               <span className={styles.confirmedBadge}>

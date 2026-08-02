@@ -1,14 +1,43 @@
 /* Ported from the prototype's `.wtabs` strip on the counselor screens. */
 
+/* Counselor name in the tab strip. Truncates instead of pushing the status
+   select and logout link out of the window. */
+.name {
+  max-width: 120px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-sub);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-ink);
+  background: #fff;
+  border: 1px solid var(--color-line-soft);
+  border-radius: 8px;
+}
+
+.statusError {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b42318;
+  white-space: nowrap;
+}
+
 .logout {
   display: inline-flex;
   align-items: center;
-  margin-right: 14px;
-  margin-left: auto;
   font-size: 11.5px;
   font-weight: 700;
   color: var(--color-sub);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 /* Live-call status in the window chrome — prototype `#c-rtc` winbar. */

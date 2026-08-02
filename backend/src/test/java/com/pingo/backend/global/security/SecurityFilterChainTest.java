@@ -20,6 +20,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 import javax.crypto.SecretKey;
@@ -29,7 +30,9 @@ import java.util.Date;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -90,6 +93,18 @@ class SecurityFilterChainTest {
     void 비로그인_공개조회API_200() throws Exception {
         mockMvc.perform(get("/api/stations/" + stationId))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void 로컬_상담자_프론트_5174_CORS_허용() throws Exception {
+        mockMvc.perform(options("/api/auth/check-login-id")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5174")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
+                        "http://localhost:5174"
+                ));
     }
 
 

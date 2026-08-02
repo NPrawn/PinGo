@@ -26,6 +26,12 @@ public class AdminAccountController {
         return ApiResponse.success(adminAccountService.listCounselors(stationId, isActive));
     }
 
+    @GetMapping("/{accountId}")
+    public ApiResponse<AccountDetailResponse> get(
+            @PathVariable Long accountId){
+        return ApiResponse.success(adminAccountService.getCounselor(accountId));
+    }
+
     @PatchMapping("/{accountId}")
     public ApiResponse<AccountDetailResponse> update(
             @PathVariable Long accountId,

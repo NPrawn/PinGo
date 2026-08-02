@@ -1,7 +1,11 @@
 /* Progressive origin/destination selector. Only the active task is expanded. */
 
+/*
+ * 한 단계만 펼치는 구성이라 원래는 스크롤이 필요 없었지만, 검색 결과가 길어지면 프레임을
+ * 넘어간다. PhoneFrame 의 세로 스크롤을 그대로 쓰게 두고 잘리지 않도록 한다.
+ */
 .body {
-  overflow-y: hidden;
+  overflow-y: auto;
 }
 
 .mainHeader {
@@ -217,6 +221,17 @@
   box-shadow: var(--shadow-sm);
 }
 
+/*
+ * 활성 단계 카드는 남은 높이 안에 들어가야 한다. 세로 flex 로 두고 min-height:0 을 주면
+ * 검색 결과 목록이 남은 공간까지만 차지하고 그 안에서 스크롤한다.
+ */
+.section {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .sectionEntering {
   animation: reveal-step 240ms ease-out both;
 }
@@ -236,6 +251,7 @@
 .sectionHead,
 .summaryHeading {
   display: flex;
+  flex: none;
   gap: 10px;
   align-items: center;
 }

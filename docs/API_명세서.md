@@ -481,14 +481,28 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 
 역 이름으로 역을 검색한다.
 
+등록된 역을 먼저 담고, 이어서 카카오 지하철역 검색 결과를 붙인다. 등록된 역만 조회하면 아직 실내
+지도를 준비하지 않은 역이 "결과 없음"으로 보이기 때문이다. 카카오 결과는 `stationId`가 없고
+`serviceReady=false`이며 실내 안내 대상이 아니다.
+
+`keyword`를 생략하면 등록된 역 전체만 반환하고 외부 검색은 하지 않는다. 상담자 회원가입처럼 담당
+역을 고르는 화면이 이 경로를 쓴다.
+
 #### Query
 
-| 이름     | 타입   | 필수 | 설명   |
-| -------- | ------ | ---- | ------ |
-| keyword  | string | Y    | 검색어 |
-| language | string | N    | ko, en |
+| 이름     | 타입   | 필수 | 설명                                  |
+| -------- | ------ | ---- | ------------------------------------- |
+| keyword  | string | N    | 검색어. 생략 시 등록된 역 전체 반환   |
+| language | string | N    | ko, en                                |
 
 #### Response
+
+| 필드         | 설명                                                           |
+| ------------ | -------------------------------------------------------------- |
+| stationId    | 등록된 역의 ID. 외부 검색 결과는 `null`                        |
+| provider     | `pingo`(등록된 역) 또는 `kakao`(외부 검색)                     |
+| externalId   | 카카오 장소 ID. 등록된 역은 `null`                             |
+| serviceReady | 실내 안내 가능 여부. 외부 검색 결과는 항상 `false`             |
 
 ```json
 {
@@ -496,14 +510,34 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
   "data": [
     {
       "stationId": 1,
-      "nameKo": "강남역",
-      "nameEn": "Gangnam Station",
-      "lineInfo": "2호선, 신분당선"
+      "nameKo": "역삼역",
+      "nameEn": "Yeoksam Station",
+      "lineInfo": "2호선",
+      "provider": "pingo",
+      "externalId": null,
+      "address": null,
+      "latitude": 37.5007000,
+      "longitude": 127.0365000,
+      "serviceReady": true
+    },
+    {
+      "stationId": null,
+      "nameKo": "선릉역",
+      "nameEn": null,
+      "lineInfo": "2호선·수인분당선",
+      "provider": "kakao",
+      "externalId": "21160338",
+      "address": "서울 강남구 테헤란로 340",
+      "latitude": 37.5045200,
+      "longitude": 127.0489130,
+      "serviceReady": false
     }
   ],
   "message": null
 }
 ```
+
+카카오 검색이 실패하거나 `KAKAO_REST_API_KEY`가 없으면 등록된 역만 반환한다.
 
 ---
 
@@ -1756,7 +1790,10 @@ Authorization: Bearer {accessToken}
       "stationId": 1,
       "problemType": "CANNOT_FIND_EXIT",
       "status": "WAITING",
+      "currentNodeId": 101,
       "currentLocationLabel": "B2 개찰구 앞",
+      "destinationType": "place",
+      "destinationId": 3,
       "destinationLabel": "COEX Mall",
       "requestedAt": "2026-07-16T03:00:00Z"
     }
@@ -1764,6 +1801,10 @@ Authorization: Bearer {accessToken}
   "message": null
 }
 ```
+
+`status`를 지정하지 않으면 담당 역의 모든 상담을 반환한다. 상담자 콘솔의 요청 목록과 상담 이력이 같은 응답을 사용한다.
+
+`currentLocationLabel`, `destinationLabel`은 route_node-facility 연결이 정리되기 전까지 식별자 기반 임시 문자열(`Node 101`, `place 3`)이며, 좌표·시설 연결 이후 실제 명칭으로 바뀐다.
 
 ---
 ## 11.3 상담 요청 상세 조회

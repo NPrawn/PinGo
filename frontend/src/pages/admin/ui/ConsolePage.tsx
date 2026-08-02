@@ -43,6 +43,10 @@ export function ConsolePage() {
           onCreate={records.startCreate}
           onEdit={records.startEdit}
           onDelete={records.askDelete}
+          isApprovable={records.isApprovable}
+          onApprove={(id) => void records.approve(id)}
+          deleteLabel={records.deleteLabel}
+          isDeletable={records.isDeletable}
         />
       ) : (
         <IndoorMapPanel onFlash={records.flash} />
@@ -63,6 +67,8 @@ export function ConsolePage() {
       {records.deletingId != null && (
         <DeleteRecordDialog
           name={records.deletingName}
+          actionLabel={records.deleteLabel}
+          description={records.deleteDescription}
           onCancel={records.cancelDelete}
           onConfirm={records.confirmDelete}
         />

@@ -9,8 +9,8 @@ import type { RouteOption, RouteOptionsQuery } from '../model/types';
  */
 export async function getIndoorRouteOptions(query: RouteOptionsQuery): Promise<RouteOption[]> {
   const { data } = await apiClient.post<ApiResponse<RouteOption[]>>(
-    ENDPOINTS.indoorRouteOptions(),
+    ENDPOINTS.routes.indoorOptions,
     query,
   );
-  return data.data;
+  return data.data ?? [];
 }

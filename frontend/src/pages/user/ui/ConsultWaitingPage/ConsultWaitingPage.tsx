@@ -1,11 +1,20 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useConsultStore } from '@/entities/consult';
+import { useUserSessionStore } from '@/entities/user-session';
+import {
+  ApiError,
+  cancelConsultation,
+  getConsultation,
+  subscribeToConsultationWaitingEvents,
+} from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import {
   Blob,
   BlobHero,
   BlobPin,
-  ButtonLink,
   Card,
-  GhostLink,
+  GhostButton,
   Icon,
   LivePill,
   Spring,
@@ -15,13 +24,113 @@ import {
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './ConsultWaitingPage.module.css';
 
+const MISSING_TOKEN_MESSAGE = '상담 연결 정보를 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
+
 /**
  * Screen 19 (FR-U-014) — waiting in the consult queue.
  *
- * TODO: Advance automatically when the counselor accepts, once the signalling
- * events are wired. The prototype required a manual tap.
+ * 상담 대기 SSE를 구독하고 수락 이벤트를 받으면 상담 화면으로 이동한다.
  */
 export function ConsultWaitingPage() {
+  const navigate = useNavigate();
+  const consultationId = useConsultStore((state) => state.consultationId);
+  const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const clearConsultation = useConsultStore((state) => state.clearConsultation);
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const [statusMessage, setStatusMessage] = useState('잠시만 기다려 주세요 · 평균 30초 소요');
+
+  useEffect(() => {
+    if (!consultationId || !userSessionId) return;
+
+    void getConsultation(consultationId, userSessionId)
+      .then((consultation) => {
+        if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
+          if (!consultation.signalingAccessToken) {
+            setStatusMessage(MISSING_TOKEN_MESSAGE);
+            return;
+          }
+          setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
+          void navigate(USER_ROUTES.CONSULT_SESSION);
+          return;
+        }
+        // 세션에 남아 있던 옛 요청이면 대기할 것이 없다.
+        if (consultation.status && consultation.status !== 'WAITING') {
+          clearConsultation();
+          void navigate(USER_ROUTES.CONSULT_REQUEST);
+        }
+      })
+      .catch(() => {
+        clearConsultation();
+        void navigate(USER_ROUTES.CONSULT_REQUEST);
+      });
+
+    const events = subscribeToConsultationWaitingEvents(consultationId);
+    const handleAccepted = (event: MessageEvent<string>) => {
+      try {
+        const acceptedRoomId = (JSON.parse(event.data) as { signalingRoomId?: string })
+          .signalingRoomId;
+        // SSE 이벤트에는 handshake 토큰이 없다. 토큰 없이 상담 화면을 열면 서버가
+        // WebSocket 접속을 거절하므로, 상세 조회로 토큰을 받은 뒤에 넘어간다.
+        void getConsultation(consultationId, userSessionId)
+          .then((consultation) => {
+            const roomId = consultation.signalingRoomId ?? acceptedRoomId;
+            if (!roomId || !consultation.signalingAccessToken) {
+              setStatusMessage(MISSING_TOKEN_MESSAGE);
+              return;
+            }
+            setSignalingRoom(roomId, consultation.signalingAccessToken);
+            void navigate(USER_ROUTES.CONSULT_SESSION);
+          })
+          .catch(() => setStatusMessage(MISSING_TOKEN_MESSAGE));
+      } catch {
+        setStatusMessage('상담 연결 정보를 읽지 못했습니다.');
+      }
+    };
+    const handleUnavailable = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as { message?: string };
+        setStatusMessage(payload.message ?? '상담 연결을 완료하지 못했습니다.');
+      } catch {
+        setStatusMessage('상담 연결을 완료하지 못했습니다.');
+      }
+    };
+
+    events.addEventListener('ACCEPTED', handleAccepted as EventListener);
+    events.addEventListener('REJECTED', handleUnavailable as EventListener);
+    events.addEventListener('NO_COUNSELOR', handleUnavailable as EventListener);
+
+    return () => events.close();
+  }, [clearConsultation, consultationId, navigate, setSignalingRoom, userSessionId]);
+
+  const leaveWaiting = () => {
+    clearConsultation();
+    void navigate(USER_ROUTES.CONSULT_REQUEST);
+  };
+
+  const cancel = async () => {
+    if (!consultationId || !userSessionId) {
+      leaveWaiting();
+      return;
+    }
+
+    try {
+      await cancelConsultation(consultationId, userSessionId);
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : undefined;
+      // 이미 취소·종료됐거나 찾을 수 없는 요청이면 대기 화면에 남을 이유가 없다.
+      const alreadyGone =
+        code === 'CONSULTATION_NOT_CANCELABLE' || code === 'CONSULTATION_NOT_FOUND';
+      if (!alreadyGone) {
+        setStatusMessage(
+          error instanceof ApiError ? error.message : '상담 요청을 취소하지 못했습니다.',
+        );
+        return;
+      }
+    }
+
+    leaveWaiting();
+  };
+
   return (
     <PhoneFrame bodyClassName={styles.body}>
       <>
@@ -53,7 +162,7 @@ export function ConsultWaitingPage() {
           <br />
           연결하고 있어요
         </Title>
-        <Sub className={styles.sub}>잠시만 기다려 주세요 · 평균 30초 소요</Sub>
+        <Sub className={styles.sub}>{statusMessage}</Sub>
 
         <Card className={styles.tip}>
           <span className={styles.tipIcon}>
@@ -69,12 +178,9 @@ export function ConsultWaitingPage() {
         </Card>
 
         <Spring />
-        <ButtonLink to={USER_ROUTES.CONSULT_SESSION} variant="secondary" className={styles.primary}>
-          연결됨 · 상담 화면 보기
-        </ButtonLink>
-        <GhostLink to={USER_ROUTES.CONSULT_REQUEST} className={styles.cancel}>
+        <GhostButton className={styles.cancel} onClick={() => void cancel()}>
           요청 취소
-        </GhostLink>
+        </GhostButton>
       </>
     </PhoneFrame>
   );

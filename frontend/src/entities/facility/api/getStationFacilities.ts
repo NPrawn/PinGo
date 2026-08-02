@@ -14,9 +14,9 @@ export async function getStationFacilities(
   query: StationFacilitiesQuery = {},
 ): Promise<Facility[]> {
   const { data } = await apiClient.get<ApiResponse<Facility[]>>(
-    ENDPOINTS.stationFacilities(stationId),
+    ENDPOINTS.stations.facilities(stationId),
     // 값이 없는 항목은 보내지 않는다. axios가 undefined 파라미터를 생략한다.
     { params: { floorId: query.floorId, facilityType: query.facilityType } },
   );
-  return data.data;
+  return data.data ?? [];
 }

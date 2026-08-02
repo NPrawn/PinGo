@@ -456,7 +456,10 @@ class ConsultationSessionServiceTest {
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
-        given(consultationSessionRepository.findByStationIdAndStatusIn(STATION_ID, ACTIVE_STATUSES))
+        // status를 지정하지 않으면 전체 상태를 조회한다. 요청 목록과 상담 이력이 같은
+        // 엔드포인트를 쓰고, 화면에서 필요한 상태만 걸러 보여준다.
+        given(consultationSessionRepository
+                .findByStationIdAndStatusIn(STATION_ID, List.of(ConsultationStatus.values())))
                 .willReturn(List.of(session));
 
         List<ConsultationListResponse> responses =
@@ -729,4 +732,5 @@ class ConsultationSessionServiceTest {
         verify(counselor, never()).changeStatus(CounselorStatus.AVAILABLE);
         verify(applicationEventPublisher, never()).publishEvent(any());
     }
+
 }

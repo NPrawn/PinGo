@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCounselorQueueStore } from '@/entities/consult';
+import { useConsultStore, useCounselorQueueStore } from '@/entities/consult';
 import { DEFAULT_FACILITY_TINT, FACILITY_TINTS, FLOOR_FACILITY_PINS } from '@/entities/poi';
+import { useConsultSignaling } from '@/features/consult-signaling';
 import type { FloorId } from '@/shared/types';
 import { useScreenDraw } from '@/features/shared-screen-draw';
 import { COUNSELOR_ROUTES } from '@/shared/config';
+import { endConsultation, getCounselorConsultation } from '@/shared/api';
 import {
   Badge,
   Button,
@@ -28,6 +30,20 @@ const FLOORS: readonly { value: FloorId; label: string }[] = [
 /** Screen 30 (FR-C-004 / FR-W-002) — the counselor's live consultation view. */
 export function SessionPage() {
   const navigate = useNavigate();
+  const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
+  const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
+  const consultationId = useConsultStore((state) => state.consultationId);
+  const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const {
+    localVideoRef,
+    remoteVideoRef,
+    status,
+    error,
+    localCaption,
+    remoteCaption,
+    captionsSupported,
+  } = useConsultSignaling(signalingRoomId, 'COUNSELOR', signalingAccessToken);
   const selected = useCounselorQueueStore((state) => state.selected);
   const complete = useCounselorQueueStore((state) => state.complete);
   const [floor, setFloor] = useState<FloorId>('B1');
@@ -45,8 +61,31 @@ export function SessionPage() {
 
   const pins = FLOOR_FACILITY_PINS[floor];
 
+  /**
+   * 새로고침하면 signaling 토큰이 남지 않는다(짧은 만료 시간). 방은 알고 있으므로
+   * 상세 조회로 토큰만 다시 받아 WebSocket 접속이 401로 거절되지 않게 한다.
+   */
+  useEffect(() => {
+    if (!consultationId || !signalingRoomId || signalingAccessToken) return;
+
+    void getCounselorConsultation(consultationId)
+      .then((detail) => {
+        if (!detail.signalingRoomId || !detail.signalingAccessToken) {
+          setTokenError('상담 연결 정보를 받지 못했습니다. 상담 요청 목록에서 다시 입장해 주세요.');
+          return;
+        }
+        setSignalingRoom(detail.signalingRoomId, detail.signalingAccessToken);
+      })
+      .catch(() =>
+        setTokenError('상담 연결 정보를 받지 못했습니다. 상담 요청 목록에서 다시 입장해 주세요.'),
+      );
+  }, [consultationId, setSignalingRoom, signalingAccessToken, signalingRoomId]);
+
   /** Marks the request done so the queue shows it as completed, then leaves. */
-  const endCall = () => {
+  const endCall = async () => {
+    if (consultationId) {
+      await endConsultation(consultationId).catch(() => undefined);
+    }
     complete(selected);
     void navigate(COUNSELOR_ROUTES.REQUESTS);
   };
@@ -55,6 +94,14 @@ export function SessionPage() {
     <CounselorConsoleShell connected>
       <div className={styles.layout}>
         <div className={styles.main}>
+          <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteVideo} />
+          <video ref={localVideoRef} autoPlay muted playsInline className={styles.localVideo} />
+          <span
+            className={styles.connectionStatus}
+            role={error ?? tokenError ? 'alert' : undefined}
+          >
+            {error ?? tokenError ?? `연결 상태: ${status}`}
+          </span>
           <div className={styles.summary}>
             <div className={styles.summaryBody}>
               <div className={styles.summaryHead}>
@@ -96,7 +143,7 @@ export function SessionPage() {
                 </Badge>
               </div>
             </div>
-            <Button size="sm" className={styles.endCall} onClick={endCall}>
+            <Button size="sm" className={styles.endCall} onClick={() => void endCall()}>
               상담 종료
             </Button>
           </div>
@@ -329,14 +376,17 @@ export function SessionPage() {
               <div>
                 <span className={styles.speakerUser}>사용자</span>
                 <br />
-                <span className={styles.line}>지금 여기가 어딘지 모르겠어요.</span>
+                <span className={styles.line}>
+                  {remoteCaption ||
+                    (captionsSupported
+                      ? '사용자 음성을 인식하고 있습니다.'
+                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
+                </span>
               </div>
               <div>
                 <span className={styles.speakerAgent}>상담원</span>
                 <br />
-                <span className={styles.line}>
-                  12번 기둥 기준으로 왼쪽 엘리베이터로 안내드릴게요.
-                </span>
+                <span className={styles.line}>{localCaption || '상담원 음성 자막 대기 중'}</span>
               </div>
             </div>
           </div>

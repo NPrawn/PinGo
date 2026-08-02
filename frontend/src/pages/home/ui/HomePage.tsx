@@ -1,8 +1,6 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ConsoleLoginModal } from '@/features/console-auth';
-import { ROUTES } from '@/shared/config';
+import { ADMIN_ROUTES, COUNSELOR_ROUTES, ROUTES } from '@/shared/config';
 import { Blob, BlobHero, BlobPin, Icon, Icon3d, PillButton } from '@/shared/ui';
 import type { Icon3dTone, IconName } from '@/shared/ui';
 import styles from './HomePage.module.css';
@@ -12,10 +10,10 @@ type Role = {
   descKey: string;
   icon: IconName;
   tone: Icon3dTone;
-  /** User goes straight in; the two consoles sign in first. */
-  to?: string;
+  to: string;
 };
 
+/** 콘솔은 각자의 로그인 화면으로 보낸다. 로그인 창은 한 곳으로만 둔다. */
 const ROLES: readonly Role[] = [
   {
     to: ROUTES.USER,
@@ -25,12 +23,14 @@ const ROLES: readonly Role[] = [
     tone: 'mint',
   },
   {
+    to: COUNSELOR_ROUTES.LOGIN,
     nameKey: 'page.counselor',
     descKey: 'home.role.counselor',
     icon: 'headset',
     tone: 'coral',
   },
   {
+    to: ADMIN_ROUTES.LOGIN,
     nameKey: 'page.admin',
     descKey: 'home.role.admin',
     icon: 'gear',
@@ -48,8 +48,6 @@ const FEATURES: readonly { key: string; icon: IconName }[] = [
 export function HomePage() {
   const { t, i18n } = useTranslation();
   const isKorean = i18n.language === 'ko';
-  /** Name of the console whose sign-in dialog is open, if any. */
-  const [signingInTo, setSigningInTo] = useState<string | null>(null);
 
   return (
     <main className={styles.page}>
@@ -110,19 +108,10 @@ export function HomePage() {
               </>
             );
 
-            return role.to ? (
+            return (
               <Link key={role.nameKey} to={role.to} className={styles.role}>
                 {body}
               </Link>
-            ) : (
-              <button
-                key={role.nameKey}
-                type="button"
-                className={styles.role}
-                onClick={() => setSigningInTo(t(role.nameKey))}
-              >
-                {body}
-              </button>
             );
           })}
         </nav>
@@ -141,13 +130,6 @@ export function HomePage() {
           </div>
         ))}
       </section>
-
-      {signingInTo && (
-        <ConsoleLoginModal
-          label={`${signingInTo} ${t('home.enter')}`}
-          onClose={() => setSigningInTo(null)}
-        />
-      )}
     </main>
   );
 }

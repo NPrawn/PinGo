@@ -62,7 +62,28 @@ const FACILITIES = [
     linkedNodeId: 341,
     isAccessible: false,
   },
+  /**
+   * 엘리베이터로 닿는 유일한 출구. 역삼역에서 `is_accessible = 1`인 둘 중 하나다(V10).
+   *
+   * B2에 있어 B1↔B2 엘리베이터가 없는 것과 무관하게 도달할 수 있다. 엘리베이터 우선 경로가
+   * 실제로 갈 수 있는 출구가 하나는 있어야 그 흐름을 목업으로 따라갈 수 있다.
+   */
+  {
+    facilityId: 82,
+    stationId: 1,
+    floorId: 1,
+    facilityType: 'exit',
+    nameKo: '3번 출구',
+    nameEn: 'Exit 3',
+    mapX: -58.4,
+    mapY: 42.5,
+    linkedNodeId: 153,
+    isAccessible: true,
+  },
 ];
+
+/** 계단 없이 나갈 수 있는 출구의 도착 노드. 이 노드로 가는 경로만 엘리베이터로 완주된다. */
+const ACCESSIBLE_TARGET_NODE_ID = 153;
 
 /**
  * 층별 지도. 역삼역 배포 값을 그대로 옮겼다.
@@ -128,11 +149,184 @@ const ROUTE_OPTIONS = [
   },
 ];
 
+/**
+ * 계단 없이 닿는 출구로 가는 경로. 두 유형 모두 완주된다.
+ *
+ * 도착 노드가 달라지면 결과도 달라진다는 것이 이 흐름의 핵심이라 목업도 노드로 갈라 준다.
+ * 하나의 응답만 두면 "엘리베이터 우선은 늘 도달 불가"라는 잘못된 인상을 준다.
+ */
+const ACCESSIBLE_ROUTE_OPTIONS = [
+  {
+    routeType: 'fastest',
+    displayName: '빠른 경로',
+    available: true,
+    unavailableReason: null,
+    totalDistanceM: 117,
+    estimatedTimeSec: 123,
+    hasStairsOrEscalator: false,
+  },
+  {
+    routeType: 'elevator_only',
+    displayName: '엘리베이터 이용 경로',
+    available: true,
+    unavailableReason: null,
+    totalDistanceM: 117,
+    estimatedTimeSec: 123,
+    hasStairsOrEscalator: false,
+  },
+];
+
+/**
+ * 상세 경로. 안내 화면이 카드 문구와 지도 경로선을 이것으로 그린다.
+ *
+ * 노드와 좌표는 V8 시드의 실제 값이다 — B3 승강장(205)에서 B2 대합실을 지나 출구로 향한다.
+ * 첫 구간의 `instruction`이 안내 카드의 제목이 된다.
+ */
+const ROUTE_DETAIL = {
+  routeType: 'fastest',
+  displayName: '빠른 경로',
+  available: true,
+  unavailableReason: null,
+  startNodeId: 205,
+  targetNodeId: 325,
+  totalDistanceM: 224,
+  estimatedTimeSec: 252,
+  steps: [
+    {
+      order: 1,
+      fromNodeId: 205,
+      toNodeId: 202,
+      distanceM: 25,
+      estimatedTimeSec: 28,
+      moveType: 'walk',
+      instruction: '개찰구 방향으로 25m 직진하세요',
+    },
+    {
+      order: 2,
+      fromNodeId: 202,
+      toNodeId: 102,
+      distanceM: 6,
+      estimatedTimeSec: 40,
+      moveType: 'elevator',
+      instruction: '엘리베이터를 타고 B2로 이동하세요',
+    },
+  ],
+  pathNodes: [
+    { nodeId: 205, floorId: 2, mapX: -25.3, mapY: 25.6 },
+    { nodeId: 202, floorId: 2, mapX: -0.4, mapY: 27.2 },
+    { nodeId: 102, floorId: 1, mapX: -0.4, mapY: 27.2 },
+  ],
+};
+
 export const handlers = [
-  http.get('/health', () => HttpResponse.json({ status: 'ok' })),
-  http.post('*/api/routes/indoor/options', () =>
-    HttpResponse.json({ success: true, data: ROUTE_OPTIONS, message: null }),
+  http.get('*/api/health', () => HttpResponse.text('OK')),
+  http.post('*/api/user-sessions', () =>
+    HttpResponse.json({
+      success: true,
+      data: {
+        userSessionId: 'test-user-session',
+        language: 'ko',
+        expiresAt: '2099-01-01T00:00:00Z',
+      },
+    }),
   ),
+  http.get('*/api/user-sessions/:userSessionId', ({ params }) =>
+    HttpResponse.json({
+      success: true,
+      data: {
+        userSessionId: params.userSessionId,
+        language: 'ko',
+        expiresAt: '2099-01-01T00:00:00Z',
+      },
+    }),
+  ),
+  http.get('*/api/counselors/me', () =>
+    HttpResponse.json({
+      success: true,
+      data: {
+        accountId: 1,
+        loginId: 'counselor',
+        name: '테스트 상담원',
+        stationId: 1,
+        isActive: true,
+        status: 'AVAILABLE',
+      },
+    }),
+  ),
+  http.get('*/api/counselors/consultations', () =>
+    HttpResponse.json({
+      success: true,
+      data: [
+        {
+          consultationId: 'cs_test',
+          stationId: 1,
+          problemType: 'CANNOT_FIND_EXIT',
+          status: 'WAITING',
+          currentNodeId: 101,
+          currentLocationLabel: 'B2 개찰구 앞',
+          destinationType: 'place',
+          destinationId: 3,
+          destinationLabel: '코엑스몰',
+          requestedAt: '2026-07-31T00:00:00Z',
+        },
+      ],
+    }),
+  ),
+  http.post('*/api/consultations/:consultationId/accept', ({ params }) =>
+    HttpResponse.json({
+      success: true,
+      data: {
+        consultationId: params.consultationId,
+        status: 'ACCEPTED',
+        counselorId: 1,
+        signalingRoomId: `room_${params.consultationId}`,
+      },
+    }),
+  ),
+  http.post('*/api/consultations/:consultationId/end', ({ params }) =>
+    HttpResponse.json({
+      success: true,
+      data: { consultationId: params.consultationId, status: 'ENDED' },
+    }),
+  ),
+  http.get('*/api/admin/stations', () => HttpResponse.json({ success: true, data: [] })),
+  /**
+   * 목적지에서 가장 가까운 출구. 경로 유형마다 다른 출구가 나온다.
+   *
+   * `accessibleOnly`를 켜면 엘리베이터로 닿는 출구만 후보가 된다. 실제 서버도 같은 방식이며,
+   * 그래서 최단 경로와 엘리베이터 우선 경로의 도착 출구가 갈린다.
+   */
+  http.post('*/api/destinations/nearest-exit', async ({ request }) => {
+    const body = (await request.json()) as { accessibleOnly?: boolean };
+
+    return HttpResponse.json({
+      success: true,
+      data: body.accessibleOnly
+        ? { exitFacilityId: 82, exitNumber: '3' }
+        : { exitFacilityId: 25, exitNumber: '7' },
+    });
+  }),
+  http.get('*/api/facilities/:facilityId', ({ params }) => {
+    const facility = FACILITIES.find((item) => item.facilityId === Number(params.facilityId));
+    if (!facility) {
+      return HttpResponse.json(
+        { success: false, code: 'FACILITY_NOT_FOUND', message: '시설을 찾을 수 없습니다.' },
+        { status: 404 },
+      );
+    }
+
+    return HttpResponse.json({ success: true, data: facility, message: null });
+  }),
+  http.post('*/api/routes/indoor', () =>
+    HttpResponse.json({ success: true, data: ROUTE_DETAIL, message: null }),
+  ),
+  http.post('*/api/routes/indoor/options', async ({ request }) => {
+    const body = (await request.json()) as { targetNodeId?: number };
+    const data =
+      body.targetNodeId === ACCESSIBLE_TARGET_NODE_ID ? ACCESSIBLE_ROUTE_OPTIONS : ROUTE_OPTIONS;
+
+    return HttpResponse.json({ success: true, data, message: null });
+  }),
   http.get('*/api/stations/:stationId/maps', () =>
     HttpResponse.json({ success: true, data: FLOOR_MAPS, message: null }),
   ),
@@ -141,5 +335,89 @@ export const handlers = [
     const data = type ? FACILITIES.filter((f) => f.facilityType === type) : FACILITIES;
 
     return HttpResponse.json({ success: true, data, message: null });
+  }),
+  http.get('*/api/stations/nearby', () =>
+    HttpResponse.json({
+      success: true,
+      data: [
+        {
+          stationId: 1,
+          nameKo: '역삼역',
+          nameEn: 'Yeoksam Station',
+          lineInfo: '2호선',
+          distanceM: 89,
+        },
+      ],
+    }),
+  ),
+  // 등록된 역과 외부(카카오) 지하철역 결과를 함께 내려주는 실제 응답을 흉내낸다.
+  http.get('*/api/stations/search', ({ request }) => {
+    const keyword = new URL(request.url).searchParams.get('keyword')?.trim() ?? '';
+    const registered = {
+      stationId: 1,
+      nameKo: '역삼역',
+      nameEn: 'Yeoksam Station',
+      lineInfo: '2호선',
+      provider: 'pingo',
+      externalId: null,
+      address: null,
+      latitude: 37.5007,
+      longitude: 127.0365,
+      serviceReady: true,
+    };
+
+    if (!keyword) {
+      return HttpResponse.json({ success: true, data: [registered] });
+    }
+
+    const data = [];
+    if (registered.nameKo.includes(keyword)) {
+      data.push(registered);
+    }
+    if ('선릉역'.includes(keyword)) {
+      data.push({
+        stationId: null,
+        nameKo: '선릉역',
+        nameEn: null,
+        lineInfo: '2호선·수인분당선',
+        provider: 'kakao',
+        externalId: '21160338',
+        address: '서울 강남구 테헤란로 340',
+        latitude: 37.50452,
+        longitude: 127.048913,
+        serviceReady: false,
+      });
+    }
+
+    return HttpResponse.json({ success: true, data });
+  }),
+  http.post('*/api/auth/login', async ({ request }) => {
+    const credentials = (await request.json()) as {
+      loginId?: string;
+      password?: string;
+    };
+
+    if (credentials.loginId === 'admin' && credentials.password === '1234') {
+      return HttpResponse.json({
+        success: true,
+        data: {
+          accessToken: 'admin-access-token',
+          accountType: 'ADMIN',
+          accountId: 1,
+          name: '테스트 관리자',
+          stationId: null,
+          status: null,
+        },
+      });
+    }
+
+    return HttpResponse.json(
+      {
+        success: false,
+        code: 'INVALID_CREDENTIALS',
+        message: '아이디와 비밀번호를 확인해 주세요.',
+      },
+      { status: 401 },
+    );
   }),
 ];

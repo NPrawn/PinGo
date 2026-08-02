@@ -7,10 +7,49 @@
   background: #faf9fb;
 }
 
+/* Positioned so the video, local preview and connection status anchor inside
+   this pane instead of escaping to the page corner. */
 .main {
+  position: relative;
   flex: 1;
   padding: 22px 26px;
   overflow: auto;
+}
+
+.remoteVideo {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.localVideo {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 4;
+  width: 120px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #10211c;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 10px;
+}
+
+.connectionStatus {
+  position: absolute;
+  right: 18px;
+  bottom: 116px;
+  z-index: 5;
+  padding: 5px 8px;
+  font-size: 10px;
+  color: #fff;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 8px;
 }
 
 /* User summary banner. */

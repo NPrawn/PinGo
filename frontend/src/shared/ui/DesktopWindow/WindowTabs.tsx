@@ -34,7 +34,7 @@ export function WindowTabs({ tabs, label, trailing }: WindowTabsProps) {
           {tab.label}
         </NavLink>
       ))}
-      {trailing}
+      {trailing && <div className={styles.tabsTrailing}>{trailing}</div>}
     </nav>
   );
 }

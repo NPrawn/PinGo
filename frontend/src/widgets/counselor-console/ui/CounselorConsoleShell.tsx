@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { clearAuthSession, getCounselorMe, updateCounselorMe } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { DesktopWindow, WindowTabs } from '@/shared/ui';
 import type { WindowTab } from '@/shared/ui';
@@ -8,7 +10,6 @@ import styles from './CounselorConsoleShell.module.css';
 const TABS: readonly WindowTab[] = [
   { to: COUNSELOR_ROUTES.REQUESTS, label: '상담 요청 목록', icon: 'list' },
   { to: COUNSELOR_ROUTES.HISTORY, label: '상담 이력', icon: 'clock' },
-  { to: COUNSELOR_ROUTES.STATS, label: '통계', icon: 'chart' },
 ];
 
 type CounselorConsoleShellProps = {
@@ -19,6 +20,17 @@ type CounselorConsoleShellProps = {
 
 /** Browser window plus the three-tab strip shared by the counselor screens. */
 export function CounselorConsoleShell({ children, connected }: CounselorConsoleShellProps) {
+  const queryClient = useQueryClient();
+  const profileQuery = useQuery({
+    queryKey: ['counselor-me'],
+    queryFn: getCounselorMe,
+  });
+  const statusMutation = useMutation({
+    mutationFn: (status: 'AVAILABLE' | 'BUSY' | 'OFFLINE') => updateCounselorMe({ status }),
+    // 성공이든 실패든 서버 값을 다시 읽어, 셀렉트가 반영되지 않은 값을 보여주지 않게 한다.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['counselor-me'] }),
+  });
+
   return (
     <DesktopWindow
       url="counselor.pingo.kr"
@@ -28,9 +40,30 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
         tabs={TABS}
         label="상담자 콘솔"
         trailing={
-          <Link to={COUNSELOR_ROUTES.LOGIN} className={styles.logout}>
-            로그아웃
-          </Link>
+          <>
+            <span className={styles.name}>{profileQuery.data?.name ?? '상담원'}</span>
+            <select
+              className={styles.status}
+              aria-label="상담 상태"
+              value={profileQuery.data?.status ?? 'OFFLINE'}
+              disabled={statusMutation.isPending}
+              onChange={(event) =>
+                statusMutation.mutate(event.target.value as 'AVAILABLE' | 'BUSY' | 'OFFLINE')
+              }
+            >
+              <option value="AVAILABLE">상담 가능</option>
+              <option value="BUSY">상담 중</option>
+              <option value="OFFLINE">오프라인</option>
+            </select>
+            {statusMutation.isError && (
+              <span className={styles.statusError} role="alert">
+                상태를 바꾸지 못했어요
+              </span>
+            )}
+            <Link to={COUNSELOR_ROUTES.LOGIN} className={styles.logout} onClick={clearAuthSession}>
+              로그아웃
+            </Link>
+          </>
         }
       />
       {children}

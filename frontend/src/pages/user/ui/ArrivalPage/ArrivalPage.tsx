@@ -7,10 +7,10 @@ import styles from './ArrivalPage.module.css';
 
 /** Screen 21 (FR-U-011) — the user reached the destination. */
 export function ArrivalPage() {
-  const route = useNavigationStore((state) => state.route);
   const destination = useNavigationStore((state) => state.destination) ?? '선택한 목적지';
-  // TODO: 출구는 경로 응답(8.2)의 마지막 노드에서 와야 한다. 프로토타입에서 옮겨온 값이다.
-  const exit = route === 'elevator_only' ? '2번 출입구' : '7번 출입구';
+  // 안내가 실제로 도착한 출입구. 경로 옵션 화면이 유형별로 정해 스토어에 남긴 값이다.
+  const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
+  const exit = targetExitLabel ?? '출입구';
 
   return (
     <PhoneFrame layout="hero" bodyClassName={styles.body}>
@@ -46,6 +46,12 @@ export function ArrivalPage() {
 
         <Spring />
 
+        {/*
+          안내는 출입구에서 끝난다.
+
+          역 밖 도보 길찾기는 다루지 않기로 했으므로 목적지 좌표가 있든 없든 다음 행동은
+          하나다 — 새 여정을 시작하는 것.
+        */}
         <ButtonLink to={USER_ROUTES.STATION} className={styles.cta}>
           새로운 길 안내 시작
         </ButtonLink>

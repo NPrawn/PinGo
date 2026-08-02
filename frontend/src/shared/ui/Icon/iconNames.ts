@@ -26,6 +26,8 @@ export const ICON_NAMES = [
   'eraser',
   'escalator',
   'exchange',
+  'eye',
+  'eye-off',
   'flag',
   'gate',
   'gear',
