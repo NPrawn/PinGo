@@ -131,6 +131,75 @@ export function RouteOptionsPage() {
     return () => window.clearTimeout(timer);
   }, [confirmation]);
 
+  /**
+   * 경로 카드를 못 그리는 이유와, 그 상태에서 사용자가 할 수 있는 일.
+   *
+   * **카드 자리를 빈 채로 두지 않는다.** 이 패널은 카드가 채우는 것을 전제로 높이를 잡으므로
+   * 문구 한 줄만 넣으면 남는 공간이 그대로 빈 칸이 된다. 이유를 설명하고 다음 행동을 주는
+   * 블록으로 그 자리를 채운다.
+   *
+   * 순서가 곧 우선순위다. 역 → 목적지 → 현재 위치 순으로 앞의 것이 없으면 뒤는 물어볼 수도
+   * 없다. 조회 상태(로딩·실패·빈 결과)는 그 셋이 모두 갖춰진 뒤에만 의미가 있다.
+   */
+  const emptyState = ((): {
+    icon: IconName;
+    title: string;
+    body: string;
+    action?: { label: string; to: string };
+    alert?: boolean;
+  } | null => {
+    if (stationId === null) {
+      return {
+        icon: 'pin',
+        title: '이 역은 아직 실내 경로가 없어요',
+        body: '실내 안내가 준비된 역에서만 경로를 찾을 수 있어요.',
+        action: { label: '다른 역 선택하기', to: USER_ROUTES.STATION },
+      };
+    }
+    if (targetNodeId === null) {
+      return destination
+        ? {
+            icon: 'flag',
+            title: '목적지까지 가는 실내 경로를 찾지 못했어요',
+            body: `${destination}으로 이어지는 역 내부 통로를 확인할 수 없어요. 다른 목적지를 골라 보세요.`,
+            action: { label: '목적지 다시 선택하기', to: USER_ROUTES.STATION },
+            alert: true,
+          }
+        : {
+            icon: 'flag',
+            title: '목적지를 먼저 선택해 주세요',
+            body: '어디로 갈지 정하면 경로를 찾아 드려요.',
+            action: { label: '목적지 선택하기', to: USER_ROUTES.STATION },
+          };
+    }
+    if (currentNodeId === null) {
+      return {
+        icon: 'target',
+        title: '현재 위치를 확인하지 못했어요',
+        body: '어디서 출발하는지 알아야 경로를 계산할 수 있어요.',
+        action: { label: '위치 다시 인식하기', to: USER_ROUTES.CAPTURE_PORTRAIT },
+        alert: true,
+      };
+    }
+    if (optionsQuery.isError) {
+      return {
+        icon: 'refresh',
+        title: '경로를 불러오지 못했어요',
+        body: '잠시 후 다시 시도해 주세요.',
+        alert: true,
+      };
+    }
+    if (optionsQuery.isSuccess && options.length === 0) {
+      return {
+        icon: 'flag',
+        title: '안내할 수 있는 경로가 없어요',
+        body: '출발지와 목적지 사이에 이어진 통로가 없어요.',
+        action: { label: '목적지 다시 선택하기', to: USER_ROUTES.STATION },
+      };
+    }
+    return null;
+  })();
+
   return (
     <PhoneFrame layout="flush" dark bodyClassName={styles.body}>
       <>
@@ -201,82 +270,65 @@ export function RouteOptionsPage() {
             </div>
           </div>
 
-          <div className={styles.optionList} aria-label="경로 선택 목록">
-            {/*
-              조회를 걸 수 없는 상태를 로딩과 구분한다.
+          {/*
+            로딩은 카드 자리를 그대로 둔다.
 
-              `stationId`가 없으면 훅이 조회를 끄는데, 꺼진 쿼리는 `isPending`에 머무른다.
-              그것을 로딩으로 읽으면 화면이 "경로를 찾고 있어요"에서 영구히 멈춘다. 실제로
-              불러오는 중인지는 `isLoading`(= pending이면서 fetching)이 답한다.
-            */}
-            {stationId === null && (
-              <p className={styles.notice} role="status">
-                이 역은 아직 실내 경로 정보가 없어요.
+            문구 한 줄로 바꾸면 패널 높이가 접혔다가 응답이 오는 순간 다시 벌어져 화면이
+            튄다. 같은 크기의 자리 표시자를 두면 조회가 끝나도 배치가 그대로다.
+
+            조회를 걸 수 없는 상태와 구분해야 한다 — `stationId`가 없으면 훅이 조회를 끄는데
+            꺼진 쿼리는 `isPending`에 머무르므로, 그것을 로딩으로 읽으면 영구히 멈춘다.
+            실제로 불러오는 중인지는 `isLoading`(= pending이면서 fetching)이 답한다.
+          */}
+          {optionsQuery.isLoading ? (
+            <div className={styles.optionList} aria-label="경로 선택 목록" aria-busy="true">
+              <p className={styles.srOnly} role="status">
+                경로를 찾고 있어요
               </p>
-            )}
-
-            {/*
-              출발·도착 노드가 비어도 조회를 걸 수 없다. 사용자가 할 일이 서로 다르므로
-              "경로가 없다"로 뭉뚱그리지 않고 각각 안내한다.
-
-              **목적지 이름이 있는데 노드가 없는 경우를 따로 다룬다.** 목적지 검색은 이름과
-              좌표를 먼저 넣고 노드는 출구 추천·시설 조회를 거쳐 채우는데, 그 호출이 실패하면
-              이름만 남는다. 그때 "목적지를 먼저 선택해 주세요"라고 하면 화면 위에 목적지가
-              적혀 있는 채로 고르라는 말이 되어 사용자가 무엇을 해야 할지 알 수 없다.
-            */}
-            {stationId !== null && targetNodeId === null && (
-              <p className={styles.notice} role={destination ? 'alert' : 'status'}>
-                {destination
-                  ? '목적지까지 가는 실내 경로를 찾지 못했어요. 목적지를 다시 선택해 주세요.'
-                  : '목적지를 먼저 선택해 주세요.'}
-              </p>
-            )}
-
-            {stationId !== null && targetNodeId !== null && currentNodeId === null && (
-              <p className={styles.notice} role="alert">
-                현재 위치를 확인하지 못했어요. 위치를 다시 인식해 주세요.
-              </p>
-            )}
-
-            {optionsQuery.isLoading && (
-              <p className={styles.notice} role="status">
-                경로를 찾고 있어요…
-              </p>
-            )}
-
-            {optionsQuery.isError && (
-              <p className={styles.notice} role="alert">
-                경로를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.
-              </p>
-            )}
-
-            {optionsQuery.isSuccess && options.length === 0 && (
-              <p className={styles.notice} role="status">
-                안내할 수 있는 경로가 없어요.
-              </p>
-            )}
-
-            {options.map((option) => (
-              <RouteOptionRow
-                key={option.routeType}
-                option={option}
-                selected={selected?.routeType === option.routeType}
-                exitLabel={option.routeType === 'fastest' ? nearestExitLabel : undefined}
-                onSelect={() => {
-                  setRoute(option.routeType);
-                  setConfirmation({
-                    id: Date.now(),
-                    message: `${option.displayName}로 설정했습니다.`,
-                  });
-                }}
-              />
-            ))}
-          </div>
-
-          {selected && (
-            <div className={styles.cta}>
-              <ButtonLink to={USER_ROUTES.NAVIGATION}>{selected.displayName} 안내 시작</ButtonLink>
+              <span className={styles.optionSkeleton} aria-hidden />
+              <span className={styles.optionSkeleton} aria-hidden />
             </div>
+          ) : emptyState ? (
+            <div className={styles.emptyState} role={emptyState.alert ? 'alert' : 'status'}>
+              <span className={styles.emptyIcon}>
+                <Icon name={emptyState.icon} size={22} />
+              </span>
+              <b className={styles.emptyTitle}>{emptyState.title}</b>
+              <p className={styles.emptyBody}>{emptyState.body}</p>
+              {emptyState.action && (
+                <ButtonLink to={emptyState.action.to} className={styles.emptyAction}>
+                  {emptyState.action.label}
+                </ButtonLink>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className={styles.optionList} aria-label="경로 선택 목록">
+                {options.map((option) => (
+                  <RouteOptionRow
+                    key={option.routeType}
+                    option={option}
+                    selected={selected?.routeType === option.routeType}
+                    exitLabel={option.routeType === 'fastest' ? nearestExitLabel : undefined}
+                    onSelect={() => {
+                      setRoute(option.routeType);
+                      setConfirmation({
+                        id: Date.now(),
+                        message: `${option.displayName}로 설정했습니다.`,
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+
+              {selected && (
+                <div className={styles.cta}>
+                  <ButtonLink to={USER_ROUTES.NAVIGATION}>
+                    {selected.displayName} 안내 시작
+                  </ButtonLink>
+                </div>
+              )}
+            </>
           )}
         </div>
       </>

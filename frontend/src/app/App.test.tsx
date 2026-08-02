@@ -533,18 +533,40 @@ describe('user routes', () => {
 
     renderAt('/user/route');
 
-    expect(await screen.findByText('이 역은 아직 실내 경로 정보가 없어요.')).toBeInTheDocument();
-    expect(screen.queryByText('경로를 찾고 있어요…')).toBeNull();
+    expect(await screen.findByText('이 역은 아직 실내 경로가 없어요')).toBeInTheDocument();
+    expect(screen.queryByText('경로를 찾고 있어요')).toBeNull();
     expect(screen.queryByRole('link', { name: /안내 시작/ })).toBeNull();
+    // 막다른 화면으로 두지 않는다. 빠져나갈 길을 함께 준다.
+    expect(screen.getByRole('link', { name: '다른 역 선택하기' })).toBeInTheDocument();
   });
 
   /** 위 구분이 로딩 표시 자체를 잃지 않았는지 함께 고정한다. */
   it('실제로 조회하는 동안에는 로딩을 보여준다', async () => {
     renderAt('/user/route');
 
-    expect(await screen.findByText('경로를 찾고 있어요…')).toBeInTheDocument();
+    expect(await screen.findByText('경로를 찾고 있어요')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /빠른 경로/ })).toBeInTheDocument();
-    expect(screen.queryByText('경로를 찾고 있어요…')).toBeNull();
+    expect(screen.queryByText('경로를 찾고 있어요')).toBeNull();
+  });
+
+  /**
+   * 데이터가 없어도 화면이 무너지지 않아야 한다.
+   *
+   * 카드가 채우던 자리에 문구 한 줄만 남기면 패널에 빈 칸이 생긴다. 이유와 다음 행동을 함께
+   * 주는 블록으로 그 자리를 채운다.
+   */
+  it('목적지 노드가 없으면 이유와 다음 행동을 함께 보여준다', async () => {
+    useNavigationStore.setState({ destination: '스타벅스 역삼점', targetNodeId: null });
+
+    renderAt('/user/route');
+
+    const empty = await screen.findByRole('alert');
+    expect(
+      within(empty).getByText('목적지까지 가는 실내 경로를 찾지 못했어요'),
+    ).toBeInTheDocument();
+    expect(within(empty).getByText(/스타벅스 역삼점으로 이어지는/)).toBeInTheDocument();
+    expect(within(empty).getByRole('link', { name: '목적지 다시 선택하기' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /안내 시작/ })).toBeNull();
   });
 
   /**

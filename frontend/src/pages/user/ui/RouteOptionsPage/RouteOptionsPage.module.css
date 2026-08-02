@@ -182,9 +182,98 @@
 
 .optionList {
   display: flex;
+  /*
+    남는 공간을 목록이 흡수한다.
+
+    패널이 space-between 이라, 목록이 자기 내용만큼만 차지하면 CTA 와의 사이가 아니라
+    목록 자체가 아래로 밀린다. 카드가 한 장이거나 없을 때 목록이 패널 바닥에 붙어 보이던
+    원인이다. flex-start 로 카드를 위에 고정한다.
+  */
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 7px;
+  min-height: 0;
   padding: 0 20px;
+}
+
+/*
+  경로를 못 그리는 상태. 카드가 채우던 자리를 그대로 채운다.
+
+  문구만 남기면 패널에 빈 칸이 생기고, space-between 때문에 그 문구가 바닥에 붙는다.
+  아이콘·제목·설명·행동을 세로 가운데에 두어 의도한 화면으로 읽히게 한다.
+*/
+.emptyState {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 16px 28px;
+  text-align: center;
+}
+
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 4px;
+  color: var(--color-mint-dark);
+  background: var(--color-line-soft);
+  border-radius: 50%;
+}
+
+.emptyTitle {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--color-ink);
+}
+
+.emptyBody {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-sub);
+  overflow-wrap: break-word;
+}
+
+.emptyAction {
+  margin-top: 12px;
+}
+
+/* 로딩 중 카드 자리 표시자. 실제 카드(min-height 88px)와 같은 크기라 배치가 튀지 않는다. */
+.optionSkeleton {
+  min-height: 88px;
+  background: var(--color-line-soft);
+  border-radius: 16px;
+  opacity: 0.55;
+  animation: optionSkeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes optionSkeletonPulse {
+  50% {
+    opacity: 0.28;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .optionSkeleton {
+    animation: none;
+  }
+}
+
+/* 로딩 상태를 보조기술에만 알린다. 화면에는 자리 표시자가 그 역할을 한다. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .option {
@@ -306,16 +395,6 @@
   line-height: 1.4;
   color: var(--color-sub);
   overflow-wrap: break-word;
-}
-
-/* 조회 중·실패·빈 목록. 카드 자리에 그대로 들어간다. */
-.notice {
-  padding: 22px 4px;
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--color-sub);
-  text-align: center;
 }
 
 .selectionToast {
