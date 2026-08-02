@@ -39,6 +39,34 @@ type Draft = {
   values: Record<string, string>;
 };
 
+type LoadResult = {
+  rows: AdminRecord[];
+  /** 조회에 실패한 역의 수. 0이 아니면 목록이 일부만 채워진 것이다. */
+  missedStations: number;
+};
+
+/**
+ * 역 단위로만 조회되는 목록을 여러 역에서 모은다.
+ *
+ * 한 역이 실패해도 나머지는 살린다. `Promise.all`이면 역 하나의 일시적 장애가 콘솔 전체를
+ * 멈추기 때문이다. 대신 **몇 개를 놓쳤는지 함께 돌려준다** — 실패를 빈 배열로 조용히
+ * 흘려보내면 "그 역에는 데이터가 없다"로 잘못 읽히고, 관리자가 이미 있는 항목을 다시
+ * 등록하거나 참조가 끊긴 줄 알고 손대게 된다.
+ */
+async function gatherByStation<T>(
+  stationIds: readonly number[],
+  fetchOne: (stationId: number) => Promise<T[]>,
+): Promise<{ items: T[]; failed: number[] }> {
+  const settled = await Promise.allSettled(stationIds.map((id) => fetchOne(id)));
+  const items: T[] = [];
+  const failed: number[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === 'fulfilled') items.push(...result.value);
+    else failed.push(stationIds[index]);
+  });
+  return { items, failed };
+}
+
 const TOAST_MS = 2200;
 const EDGE_ID_OFFSET = 1_000_000_000;
 
@@ -100,45 +128,58 @@ export function useAdminRecords(tab: AdminTableTab) {
   }, []);
 
   /**
-   * 역 단위로만 조회할 수 있는 목록을 모든 역에 대해 모은다.
-   *
-   * 경로·주변 장소·시설 조회는 `stationId`가 있어야 한다. OpenAPI 문서에는 선택 항목으로
-   * 적혀 있지만 서버가 null을 400으로 거절한다(RouteService.requireStationId,
-   * AdminPlaceService.requireStationId). 콘솔은 역을 가리지 않고 전부 보여주므로
-   * 역 목록을 먼저 받아 역마다 호출한다.
+   * 시설·경로 조회는 `stationId`가 있어야 한다. OpenAPI 문서에는 선택 항목으로 적혀 있지만
+   * 서버가 null을 400으로 거절한다(RouteService.requireStationId). 콘솔은 역을 가리지 않고
+   * 전부 보여주므로 역 목록을 먼저 받아 역마다 호출한다.
    */
-  const forEachStation = useCallback(
-    async <T>(fetchOne: (stationId: number) => Promise<T[]>): Promise<T[]> => {
-      const stations = await getAdminStations();
-      const groups = await Promise.all(
-        stations
-          .filter((station) => station.stationId != null)
-          .map((station) => fetchOne(station.stationId!)),
-      );
-      return groups.flat();
-    },
-    [],
-  );
-
-  const load = useCallback(async (): Promise<AdminRecord[]> => {
+  const load = useCallback(async (): Promise<LoadResult> => {
     if (tab === 'station') {
       const stations = await getAdminStations();
-      return stations
-        .filter((station) => station.stationId != null)
-        .map((station) => ({
-          id: station.stationId!,
-          name: station.nameKo ?? '',
-          nameEn: station.nameEn ?? '',
-          line: station.lineInfo ?? '',
-          floors: '-',
-          latitude: station.latitude ?? '',
-          longitude: station.longitude ?? '',
-          status: '운영 중',
-        }));
+      return {
+        missedStations: 0,
+        rows: stations
+          .filter((station) => station.stationId != null)
+          .map((station) => ({
+            id: station.stationId!,
+            name: station.nameKo ?? '',
+            nameEn: station.nameEn ?? '',
+            line: station.lineInfo ?? '',
+            floors: '-',
+            latitude: station.latitude ?? '',
+            longitude: station.longitude ?? '',
+            status: '운영 중',
+          })),
+      };
     }
+    if (tab === 'counselor') {
+      const counselors = await getAdminCounselors();
+      return {
+        missedStations: 0,
+        rows: counselors
+          .filter((account) => account.accountId != null)
+          .map((account) => ({
+            id: account.accountId!,
+            name: account.name ?? '',
+            account: account.loginId ?? '',
+            stationId: account.stationId ?? '',
+            active: String(account.isActive ?? false),
+            status: account.isActive ? '활성' : '승인 대기',
+            // 상태가 없는 계정을 '상담 가능'으로 보여주면 안 된다.
+            consultStatus: COUNSELOR_STATUS_LABELS[account.status ?? ''] ?? '-',
+          })),
+      };
+    }
+
+    // 남은 탭은 모두 역 단위 조회다. 역 목록은 여기서 한 번만 받아 아래로 넘긴다.
+    const stationIds = (await getAdminStations())
+      .map((station) => station.stationId)
+      .filter((id): id is number => id != null);
+
     if (tab === 'facility') {
-      const facilities = await forEachStation((stationId) => getAdminFacilities({ stationId }));
-      return facilities
+      const { items, failed } = await gatherByStation(stationIds, (stationId) =>
+        getAdminFacilities({ stationId }),
+      );
+      const rows = items
         .filter((facility) => facility.facilityId != null)
         .map((facility) => ({
           id: facility.facilityId!,
@@ -153,69 +194,58 @@ export function useAdminRecords(tab: AdminTableTab) {
           accessible: String(facility.isAccessible ?? false),
           status: facility.isAccessible ? '접근 가능' : '일반',
         }));
+      return { rows, missedStations: failed.length };
     }
-    if (tab === 'route') {
-      const [nodes, edges] = await Promise.all([
-        forEachStation((stationId) => getAdminRouteNodes({ stationId })),
-        forEachStation((stationId) => getAdminRouteEdges(stationId)),
-      ]);
-      const nodeRows = nodes
-        .filter((node) => node.nodeId != null)
-        .map((node) => ({
-          id: node.nodeId!,
-          rawId: node.nodeId!,
-          kind: 'node',
-          name: node.name ?? `노드 ${node.nodeId}`,
-          stationId: node.stationId ?? '',
-          floorId: node.floorId ?? '',
-          nodeType: node.nodeType ?? 'normal',
-          graphType: node.nodeType ?? 'normal',
-          mapX: node.mapX ?? '',
-          mapY: node.mapY ?? '',
-          landmark: String(node.isLandmark ?? false),
-          fromNodeId: '',
-          toNodeId: '',
-          distance: '',
-          seconds: '',
-          moveType: 'walk',
-          accessible: 'true',
-          bidirectional: 'true',
-          status: node.isLandmark ? '랜드마크' : '일반',
-        }));
-      const edgeRows = edges
-        .filter((edge) => edge.edgeId != null)
-        .map((edge) => ({
-          id: EDGE_ID_OFFSET + edge.edgeId!,
-          rawId: edge.edgeId!,
-          kind: 'edge',
-          name: `${edge.fromNodeId ?? '-'} → ${edge.toNodeId ?? '-'}`,
-          stationId: edge.stationId ?? '',
-          fromNodeId: edge.fromNodeId ?? '',
-          toNodeId: edge.toNodeId ?? '',
-          distance: edge.distanceM ?? '',
-          seconds: edge.estimatedTimeSec ?? '',
-          moveType: edge.moveType ?? '',
-          graphType: edge.moveType ?? '',
-          accessible: String(edge.isAccessible ?? false),
-          bidirectional: String(edge.isBidirectional ?? false),
-          status: edge.isAccessible ? '접근 가능' : '일반',
-        }));
-      return [...nodeRows, ...edgeRows];
-    }
-    const counselors = await getAdminCounselors();
-    return counselors
-      .filter((account) => account.accountId != null)
-      .map((account) => ({
-        id: account.accountId!,
-        name: account.name ?? '',
-        account: account.loginId ?? '',
-        stationId: account.stationId ?? '',
-        active: String(account.isActive ?? false),
-        status: account.isActive ? '활성' : '승인 대기',
-        // 상태가 없는 계정을 '상담 가능'으로 보여주면 안 된다.
-        consultStatus: COUNSELOR_STATUS_LABELS[account.status ?? ''] ?? '-',
+
+    const [nodeResult, edgeResult] = await Promise.all([
+      gatherByStation(stationIds, (stationId) => getAdminRouteNodes({ stationId })),
+      gatherByStation(stationIds, (stationId) => getAdminRouteEdges(stationId)),
+    ]);
+    const nodeRows = nodeResult.items
+      .filter((node) => node.nodeId != null)
+      .map((node) => ({
+        id: node.nodeId!,
+        rawId: node.nodeId!,
+        kind: 'node',
+        name: node.name ?? `노드 ${node.nodeId}`,
+        stationId: node.stationId ?? '',
+        floorId: node.floorId ?? '',
+        nodeType: node.nodeType ?? 'normal',
+        graphType: node.nodeType ?? 'normal',
+        mapX: node.mapX ?? '',
+        mapY: node.mapY ?? '',
+        landmark: String(node.isLandmark ?? false),
+        fromNodeId: '',
+        toNodeId: '',
+        distance: '',
+        seconds: '',
+        moveType: 'walk',
+        accessible: 'true',
+        bidirectional: 'true',
+        status: node.isLandmark ? '랜드마크' : '일반',
       }));
-  }, [tab, forEachStation]);
+    const edgeRows = edgeResult.items
+      .filter((edge) => edge.edgeId != null)
+      .map((edge) => ({
+        id: EDGE_ID_OFFSET + edge.edgeId!,
+        rawId: edge.edgeId!,
+        kind: 'edge',
+        name: `${edge.fromNodeId ?? '-'} → ${edge.toNodeId ?? '-'}`,
+        stationId: edge.stationId ?? '',
+        fromNodeId: edge.fromNodeId ?? '',
+        toNodeId: edge.toNodeId ?? '',
+        distance: edge.distanceM ?? '',
+        seconds: edge.estimatedTimeSec ?? '',
+        moveType: edge.moveType ?? '',
+        graphType: edge.moveType ?? '',
+        accessible: String(edge.isAccessible ?? false),
+        bidirectional: String(edge.isBidirectional ?? false),
+        status: edge.isAccessible ? '접근 가능' : '일반',
+      }));
+    // 노드와 간선을 따로 조회하므로 한 역이 한쪽만 실패할 수 있다. 역 단위로 합쳐 센다.
+    const failedStations = new Set([...nodeResult.failed, ...edgeResult.failed]);
+    return { rows: [...nodeRows, ...edgeRows], missedStations: failedStations.size };
+  }, [tab]);
 
   const recordsQuery = useQuery({
     queryKey: ['admin-records', tab],
@@ -223,7 +253,13 @@ export function useAdminRecords(tab: AdminTableTab) {
     // 상담 상태는 상담 수락·종료로 서버에서 바뀌므로 주기적으로 다시 읽는다.
     refetchInterval: tab === 'counselor' ? 5000 : false,
   });
-  const rows = useMemo(() => recordsQuery.data ?? [], [recordsQuery.data]);
+  const rows = useMemo(() => recordsQuery.data?.rows ?? [], [recordsQuery.data]);
+  // 일부 역만 실패한 경우다. 목록은 보여주되 불완전하다는 사실을 숨기지 않는다.
+  const missedStations = recordsQuery.data?.missedStations ?? 0;
+  const partialWarning =
+    missedStations > 0
+      ? `${missedStations}개 역의 데이터를 불러오지 못했어요. 목록이 일부만 표시됩니다.`
+      : null;
   // 조회 실패를 빈 배열로 흘려보내면 "항목이 없다"와 구분되지 않는다. 서버 메시지를 그대로
   // 올려 화면이 실패·빈 목록·로딩 중을 각각 다르게 말할 수 있게 한다.
   const loadError = recordsQuery.isError
@@ -400,6 +436,7 @@ export function useAdminRecords(tab: AdminTableTab) {
     rows: visibleRows,
     isLoading: recordsQuery.isPending,
     loadError,
+    partialWarning,
     retryLoad: () => void recordsQuery.refetch(),
     query,
     setQuery,

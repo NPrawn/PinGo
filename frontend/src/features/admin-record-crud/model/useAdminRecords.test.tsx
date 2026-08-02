@@ -73,8 +73,46 @@ describe('useAdminRecords', () => {
     expect(facilityCalls.sort()).toEqual(['1', '2']);
   });
 
-  it('조회가 실패하면 빈 목록이 아니라 서버 메시지를 올린다', async () => {
-    server.use(http.get('*/api/admin/route-nodes', () => badRequest()));
+  it('역 목록은 탭당 한 번만 조회한다', async () => {
+    let stationCalls = 0;
+    server.use(
+      http.get('*/api/admin/stations', () => {
+        stationCalls += 1;
+        return ok(STATIONS);
+      }),
+      http.get('*/api/admin/route-nodes', () => ok([])),
+      http.get('*/api/admin/route-edges', () => ok([])),
+    );
+
+    const { result } = renderHook(() => useAdminRecords('route'), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // 노드·간선 조회가 각자 역 목록을 받으면 같은 요청이 두 번 나간다.
+    expect(stationCalls).toBe(1);
+  });
+
+  it('한 역이 실패해도 나머지 역은 남기고 불완전함을 알린다', async () => {
+    server.use(
+      http.get('*/api/admin/route-nodes', ({ request }) => {
+        const stationId = new URL(request.url).searchParams.get('stationId');
+        if (stationId === '2') return badRequest();
+        return ok([{ nodeId: 7, stationId: 1, name: '역삼 대합실', nodeType: 'normal' }]);
+      }),
+      http.get('*/api/admin/route-edges', () => ok([])),
+    );
+
+    const { result } = renderHook(() => useAdminRecords('route'), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // 한 역의 장애가 콘솔 전체를 비우면 안 된다.
+    expect(result.current.rows.map((row) => row.name)).toEqual(['역삼 대합실']);
+    // 그렇다고 조용히 넘기면 "그 역에는 없다"로 잘못 읽힌다.
+    expect(result.current.partialWarning).toContain('1개 역');
+    expect(result.current.loadError).toBeNull();
+  });
+
+  it('역 목록 조회가 실패하면 빈 목록이 아니라 서버 메시지를 올린다', async () => {
+    server.use(http.get('*/api/admin/stations', () => badRequest()));
 
     const { result } = renderHook(() => useAdminRecords('route'), { wrapper });
 
@@ -83,4 +121,5 @@ describe('useAdminRecords', () => {
     expect(result.current.loadError).toBe('요청 형식이 올바르지 않습니다.');
     expect(result.current.rows).toEqual([]);
   });
+
 });

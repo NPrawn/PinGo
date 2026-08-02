@@ -10,6 +10,8 @@ type AdminTableProps = {
   isLoading?: boolean;
   /** 조회 실패 사유. null이면 실패하지 않은 것이다. */
   loadError?: string | null;
+  /** 일부 역만 실패해 목록이 불완전할 때의 안내. 표는 그대로 보여준다. */
+  partialWarning?: string | null;
   onRetry?: () => void;
   query: string;
   onQueryChange: (query: string) => void;
@@ -31,6 +33,7 @@ export function AdminTable({
   rows,
   isLoading = false,
   loadError = null,
+  partialWarning = null,
   onRetry,
   query,
   onQueryChange,
@@ -85,6 +88,20 @@ export function AdminTable({
           {loadError ? '불러오지 못함' : isLoading ? '불러오는 중' : `총 ${rows.length}건`}
         </span>
       </div>
+
+      {/* 목록은 보여주되 불완전하다는 사실을 함께 알린다. 조용히 일부만 띄우면
+          관리자가 "그 역에는 없다"로 잘못 읽는다. */}
+      {partialWarning && (
+        <div className={styles.warning} role="status">
+          <span className={styles.warningDot} aria-hidden />
+          {partialWarning}
+          {onRetry && (
+            <button type="button" className={styles.warningRetry} onClick={onRetry}>
+              다시 시도
+            </button>
+          )}
+        </div>
+      )}
 
       <div className={styles.table}>
         <div className={styles.thead}>

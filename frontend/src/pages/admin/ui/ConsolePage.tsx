@@ -40,6 +40,7 @@ export function ConsolePage() {
           rows={records.rows}
           isLoading={records.isLoading}
           loadError={records.loadError}
+          partialWarning={records.partialWarning}
           onRetry={records.retryLoad}
           query={records.query}
           onQueryChange={records.setQuery}
