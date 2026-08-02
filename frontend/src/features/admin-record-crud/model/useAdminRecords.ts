@@ -310,7 +310,11 @@ export function useAdminRecords(tab: AdminTableTab) {
 
   const save = async () => {
     if (!draft) return;
-    if (!draft.values.name?.trim()) {
+    // 서버가 이름을 요구하는 곳만 막는다. 경로 노드는 `RouteNodeCreateRequest.name`에
+    // @NotBlank가 없고, 간선 요청에는 이름 필드 자체가 없으며, 상담자 저장은 담당 역과
+    // 활성 여부만 보낸다. 쓰지도 않는 값 때문에 저장이 막히면 안 된다.
+    const needsName = tab === 'station' || tab === 'facility';
+    if (needsName && !draft.values.name?.trim()) {
       setInvalid(true);
       return;
     }

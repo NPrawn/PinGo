@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
@@ -122,4 +122,33 @@ describe('useAdminRecords', () => {
     expect(result.current.rows).toEqual([]);
   });
 
+  it('이름을 요구하지 않는 유형은 이름이 비어도 저장을 막지 않는다', async () => {
+    let created = false;
+    server.use(
+      http.get('*/api/admin/route-nodes', () => ok([])),
+      http.get('*/api/admin/route-edges', () => ok([])),
+      http.post('*/api/admin/route-edges', () => {
+        created = true;
+        return ok({ edgeId: 1 });
+      }),
+    );
+
+    const { result } = renderHook(() => useAdminRecords('route'), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.startCreate());
+    // 간선 요청에는 이름 필드 자체가 없다. 비워 둔 채로도 저장돼야 한다.
+    act(() => {
+      result.current.changeField('kind', 'edge');
+      result.current.changeField('name', '');
+      result.current.changeField('stationId', '1');
+      result.current.changeField('fromNodeId', '10');
+      result.current.changeField('toNodeId', '11');
+      result.current.changeField('distance', '12');
+    });
+    await act(() => result.current.save());
+
+    expect(result.current.invalid).toBe(false);
+    expect(created).toBe(true);
+  });
 });
