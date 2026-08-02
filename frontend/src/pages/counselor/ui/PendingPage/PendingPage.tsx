@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { ButtonLink, DesktopWindow } from '@/shared/ui';
 import styles from './PendingPage.module.css';
@@ -5,13 +6,21 @@ import styles from './PendingPage.module.css';
 /** Details of the submitted request. TODO: read from the sign-up response. */
 const SUMMARY = [
   { label: '신청 계정', value: 'choi@pingo.kr' },
-  { label: '역할', value: '상담자' },
   { label: '담당 희망 역', value: '역삼역' },
-  { label: '신청 시각', value: '오늘 09:12' },
 ];
+
+/** `오늘 09:12` for the moment the page was opened. */
+function formatRequestedAt() {
+  const now = new Date();
+  const hour = String(now.getHours()).padStart(2, '0');
+  const minute = String(now.getMinutes()).padStart(2, '0');
+  return `오늘 ${hour}:${minute}`;
+}
 
 /** Screen 27-2 — waiting for an admin to approve the account. */
 export function PendingPage() {
+  const [requestedAt] = useState(formatRequestedAt);
+
   return (
     <DesktopWindow url="counselor.pingo.kr" width={560}>
       <div className={styles.stage}>
@@ -44,11 +53,15 @@ export function PendingPage() {
                 <span className={styles.rowValue}>{row.value}</span>
               </div>
             ))}
+            <div className={styles.row}>
+              <span className={styles.rowLabel}>신청 시각</span>
+              <span className={styles.rowValue}>{requestedAt}</span>
+            </div>
           </div>
 
           <div className={styles.eta}>
             <span className={styles.etaDot} aria-hidden />
-            <span className={styles.etaText}>평균 승인 소요 · 1영업일</span>
+            <span className={styles.etaText}>평균 승인 소요 · 2시간 이내</span>
           </div>
 
           <ButtonLink
