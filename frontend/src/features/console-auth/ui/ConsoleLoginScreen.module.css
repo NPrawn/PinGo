@@ -1,13 +1,15 @@
 /* Screen 27 — combined console login. Ported from prototype `#c-login`. */
 
+/* 가짜 브라우저 창을 걷어내 이 화면이 곧 페이지다. 배경은 body의 그라디언트를 그대로
+   드러내고 카드만 띄운다. */
 .stage {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 440px;
-  padding: 36px 0;
-  background: var(--color-cream);
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 72px 20px 36px;
 }
 
 .back {

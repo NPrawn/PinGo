@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { clearAuthSession, getCounselorMe, updateCounselorMe } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { DesktopWindow, WindowTabs } from '@/shared/ui';
+import { WindowTabs } from '@/shared/ui';
 import type { WindowTab } from '@/shared/ui';
 import styles from './CounselorConsoleShell.module.css';
 
@@ -18,7 +18,12 @@ type CounselorConsoleShellProps = {
   connected?: boolean;
 };
 
-/** Browser window plus the three-tab strip shared by the counselor screens. */
+/**
+ * 상담자 화면이 공유하는 상단 탭 바와 본문 영역.
+ *
+ * 프로토타입은 가짜 브라우저 창 안에 콘솔을 넣어 보여줬다. 실제 웹사이트로 배포하므로
+ * 그 테두리를 걷어냈다. 창 제목줄에 있던 통화 상태 표시는 탭 바 우측으로 옮겼다.
+ */
 export function CounselorConsoleShell({ children, connected }: CounselorConsoleShellProps) {
   const queryClient = useQueryClient();
   const profileQuery = useQuery({
@@ -32,15 +37,13 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
   });
 
   return (
-    <DesktopWindow
-      url="counselor.pingo.kr"
-      barExtra={connected ? <span className={styles.connected}>● 상담 연결됨</span> : undefined}
-    >
+    <div className={styles.layout}>
       <WindowTabs
         tabs={TABS}
         label="상담자 콘솔"
         trailing={
           <>
+            {connected && <span className={styles.connected}>● 상담 연결됨</span>}
             <span className={styles.name}>{profileQuery.data?.name ?? '상담원'}</span>
             <select
               className={styles.status}
@@ -66,7 +69,7 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
           </>
         }
       />
-      {children}
-    </DesktopWindow>
+      <main className={styles.content}>{children}</main>
+    </div>
   );
 }

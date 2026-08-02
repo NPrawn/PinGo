@@ -1,16 +1,23 @@
-/* Ported from prototype `.aside` / `.anav` / `.acontent` inside `#a-console`. */
+/* Ported from prototype `.aside` / `.anav` / `.acontent` inside `#a-console`.
+   가짜 브라우저 창을 걷어내고 화면 전체를 쓰는 레이아웃이다. */
 
 .layout {
   display: flex;
-  height: 600px;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
+/* 본문이 길어도 메뉴는 화면에 남아야 한다. 붙여 두고 본문만 스크롤한다. */
 .aside {
+  position: sticky;
+  top: 0;
   display: flex;
   flex: none;
   flex-direction: column;
-  width: 214px;
-  padding: 20px 0;
+  width: 232px;
+  height: 100vh;
+  height: 100dvh;
+  padding: 22px 0;
   color: #c9c8d4;
   background: #20202a;
 }
@@ -58,11 +65,20 @@
   display: flex;
 }
 
+/* 창 테두리가 사라졌으므로 본문이 앱의 표면 역할을 한다. DesktopWindow가 갖고 있던
+   종이-크림 그라디언트를 여기로 옮겨 글이 배경 그라디언트에 묻히지 않게 한다. */
 .content {
   position: relative;
   flex: 1;
-  padding: 26px 30px;
-  overflow: auto;
+  /* flex 자식의 기본 min-width는 auto라 넓은 표가 사이드바를 밀어낸다. */
+  min-width: 0;
+  padding: 32px 36px 48px;
+  background: linear-gradient(180deg, var(--color-paper) 0%, var(--color-cream) 100%);
+}
+
+.inner {
+  max-width: 1120px;
+  margin: 0 auto;
 }
 
 /* Logout sits at the foot of the rail, separated from the navigation. */
