@@ -24,6 +24,9 @@ public class ConsultationRatingService {
     @Transactional
     public ConsultationRatingRequest.Response rate(String consultationId,
                                                    ConsultationRatingRequest request) {
+        if (request.score() < MIN_SCORE || request.score() > MAX_SCORE) {
+            throw new BusinessException(ErrorCode.INVALID_RATING_SCORE);
+        }
 
         ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
@@ -36,9 +39,6 @@ public class ConsultationRatingService {
         }
         if (session.isRated()) {
             throw new BusinessException(ErrorCode.CONSULTATION_ALREADY_RATED);
-        }
-        if (request.score() < MIN_SCORE || request.score() > MAX_SCORE) {
-            throw new BusinessException(ErrorCode.INVALID_RATING_SCORE);
         }
 
         session.rate(request.score());

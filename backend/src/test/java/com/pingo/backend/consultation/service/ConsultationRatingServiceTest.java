@@ -19,6 +19,7 @@ import org.mockito.quality.Strictness;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -103,6 +104,7 @@ class ConsultationRatingServiceTest {
     @Test
     @DisplayName("범위를 벗어난 점수면 INVALID_RATING_SCORE 예외가 발생한다")
     void invalidScore() {
+        verify(consultationSessionRepository, never()).findByIdForUpdate(any());
         assertThatThrownBy(() -> consultationRatingService.rate(CONSULTATION_ID,
                 new ConsultationRatingRequest(USER_SESSION_ID, 6)))
                 .isInstanceOf(BusinessException.class)

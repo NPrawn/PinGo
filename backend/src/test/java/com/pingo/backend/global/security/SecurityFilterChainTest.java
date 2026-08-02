@@ -246,6 +246,32 @@ class SecurityFilterChainTest {
     }
 
     @Test
+    void 비로그인_상담전문저장API_401() throws Exception {
+        mockMvc.perform(post("/api/consultations/consultation-1/transcript")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 비로그인_상담요약조회API_401() throws Exception {
+        mockMvc.perform(get("/api/consultations/consultation-1/summary"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 비로그인_상담만족도평가API_인가통과_404() throws Exception {
+        String body = """
+            {"userSessionId": "usr_test", "score": 5}
+            """;
+
+        mockMvc.perform(post("/api/consultations/consultation-1/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void 비로그인_상담자_목록조회API_401() throws Exception {
         mockMvc.perform(get("/api/counselors/consultations"))
                 .andExpect(status().isUnauthorized());
@@ -297,6 +323,26 @@ class SecurityFilterChainTest {
         String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
 
         mockMvc.perform(post("/api/consultations/consultation-1/reject")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ADMIN_상담전문저장API_403() throws Exception {
+        String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
+
+        mockMvc.perform(post("/api/consultations/consultation-1/transcript")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ADMIN_상담요약조회API_403() throws Exception {
+        String token = jwtProvider.createAccountToken(adminAccountId, AccountType.ADMIN, null);
+
+        mockMvc.perform(get("/api/consultations/consultation-1/summary")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden());
     }
@@ -363,6 +409,26 @@ class SecurityFilterChainTest {
     }
 
     @Test
+    void COUNSELOR_상담전문저장API_인가통과_404() throws Exception {
+        String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
+
+        mockMvc.perform(post("/api/consultations/consultation-1/transcript")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void COUNSELOR_상담요약조회API_인가통과_404() throws Exception {
+        String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
+
+        mockMvc.perform(get("/api/consultations/consultation-1/summary")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void COUNSELOR_상담자_목록조회API_200() throws Exception {
         String token = jwtProvider.createAccountToken(counselorAccountId, AccountType.COUNSELOR, stationId);
 
@@ -411,4 +477,6 @@ class SecurityFilterChainTest {
                         .header("Authorization", "Bearer " + expiredToken))
                 .andExpect(status().isUnauthorized());
     }
+
+
 }
