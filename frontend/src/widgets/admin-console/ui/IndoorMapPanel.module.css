@@ -160,3 +160,40 @@
   width: auto;
   padding: 0 16px;
 }
+
+/* 층 카드가 비었을 때 그 자리에서 이유를 말하는 한 줄. */
+.state {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  padding: 26px 14px;
+  margin-bottom: 14px;
+  background: rgb(255 255 255 / 75%);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 14px;
+}
+
+.stateText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-sub);
+}
+
+.stateError {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #c24a3d;
+}
+
+.retry {
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-mint-mid);
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
