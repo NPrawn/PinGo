@@ -7,6 +7,7 @@ import { USER_ROUTES } from '@/shared/config';
 import type { RouteType } from '@/shared/types';
 import { ButtonLink, Icon, SelectRow } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
+import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import { useExitRoute, type ExitRoute } from './useExitRoute';
@@ -59,6 +60,7 @@ export function RouteOptionsPage() {
   const route = useNavigationStore((state) => state.route);
   const setRoute = useNavigationStore((state) => state.setRoute);
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
+  const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
 
   const lookup = {
@@ -206,26 +208,49 @@ export function RouteOptionsPage() {
             </div>
           </div>
 
-          <svg
-            viewBox="0 0 338 290"
-            preserveAspectRatio="none"
-            className={styles.scene}
-            aria-hidden
-          >
-            <path d="M0 290 L132 138 H206 L338 290 Z" fill="rgba(60,216,160,0.09)" />
-            <path
-              d="M0 290 L132 138 M338 290 L206 138 M132 138 H206"
-              stroke="rgba(127,239,195,0.24)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <path
-              d="M132 138 V48 H206 V138"
-              stroke="rgba(127,239,195,0.16)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-          </svg>
+          {/*
+            **이 자리는 원래 2D 지도다.** 화면 정의서 U-09의 UI 구성에도, 프로토타입
+            `#s-route`에도 카메라가 없다. 프로토타입은 도면 위에 **선택된 경로 하나**를 그리고
+            카드를 바꾸면 경로가 따라 바뀐다.
+
+            카메라 배경은 292(`46df503`)에서 들어왔고, 지금은 그 UI 흐름을 그대로 따라 실제
+            카메라를 붙여 둔다.
+
+            TODO(U-09): 상단을 지도로 바꾸는 편이 화면 목적(경로를 비교해 고른다)에 맞다.
+            카드의 시간·거리만으로는 어디로 어떻게 가는지 알 수 없다. 부품은 이미 있다 —
+            `IndoorMapView`가 `pathNodes`를 받고 층별 구간 필터링도 테스트로 고정돼 있다.
+            빠진 것은 좌표뿐이라 선택된 옵션으로 `POST /api/routes/indoor`를 한 번 더 부르면
+            된다. 층이 여러 개인 경로를 어떻게 보여줄지가 남은 디자인 판단이다.
+            바꿀 때 지울 것은 이 화면의 `CameraFeed`·`useCameraPreview`와 `.feed`뿐이다.
+          */}
+          <CameraFeed camera={camera} className={styles.feed} />
+
+          {/* 카메라를 켤 수 없을 때의 대체 그림. 검은 화면으로 두지 않는다. */}
+          {!camera.isLive && (
+            <svg
+              viewBox="0 0 338 290"
+              preserveAspectRatio="none"
+              className={styles.scene}
+              aria-hidden
+            >
+              <path d="M0 290 L132 138 H206 L338 290 Z" fill="rgba(60,216,160,0.09)" />
+              <path
+                d="M0 290 L132 138 M338 290 L206 138 M132 138 H206"
+                stroke="rgba(127,239,195,0.24)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <path
+                d="M132 138 V48 H206 V138"
+                stroke="rgba(127,239,195,0.16)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+            </svg>
+          )}
+
+          <CameraFallbackNotice status={camera.status} />
+
           <div className={styles.cameraHint}>
             <Icon name="camera" size={14} />
             카메라를 정면에 맞춰주세요

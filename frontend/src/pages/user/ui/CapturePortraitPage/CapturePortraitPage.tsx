@@ -7,6 +7,7 @@ import { ConsultCta } from '@/features/consult-request';
 import { getStationMaps, localize, updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
+import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { RecordingBadge, ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './CapturePortraitPage.module.css';
@@ -47,8 +48,13 @@ export function CapturePortraitPage() {
   const setFloor = useStationStore((state) => state.setFloor);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const setCurrentLocation = useNavigationStore((state) => state.setCurrentLocation);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  /**
+   * 카메라는 위젯이 소유한다. 이 화면은 프레임만 떠 간다.
+   *
+   * 촬영 흐름의 여러 화면이 같은 스트림을 이어 쓰고 XR 진입 때 한 곳에서 끊어야 하므로,
+   * 화면이 직접 `getUserMedia`를 부르지 않는다(11.8).
+   */
+  const camera = useCameraPreview();
   const captureInFlight = useRef(false);
   const timedOutRef = useRef(false);
   const [elapsed, setElapsed] = useState(0);
@@ -57,6 +63,13 @@ export function CapturePortraitPage() {
   const [currentDirection, setCurrentDirection] = useState(1);
   const direction = DIRECTIONS[currentDirection];
   const remaining = Math.max(CAPTURE_SECONDS - elapsed, 0);
+  /**
+   * 카메라를 켤 수 없는 상태. 거부·미지원·실패를 함께 다룬다.
+   *
+   * 어느 쪽이든 뜰 프레임이 없어 15초를 기다릴 이유가 없다. 곧바로 재시도·상담 안내를 띄운다.
+   */
+  const cameraBlocked =
+    camera.status === 'denied' || camera.status === 'unsupported' || camera.status === 'error';
 
   useEffect(() => {
     let disposed = false;
@@ -75,22 +88,20 @@ export function CapturePortraitPage() {
         return;
       }
 
-      const video = videoRef.current;
+      const video = camera.videoRef.current;
       if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
         scheduleNextCapture();
         return;
       }
+      // 위치추정은 카메라가 실제로 본 화면과 내부 파라미터가 맞아야 한다. 화면 표시 크기가
+      // 아니라 원본 해상도를 그대로 보낸다.
+      const frameWidth = video.videoWidth;
+      const frameHeight = video.videoHeight;
 
       captureInFlight.current = true;
       let localized = false;
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d')?.drawImage(video, 0, 0);
-        const blob = await new Promise<Blob | null>((resolve) =>
-          canvas.toBlob(resolve, 'image/jpeg', 0.86),
-        );
+        const blob = await camera.capture();
         if (!blob) throw new Error('Camera frame encoding failed');
 
         const maps = await getStationMaps(stationId);
@@ -104,8 +115,8 @@ export function CapturePortraitPage() {
           capturedAt: new Date().toISOString(),
           camera: {
             model: 'PINHOLE',
-            width: canvas.width,
-            height: canvas.height,
+            width: frameWidth,
+            height: frameHeight,
             intrinsicsSource: 'browser',
           },
         });
@@ -149,39 +160,35 @@ export function CapturePortraitPage() {
       }
     }
 
-    async function startCamera() {
-      if (!navigator.mediaDevices?.getUserMedia) return;
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
-        });
-        if (disposed) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          scheduleNextCapture();
-        }
-      } catch {
-        if (!disposed) {
-          timedOutRef.current = true;
-          setTimeoutOpen(true);
-        }
-      }
+    /**
+     * 카메라가 켜질 때까지 기다렸다가 촬영을 시작한다.
+     *
+     * 위젯이 스트림을 잡는 동안에는 `videoWidth`가 0이라 뜰 프레임이 없다. 위의
+     * `captureAndLocalize`가 그 경우 스스로 다시 예약하므로 곧바로 걸어도 된다.
+     *
+     * 카메라를 아예 켤 수 없으면 촬영을 걸지 않는다. 안내는 `cameraBlocked`가 화면에서
+     * 바로 띄우므로 여기서 상태를 건드리지 않는다.
+     */
+    if (cameraBlocked) {
+      timedOutRef.current = true;
+    } else {
+      scheduleNextCapture(0);
     }
 
-    void startCamera();
     return () => {
       disposed = true;
       if (captureTimer) window.clearTimeout(captureTimer);
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
     };
-  }, [attempt, navigate, setCurrentLocation, setFloor, stationId, userSessionId]);
+  }, [
+    attempt,
+    camera,
+    cameraBlocked,
+    navigate,
+    setCurrentLocation,
+    setFloor,
+    stationId,
+    userSessionId,
+  ]);
 
   useEffect(() => {
     timedOutRef.current = false;
@@ -193,8 +200,6 @@ export function CapturePortraitPage() {
         if (next >= CAPTURE_SECONDS) {
           window.clearInterval(timer);
           timedOutRef.current = true;
-          streamRef.current?.getTracks().forEach((track) => track.stop());
-          streamRef.current = null;
           setTimeoutOpen(true);
           return CAPTURE_SECONDS;
         }
@@ -206,15 +211,18 @@ export function CapturePortraitPage() {
     return () => window.clearInterval(timer);
   }, [attempt]);
 
+  /** 안내 시트가 떠 있으면 촬영 방향 안내를 돌리지 않는다. */
+  const noticeOpen = timeoutOpen || cameraBlocked;
+
   useEffect(() => {
-    if (timeoutOpen) return;
+    if (noticeOpen) return;
 
     const guideTimer = window.setTimeout(() => {
       setCurrentDirection((value) => (value + 1) % DIRECTIONS.length);
     }, 2500);
 
     return () => window.clearTimeout(guideTimer);
-  }, [currentDirection, timeoutOpen]);
+  }, [currentDirection, noticeOpen]);
 
   const retryCapture = () => {
     timedOutRef.current = false;
@@ -230,7 +238,7 @@ export function CapturePortraitPage() {
       bodyClassName={styles.body}
       statusBarClassName={styles.statusBar}
       overlay={
-        timeoutOpen ? (
+        noticeOpen ? (
           <Sheet placement="center" label="현재 위치를 찾지 못했어요">
             <BlobHero className={styles.timeoutHero}>
               <Blob tone="coral" slot="main" style={{ width: 76, height: 76 }} />
@@ -273,34 +281,47 @@ export function CapturePortraitPage() {
         </div>
 
         <div className={styles.viewfinder}>
-          <video ref={videoRef} className={styles.cameraVideo} muted playsInline aria-hidden />
-          <svg
-            viewBox="0 0 300 640"
-            preserveAspectRatio="none"
-            className={styles.scene}
-            aria-hidden
-          >
-            <path d="M0 640 L117 320 H183 L300 640 Z" fill="rgba(60,216,160,0.07)" />
-            <path
-              d="M0 640 L117 320 M300 640 L183 320 M117 320 H183"
-              stroke="rgba(127,239,195,0.24)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <path
-              d="M117 320 V128 H183 V320"
-              stroke="rgba(127,239,195,0.16)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <rect x="129" y="172.8" width="42" height="51.2" rx="3" fill="rgba(127,239,195,0.2)" />
-            <path
-              d="M0 512 H90 M210 512 H300"
-              stroke="rgba(127,239,195,0.12)"
-              strokeWidth="1"
-              fill="none"
-            />
-          </svg>
+          <CameraFeed camera={camera} className={styles.feed} />
+
+          {/* 카메라를 켤 수 없을 때의 대체 그림. 검은 화면으로 두지 않는다. */}
+          {!camera.isLive && (
+            <svg
+              viewBox="0 0 300 640"
+              preserveAspectRatio="none"
+              className={styles.scene}
+              aria-hidden
+            >
+              <path d="M0 640 L117 320 H183 L300 640 Z" fill="rgba(60,216,160,0.07)" />
+              <path
+                d="M0 640 L117 320 M300 640 L183 320 M117 320 H183"
+                stroke="rgba(127,239,195,0.24)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <path
+                d="M117 320 V128 H183 V320"
+                stroke="rgba(127,239,195,0.16)"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <rect
+                x="129"
+                y="172.8"
+                width="42"
+                height="51.2"
+                rx="3"
+                fill="rgba(127,239,195,0.2)"
+              />
+              <path
+                d="M0 512 H90 M210 512 H300"
+                stroke="rgba(127,239,195,0.12)"
+                strokeWidth="1"
+                fill="none"
+              />
+            </svg>
+          )}
+
+          <CameraFallbackNotice status={camera.status} />
 
           <div className={styles.band} aria-hidden />
           <div className={styles.horizon} aria-hidden />

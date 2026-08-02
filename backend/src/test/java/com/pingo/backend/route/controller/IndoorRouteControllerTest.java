@@ -8,6 +8,7 @@ import com.pingo.backend.route.dto.response.RoutePathNode;
 import com.pingo.backend.route.dto.response.RouteResponse;
 import com.pingo.backend.route.dto.response.RouteStep;
 import com.pingo.backend.route.service.IndoorRouteService;
+import com.pingo.backend.usersession.domain.Language;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,21 +50,25 @@ class IndoorRouteControllerTest {
         when(indoorRouteService.getRouteOptions(any())).thenReturn(List.of(
                 RouteOptionResponse.available(RouteType.FASTEST, BigDecimal.valueOf(15), 240, true),
                 RouteOptionResponse.unavailable(RouteType.ELEVATOR_ONLY,
-                        RouteUnavailableReason.NO_ACCESSIBLE_ROUTE)));
+                        RouteUnavailableReason.NO_ACCESSIBLE_ROUTE, Language.KO)));
 
         mockMvc.perform(post("/api/routes/indoor/options")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"stationId":1,"startNodeId":1,"targetNodeId":4}
+                                {"stationId":1,"startNodeId":1,"targetNodeId":4,"language":"ko"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].routeType").value("fastest"))
                 .andExpect(jsonPath("$.data[0].available").value(true))
                 .andExpect(jsonPath("$.data[0].hasStairsOrEscalator").value(true))
+                // 이용 가능하면 문구가 없어야 한다. 빈 문자열이 아니라 null 이다.
+                .andExpect(jsonPath("$.data[0].unavailableMessage").isEmpty())
                 .andExpect(jsonPath("$.data[1].routeType").value("elevator_only"))
                 .andExpect(jsonPath("$.data[1].available").value(false))
                 .andExpect(jsonPath("$.data[1].unavailableReason").value("NO_ACCESSIBLE_ROUTE"))
+                .andExpect(jsonPath("$.data[1].unavailableMessage")
+                        .value("계단·에스컬레이터를 제외한 경로로는 도착지까지 이동할 수 없습니다."))
                 .andExpect(jsonPath("$.data[1].hasStairsOrEscalator").value(false));
     }
 

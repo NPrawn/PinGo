@@ -57,7 +57,7 @@ public class IndoorRouteService {
                 options.add(RouteOptionResponse.available(
                         routeType, path.totalDistanceM(), path.totalTimeSec(), hasStairsOrEscalator(path)));
             } else {
-                options.add(RouteOptionResponse.unavailable(routeType, reasonFor(routeType)));
+                options.add(RouteOptionResponse.unavailable(routeType, reasonFor(routeType), request.language()));
             }
         }
         return options;
@@ -74,7 +74,9 @@ public class IndoorRouteService {
         RoutePath path = routeFinder.find(data.edges(), request.startNodeId(), request.targetNodeId(), routeType);
 
         if (!path.isReachable()) {
-            return RouteResponse.unavailable(routeType, request.startNodeId(), request.targetNodeId(), reasonFor(routeType));
+            return RouteResponse.unavailable(
+                    routeType, request.startNodeId(), request.targetNodeId(),
+                    reasonFor(routeType), request.language());
         }
 
         List<RouteStep> steps = toSteps(path.segments());

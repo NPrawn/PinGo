@@ -11,6 +11,32 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock('@/shared/api', () => apiMocks);
 
+/**
+ * 카메라는 위젯이 소유한다. 이 화면이 검증할 것은 촬영 루프와 15초 마감이므로
+ * 스트림 획득은 위젯 층에서 대신한다.
+ *
+ * `videoRef`에 실제 요소 대신 크기만 있는 객체를 둔다. 화면은 프레임을 뜰 수 있는지
+ * 판단할 때 `videoWidth`만 보고, 실제 캡처는 `capture()`가 한다.
+ */
+const cameraMocks = vi.hoisted(() => ({
+  capture: vi.fn(),
+  status: { value: 'live' as string },
+  videoRef: { current: { videoWidth: 640, videoHeight: 480 } as HTMLVideoElement },
+}));
+
+vi.mock('@/widgets/camera-preview', () => ({
+  useCameraPreview: () => ({
+    videoRef: cameraMocks.videoRef,
+    stream: null,
+    status: cameraMocks.status.value,
+    isLive: cameraMocks.status.value === 'live',
+    capture: cameraMocks.capture,
+  }),
+  CameraFeed: () => null,
+  CameraFallbackNotice: () => null,
+  stopCamera: vi.fn(),
+}));
+
 describe('CapturePortraitPage', () => {
   it('shows the location matching exception only after 15 seconds', () => {
     vi.useFakeTimers();
@@ -85,28 +111,10 @@ describe('CapturePortraitPage', () => {
 
   it('keeps capturing after an early no-match response and opens the modal at 15 seconds', async () => {
     vi.useFakeTimers();
-    const originalMediaDevices = navigator.mediaDevices;
-    const stop = vi.fn();
 
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: {
-        getUserMedia: vi.fn().mockResolvedValue({
-          getTracks: () => [{ stop }],
-        }),
-      },
-    });
-    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
-    vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(640);
-    vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(480);
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-      drawImage: vi.fn(),
-    } as unknown as CanvasRenderingContext2D);
-    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
-      callback(new Blob(['frame'], { type: 'image/jpeg' }));
-    });
+    cameraMocks.capture.mockResolvedValue(new Blob(['frame'], { type: 'image/jpeg' }));
     apiMocks.getStationMaps.mockResolvedValue([{ version: 'map-v1' }]);
-    apiMocks.localize.mockResolvedValue({ resultStatus: 'no_match', candidates: [] });
+    apiMocks.localize.mockResolvedValue({ resultStatus: 'no_match', position: null });
     useUserSessionStore.setState({ userSessionId: 'session-1' });
 
     try {
@@ -124,26 +132,25 @@ describe('CapturePortraitPage', () => {
         await vi.advanceTimersByTimeAsync(1200);
       });
 
-      expect(apiMocks.localize).toHaveBeenCalledTimes(1);
+      // 카메라가 준비되면 곧바로 첫 장을 보낸다. 첫 1초를 흘려보내지 않는다.
+      expect(apiMocks.localize.mock.calls.length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeNull();
+      const earlyCalls = apiMocks.localize.mock.calls.length;
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(13_700);
       });
-      expect(apiMocks.localize.mock.calls.length).toBeGreaterThan(1);
+      // no_match 한 번으로 멈추지 않고 마감까지 계속 다시 찍는다.
+      expect(apiMocks.localize.mock.calls.length).toBeGreaterThan(earlyCalls);
       expect(screen.queryByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeNull();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(100);
       });
       expect(screen.getByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeInTheDocument();
-      expect(stop).toHaveBeenCalled();
     } finally {
       useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
-      Object.defineProperty(navigator, 'mediaDevices', {
-        configurable: true,
-        value: originalMediaDevices,
-      });
+      cameraMocks.capture.mockReset();
       vi.restoreAllMocks();
       vi.useRealTimers();
     }

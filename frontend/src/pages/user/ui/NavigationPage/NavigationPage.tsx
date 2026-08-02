@@ -12,6 +12,7 @@ import { USER_ROUTES } from '@/shared/config';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
+import { stopCamera } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -172,7 +173,15 @@ export function NavigationPage() {
     headingDeg,
     source,
     anchorStatus,
-  } = useXrNavigationSession({ currentIndoorLocation: confirmedLocation });
+  } = useXrNavigationSession({
+    currentIndoorLocation: confirmedLocation,
+    /**
+     * 앞 화면들이 켜 둔 카메라를 세션 직전에 반납한다. (11.8)
+     *
+     * 두 위젯을 잇는 자리가 화면이다 — 위젯끼리는 서로를 import하지 않는다.
+     */
+    releaseCamera: stopCamera,
+  });
 
   /**
    * 층 탭. **목록을 지도 응답에서 만든다.** (S15P11A206-280)

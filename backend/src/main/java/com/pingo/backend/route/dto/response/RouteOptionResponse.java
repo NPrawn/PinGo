@@ -2,6 +2,7 @@ package com.pingo.backend.route.dto.response;
 
 import com.pingo.backend.route.domain.RouteType;
 import com.pingo.backend.route.domain.RouteUnavailableReason;
+import com.pingo.backend.usersession.domain.Language;
 
 import java.math.BigDecimal;
 
@@ -18,6 +19,10 @@ public record RouteOptionResponse(
         String displayName,
         boolean available,
         String unavailableReason,
+
+        /** 이용 불가 사유를 요청 언어로 쓴 문구. 이용 가능하면 {@code null}. */
+        String unavailableMessage,
+
         BigDecimal totalDistanceM,
         Integer estimatedTimeSec,
         boolean hasStairsOrEscalator
@@ -34,18 +39,24 @@ public record RouteOptionResponse(
                 routeType.getDisplayName(),
                 true,
                 null,
+                null,
                 totalDistanceM,
                 estimatedTimeSec,
                 hasStairsOrEscalator
         );
     }
 
-    public static RouteOptionResponse unavailable(RouteType routeType, RouteUnavailableReason reason) {
+    public static RouteOptionResponse unavailable(
+            RouteType routeType,
+            RouteUnavailableReason reason,
+            Language language
+    ) {
         return new RouteOptionResponse(
                 routeType.getCode(),
                 routeType.getDisplayName(),
                 false,
                 reason.name(),
+                reason.messageFor(language),
                 null,
                 null,
                 false
