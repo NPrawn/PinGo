@@ -4,11 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { facilityIconOf, useStationFacilities, type Facility } from '@/entities/facility';
 import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
 import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
+import { routeUnavailableText } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
-import type { FloorId } from '@/shared/types';
+import type { FloorId, RouteUnavailableReason } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -77,6 +78,7 @@ export function NavigationPage() {
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
+  const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const setRouteResult = useNavigationStore((state) => state.setRouteResult);
   const waypoints = useNavigationStore((state) => state.waypoints);
   const addWaypoint = useNavigationStore((state) => state.addWaypoint);
@@ -109,6 +111,8 @@ export function NavigationPage() {
    * `initialDestination`을 ref로 잡아 두는 것과 같은 이유다.
    */
   const [exit] = useState(() => targetExitLabel ?? '출입구');
+  /** 되돌리기가 복원할 도착 노드. `exit`과 같은 이유로 진입 시점 값에 고정한다. */
+  const [initialTarget] = useState(() => ({ nodeId: targetNodeId, label: targetExitLabel }));
   const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   /** 켜 둔 시설 유형(`facilityType`). null이면 시설을 그리지 않는다. */
@@ -206,6 +210,75 @@ export function NavigationPage() {
   const destinationFacility =
     pickedDestination ?? matchExitByName(exitsQuery.data ?? [], activeDestination);
 
+  /**
+   * 안내 카드 문구.
+   *
+   * **경로를 모를 때 구체적인 지시를 쓰지 않는다.** 예전에는 조회를 걸 수 없는 상태에서
+   * `직진 25m` · `개찰구를 지나 에스컬레이터 방향으로 이동`을 그대로 띄웠다. 프로토타입에서
+   * 옮겨온 문구인데, 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
+   *
+   * **`isPending`이 아니라 `isLoading`으로 로딩을 판단한다.** 출발·도착 노드가 없으면 훅이
+   * 조회를 끄는데, 꺼진 쿼리는 `isPending`에 머무른다. 그것을 로딩으로 읽으면 카드가
+   * `경로 계산 중`에서 영구히 멈춘다.
+   */
+  const instruction = ((): { eyebrow: string; title: string; meta: string } => {
+    if (currentNodeId == null) {
+      return {
+        eyebrow: '안내 준비 중',
+        title: '현재 위치를 확인해 주세요',
+        meta: '어디서 출발하는지 알아야 경로를 계산할 수 있어요.',
+      };
+    }
+    if (targetNodeId == null) {
+      return {
+        eyebrow: '안내 준비 중',
+        title: '목적지를 선택해 주세요',
+        meta: '어디로 갈지 정하면 경로를 안내해 드려요.',
+      };
+    }
+    if (routeQuery.isLoading) {
+      return {
+        eyebrow: '다음 안내 · 계산 중',
+        title: '경로를 찾고 있어요',
+        meta: '잠시만 기다려 주세요.',
+      };
+    }
+    if (routeQuery.isError) {
+      return {
+        eyebrow: '다음 안내 · -',
+        title: '경로를 불러오지 못했어요',
+        meta: '잠시 후 다시 시도해 주세요.',
+      };
+    }
+    if (routeResult && routeResult.available === false) {
+      return {
+        eyebrow: '다음 안내 · -',
+        title: '이 경로로는 갈 수 없어요',
+        meta:
+          routeUnavailableText(
+            (routeResult.unavailableReason ?? null) as RouteUnavailableReason | null,
+          ) ?? '다른 경로를 선택해 주세요.',
+      };
+    }
+    if (!firstStep) {
+      return {
+        eyebrow: '다음 안내 · -',
+        title: '안내할 구간이 없어요',
+        meta: '출발지와 목적지가 같은 지점일 수 있어요.',
+      };
+    }
+
+    const totalDistance = Math.round(routeResult?.totalDistanceM ?? 0);
+    const totalMinutes = Math.max(1, Math.ceil((routeResult?.estimatedTimeSec ?? 0) / 60));
+    return {
+      eyebrow: recalculated
+        ? '다음 안내 · 경로 업데이트 완료'
+        : `다음 안내 · ${Math.round(firstStep.distanceM ?? 0)}m`,
+      title: firstStep.instruction ?? '경로를 따라 이동하세요',
+      meta: `총 ${totalDistance}m · 약 ${totalMinutes}분`,
+    };
+  })();
+
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
     ? waypoints.includes(selectedFacility.nameKo)
@@ -291,6 +364,17 @@ export function NavigationPage() {
                   setActiveDestination(selectedFacility.nameKo);
                   // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
                   setPickedDestination(selectedFacility);
+                  /**
+                   * 도착 노드도 그 시설로 옮긴다.
+                   *
+                   * `setDestination`은 이름만 바꾸고 도착 노드를 비운다 — 이름과 노드가 다른
+                   * 곳을 가리키는 것을 막기 위해서다. 여기서는 고른 시설의 노드를 알고 있으므로
+                   * 곧바로 채워 경로를 다시 계산하게 한다. 비워 둔 채로 두면 안내 카드가
+                   * "목적지를 선택해 주세요"로 돌아가 방금 고른 것이 무시된 것처럼 보인다.
+                   */
+                  if (selectedFacility.linkedNodeId != null) {
+                    setTargetNode(selectedFacility.linkedNodeId, selectedFacility.nameKo);
+                  }
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -365,6 +449,10 @@ export function NavigationPage() {
                     setDestination(initialDestination.current);
                     setActiveDestination(exit);
                     setPickedDestination(null);
+                    // 처음 안내를 시작한 출구로 도착 노드도 함께 돌린다.
+                    if (initialTarget.nodeId != null) {
+                      setTargetNode(initialTarget.nodeId, initialTarget.label);
+                    }
                     setRecalculated(true);
                   }}
                   aria-label={`목적지를 ${exit}로 되돌리기`}
@@ -386,35 +474,9 @@ export function NavigationPage() {
               <Icon name="arrow-right" size={16} className={styles.upArrow} />
             </span>
             <div className={styles.instructionBody}>
-              <span className={styles.instructionEyebrow}>
-                다음 안내 ·{' '}
-                {routeQuery.isPending
-                  ? '경로 계산 중'
-                  : recalculated
-                    ? '경로 업데이트 완료'
-                    : firstStep
-                      ? `${Math.round(firstStep.distanceM ?? 0)}m`
-                      : '-'}
-              </span>
-              <strong className={styles.instructionTitle}>
-                {firstStep?.instruction ??
-                  (currentNodeId == null || targetNodeId == null
-                    ? '직진 25m'
-                    : routeQuery.isError
-                      ? '경로를 불러오지 못했습니다'
-                      : '경로 확인 중')}
-              </strong>
-              <span className={styles.instructionMeta}>
-                {routeResult?.available
-                  ? `총 ${Math.round(routeResult.totalDistanceM ?? 0)}m · 약 ${Math.max(
-                      1,
-                      Math.ceil((routeResult.estimatedTimeSec ?? 0) / 60),
-                    )}분`
-                  : (routeResult?.unavailableReason ??
-                    (currentNodeId == null || targetNodeId == null
-                      ? '개찰구를 지나 에스컬레이터 방향으로 이동'
-                      : '현재 위치와 목적지를 확인해 주세요'))}
-              </span>
+              <span className={styles.instructionEyebrow}>{instruction.eyebrow}</span>
+              <strong className={styles.instructionTitle}>{instruction.title}</strong>
+              <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
           </div>
           <div className={styles.arrow}>↑</div>

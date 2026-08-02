@@ -176,6 +176,48 @@ const ACCESSIBLE_ROUTE_OPTIONS = [
   },
 ];
 
+/**
+ * 상세 경로. 안내 화면이 카드 문구와 지도 경로선을 이것으로 그린다.
+ *
+ * 노드와 좌표는 V8 시드의 실제 값이다 — B3 승강장(205)에서 B2 대합실을 지나 출구로 향한다.
+ * 첫 구간의 `instruction`이 안내 카드의 제목이 된다.
+ */
+const ROUTE_DETAIL = {
+  routeType: 'fastest',
+  displayName: '빠른 경로',
+  available: true,
+  unavailableReason: null,
+  startNodeId: 205,
+  targetNodeId: 325,
+  totalDistanceM: 224,
+  estimatedTimeSec: 252,
+  steps: [
+    {
+      order: 1,
+      fromNodeId: 205,
+      toNodeId: 202,
+      distanceM: 25,
+      estimatedTimeSec: 28,
+      moveType: 'walk',
+      instruction: '개찰구 방향으로 25m 직진하세요',
+    },
+    {
+      order: 2,
+      fromNodeId: 202,
+      toNodeId: 102,
+      distanceM: 6,
+      estimatedTimeSec: 40,
+      moveType: 'elevator',
+      instruction: '엘리베이터를 타고 B2로 이동하세요',
+    },
+  ],
+  pathNodes: [
+    { nodeId: 205, floorId: 2, mapX: -25.3, mapY: 25.6 },
+    { nodeId: 202, floorId: 2, mapX: -0.4, mapY: 27.2 },
+    { nodeId: 102, floorId: 1, mapX: -0.4, mapY: 27.2 },
+  ],
+};
+
 export const handlers = [
   http.get('*/api/health', () => HttpResponse.text('OK')),
   http.post('*/api/user-sessions', () =>
@@ -275,6 +317,9 @@ export const handlers = [
 
     return HttpResponse.json({ success: true, data: facility, message: null });
   }),
+  http.post('*/api/routes/indoor', () =>
+    HttpResponse.json({ success: true, data: ROUTE_DETAIL, message: null }),
+  ),
   http.post('*/api/routes/indoor/options', async ({ request }) => {
     const body = (await request.json()) as { targetNodeId?: number };
     const data =

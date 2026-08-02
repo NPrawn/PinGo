@@ -661,9 +661,21 @@ describe('user routes', () => {
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '승차권 충전 경유지 삭제' }));
     expect(within(routeHeader).queryByText('승차권 충전')).toBeNull();
-    expect(screen.getByText('직진 25m')).toBeInTheDocument();
-    expect(screen.getByText('개찰구를 지나 에스컬레이터 방향으로 이동')).toBeInTheDocument();
-    expect(screen.queryByText(/2번 출입구까지 210m/)).toBeNull();
+    /**
+     * 안내 문구는 경로 응답의 첫 구간에서 온다.
+     *
+     * 예전에는 경로를 모를 때도 `직진 25m`·`개찰구를 지나 에스컬레이터 방향으로 이동`을
+     * 그대로 띄웠다. 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
+     */
+    /**
+     * 안내 문구는 경로 응답의 첫 구간에서 온다.
+     *
+     * 예전에는 경로를 모를 때도 `직진 25m`·`개찰구를 지나 에스컬레이터 방향으로 이동`을
+     * 그대로 띄웠다. 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
+     */
+    expect(await screen.findByText('개찰구 방향으로 25m 직진하세요')).toBeInTheDocument();
+    expect(screen.getByText('다음 안내 · 경로 업데이트 완료')).toBeInTheDocument();
+    expect(screen.getByText('총 224m · 약 5분')).toBeInTheDocument();
   });
 
   it('returns to the station main page after a satisfaction rating', async () => {
