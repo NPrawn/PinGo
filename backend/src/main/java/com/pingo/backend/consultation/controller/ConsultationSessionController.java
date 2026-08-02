@@ -2,10 +2,12 @@ package com.pingo.backend.consultation.controller;
 
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
+import com.pingo.backend.consultation.dto.request.ConsultationRatingRequest;
 import com.pingo.backend.consultation.dto.response.ConsultationCancelResponse;
 import com.pingo.backend.consultation.dto.response.ConsultationCreateResponse;
 import com.pingo.backend.consultation.dto.response.ConsultationEndResponse;
 import com.pingo.backend.consultation.dto.response.ConsultationResponse;
+import com.pingo.backend.consultation.service.ConsultationRatingService;
 import com.pingo.backend.consultation.service.ConsultationSessionService;
 import com.pingo.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 public class ConsultationSessionController {
 
     private final ConsultationSessionService consultationSessionService;
+    private final ConsultationRatingService consultationRatingService;
 
     @PostMapping
     public ApiResponse<ConsultationCreateResponse> createConsultation(
@@ -52,5 +55,14 @@ public class ConsultationSessionController {
             @AuthenticationPrincipal Long accountId
     ){
         return ApiResponse.success(consultationSessionService.end(consultationSessionId, request, accountId));
+    }
+
+    @PostMapping("/{consultationId}/rating")
+    public ApiResponse<ConsultationRatingRequest.Response> rate(
+            @PathVariable String consultationId,
+            @Valid @RequestBody ConsultationRatingRequest request) {
+
+        return ApiResponse.success(
+                consultationRatingService.rate(consultationId, request));
     }
 }
