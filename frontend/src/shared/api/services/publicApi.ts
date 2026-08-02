@@ -23,8 +23,6 @@ export type RouteOptionsRequest = Schemas['RouteOptionsRequest'];
 export type RouteOptionResponse = Schemas['RouteOptionResponse'];
 export type RouteCreateRequest = Schemas['RouteCreateRequest'];
 export type RouteResponse = Schemas['RouteResponse'];
-export type ExternalDirectionRequest = Schemas['ExternalDirectionRequest'];
-export type ExternalDirectionResponse = Schemas['ExternalDirectionResponse'];
 export type LocalizationRequestMetadata = Schemas['LocalizationRequestMetadata'];
 export type LocalizationResponse = Schemas['LocalizationResponse'];
 
@@ -104,9 +102,7 @@ export function searchDestinations(stationId: number, keyword: string, language?
 
 /** 목적지 좌표에서 가장 가까운 출구를 찾는다. 최단 경로가 안내할 출입구다. */
 export function findNearestExit(request: NearestExitRequest) {
-  return unwrap<NearestExitResponse>(
-    apiClient.post(ENDPOINTS.destinations.nearestExit, request),
-  );
+  return unwrap<NearestExitResponse>(apiClient.post(ENDPOINTS.destinations.nearestExit, request));
 }
 
 export function getRecommendedExits(placeId: number) {
@@ -121,12 +117,6 @@ export function getIndoorRouteOptions(request: RouteOptionsRequest) {
 
 export function createIndoorRoute(request: RouteCreateRequest) {
   return unwrap<RouteResponse>(apiClient.post(ENDPOINTS.routes.indoor, request));
-}
-
-export function createExternalDirection(request: ExternalDirectionRequest) {
-  return unwrap<ExternalDirectionResponse>(
-    apiClient.post(ENDPOINTS.externalMaps.directions, request),
-  );
 }
 
 export function localize(image: File, metadata: LocalizationRequestMetadata) {

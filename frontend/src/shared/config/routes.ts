@@ -41,7 +41,6 @@ export const USER_ROUTES = {
   BACKSTAGE: `${USER}/backstage`,
   NAVIGATION_REROUTE: `${USER}/navigation/reroute`, // s-reroute
   ARRIVAL: `${USER}/arrival`, // s-arrive
-  EXTERNAL_MAP: `${USER}/external-map`, // s-external
   OFFLINE: `${USER}/offline`, // s-offline
   SETTINGS: `${USER}/settings`, // s-settings
   CONSULT_REQUEST: `${USER}/consult`, // s-consult-req

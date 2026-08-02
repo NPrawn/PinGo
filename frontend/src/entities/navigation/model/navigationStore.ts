@@ -11,9 +11,6 @@ type NavigationStore = {
   destinationLatitude: number | null;
   destinationLongitude: number | null;
   destinationAddress: string | null;
-  externalOriginName: string | null;
-  externalOriginLatitude: number | null;
-  externalOriginLongitude: number | null;
   targetNodeId: number | null;
   /** 도착 출구의 표시 이름. 안내·도착 화면이 목적지 자리에 쓴다. */
   targetExitLabel: string | null;
@@ -56,9 +53,6 @@ type NavigationStore = {
       destinationLatitude?: number;
       destinationLongitude?: number;
       destinationAddress?: string;
-      externalOriginName?: string;
-      externalOriginLatitude?: number;
-      externalOriginLongitude?: number;
     },
   ) => void;
   setDestination: (destination: string) => void;
@@ -105,9 +99,6 @@ export const useNavigationStore = create<NavigationStore>()(
       destinationLatitude: null,
       destinationLongitude: null,
       destinationAddress: null,
-      externalOriginName: null,
-      externalOriginLatitude: null,
-      externalOriginLongitude: null,
       targetNodeId: null,
       targetExitLabel: null,
       currentNodeId: null,
@@ -129,9 +120,6 @@ export const useNavigationStore = create<NavigationStore>()(
           destinationLatitude: details?.destinationLatitude ?? null,
           destinationLongitude: details?.destinationLongitude ?? null,
           destinationAddress: details?.destinationAddress ?? null,
-          externalOriginName: details?.externalOriginName ?? null,
-          externalOriginLatitude: details?.externalOriginLatitude ?? null,
-          externalOriginLongitude: details?.externalOriginLongitude ?? null,
           targetNodeId: details?.targetNodeId ?? null,
           targetExitLabel: null,
           routeResult: null,
@@ -146,9 +134,6 @@ export const useNavigationStore = create<NavigationStore>()(
           destinationLatitude: null,
           destinationLongitude: null,
           destinationAddress: null,
-          externalOriginName: null,
-          externalOriginLatitude: null,
-          externalOriginLongitude: null,
           targetNodeId: null,
           targetExitLabel: null,
           routeResult: null,

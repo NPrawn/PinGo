@@ -40,9 +40,6 @@ export const ENDPOINTS = {
     indoorOptions: '/api/routes/indoor/options',
     indoor: '/api/routes/indoor',
   },
-  externalMaps: {
-    directions: '/api/external-maps/directions',
-  },
   consultations: {
     root: '/api/consultations',
     detail: (consultationId: string) => `/api/consultations/${consultationId}`,

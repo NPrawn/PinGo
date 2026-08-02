@@ -11,7 +11,6 @@ import { ConsultPermissionPage } from './ConsultPermissionPage/ConsultPermission
 import { ConsultRequestPage } from './ConsultRequestPage/ConsultRequestPage';
 import { ConsultSessionPage } from './ConsultSessionPage/ConsultSessionPage';
 import { ConsultWaitingPage } from './ConsultWaitingPage/ConsultWaitingPage';
-import { ExternalMapPage } from './ExternalMapPage/ExternalMapPage';
 import { LanguagePage } from './LanguagePage/LanguagePage';
 import { LocateSuccessPage } from './LocateSuccessPage/LocateSuccessPage';
 import { NavigationPage } from './NavigationPage/NavigationPage';
@@ -76,7 +75,8 @@ export function UserRoutes() {
       <Route path={rel(USER_ROUTES.BACKSTAGE)} element={<BackstagePage />} />
       <Route path={rel(USER_ROUTES.NAVIGATION_REROUTE)} element={<ReroutePage />} />
       <Route path={rel(USER_ROUTES.ARRIVAL)} element={<ArrivalPage />} />
-      <Route path={rel(USER_ROUTES.EXTERNAL_MAP)} element={<ExternalMapPage />} />
+      {/* 역 밖 도보 안내는 다루지 않는다. 안내는 출입구에서 끝난다. */}
+      <Route path="external-map" element={<Navigate to={USER_ROUTES.STATION} replace />} />
 
       {/* Consultation */}
       <Route path={rel(USER_ROUTES.CONSULT_REQUEST)} element={<ConsultRequestPage />} />
