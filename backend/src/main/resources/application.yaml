@@ -77,3 +77,9 @@ webrtc:
     turn-urls: ${WEBRTC_TURN_URLS:}
     turn-username: ${WEBRTC_TURN_USERNAME:}
     turn-credential: ${WEBRTC_TURN_CREDENTIAL:}
+
+summary:
+  api:
+    base-url : ${SUMMARY_API_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+    key : ${GMS_KEY:dummy-key}
+    model : ${SUMMARY_API_MODEL:gemini-3.5-flash-lite}

@@ -27,6 +27,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.Optional;
@@ -61,6 +62,7 @@ class ConsultationSessionServiceTest {
 
     @InjectMocks
     private ConsultationSessionService consultationSessionService;
+
 
     private static final String USER_SESSION_ID = "usr_9f3a2b";
     private static final String OTHER_USER_SESSION_ID = "usr_other0";

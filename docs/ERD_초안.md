@@ -73,6 +73,8 @@ erDiagram
     ACCOUNT ||--o{ CONSULTATION_SESSION : handles
     STATION ||--o{ CONSULTATION_SESSION : occurs_at
     CONSULTATION_SESSION ||--o{ CONSULTATION_EVENT : has
+    CONSULTATION_SESSION ||--o| CONSULTATION_SUMMARY : summarized_by
+    CONSULTATION_SESSION ||--o{ CONSULTATION_TRANSCRIPT : records
 
     USER_SESSION ||--o{ LOCATION_SHARE : creates
     ROUTE_NODE ||--o{ LOCATION_SHARE : points_to
@@ -104,6 +106,8 @@ erDiagram
 | 사용자 | user_session | 비로그인 사용자 임시 세션 | 필수 |
 | 상담 | consultation_session | 상담 요청 및 세션 | 필수 |
 | 상담 | consultation_event | 상담 중 발생 이벤트 | 중요 |
+| 상담 | consultation_summary | 상담 종료 후 저장하는 상담 요약 | 중요 |
+| 상담 | consultation_transcript | 상담 중 수집한 STT 발화 기록 | 중요 |
 | 계정 | account | 상담자·관리자 통합 계정 (account_type으로 구분) | 필수 |
 | VPS | vps_map | VPS 맵 버전 | 필수 |
 | VPS | vps_reference_image | VPS 기준 이미지 | 중요 |
@@ -475,6 +479,8 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | requested_at | datetime | 요청 시각 | not null |
 | accepted_at | datetime | 수락 시각 | nullable |
 | ended_at | datetime | 종료 시각 | nullable |
+| rating_score | tinyint | 사용자 만족도 점수 (1~5) | nullable |
+| rated_at | datetime | 만족도 평가 시각 | nullable |
 
 > 컬럼명은 마이그레이션 호환을 위해 `counselor_id`를 그대로 유지하지만, FK 대상은 `counselor` 테이블이 아닌 `account` 테이블이다 (`account_type = COUNSELOR`인 행만 참조).
 
@@ -527,6 +533,64 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | update_location | 현재 위치 수정 |
 | call_started | 상담 연결 시작 |
 | call_ended | 상담 종료 |
+
+---
+
+### consultation_summary
+
+상담 전문으로부터 생성한 상담 요약을 저장한다. 상담자가 전문을 전송하면 `PENDING` 상태로 행을 만들고, Backend가 비동기로 요약 문장을 생성해 `COMPLETED`로 전환한다.
+
+`route_node`, `facility` 등 공간 마스터 데이터는 재시딩으로 ID가 바뀔 수 있으므로, 이력 화면에 표시할 라벨은 저장 시점 값을 문자열로 스냅샷한다.
+
+| 컬럼 | 타입 예시 | 설명 | 제약 |
+| --- | --- | --- | --- |
+| summary_id | bigint | 요약 ID | PK, AUTO_INCREMENT |
+| consultation_id | varchar(64) | 상담 세션 ID | FK consultation_session.consultation_id, UNIQUE |
+| status | varchar(20) | 요약 생성 상태 | PENDING, COMPLETED, FAILED, not null |
+| summary_text | varchar(500) | 상담 요약 한 줄 | nullable (생성 전·실패 시 null) |
+| start_location_label | varchar(200) | 실제 출발 위치 라벨 (저장 시점 스냅샷) | nullable |
+| guided_exit_facility_id | bigint | 안내한 출구 시설 ID (통계 집계용) | FK facility.facility_id, nullable |
+| guided_exit_label | varchar(100) | 안내한 출구 라벨 (저장 시점 스냅샷) | nullable |
+| route_type | varchar(20) | 안내한 경로 옵션 | fastest, elevator_only, nullable |
+| created_at | datetime | 전문 저장 시각 | not null |
+| completed_at | datetime | 요약 생성 완료 시각 | nullable |
+
+`consultation_id`에 UNIQUE 제약을 두어 상담당 요약을 1건으로 제한한다. 전문 저장은 선택 사항이므로 요약이 없는 상담이 존재할 수 있다.
+
+라벨과 경로 옵션은 상담자 클라이언트가 보유한 값을 그대로 저장하며 요약 생성 모델이 추론하지 않는다. 모델이 만드는 값은 `summary_text` 하나뿐이다.
+
+상담자 이름, 상담 일시, 사용 언어는 각각 `account.name`, `consultation_session.ended_at`, `user_session.language`에서 조회하므로 중복 저장하지 않는다. 문제 유형과 목적지도 `consultation_session`이 이미 보유하므로 중복 저장하지 않는다.
+
+#### status 값
+
+| 값 | 설명 |
+| --- | --- |
+| PENDING | 전문 저장 완료, 요약 생성 중 |
+| COMPLETED | 요약 생성 완료 |
+| FAILED | 요약 생성 실패. 재시도 가능 |
+
+#### route_type 값
+
+| 값 | 화면 표시명 |
+| --- | --- |
+| fastest | 빠른 경로 |
+| elevator_only | 계단 없는 경로 (엘리베이터 중심) |
+
+`route_type`은 API 명세서 8.1절의 `routeType`과 동일한 값을 사용하며, `destination_type`·`language`와 같이 소문자를 유지한다.
+
+### consultation_transcript
+
+상담 중 수집한 STT 발화 기록을 발화 단위로 저장한다. 상담자 클라이언트가 로컬 마이크와 원격 오디오 양쪽에서 수집해 시간순으로 정렬한 뒤 전송하며, Backend는 이 전문을 근거로 요약을 생성한다.
+
+| 컬럼 | 타입 예시 | 설명 | 제약 |
+| --- | --- | --- | --- |
+| transcript_id | bigint | 발화 ID | PK, AUTO_INCREMENT |
+| consultation_id | varchar(64) | 상담 세션 ID | FK consultation_session.consultation_id |
+| seq | int | 발화 순서 | not null |
+| speaker | varchar(20) | 발화자 | USER, COUNSELOR |
+| content | text | 발화 내용 | not null |
+
+`(consultation_id, seq)`에 UNIQUE 제약을 두어 순서 중복을 막는다. 화면에 발화별 시각을 표시하지 않으므로 발화 시각은 저장하지 않고, 클라이언트가 정렬해 보낸 `seq` 순서를 그대로 사용한다.
 
 ---
 
@@ -745,6 +809,8 @@ MVP 구현에 필요한 최소 테이블은 다음과 같다.
 | 1 | vps_map |
 | 1 | localization_log |
 | 2 | consultation_event |
+| 2 | consultation_summary |
+| 2 | consultation_transcript |
 | 2 | vps_reference_image |
 | 2 | admin_audit_log |
 | 3 | location_share |
@@ -793,6 +859,7 @@ MVP 구현에 필요한 최소 테이블은 다음과 같다.
 | place_exit_recommendation | place_id | 장소별 추천 출구 조회 |
 | consultation_session | station_id, status | 상담 요청 목록 조회 |
 | consultation_session | user_session_id | 사용자 상담 조회 |
+| consultation_transcript | consultation_id, seq | 상담 이력 전문 순서 조회 |
 | localization_log | station_id, created_at | VPS 통계 |
 | account | account_type, station_id, status | 상담 가능자 조회(역할·역별) |
 
@@ -808,7 +875,7 @@ MVP 구현에 필요한 최소 테이블은 다음과 같다.
 | facility, exit_detail, nearby_place, place_exit_recommendation | 신재령 |
 | route_node, route_edge | 신재령 |
 | user_session | 오서현 |
-| consultation_session, consultation_event | 오서현 |
+| consultation_session, consultation_event, consultation_summary, consultation_transcript | 오서현 |
 | account (counselor+admin 통합) | 오서현 |
 | vps_map, vps_reference_image | 강민수 |
 | localization_log | 이정우 |

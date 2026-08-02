@@ -59,7 +59,13 @@ public class SecurityConfig {
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/consultations/*/accept",
-                                "/api/consultations/*/reject"
+                                "/api/consultations/*/reject",
+                                "/api/consultations/*/transcript"
+                        )
+                        .hasRole("COUNSELOR")
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/consultations/*/summary"
                         )
                         .hasRole("COUNSELOR")
                         .requestMatchers("/api/consultations/*/waiting-events").permitAll()

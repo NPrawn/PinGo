@@ -51,6 +51,11 @@ public class ConsultationSession {
 
     private LocalDateTime endedAt;
 
+    @Column(columnDefinition = "TINYINT")
+    private Integer ratingScore;
+
+    private LocalDateTime ratedAt;
+
     public static ConsultationSession create(String userSessionId, Long stationId, ProblemType problemType,
                                              Long currentNodeId, String destinationType, Long destinationId,
                                              boolean videoConsent, boolean audioConsent){
@@ -97,5 +102,17 @@ public class ConsultationSession {
                 || status == ConsultationStatus.IN_PROGRESS;
         return roomActive ? "room_" + consultationId : null;
     }
+
+    public void rate(int score) {
+        this.ratingScore = score;
+        this.ratedAt = LocalDateTime.now();
+    }
+
+    public boolean isRated() {
+        return this.ratingScore != null;
+    }
+
+    public Integer getRatingScore() { return ratingScore; }
+    public LocalDateTime getRatedAt() { return ratedAt; }
 
 }
