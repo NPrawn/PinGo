@@ -50,11 +50,26 @@ export function DestinationSearch({
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
+  /**
+   * 지금 처리 중인 목적지 이름. 없으면 대기 상태다.
+   *
+   * 목적지 하나를 고르면 출구 추천·시설 조회를 거쳐 도착 노드를 구한 뒤 전역 스토어를
+   * 덮어쓴다. 그 사이에 다른 항목을 누르면 두 흐름이 겹쳐 스토어에 서로 다른 목적지의 값이
+   * 뒤섞인다 — 이름은 나중에 누른 것인데 도착 노드는 먼저 누른 것이 남는 식이다.
+   *
+   * `useRef`가 아니라 상태로 두는 이유는 화면이 그 사실을 보여줘야 하기 때문이다. 눌러도
+   * 아무 일도 일어나지 않는 것처럼 보이면 사용자가 다시 누른다.
+   */
+  const [choosing, setChoosing] = useState<string | null>(null);
 
   const destinationSearch = useDestinationSearch(stationId, query, searched);
   const results = destinationSearch.data ?? [];
 
   const choose = async (poi: Poi) => {
+    // 처리 중에는 새 선택을 받지 않는다. 화면도 함께 막지만 이중으로 지킨다.
+    if (choosing !== null) return;
+    setChoosing(poi.name);
+
     /**
      * 안내를 시작할 도착 노드.
      *
@@ -118,7 +133,13 @@ export function DestinationSearch({
       }).catch(() => undefined);
     }
     onSelect?.(poi.name);
-    if (!deferNavigation) void navigate(nextRoute);
+    if (deferNavigation) {
+      // 화면을 떠나지 않으므로 다음 선택을 받을 수 있게 되돌린다.
+      setChoosing(null);
+      return;
+    }
+    // 화면이 바뀌면 이 컴포넌트가 사라진다. 여기서 상태를 되돌리면 언마운트 후 갱신이 된다.
+    void navigate(nextRoute);
   };
 
   return (
@@ -162,27 +183,38 @@ export function DestinationSearch({
         <>
           <Kicker className={styles.resultsKicker}>검색 결과 · &quot;{query}&quot;</Kicker>
           <div className={styles.results}>
-            {results.map((poi, index) => (
-              <SelectRow
-                key={poi.name}
-                className={styles.result}
-                indicator="none"
-                onClick={() => void choose(poi)}
-              >
-                <Icon3d
-                  name={poi.icon}
-                  tone={RESULT_TONES[index % RESULT_TONES.length]}
-                  iconSize={17}
-                  className={styles.resultIcon}
-                />
-                <span className={styles.resultBody}>
-                  <b className={styles.resultName}>{poi.name}</b>
-                  <br />
-                  <span className={styles.resultMeta}>{poi.meta}</span>
-                </span>
-                <span className={styles.chevron}>›</span>
-              </SelectRow>
-            ))}
+            {results.map((poi, index) => {
+              const busy = choosing === poi.name;
+              return (
+                <SelectRow
+                  key={poi.name}
+                  className={styles.result}
+                  indicator="none"
+                  /* 한 곳을 처리하는 동안에는 목록 전체를 잠근다. */
+                  disabled={choosing !== null}
+                  onClick={() => void choose(poi)}
+                >
+                  <Icon3d
+                    name={poi.icon}
+                    tone={RESULT_TONES[index % RESULT_TONES.length]}
+                    iconSize={17}
+                    className={styles.resultIcon}
+                  />
+                  <span className={styles.resultBody}>
+                    <b className={styles.resultName}>{poi.name}</b>
+                    <br />
+                    <span className={styles.resultMeta}>
+                      {busy ? '경로를 준비하고 있어요…' : poi.meta}
+                    </span>
+                  </span>
+                  {busy ? (
+                    <span className={styles.chooseSpinner} aria-hidden />
+                  ) : (
+                    <span className={styles.chevron}>›</span>
+                  )}
+                </SelectRow>
+              );
+            })}
             {destinationSearch.isPending && <div className={styles.empty}>검색하고 있어요…</div>}
             {destinationSearch.isError && (
               <div className={styles.empty}>목적지를 불러오지 못했어요.</div>
@@ -205,6 +237,8 @@ export function DestinationSearch({
                 key={tile.title}
                 type="button"
                 className={styles.tile}
+                /* 검색 결과와 같은 이유로 잠근다. 타일도 같은 `choose`를 탄다. */
+                disabled={choosing !== null}
                 onClick={() => {
                   const poi = PLACES.find((place) => place.name === tile.title);
                   if (poi) void choose(poi);

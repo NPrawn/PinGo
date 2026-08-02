@@ -159,6 +159,29 @@
   color: var(--color-sub);
 }
 
+/* 목적지 하나를 처리하는 동안 그 줄에서 도는 표시. 화살표와 같은 자리를 차지한다. */
+.chooseSpinner {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 2px solid color-mix(in srgb, var(--color-mint-dark) 22%, transparent);
+  border-top-color: var(--color-mint-dark);
+  border-radius: 50%;
+  animation: destination-choose-spin 0.9s linear infinite;
+}
+
+@keyframes destination-choose-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chooseSpinner {
+    animation-duration: 2.4s;
+  }
+}
+
 .empty {
   padding: 8px 2px;
   font-size: 12.5px;
