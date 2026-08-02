@@ -6,12 +6,10 @@ import {
   getAdminFloorMaps,
   getAdminFloors,
   getAdminStations,
-  updateAdminFloor,
-  uploadAdminFloorMap,
 } from '@/shared/api';
 import { floorPlanImageUrl } from '@/entities/floor-map';
 import { resolveAssetUrl } from '@/shared/config';
-import { Button } from '@/shared/ui';
+import { Button, SelectField } from '@/shared/ui';
 import styles from './IndoorMapPanel.module.css';
 
 type IndoorMapPanelProps = {
@@ -65,27 +63,6 @@ export function IndoorMapPanel({ onFlash }: IndoorMapPanelProps) {
     }
   }
 
-  async function editFloor(
-    floorId: number,
-    currentCode: string,
-    currentName: string,
-    floorOrder: number,
-  ) {
-    const floorName = window.prompt('층 표시 이름을 입력하세요.', currentName);
-    if (floorName == null) return;
-    try {
-      await updateAdminFloor(floorId, {
-        floorCode: currentCode,
-        floorName,
-        floorOrder,
-      });
-      await refresh();
-      onFlash('층 정보를 수정했습니다.');
-    } catch {
-      onFlash('층 정보를 수정하지 못했습니다.');
-    }
-  }
-
   async function removeFloor(floorId: number) {
     if (!window.confirm('이 층을 삭제할까요?')) return;
     try {
@@ -94,16 +71,6 @@ export function IndoorMapPanel({ onFlash }: IndoorMapPanelProps) {
       onFlash('층을 삭제했습니다.');
     } catch {
       onFlash('지도·시설·경로가 참조 중인 층은 삭제할 수 없습니다.');
-    }
-  }
-
-  async function uploadMap(floorId: number, file: File) {
-    try {
-      await uploadAdminFloorMap(floorId, { mapType: 'image' }, file);
-      await refresh();
-      onFlash('도면을 업로드했습니다.');
-    } catch {
-      onFlash('도면 업로드에 실패했습니다.');
     }
   }
 
@@ -136,8 +103,9 @@ export function IndoorMapPanel({ onFlash }: IndoorMapPanelProps) {
           <h2 className={styles.title}>실내 지도 관리</h2>
           <p className={styles.desc}>역별 층과 활성 도면 버전을 관리합니다.</p>
         </div>
-        <div>
-          <select
+        <div className={styles.headerActions}>
+          <SelectField
+            className={styles.stationSelect}
             value={effectiveStationId ?? ''}
             onChange={(event) => setStationId(Number(event.target.value))}
             aria-label="관리할 역"
@@ -147,9 +115,9 @@ export function IndoorMapPanel({ onFlash }: IndoorMapPanelProps) {
                 {station.nameKo ?? station.nameEn}
               </option>
             ))}
-          </select>
-          <Button size="sm" className={styles.upload} onClick={() => void addFloor()}>
-            + 층 추가
+          </SelectField>
+          <Button size="sm" className={styles.addFloor} onClick={() => void addFloor()}>
+            ＋ 층 추가
           </Button>
         </div>
       </div>
@@ -204,35 +172,9 @@ export function IndoorMapPanel({ onFlash }: IndoorMapPanelProps) {
                   {currentMap && !currentMap.mapUrl && ' · 기본 도면 표시 중'}
                 </div>
                 <div className={styles.cardActions}>
-                  <label className={`${styles.cardAction} ${styles.cardActionPrimary}`}>
-                    도면 업로드
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/svg+xml"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void uploadMap(floor.floorId!, file);
-                      }}
-                    />
-                  </label>
                   <button
                     type="button"
-                    className={`${styles.cardAction} ${styles.cardActionSecondary}`}
-                    onClick={() =>
-                      void editFloor(
-                        floor.floorId!,
-                        floor.floorCode ?? '',
-                        floor.floorName ?? '',
-                        floor.floorOrder ?? index + 1,
-                      )
-                    }
-                  >
-                    이름 수정
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.cardAction} ${styles.cardActionSecondary}`}
+                    className={`${styles.cardAction} ${styles.cardActionDanger}`}
                     onClick={() => void removeFloor(floor.floorId!)}
                   >
                     삭제

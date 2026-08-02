@@ -20,9 +20,30 @@
   color: var(--color-sub);
 }
 
-.upload {
+/* 역 선택과 층 추가를 같은 축에 세운다. 둘 다 높이가 달라 예전에는 겹쳐 보였다. */
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* SelectField는 폼용이라 width 100% · height 50px다. 헤더에서는 내용 폭에 맞추고
+   옆에 서는 sm 버튼과 같은 높이로 낮춘다. */
+.stationSelect {
   width: auto;
-  padding: 0 16px;
+  min-width: 120px;
+  height: 44px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 12px;
+}
+
+.addFloor {
+  width: auto;
+  padding: 0 18px;
+  white-space: nowrap;
 }
 
 .grid {
@@ -92,29 +113,27 @@
   color: var(--color-sub);
 }
 
+/* 남은 동작은 삭제 하나다. 폭을 다 차지하면 위험한 동작이 과하게 강조되므로
+   오른쪽에 붙인다. AdminTable의 행 동작과 같은 치수를 쓴다. */
 .cardActions {
   display: flex;
   gap: 6px;
+  justify-content: flex-end;
   margin-top: 12px;
 }
 
 .cardAction {
-  flex: 1;
-  padding: 7px 0;
+  padding: 5px 12px;
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 800;
   background: #fff;
-  border: 1px solid var(--color-line);
   border-radius: 8px;
 }
 
-.cardActionPrimary {
-  color: var(--color-mint-mid);
-}
-
-.cardActionSecondary {
-  color: var(--color-sub);
+.cardActionDanger {
+  color: #c24a3d;
+  border: 1px solid #f3c9b6;
 }
 
 .notice {
