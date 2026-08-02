@@ -15,6 +15,8 @@ type NavigationStore = {
   externalOriginLatitude: number | null;
   externalOriginLongitude: number | null;
   targetNodeId: number | null;
+  /** 도착 출구의 표시 이름. 안내·도착 화면이 목적지 자리에 쓴다. */
+  targetExitLabel: string | null;
   currentNodeId: number | null;
   currentFloorId: number | null;
   currentLocationLabel: string | null;
@@ -68,6 +70,15 @@ type NavigationStore = {
     mapY?: number;
   }) => void;
   setRoute: (route: RouteType) => void;
+  /**
+   * 고른 경로가 도착할 실내 노드와 그 출구 이름.
+   *
+   * 경로 유형마다 나가는 출구가 다르다 — 최단은 목적지에서 가장 가까운 출구로, 엘리베이터
+   * 우선은 계단 없이 닿는 출구 중 가장 가까운 곳으로 나간다. 목적지 검색이 넣어 둔 값은
+   * 최단 기준이므로, 유형을 고른 뒤 그 유형의 도착점으로 덮어써야 안내·도착 화면이 같은
+   * 곳을 가리킨다.
+   */
+  setTargetNode: (targetNodeId: number, exitLabel: string | null) => void;
   setRouteResult: (route: RouteResponse | null) => void;
   addWaypoint: (waypoint: string) => void;
   removeWaypoint: (waypoint: string) => void;
@@ -98,6 +109,7 @@ export const useNavigationStore = create<NavigationStore>()(
       externalOriginLatitude: null,
       externalOriginLongitude: null,
       targetNodeId: null,
+      targetExitLabel: null,
       currentNodeId: null,
       currentFloorId: null,
       currentLocationLabel: null,
@@ -121,6 +133,7 @@ export const useNavigationStore = create<NavigationStore>()(
           externalOriginLatitude: details?.externalOriginLatitude ?? null,
           externalOriginLongitude: details?.externalOriginLongitude ?? null,
           targetNodeId: details?.targetNodeId ?? null,
+          targetExitLabel: null,
           routeResult: null,
           waypoints: [],
           relocalizing: false,
@@ -137,6 +150,7 @@ export const useNavigationStore = create<NavigationStore>()(
           externalOriginLatitude: null,
           externalOriginLongitude: null,
           targetNodeId: null,
+          targetExitLabel: null,
           routeResult: null,
         }),
       setCurrentLocation: (location) =>
@@ -149,6 +163,13 @@ export const useNavigationStore = create<NavigationStore>()(
           routeResult: null,
         }),
       setRoute: (route) => set({ route }),
+      // 도착점이 바뀌면 이전 유형으로 받아 둔 상세 경로는 더 이상 그 경로가 아니다.
+      setTargetNode: (targetNodeId, exitLabel) =>
+        set((state) =>
+          state.targetNodeId === targetNodeId && state.targetExitLabel === exitLabel
+            ? state
+            : { targetNodeId, targetExitLabel: exitLabel, routeResult: null },
+        ),
       setRouteResult: (routeResult) => set({ routeResult }),
       addWaypoint: (waypoint) =>
         set((state) => {

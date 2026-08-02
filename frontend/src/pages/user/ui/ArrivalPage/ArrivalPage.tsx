@@ -7,12 +7,12 @@ import styles from './ArrivalPage.module.css';
 
 /** Screen 21 (FR-U-011) — the user reached the destination. */
 export function ArrivalPage() {
-  const route = useNavigationStore((state) => state.route);
   const destination = useNavigationStore((state) => state.destination) ?? '선택한 목적지';
   const destinationLatitude = useNavigationStore((state) => state.destinationLatitude);
   const destinationLongitude = useNavigationStore((state) => state.destinationLongitude);
-  // TODO: 출구는 경로 응답(8.2)의 마지막 노드에서 와야 한다. 프로토타입에서 옮겨온 값이다.
-  const exit = route === 'elevator_only' ? '2번 출입구' : '7번 출입구';
+  // 안내가 실제로 도착한 출입구. 경로 옵션 화면이 유형별로 정해 스토어에 남긴 값이다.
+  const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
+  const exit = targetExitLabel ?? '출입구';
 
   return (
     <PhoneFrame layout="hero" bodyClassName={styles.body}>

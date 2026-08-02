@@ -62,7 +62,28 @@ const FACILITIES = [
     linkedNodeId: 341,
     isAccessible: false,
   },
+  /**
+   * 엘리베이터로 닿는 유일한 출구. 역삼역에서 `is_accessible = 1`인 둘 중 하나다(V10).
+   *
+   * B2에 있어 B1↔B2 엘리베이터가 없는 것과 무관하게 도달할 수 있다. 엘리베이터 우선 경로가
+   * 실제로 갈 수 있는 출구가 하나는 있어야 그 흐름을 목업으로 따라갈 수 있다.
+   */
+  {
+    facilityId: 82,
+    stationId: 1,
+    floorId: 1,
+    facilityType: 'exit',
+    nameKo: '3번 출구',
+    nameEn: 'Exit 3',
+    mapX: -58.4,
+    mapY: 42.5,
+    linkedNodeId: 153,
+    isAccessible: true,
+  },
 ];
+
+/** 계단 없이 나갈 수 있는 출구의 도착 노드. 이 노드로 가는 경로만 엘리베이터로 완주된다. */
+const ACCESSIBLE_TARGET_NODE_ID = 153;
 
 /**
  * 층별 지도. 역삼역 배포 값을 그대로 옮겼다.
@@ -124,6 +145,33 @@ const ROUTE_OPTIONS = [
     unavailableReason: 'NO_ACCESSIBLE_ROUTE',
     totalDistanceM: null,
     estimatedTimeSec: null,
+    hasStairsOrEscalator: false,
+  },
+];
+
+/**
+ * 계단 없이 닿는 출구로 가는 경로. 두 유형 모두 완주된다.
+ *
+ * 도착 노드가 달라지면 결과도 달라진다는 것이 이 흐름의 핵심이라 목업도 노드로 갈라 준다.
+ * 하나의 응답만 두면 "엘리베이터 우선은 늘 도달 불가"라는 잘못된 인상을 준다.
+ */
+const ACCESSIBLE_ROUTE_OPTIONS = [
+  {
+    routeType: 'fastest',
+    displayName: '빠른 경로',
+    available: true,
+    unavailableReason: null,
+    totalDistanceM: 117,
+    estimatedTimeSec: 123,
+    hasStairsOrEscalator: false,
+  },
+  {
+    routeType: 'elevator_only',
+    displayName: '엘리베이터 이용 경로',
+    available: true,
+    unavailableReason: null,
+    totalDistanceM: 117,
+    estimatedTimeSec: 123,
     hasStairsOrEscalator: false,
   },
 ];
@@ -200,16 +248,40 @@ export const handlers = [
     }),
   ),
   http.get('*/api/admin/stations', () => HttpResponse.json({ success: true, data: [] })),
-  // 최단 경로 카드가 쓰는 "목적지에서 가장 가까운 출구".
-  http.post('*/api/destinations/nearest-exit', () =>
-    HttpResponse.json({
+  /**
+   * 목적지에서 가장 가까운 출구. 경로 유형마다 다른 출구가 나온다.
+   *
+   * `accessibleOnly`를 켜면 엘리베이터로 닿는 출구만 후보가 된다. 실제 서버도 같은 방식이며,
+   * 그래서 최단 경로와 엘리베이터 우선 경로의 도착 출구가 갈린다.
+   */
+  http.post('*/api/destinations/nearest-exit', async ({ request }) => {
+    const body = (await request.json()) as { accessibleOnly?: boolean };
+
+    return HttpResponse.json({
       success: true,
-      data: { exitFacilityId: 82, exitNumber: '3' },
-    }),
-  ),
-  http.post('*/api/routes/indoor/options', () =>
-    HttpResponse.json({ success: true, data: ROUTE_OPTIONS, message: null }),
-  ),
+      data: body.accessibleOnly
+        ? { exitFacilityId: 82, exitNumber: '3' }
+        : { exitFacilityId: 25, exitNumber: '7' },
+    });
+  }),
+  http.get('*/api/facilities/:facilityId', ({ params }) => {
+    const facility = FACILITIES.find((item) => item.facilityId === Number(params.facilityId));
+    if (!facility) {
+      return HttpResponse.json(
+        { success: false, code: 'FACILITY_NOT_FOUND', message: '시설을 찾을 수 없습니다.' },
+        { status: 404 },
+      );
+    }
+
+    return HttpResponse.json({ success: true, data: facility, message: null });
+  }),
+  http.post('*/api/routes/indoor/options', async ({ request }) => {
+    const body = (await request.json()) as { targetNodeId?: number };
+    const data =
+      body.targetNodeId === ACCESSIBLE_TARGET_NODE_ID ? ACCESSIBLE_ROUTE_OPTIONS : ROUTE_OPTIONS;
+
+    return HttpResponse.json({ success: true, data, message: null });
+  }),
   http.get('*/api/stations/:stationId/maps', () =>
     HttpResponse.json({ success: true, data: FLOOR_MAPS, message: null }),
   ),

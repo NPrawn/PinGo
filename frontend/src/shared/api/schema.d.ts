@@ -1230,6 +1230,11 @@ export interface components {
       stationId: number;
       destinationLatitude: number;
       destinationLongitude: number;
+      /**
+       * @description 엘리베이터로 갈 수 있는 출구만 후보로 둘지. 비우면 전체 출구에서 고른다.
+       *     엘리베이터 우선 경로의 도착 출구를 고를 때 쓴다.
+       */
+      accessibleOnly?: boolean;
     };
     ApiResponseNearestExitResponse: {
       success?: boolean;

@@ -72,6 +72,7 @@ export function NavigationPage() {
   const route = useNavigationStore((state) => state.route);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
+  const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
@@ -96,8 +97,18 @@ export function NavigationPage() {
   useEffect(() => {
     endRelocalize();
   }, [endRelocalize]);
-  // TODO(297): 출구는 경로 응답(8.2)의 마지막 노드에서 와야 한다. 프로토타입에서 옮겨온 값이다.
-  const exit = route === 'elevator_only' ? '2번 출입구' : '7번 출입구';
+  /**
+   * 안내를 시작할 때의 출입구. 경로 옵션 화면이 유형별로 정해 스토어에 남긴 값이다.
+   *
+   * 예전에는 `route === 'elevator_only' ? '2번 출입구' : '7번 출입구'`로 적어 두었는데,
+   * 지도에 그려지는 경로는 실제 도착 노드를 따라가므로 헤더와 지도가 서로 다른 곳을
+   * 가리켰다.
+   *
+   * **진입 시점 값으로 고정한다.** 지도에서 시설을 새 목적지로 지정하면 스토어의 출구 정보가
+   * 지워지는데, 되돌리기 버튼은 처음 출구로 돌아가는 수단이라 그 이름을 계속 알아야 한다.
+   * `initialDestination`을 ref로 잡아 두는 것과 같은 이유다.
+   */
+  const [exit] = useState(() => targetExitLabel ?? '출입구');
   const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   /** 켜 둔 시설 유형(`facilityType`). null이면 시설을 그리지 않는다. */
