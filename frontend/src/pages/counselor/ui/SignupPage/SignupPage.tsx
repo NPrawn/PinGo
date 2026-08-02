@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { checkLoginId, useSignup } from '@/features/console-auth';
 import { ApiError, searchStations } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { BackLink, Button, DesktopWindow, Field, PasswordField, SelectField } from '@/shared/ui';
+import { BackLink, Button, Field, PasswordField, SelectField } from '@/shared/ui';
 import styles from './SignupPage.module.css';
 
 /** Mirrors the server-side rule in `SignupRequest.password`. */
@@ -99,112 +99,107 @@ export function SignupPage() {
   }
 
   return (
-    <DesktopWindow url="console.pingo.kr/signup" secure width={560}>
-      <div className={styles.stage}>
-        <form className={styles.card} onSubmit={handleSubmit}>
-          <div className={styles.back}>
-            <BackLink to={COUNSELOR_ROUTES.LOGIN}>로그인으로</BackLink>
-          </div>
-          <h2 className={styles.heading}>회원가입</h2>
-          <p className={styles.lede}>상담자·관리자 계정을 신청해요</p>
+    <div className={styles.stage}>
+      <form className={styles.card} onSubmit={handleSubmit}>
+        <div className={styles.back}>
+          <BackLink to={COUNSELOR_ROUTES.LOGIN}>로그인으로</BackLink>
+        </div>
+        <h2 className={styles.heading}>회원가입</h2>
+        <p className={styles.lede}>상담자·관리자 계정을 신청해요</p>
 
-          <label className={styles.label} htmlFor="signup-name">
-            이름
-          </label>
-          <Field
-            id="signup-name"
-            className={styles.field}
-            placeholder="이름"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-          />
+        <label className={styles.label} htmlFor="signup-name">
+          이름
+        </label>
+        <Field
+          id="signup-name"
+          className={styles.field}
+          placeholder="이름"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          required
+        />
 
-          <label className={styles.label} htmlFor="signup-id">
-            아이디
-          </label>
-          <Field
-            id="signup-id"
-            className={styles.field}
-            placeholder="아이디"
-            value={loginId}
-            onChange={(event) => {
-              setLoginId(event.target.value);
-              setLoginIdMessage('');
-              setLoginIdAvailable(null);
-            }}
-            onBlur={() => void validateLoginId()}
-            invalid={loginIdAvailable === false}
-            required
-          />
-          {loginIdMessage && (
-            <p className={loginIdAvailable === false ? styles.fieldError : styles.fieldMessage}>
-              {loginIdMessage}
-            </p>
-          )}
-
-          <label className={styles.label} htmlFor="signup-pw">
-            비밀번호
-          </label>
-          <PasswordField
-            id="signup-pw"
-            className={styles.field}
-            placeholder="비밀번호"
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setPasswordError('');
-            }}
-            onBlur={() => {
-              validatePassword();
-            }}
-            aria-describedby="signup-pw-hint"
-            invalid={Boolean(passwordError)}
-            required
-          />
-          <p
-            id="signup-pw-hint"
-            className={passwordError ? styles.fieldError : styles.fieldMessage}
-          >
-            {passwordError || PASSWORD_HINT}
+        <label className={styles.label} htmlFor="signup-id">
+          아이디
+        </label>
+        <Field
+          id="signup-id"
+          className={styles.field}
+          placeholder="아이디"
+          value={loginId}
+          onChange={(event) => {
+            setLoginId(event.target.value);
+            setLoginIdMessage('');
+            setLoginIdAvailable(null);
+          }}
+          onBlur={() => void validateLoginId()}
+          invalid={loginIdAvailable === false}
+          required
+        />
+        {loginIdMessage && (
+          <p className={loginIdAvailable === false ? styles.fieldError : styles.fieldMessage}>
+            {loginIdMessage}
           </p>
+        )}
 
-          <label className={styles.label} htmlFor="signup-station">
-            담당 역
-          </label>
-          <SelectField
-            id="signup-station"
-            className={styles.field}
-            value={stationId}
-            onChange={(event) => setStationId(event.target.value)}
-            disabled={stationsQuery.isPending || stations.length === 0}
-            required
-          >
-            <option value="" disabled>
-              {stationsQuery.isPending ? '역 목록을 불러오는 중…' : '담당 역을 선택해 주세요'}
+        <label className={styles.label} htmlFor="signup-pw">
+          비밀번호
+        </label>
+        <PasswordField
+          id="signup-pw"
+          className={styles.field}
+          placeholder="비밀번호"
+          value={password}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            setPasswordError('');
+          }}
+          onBlur={() => {
+            validatePassword();
+          }}
+          aria-describedby="signup-pw-hint"
+          invalid={Boolean(passwordError)}
+          required
+        />
+        <p id="signup-pw-hint" className={passwordError ? styles.fieldError : styles.fieldMessage}>
+          {passwordError || PASSWORD_HINT}
+        </p>
+
+        <label className={styles.label} htmlFor="signup-station">
+          담당 역
+        </label>
+        <SelectField
+          id="signup-station"
+          className={styles.field}
+          value={stationId}
+          onChange={(event) => setStationId(event.target.value)}
+          disabled={stationsQuery.isPending || stations.length === 0}
+          required
+        >
+          <option value="" disabled>
+            {stationsQuery.isPending ? '역 목록을 불러오는 중…' : '담당 역을 선택해 주세요'}
+          </option>
+          {stations.map((station) => (
+            <option key={station.stationId} value={String(station.stationId ?? '')}>
+              {station.nameKo}
+              {station.lineInfo ? ` · ${station.lineInfo}` : ''}
             </option>
-            {stations.map((station) => (
-              <option key={station.stationId} value={String(station.stationId ?? '')}>
-                {station.nameKo}
-                {station.lineInfo ? ` · ${station.lineInfo}` : ''}
-              </option>
-            ))}
-          </SelectField>
-          {stationsQuery.isError && (
-            <p className={styles.fieldError}>역 목록을 불러오지 못했습니다.</p>
-          )}
+          ))}
+        </SelectField>
+        {stationsQuery.isError && (
+          <p className={styles.fieldError}>역 목록을 불러오지 못했습니다.</p>
+        )}
 
-          {errorMessage && (
-            <p className={styles.error} role="alert">
-              {errorMessage}
-            </p>
-          )}
+        {errorMessage && (
+          <p className={styles.error} role="alert">
+            {errorMessage}
+          </p>
+        )}
 
-          <Button type="submit" className={styles.submit} disabled={signup.isPending}>
-            {signup.isPending ? '신청 중…' : '가입 신청하기'}
-          </Button>
-        </form>
-      </div>
-    </DesktopWindow>
+        <Button type="submit" className={styles.submit} disabled={signup.isPending}>
+          {signup.isPending ? '신청 중…' : '가입 신청하기'}
+        </Button>
+      </form>
+    </div>
   );
 }

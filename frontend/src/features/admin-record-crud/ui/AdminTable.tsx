@@ -6,6 +6,13 @@ import styles from './AdminTable.module.css';
 type AdminTableProps = {
   schema: AdminTableSchema;
   rows: readonly AdminRecord[];
+  /** 첫 조회가 끝나기 전. 빈 목록과 구분해서 보여준다. */
+  isLoading?: boolean;
+  /** 조회 실패 사유. null이면 실패하지 않은 것이다. */
+  loadError?: string | null;
+  /** 일부 역만 실패해 목록이 불완전할 때의 안내. 표는 그대로 보여준다. */
+  partialWarning?: string | null;
+  onRetry?: () => void;
   query: string;
   onQueryChange: (query: string) => void;
   onCreate: () => void;
@@ -24,6 +31,10 @@ type AdminTableProps = {
 export function AdminTable({
   schema,
   rows,
+  isLoading = false,
+  loadError = null,
+  partialWarning = null,
+  onRetry,
   query,
   onQueryChange,
   onCreate,
@@ -73,8 +84,24 @@ export function AdminTable({
             </svg>
           </span>
         </div>
-        <span className={styles.count}>총 {rows.length}건</span>
+        <span className={styles.count}>
+          {loadError ? '불러오지 못함' : isLoading ? '불러오는 중' : `총 ${rows.length}건`}
+        </span>
       </div>
+
+      {/* 목록은 보여주되 불완전하다는 사실을 함께 알린다. 조용히 일부만 띄우면
+          관리자가 "그 역에는 없다"로 잘못 읽는다. */}
+      {partialWarning && (
+        <div className={styles.warning} role="status">
+          <span className={styles.warningDot} aria-hidden />
+          {partialWarning}
+          {onRetry && (
+            <button type="button" className={styles.warningRetry} onClick={onRetry}>
+              다시 시도
+            </button>
+          )}
+        </div>
+      )}
 
       <div className={styles.table}>
         <div className={styles.thead}>
@@ -121,7 +148,22 @@ export function AdminTable({
           </div>
         ))}
 
-        {rows.length === 0 && <div className={styles.empty}>조건에 맞는 항목이 없어요.</div>}
+        {/* 실패·로딩·빈 목록은 서로 다른 상태다. 셋 다 빈 표로 보이면 관리자가
+            "등록된 게 없구나"로 잘못 읽는다. */}
+        {loadError ? (
+          <div className={styles.error} role="alert">
+            <p className={styles.errorText}>{loadError}</p>
+            {onRetry && (
+              <button type="button" className={styles.retry} onClick={onRetry}>
+                다시 시도
+              </button>
+            )}
+          </div>
+        ) : isLoading ? (
+          <div className={styles.empty}>목록을 불러오는 중이에요.</div>
+        ) : (
+          rows.length === 0 && <div className={styles.empty}>조건에 맞는 항목이 없어요.</div>
+        )}
       </div>
     </>
   );

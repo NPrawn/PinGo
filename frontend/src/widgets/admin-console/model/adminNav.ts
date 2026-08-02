@@ -16,7 +16,6 @@ const ITEMS: readonly Omit<AdminNavItem, 'tint'>[] = [
   { tab: 'map', icon: 'map', label: '실내지도 관리' },
   { tab: 'facility', icon: 'door', label: '시설·출구 관리' },
   { tab: 'route', icon: 'compass', label: '경로 관리' },
-  { tab: 'place', icon: 'pin', label: '주변 장소 관리' },
   { tab: 'counselor', icon: 'headset', label: '상담자 계정' },
 ];
 

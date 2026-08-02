@@ -38,6 +38,10 @@ export function ConsolePage() {
         <AdminTable
           schema={records.schema}
           rows={records.rows}
+          isLoading={records.isLoading}
+          loadError={records.loadError}
+          partialWarning={records.partialWarning}
+          onRetry={records.retryLoad}
           query={records.query}
           onQueryChange={records.setQuery}
           onCreate={records.startCreate}

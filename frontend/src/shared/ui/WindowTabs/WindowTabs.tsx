@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { IconName } from '../Icon';
 import { Icon } from '../Icon';
-import styles from './DesktopWindow.module.css';
+import styles from './WindowTabs.module.css';
 
 export type WindowTab = {
   to: string;
