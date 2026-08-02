@@ -2,15 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createAdminFacility,
-  createAdminNearbyPlace,
-  createAdminPlaceExitRecommendation,
   createAdminRouteEdge,
   createAdminRouteNode,
   createAdminStation,
   deactivateAdminCounselor,
   deleteAdminFacility,
-  deleteAdminNearbyPlace,
-  deleteAdminPlaceExitRecommendation,
   deleteAdminRouteEdge,
   deleteAdminRouteNode,
   deleteAdminStation,
@@ -18,9 +14,6 @@ import {
   getAdminCounselor,
   getAdminFacility,
   getAdminFacilities,
-  getAdminNearbyPlaces,
-  getAdminNearbyPlace,
-  getAdminPlaceExitRecommendations,
   getAdminRouteEdges,
   getAdminRouteEdge,
   getAdminRouteNodes,
@@ -29,7 +22,6 @@ import {
   getAdminStations,
   updateAdminCounselor,
   updateAdminFacility,
-  updateAdminNearbyPlace,
   updateAdminRouteEdge,
   updateAdminRouteNode,
   updateAdminStation,
@@ -49,7 +41,6 @@ type Draft = {
 
 const TOAST_MS = 2200;
 const EDGE_ID_OFFSET = 1_000_000_000;
-const RECOMMENDATION_ID_OFFSET = 2_000_000_000;
 
 function numberValue(value: string, required = true): number | undefined {
   if (!value.trim()) {
@@ -211,56 +202,6 @@ export function useAdminRecords(tab: AdminTableTab) {
         }));
       return [...nodeRows, ...edgeRows];
     }
-    if (tab === 'place') {
-      const places = await forEachStation((stationId) => getAdminNearbyPlaces(stationId));
-      // 추천 출구는 역이 아니라 장소 단위로만 조회된다(placeId 필수). 비활성 장소는 서버가
-      // 404로 막으므로 건너뛰고, 남은 한 곳이 실패해도 목록 전체를 잃지 않도록 개별 처리한다.
-      const recommendationGroups = await Promise.all(
-        places
-          .filter((place) => place.placeId != null && place.active !== false)
-          .map((place) => getAdminPlaceExitRecommendations(place.placeId!).catch(() => [])),
-      );
-      const recommendations = recommendationGroups.flat();
-      const placeRows = places
-        .filter((place) => place.placeId != null)
-        .map((place) => ({
-          id: place.placeId!,
-          rawId: place.placeId!,
-          kind: 'place',
-          stationId: place.stationId ?? '',
-          name: place.nameKo ?? '',
-          nameEn: place.nameEn ?? '',
-          cat: place.category ?? '',
-          address: place.address ?? '',
-          latitude: place.latitude ?? '',
-          longitude: place.longitude ?? '',
-          externalMapUrl: place.externalMapUrl ?? '',
-          status: place.active === false ? '비활성' : '운영 중',
-        }));
-      const recommendationRows = recommendations
-        .filter((item) => item.recommendationId != null)
-        .map((item) => ({
-          id: RECOMMENDATION_ID_OFFSET + item.recommendationId!,
-          rawId: item.recommendationId!,
-          kind: 'recommendation',
-          name: `장소 ${item.placeId ?? '-'} → 출구 ${item.exitFacilityId ?? '-'}`,
-          cat: '추천 출구',
-          stationId: '',
-          nameEn: '',
-          address: '',
-          latitude: '',
-          longitude: '',
-          externalMapUrl: '',
-          placeId: item.placeId ?? '',
-          exitFacilityId: item.exitFacilityId ?? '',
-          priority: item.priority ?? 1,
-          walkingTimeMin: item.walkingTimeMin ?? '',
-          reasonKo: item.reasonKo ?? '',
-          isPrimary: String(item.isPrimary ?? false),
-          status: item.isPrimary ? '대표 추천' : '추천',
-        }));
-      return [...placeRows, ...recommendationRows];
-    }
     const counselors = await getAdminCounselors();
     return counselors
       .filter((account) => account.accountId != null)
@@ -315,7 +256,6 @@ export function useAdminRecords(tab: AdminTableTab) {
       else if (tab === 'facility') await getAdminFacility(rawId);
       else if (tab === 'route' && row.kind === 'node') await getAdminRouteNode(rawId);
       else if (tab === 'route') await getAdminRouteEdge(rawId);
-      else if (tab === 'place' && row.kind !== 'recommendation') await getAdminNearbyPlace(rawId);
       else if (tab === 'counselor') await getAdminCounselor(rawId);
     } catch (error) {
       flash(reasonOf(error, '상세 정보를 불러오지 못했습니다.'));
@@ -334,8 +274,7 @@ export function useAdminRecords(tab: AdminTableTab) {
 
   const save = async () => {
     if (!draft) return;
-    const needsName = !(tab === 'place' && draft.values.kind === 'recommendation');
-    if (needsName && !draft.values.name?.trim()) {
+    if (!draft.values.name?.trim()) {
       setInvalid(true);
       return;
     }
@@ -408,41 +347,6 @@ export function useAdminRecords(tab: AdminTableTab) {
             await updateAdminRouteEdge(rawId ?? draft.id - EDGE_ID_OFFSET, common);
           }
         }
-      } else if (tab === 'place') {
-        if (value.kind === 'recommendation') {
-          const request = {
-            placeId: numberValue(value.placeId)!,
-            exitFacilityId: numberValue(value.exitFacilityId)!,
-            priority: numberValue(value.priority)!,
-            reasonKo: value.reasonKo || undefined,
-            walkingTimeMin: numberValue(value.walkingTimeMin, false),
-            isPrimary: boolValue(value.isPrimary),
-          };
-          if (draft.id != null) {
-            await deleteAdminPlaceExitRecommendation(
-              numberValue(value.rawId ?? '', false) ?? draft.id - RECOMMENDATION_ID_OFFSET,
-            );
-          }
-          await createAdminPlaceExitRecommendation(request);
-        } else {
-          const common = {
-            nameKo: value.name,
-            nameEn: value.nameEn || undefined,
-            category: value.cat,
-            address: value.address || undefined,
-            latitude: numberValue(value.latitude, false),
-            longitude: numberValue(value.longitude, false),
-            externalMapUrl: value.externalMapUrl || undefined,
-          };
-          if (draft.id == null) {
-            await createAdminNearbyPlace({
-              stationId: numberValue(value.stationId)!,
-              ...common,
-            });
-          } else {
-            await updateAdminNearbyPlace(draft.id, common);
-          }
-        }
       } else if (draft.id != null) {
         await updateAdminCounselor(draft.id, {
           stationId: numberValue(value.stationId, false),
@@ -468,11 +372,6 @@ export function useAdminRecords(tab: AdminTableTab) {
         const rawId = Number(row?.rawId ?? deletingId);
         if (row?.kind === 'node') await deleteAdminRouteNode(rawId);
         else await deleteAdminRouteEdge(rawId);
-      } else if (tab === 'place') {
-        const row = rows.find((candidate) => candidate.id === deletingId);
-        const rawId = Number(row?.rawId ?? deletingId);
-        if (row?.kind === 'recommendation') await deleteAdminPlaceExitRecommendation(rawId);
-        else await deleteAdminNearbyPlace(rawId);
       } else await deactivateAdminCounselor(deletingId);
       setDeletingId(null);
       flash(tab === 'counselor' ? '계정을 비활성화했습니다.' : '항목을 삭제했습니다.');

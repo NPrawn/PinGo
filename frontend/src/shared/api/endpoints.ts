@@ -63,11 +63,6 @@ export const ENDPOINTS = {
     routeNode: (nodeId: number) => `/api/admin/route-nodes/${nodeId}`,
     routeEdges: '/api/admin/route-edges',
     routeEdge: (edgeId: number) => `/api/admin/route-edges/${edgeId}`,
-    nearbyPlaces: '/api/admin/nearby-places',
-    nearbyPlace: (placeId: number) => `/api/admin/nearby-places/${placeId}`,
-    recommendations: '/api/admin/place-exit-recommendations',
-    recommendation: (recommendationId: number) =>
-      `/api/admin/place-exit-recommendations/${recommendationId}`,
     counselors: '/api/admin/counselors',
     counselor: (accountId: number) => `/api/admin/counselors/${accountId}`,
   },

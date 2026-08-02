@@ -6,8 +6,8 @@ import { server } from '@/test/mocks/server';
 import { useAdminRecords } from './useAdminRecords';
 
 /**
- * 경로·주변 장소 조회는 `stationId` 없이 부르면 서버가 400을 낸다. OpenAPI 문서에는 선택
- * 항목으로 적혀 있으나 서비스가 null을 거절하기 때문이다(RouteService.requireStationId).
+ * 경로 조회는 `stationId` 없이 부르면 서버가 400을 낸다. OpenAPI 문서에는 선택 항목으로
+ * 적혀 있으나 서비스가 null을 거절하기 때문이다(RouteService.requireStationId).
  * 그 호출이 실제로 역을 실어 보내는지, 실패하면 화면이 알 수 있는지를 고정한다.
  */
 
@@ -64,55 +64,13 @@ describe('useAdminRecords', () => {
     expect(edgeCalls.sort()).toEqual(['1', '2']);
   });
 
-  it('주변 장소 조회는 역마다 stationId를 실어 보낸다', async () => {
-    const placeCalls = recordRequestedStations('nearby-places', () => ok([]));
+  it('시설 조회도 역마다 stationId를 실어 보낸다', async () => {
+    const facilityCalls = recordRequestedStations('facilities', () => ok([]));
 
-    const { result } = renderHook(() => useAdminRecords('place'), { wrapper });
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(placeCalls.sort()).toEqual(['1', '2']);
-  });
-
-  it('추천 출구는 장소별로 조회하고 비활성 장소는 건너뛴다', async () => {
-    // 장소별 동작이 관심사다. 역이 둘이면 같은 장소를 두 번 받아 초점이 흐려진다.
-    server.use(
-      http.get('*/api/admin/stations', () => ok([STATIONS[0]])),
-      http.get('*/api/admin/nearby-places', () =>
-        ok([
-          { placeId: 10, stationId: 1, nameKo: '운영 장소', active: true },
-          { placeId: 11, stationId: 1, nameKo: '비활성 장소', active: false },
-        ]),
-      ),
-    );
-    const requestedPlaces: (string | null)[] = [];
-    server.use(
-      http.get('*/api/admin/place-exit-recommendations', ({ request }) => {
-        requestedPlaces.push(new URL(request.url).searchParams.get('placeId'));
-        return ok([]);
-      }),
-    );
-
-    const { result } = renderHook(() => useAdminRecords('place'), { wrapper });
+    const { result } = renderHook(() => useAdminRecords('facility'), { wrapper });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    // 비활성 장소는 서버가 404로 막으므로 부르지 않는다.
-    expect(requestedPlaces).toEqual(['10']);
-  });
-
-  it('추천 출구 한 곳이 실패해도 장소 목록은 남는다', async () => {
-    server.use(
-      http.get('*/api/admin/stations', () => ok([STATIONS[0]])),
-      http.get('*/api/admin/nearby-places', () =>
-        ok([{ placeId: 10, stationId: 1, nameKo: '운영 장소', active: true }]),
-      ),
-      http.get('*/api/admin/place-exit-recommendations', () => badRequest()),
-    );
-
-    const { result } = renderHook(() => useAdminRecords('place'), { wrapper });
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.loadError).toBeNull();
-    expect(result.current.rows.map((row) => row.name)).toEqual(['운영 장소']);
+    expect(facilityCalls.sort()).toEqual(['1', '2']);
   });
 
   it('조회가 실패하면 빈 목록이 아니라 서버 메시지를 올린다', async () => {

@@ -24,11 +24,6 @@ export type RouteNodeUpdateRequest = Schemas['RouteNodeUpdateRequest'];
 export type RouteEdge = Schemas['RouteEdgeResponse'];
 export type RouteEdgeCreateRequest = Schemas['RouteEdgeCreateRequest'];
 export type RouteEdgeUpdateRequest = Schemas['RouteEdgeUpdateRequest'];
-export type NearbyPlace = Schemas['NearbyPlaceResponse'];
-export type NearbyPlaceCreateRequest = Schemas['NearbyPlaceCreateRequest'];
-export type NearbyPlaceUpdateRequest = Schemas['NearbyPlaceUpdateRequest'];
-export type PlaceExitRecommendation = Schemas['PlaceExitRecommendationResponse'];
-export type PlaceExitRecommendationCreateRequest = Schemas['PlaceExitRecommendationCreateRequest'];
 export type CounselorAccount = Schemas['AccountListResponse'];
 export type CounselorAccountDetail = Schemas['AccountDetailResponse'];
 export type CounselorAccountUpdateRequest = Schemas['AccountUpdateRequest'];
@@ -164,50 +159,6 @@ export function updateAdminRouteEdge(edgeId: number, request: RouteEdgeUpdateReq
 
 export function deleteAdminRouteEdge(edgeId: number) {
   return unwrapVoid(apiClient.delete(ENDPOINTS.admin.routeEdge(edgeId)));
-}
-
-export function getAdminNearbyPlaces(stationId?: number) {
-  return unwrap<NearbyPlace[]>(
-    apiClient.get(ENDPOINTS.admin.nearbyPlaces, {
-      params: { stationId },
-    }),
-  );
-}
-
-export function createAdminNearbyPlace(request: NearbyPlaceCreateRequest) {
-  return unwrap<Schemas['NearbyPlaceIdResponse']>(
-    apiClient.post(ENDPOINTS.admin.nearbyPlaces, request),
-  );
-}
-
-export function getAdminNearbyPlace(placeId: number) {
-  return unwrap<NearbyPlace>(apiClient.get(ENDPOINTS.admin.nearbyPlace(placeId)));
-}
-
-export function updateAdminNearbyPlace(placeId: number, request: NearbyPlaceUpdateRequest) {
-  return unwrap<NearbyPlace>(apiClient.patch(ENDPOINTS.admin.nearbyPlace(placeId), request));
-}
-
-export function deleteAdminNearbyPlace(placeId: number) {
-  return unwrapVoid(apiClient.delete(ENDPOINTS.admin.nearbyPlace(placeId)));
-}
-
-export function getAdminPlaceExitRecommendations(placeId?: number) {
-  return unwrap<PlaceExitRecommendation[]>(
-    apiClient.get(ENDPOINTS.admin.recommendations, {
-      params: { placeId },
-    }),
-  );
-}
-
-export function createAdminPlaceExitRecommendation(request: PlaceExitRecommendationCreateRequest) {
-  return unwrap<Schemas['PlaceExitRecommendationIdResponse']>(
-    apiClient.post(ENDPOINTS.admin.recommendations, request),
-  );
-}
-
-export function deleteAdminPlaceExitRecommendation(recommendationId: number) {
-  return unwrapVoid(apiClient.delete(ENDPOINTS.admin.recommendation(recommendationId)));
 }
 
 export function getAdminCounselors(

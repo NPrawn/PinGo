@@ -42,11 +42,6 @@ export const SEED_RECORDS: Record<AdminTableTab, readonly AdminRecord[]> = {
     { id: 3, name: '2번 개찰구', type: '개찰구', floor: 'B1', status: '운영중' },
     { id: 4, name: '화장실', type: '편의시설', floor: 'B1', status: '운영중' },
   ],
-  place: [
-    { id: 11, name: '스타벅스 역삼점', cat: '카페', exit: '3번 출구', walk: '도보 2분' },
-    { id: 12, name: '강남파이낸스센터', cat: '오피스', exit: '7번 출구', walk: '도보 5분' },
-    { id: 13, name: '올리브영 역삼', cat: '쇼핑', exit: '4번 출구', walk: '도보 3분' },
-  ],
   counselor: [
     { id: 21, name: '김상담', account: 'kim@pingo.kr', station: '역삼역', status: '상담 가능' },
     { id: 22, name: '박상담', account: 'park@pingo.kr', station: '역삼역', status: '상담 중' },
