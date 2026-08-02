@@ -3,6 +3,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink } from '@/shared/ui';
+import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import styles from './CaptureLandscapePage.module.css';
 
 const DIRECTIONS = [
@@ -25,11 +26,11 @@ const barClass = {
  * the device shell 90° and counter-rotated its contents, so the frame markup
  * differs structurally.
  *
- * TODO: Swap the SVG scene for the live camera stream, and drive the coverage
- * gauge from real capture progress.
+ * TODO: 회전 진행 게이지는 아직 상수다. 실제 촬영 진행으로 움직여야 한다.
  */
 export function CaptureLandscapePage() {
   const station = useStationStore((state) => state.station);
+  const camera = useCameraPreview();
 
   return (
     <div className={styles.stage}>
@@ -37,40 +38,47 @@ export function CaptureLandscapePage() {
         <div className={styles.phone}>
           <div className={styles.viewport}>
             <div className={styles.cameraFrame}>
-              <svg
-                viewBox="0 0 722 338"
-                preserveAspectRatio="none"
-                className={styles.scene}
-                aria-hidden
-              >
-                <path d="M0 338 L259.92 155.48 H462.08 L722 338 Z" fill="rgba(60,216,160,0.07)" />
-                <path
-                  d="M0 338 L259.92 155.48 M722 338 L462.08 155.48 M259.92 155.48 H462.08"
-                  stroke="rgba(127,239,195,0.24)"
-                  strokeWidth="1.2"
-                  fill="none"
-                />
-                <path
-                  d="M259.92 155.48 V43.94 H462.08 V155.48"
-                  stroke="rgba(127,239,195,0.16)"
-                  strokeWidth="1.2"
-                  fill="none"
-                />
-                <rect
-                  x="303.24"
-                  y="64.22"
-                  width="115.52"
-                  height="30.42"
-                  rx="3"
-                  fill="rgba(127,239,195,0.2)"
-                />
-                <path
-                  d="M0 263.64 H187.72 M534.28 263.64 H722"
-                  stroke="rgba(127,239,195,0.12)"
-                  strokeWidth="1"
-                  fill="none"
-                />
-              </svg>
+              <CameraFeed camera={camera} className={styles.feed} />
+
+              {/* 카메라를 켤 수 없을 때의 대체 그림. 검은 화면으로 두지 않는다. */}
+              {!camera.isLive && (
+                <svg
+                  viewBox="0 0 722 338"
+                  preserveAspectRatio="none"
+                  className={styles.scene}
+                  aria-hidden
+                >
+                  <path d="M0 338 L259.92 155.48 H462.08 L722 338 Z" fill="rgba(60,216,160,0.07)" />
+                  <path
+                    d="M0 338 L259.92 155.48 M722 338 L462.08 155.48 M259.92 155.48 H462.08"
+                    stroke="rgba(127,239,195,0.24)"
+                    strokeWidth="1.2"
+                    fill="none"
+                  />
+                  <path
+                    d="M259.92 155.48 V43.94 H462.08 V155.48"
+                    stroke="rgba(127,239,195,0.16)"
+                    strokeWidth="1.2"
+                    fill="none"
+                  />
+                  <rect
+                    x="303.24"
+                    y="64.22"
+                    width="115.52"
+                    height="30.42"
+                    rx="3"
+                    fill="rgba(127,239,195,0.2)"
+                  />
+                  <path
+                    d="M0 263.64 H187.72 M534.28 263.64 H722"
+                    stroke="rgba(127,239,195,0.12)"
+                    strokeWidth="1"
+                    fill="none"
+                  />
+                </svg>
+              )}
+
+              <CameraFallbackNotice status={camera.status} />
 
               <div className={styles.band} aria-hidden />
               <div className={styles.horizon} aria-hidden />
