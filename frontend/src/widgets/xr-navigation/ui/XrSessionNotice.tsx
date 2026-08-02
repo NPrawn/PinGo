@@ -84,18 +84,35 @@ export function XrSessionNotice({
 
         <div className={styles.actions}>
           {checking ? (
-            <Button disabled>기기 확인 중…</Button>
-          ) : (
-            canStart && (
+            <>
+              <Button disabled>기기 확인 중…</Button>
+              <GhostButton onClick={onContinueWithoutTracking} className={styles.skip}>
+                나중에 · 지도만 보고 이동하기
+              </GhostButton>
+            </>
+          ) : canStart ? (
+            <>
               <Button onClick={onConfirm}>
                 <Icon name={failed ? 'refresh' : 'camera'} size={17} />
                 {failed ? '다시 시도하기' : '실시간 추적 켜기'}
               </Button>
-            )
+              <GhostButton onClick={onContinueWithoutTracking} className={styles.skip}>
+                나중에 · 지도만 보고 이동하기
+              </GhostButton>
+            </>
+          ) : (
+            /*
+              켤 수 없는 기기에서는 이것이 유일한 선택지다.
+
+              고스트로 두면 다른 모달의 보조 링크와 같은 모양이라, 누를 것이 없는 안내 창처럼
+              보인다. 이 흐름의 다른 모달(권한 안내·촬영 실패)은 모두 채워진 버튼을 하나씩
+              두고 있으므로 여기서도 기본 버튼으로 낸다.
+            */
+            <Button onClick={onContinueWithoutTracking}>
+              <Icon name="map" size={17} />
+              지도만 보고 이동하기
+            </Button>
           )}
-          <GhostButton onClick={onContinueWithoutTracking} className={styles.skip}>
-            {canStart ? '나중에 · 지도만 보고 이동하기' : '지도만 보고 이동하기'}
-          </GhostButton>
         </div>
       </div>
     </Sheet>
