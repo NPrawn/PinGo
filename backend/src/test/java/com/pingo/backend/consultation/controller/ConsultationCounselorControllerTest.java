@@ -19,7 +19,7 @@ import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
+import com.pingo.backend.consultation.service.ConsultationSummaryService;
 @WebMvcTest(controllers = ConsultationCounselorController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class ConsultationCounselorControllerTest {
@@ -29,6 +29,9 @@ class ConsultationCounselorControllerTest {
 
     @MockitoBean
     private ConsultationSessionService consultationSessionService;
+
+    @MockitoBean
+    private ConsultationSummaryService consultationSummaryService;
 
     private static final String CONSULTATION_ID = "cs_abc123";
 

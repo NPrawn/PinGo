@@ -80,6 +80,6 @@ webrtc:
 
 summary:
   api:
-    base-url : ${SUMMARY_API_BASE_URL:}
-    key : ${SUMMARY_API_KEY:}
-    model : ${SUMMARY_API_MODEL:}
+    base-url : ${SUMMARY_API_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+    key : ${GMS_KEY:dummy-key}
+    model : ${SUMMARY_API_MODEL:gemini-3.5-flash-lite}
