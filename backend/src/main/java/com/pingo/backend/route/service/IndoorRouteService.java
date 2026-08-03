@@ -15,6 +15,7 @@ import com.pingo.backend.route.dto.response.RouteStep;
 import com.pingo.backend.route.repository.RouteEdgeRepository;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.route.service.RouteFinder.GraphEdge;
+import com.pingo.backend.route.service.RouteFinder.InboundSearch;
 import com.pingo.backend.route.service.RouteFinder.RoutePath;
 import com.pingo.backend.route.service.RouteFinder.Segment;
 import com.pingo.backend.station.domain.StationFloor;
@@ -58,9 +59,11 @@ public class IndoorRouteService {
 
         List<RouteOptionResponse> options = new ArrayList<>();
         for (RouteType routeType : RouteType.values()) {
-            List<Long> stopNodeIds = withChosenEntry(
+            InboundSearch toFirstStop = searchToFirstStop(
                     requested, data, routeType, request.currentMapX(), request.currentMapY());
-            RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType);
+            List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop,
+                    request.currentMapX(), request.currentMapY());
+            RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType, toFirstStop);
             if (path.isReachable()) {
                 options.add(RouteOptionResponse.available(
                         routeType, path.totalDistanceM(), path.totalTimeSec(), hasStairsOrEscalator(path)));
@@ -80,9 +83,11 @@ public class IndoorRouteService {
 
         List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
         RouteGraphData data = loadGraph(request.stationId(), requested);
-        List<Long> stopNodeIds = withChosenEntry(
+        InboundSearch toFirstStop = searchToFirstStop(
                 requested, data, routeType, request.currentMapX(), request.currentMapY());
-        RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType);
+        List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop,
+                request.currentMapX(), request.currentMapY());
+        RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType, toFirstStop);
 
         if (!path.isReachable()) {
             return RouteResponse.unavailable(
@@ -111,14 +116,31 @@ public class IndoorRouteService {
         return stopNodeIds;
     }
 
-    private RoutePath findThroughStops(List<GraphEdge> edges, List<Long> stopNodeIds, RouteType routeType) {
+    /**
+     * 첫 구간의 경로는 이미 구해 둔 것을 쓴다.
+     *
+     * <p>진입 노드를 고르려고 {@link RouteFinder#searchInbound} 를 이미 돌렸고, 그 결과에 고른
+     * 노드에서 첫 경유지(또는 목적지)까지의 경로가 들어 있다. 다시 탐색하면 경로 유형마다
+     * 다익스트라를 두 번 돌게 된다.
+     *
+     * <p>{@code toFirstStop} 이 {@code null} 이면 — 좌표를 받지 않아 진입 노드를 다시 고르지
+     * 않은 경우다 — 예전처럼 구간마다 탐색한다.
+     */
+    private RoutePath findThroughStops(
+            List<GraphEdge> edges,
+            List<Long> stopNodeIds,
+            RouteType routeType,
+            InboundSearch toFirstStop
+    ) {
         List<Long> nodeIds = new ArrayList<>();
         List<Segment> segments = new ArrayList<>();
         BigDecimal totalDistanceM = BigDecimal.ZERO;
         Integer totalTimeSec = 0;
 
         for (int i = 0; i < stopNodeIds.size() - 1; i++) {
-            RoutePath path = routeFinder.find(edges, stopNodeIds.get(i), stopNodeIds.get(i + 1), routeType);
+            RoutePath path = i == 0 && toFirstStop != null
+                    ? toFirstStop.pathFrom(stopNodeIds.get(0))
+                    : routeFinder.find(edges, stopNodeIds.get(i), stopNodeIds.get(i + 1), routeType);
             if (!path.isReachable()) {
                 return RoutePath.unreachable();
             }
@@ -176,9 +198,9 @@ public class IndoorRouteService {
      *   계단 6 노드     234  9.9m (목적지 쪽)      →  9.9 + 124.53 = 134.4m
      * </pre>
      *
-     * <p>목적지에서 한 번 다익스트라를 돌려 모든 노드까지의 거리를 구하고, 거기에 사용자
-     * 좌표에서 그 노드까지의 직선 거리를 더해 가장 작은 것을 고른다. 경로 유형마다 도달 가능한
-     * 노드가 다르므로 유형별로 따로 고른다.
+     * <p>첫 경유지(또는 목적지)에서 역방향으로 한 번 훑어 모든 노드까지의 거리를 구하고, 거기에
+     * 사용자 좌표에서 그 노드까지의 직선 거리를 더해 가장 작은 것을 고른다. 경로 유형마다 도달
+     * 가능한 노드가 다르므로 유형별로 따로 고른다.
      *
      * <p><b>같은 층만 후보로 둔다.</b> 층 이동은 계단·엘리베이터를 타야 하는데 직선 거리는
      * 그것을 모른다. 층은 요청에 온 {@code startNodeId} 의 층을 쓴다.
@@ -187,17 +209,17 @@ public class IndoorRouteService {
      * 있다. 지금 {@code IndoorPositionResolver} 도 같은 한계를 갖고 있어 일관은 하다. 제대로
      * 하려면 노드가 아니라 간선 위의 점에 투영해야 하고, 그것은 그래프 모델을 바꾸는 일이다.
      *
-     * <p>좌표가 없거나 후보를 찾지 못하면 요청에 온 진입 노드를 그대로 쓴다. 선택 필드라
+     * <p>탐색 결과가 없거나 후보를 찾지 못하면 요청에 온 진입 노드를 그대로 쓴다. 선택 필드라
      * 클라이언트가 늦게 반영해도 동작이 바뀌지 않아야 한다.
      */
     private List<Long> withChosenEntry(
             List<Long> stopNodeIds,
             RouteGraphData data,
-            RouteType routeType,
+            InboundSearch toFirstStop,
             BigDecimal currentMapX,
             BigDecimal currentMapY
     ) {
-        if (currentMapX == null || currentMapY == null) {
+        if (toFirstStop == null || currentMapX == null || currentMapY == null) {
             return stopNodeIds;
         }
 
@@ -207,19 +229,13 @@ public class IndoorRouteService {
             return stopNodeIds;
         }
 
-        Long firstStop = stopNodeIds.get(1);
-        Map<Long, BigDecimal> toFirstStop = routeFinder.distancesFrom(data.edges(), firstStop, routeType);
-        if (toFirstStop.isEmpty()) {
-            return stopNodeIds;
-        }
-
         double x = currentMapX.doubleValue();
         double y = currentMapY.doubleValue();
         Long chosen = data.nodes().values().stream()
                 .filter(node -> node.getFloorId().equals(requestedNode.getFloorId()))
-                .filter(node -> toFirstStop.containsKey(node.getId()))
+                .filter(node -> toFirstStop.reaches(node.getId()))
                 .min(Comparator.comparingDouble(node ->
-                        straightDistance(x, y, node) + toFirstStop.get(node.getId()).doubleValue()))
+                        straightDistance(x, y, node) + toFirstStop.distanceFrom(node.getId()).doubleValue()))
                 .map(RouteNode::getId)
                 .orElse(requestedEntry);
 
@@ -230,6 +246,29 @@ public class IndoorRouteService {
         List<Long> replaced = new ArrayList<>(stopNodeIds);
         replaced.set(0, chosen);
         return replaced;
+    }
+
+    /**
+     * 첫 경유지(또는 목적지)까지의 역방향 탐색. 진입 노드 선택과 첫 구간 경로에 함께 쓴다.
+     *
+     * <p>좌표가 없으면 진입 노드를 다시 고를 이유가 없으므로 탐색하지 않는다. 그때는
+     * {@link #findThroughStops} 가 예전처럼 구간마다 탐색한다.
+     *
+     * <p><b>{@code stopNodeIds} 는 항상 2 이상이다.</b> {@link #stopNodeIds} 가 출발지와
+     * 목적지를 반드시 넣고 둘 다 {@code @NotNull} 이라 그렇다. 그래도 확인한다 — 이 전제가
+     * 코드에 드러나 있지 않고, 나중에 다른 데서 부르면 조용히 깨진다.
+     */
+    private InboundSearch searchToFirstStop(
+            List<Long> stopNodeIds,
+            RouteGraphData data,
+            RouteType routeType,
+            BigDecimal currentMapX,
+            BigDecimal currentMapY
+    ) {
+        if (currentMapX == null || currentMapY == null || stopNodeIds.size() < 2) {
+            return null;
+        }
+        return routeFinder.searchInbound(data.edges(), stopNodeIds.get(1), routeType);
     }
 
     private double straightDistance(double x, double y, RouteNode node) {
