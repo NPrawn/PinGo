@@ -1,6 +1,7 @@
 export { useConsultSignaling } from './model/useConsultSignaling';
 export { useCaptionTranslation } from './model/useCaptionTranslation';
 export {
+  canShareConsultScreen,
   captureConsultCamera,
   captureConsultMedia,
   holdConsultCamera,

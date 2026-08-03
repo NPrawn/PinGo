@@ -20,6 +20,17 @@ let heldStream: MediaStream | null = null;
  * 건너뛰게 할 수는 없다 — 어떤 화면을 넘길지는 브라우저가 사용자에게 직접 확인해야 하며
  * 페이지가 대신 고를 수 없다.
  */
+/**
+ * 이 기기에서 화면을 공유할 수 있는지.
+ *
+ * `getDisplayMedia`는 데스크톱 브라우저에만 있다. Android Chrome·iOS Safari에는 함수 자체가
+ * 없어 부르는 순간 `TypeError`가 난다. 그걸 거절로 읽으면 사용자가 아무것도 거부하지 않았는데
+ * "모두 동의해주세요" 대화상자가 뜨고, 눌러도 같은 자리를 맴돈다.
+ */
+export function canShareConsultScreen(): boolean {
+  return typeof navigator.mediaDevices?.getDisplayMedia === 'function';
+}
+
 export async function captureConsultMedia(): Promise<MediaStream> {
   const display = await navigator.mediaDevices.getDisplayMedia({
     video: true,

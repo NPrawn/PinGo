@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useNavigationStore } from '@/entities/navigation';
-import { usePermissionStore } from '@/entities/permission';
 import { useStationStore } from '@/entities/station';
 import { ensureUserSession, useUserSessionStore } from '@/entities/user-session';
 import {
+  canShareConsultScreen,
   captureConsultCamera,
   captureConsultMedia,
   holdConsultCamera,
@@ -52,6 +52,7 @@ const SHARES = [
 
 const GRANTED_CHIP = { bg: '#d9f0df', fg: '#0f5a3e' };
 const PENDING_CHIP = { bg: '#fff', fg: '#8b857a' };
+
 const PROBLEM_TYPES = [
   'CANNOT_FIND_LOCATION',
   'CANNOT_FIND_EXIT',
@@ -63,8 +64,6 @@ const PROBLEM_TYPES = [
 export function ConsultPermissionPage() {
   const navigate = useNavigate();
   const { i18n } = useTranslation();
-  const granted = usePermissionStore((state) => state.granted);
-  const syncPermissions = usePermissionStore((state) => state.sync);
   const issue = useConsultStore((state) => state.issue);
   const setConsultation = useConsultStore((state) => state.setConsultation);
   const stationId = useStationStore((state) => state.stationId);
@@ -77,6 +76,14 @@ export function ConsultPermissionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [preparingSession, setPreparingSession] = useState(false);
+  /**
+   * 이 화면에서 실제로 확보한 공유 대상.
+   *
+   * 온보딩에서 받은 카메라·마이크 권한(`usePermissionStore`)과는 다른 것이다. 그쪽을 그대로
+   * 읽었더니 사용자가 아직 아무것도 동의하지 않았는데 두 줄에 초록 체크가 먼저 켜져 있었다.
+   * 여기서 묻는 것은 "이 상담에 화면과 목소리를 넘기겠는가"라, 앞 화면의 답으로 대신할 수 없다.
+   */
+  const [shared, setShared] = useState({ cam: false, mic: false });
 
   /** 자동 준비가 실패했을 때 사용자가 직접 다시 시도하는 경로. */
   const prepareSession = async () => {
@@ -143,6 +150,17 @@ export function ConsultPermissionPage() {
   const verifyPermissionsAndConnect = async () => {
     if (requestingPermissions || submitting) return;
 
+    /*
+      거절한 것과 애초에 할 수 없는 것을 구분한다.
+
+      모바일 브라우저에는 화면 공유가 없다. 그 사실을 "동의해주세요"라고 말하면 사용자는
+      허용할 것이 없는 설정을 뒤지다 끝난다.
+    */
+    if (!canShareConsultScreen()) {
+      setErrorMessage('이 기기의 브라우저는 화면 공유를 지원하지 않아요.');
+      return;
+    }
+
     setRequestingPermissions(true);
     setErrorMessage('');
     try {
@@ -153,8 +171,8 @@ export function ConsultPermissionPage() {
        * 미루면 조작 흔적이 사라져 거절되고, 사용자는 대기 화면만 보게 된다. 잡아 둔
        * 스트림은 상담 화면이 그대로 이어받아 곧바로 상담자에게 보낸다.
        */
-      const shared = await captureConsultMedia();
-      holdConsultMedia(shared);
+      const display = await captureConsultMedia();
+      holdConsultMedia(display);
 
       /**
        * 카메라도 여기서 함께 잡는다.
@@ -168,16 +186,17 @@ export function ConsultPermissionPage() {
       const camera = await captureConsultCamera().catch(() => null);
       if (camera) holdConsultCamera(camera);
 
-      syncPermissions({
-        loc: granted.loc,
-        cam: camera !== null,
-        mic: shared.getAudioTracks().length > 0,
-      });
+      /*
+        전역 권한 상태는 건드리지 않는다. 여기서 확보한 것은 이 상담에 넘길 화면과 목소리이지
+        브라우저가 준 카메라·마이크 권한이 아니다. 그 둘을 같은 자리에 쓰면 화면 공유를 한 번
+        거절한 것이 설정 화면에 "카메라 권한 없음"으로 남는다.
+      */
+      setShared({ cam: true, mic: display.getAudioTracks().length > 0 });
 
       setReminderOpen(false);
       await requestConsultation();
     } catch {
-      syncPermissions({ loc: granted.loc, cam: false, mic: false });
+      setShared({ cam: false, mic: false });
       setErrorMessage('화면 공유와 마이크를 모두 허용해 주세요.');
       setReminderOpen(true);
     } finally {
@@ -203,7 +222,7 @@ export function ConsultPermissionPage() {
 
       <div className={styles.options}>
         {SHARES.map((share) => (
-          <SelectRow key={share.key} selected={granted[share.key]} disabled>
+          <SelectRow key={share.key} selected={shared[share.key]} disabled>
             <Icon3d name={share.icon} tone={share.tone} />
             <span className={styles.labels}>
               <b className={styles.name}>{share.name}</b>
@@ -252,7 +271,7 @@ export function ConsultPermissionPage() {
             </p>
             <div className={styles.chips}>
               {SHARES.map((share) => {
-                const chip = granted[share.key] ? GRANTED_CHIP : PENDING_CHIP;
+                const chip = shared[share.key] ? GRANTED_CHIP : PENDING_CHIP;
                 return (
                   <Pill
                     key={share.key}

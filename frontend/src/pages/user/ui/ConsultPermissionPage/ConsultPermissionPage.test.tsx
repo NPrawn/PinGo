@@ -12,6 +12,7 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 const mediaMocks = vi.hoisted(() => ({
+  canShareConsultScreen: vi.fn(),
   captureConsultMedia: vi.fn(),
   holdConsultMedia: vi.fn(),
   releaseConsultMedia: vi.fn(),
@@ -50,6 +51,7 @@ describe('ConsultPermissionPage', () => {
     useUserSessionStore.setState({ userSessionId: 'session-1' });
     usePermissionStore.setState({ granted: { loc: true, cam: false, mic: false } });
     apiMocks.createConsultation.mockResolvedValue({ consultationId: 'consultation-1' });
+    mediaMocks.canShareConsultScreen.mockReturnValue(true);
     mediaMocks.captureConsultMedia.mockResolvedValue({
       getAudioTracks: () => [{ kind: 'audio' }],
     } as unknown as MediaStream);
@@ -88,10 +90,14 @@ describe('ConsultPermissionPage', () => {
     expect(mediaMocks.captureConsultCamera).toHaveBeenCalled();
     expect(mediaMocks.holdConsultCamera).toHaveBeenCalled();
     expect(mediaMocks.releaseConsultMedia).not.toHaveBeenCalled();
+    /*
+      전역 권한 상태는 그대로다. 이 화면이 확보한 것은 이 상담에 넘길 화면과 목소리이지
+      브라우저가 준 카메라·마이크 권한이 아니다.
+    */
     expect(usePermissionStore.getState().granted).toEqual({
       loc: true,
-      cam: true,
-      mic: true,
+      cam: false,
+      mic: false,
     });
     expect(apiMocks.createConsultation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -126,6 +132,45 @@ describe('ConsultPermissionPage', () => {
         mic: false,
       }),
     );
+  });
+
+  /**
+   * 아직 아무것도 동의하지 않았다.
+   *
+   * 앞 화면에서 받은 카메라·마이크 권한을 그대로 읽었더니, 사용자가 버튼을 누르기도 전에 두
+   * 줄에 초록 체크가 켜져 있었다. 여기서 묻는 것은 "이 상담에 화면과 목소리를 넘기겠는가"라
+   * 앞 화면의 답으로 대신할 수 없다.
+   */
+  it('동의하기 전에는 공유 항목이 선택된 것으로 보이지 않는다', () => {
+    usePermissionStore.setState({ granted: { loc: true, cam: true, mic: true } });
+
+    renderPage();
+
+    screen.getAllByRole('button', { name: /공유/ }).forEach((row) => {
+      expect(row).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
+  /**
+   * 거절한 것과 애초에 할 수 없는 것은 다르다.
+   *
+   * 모바일 브라우저에는 화면 공유가 없어 `getDisplayMedia` 호출이 즉시 실패한다. 그걸 거절로
+   * 읽으면 사용자가 아무것도 거부하지 않았는데 "모두 동의해주세요" 대화상자가 뜬다.
+   */
+  it('화면 공유를 지원하지 않는 기기에서는 거부 대화상자를 띄우지 않는다', async () => {
+    mediaMocks.canShareConsultScreen.mockReturnValue(false);
+
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: '동의하고 상담 연결' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '이 기기의 브라우저는 화면 공유를 지원하지 않아요.',
+    );
+    expect(
+      screen.queryByRole('dialog', { name: '화면·음성 공유가 필요해요' }),
+    ).not.toBeInTheDocument();
+    expect(mediaMocks.captureConsultMedia).not.toHaveBeenCalled();
+    expect(apiMocks.createConsultation).not.toHaveBeenCalled();
   });
 
   it('returns to issue selection instead of showing an internal error when no issue exists', async () => {
