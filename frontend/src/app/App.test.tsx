@@ -194,6 +194,15 @@ describe('user routes', () => {
       currentFloorId: 1,
       currentMapX: -30,
       currentMapY: 10,
+      /*
+        스토어에 남는 값들을 테스트마다 되돌린다.
+
+        `stepsOpen`과 진행도는 화면을 다시 열어도 남는 것이 정상이다(같은 경로를 이어서 안내한다).
+        그래서 앞 테스트가 상세 경로를 펼치거나 걸어간 상태가 뒤 테스트로 넘어간다.
+      */
+      stepsOpen: false,
+      progressKey: null,
+      travelledM: 0,
     });
   });
 
@@ -601,6 +610,39 @@ describe('user routes', () => {
     fireEvent.click(screen.getByRole('button', { name: '시설 아이콘 다시 보기' }));
 
     expect(await screen.findByRole('button', { name: '승차권 충전' })).toBeInTheDocument();
+  });
+
+  /**
+   * 진행도에 따른 안내. (S15P11A206-83)
+   *
+   * 예전에는 안내 카드가 `steps[0]`에 고정돼 있어 걸어도 첫 구간 문구가 그대로였고, 상세 경로도
+   * 모든 단계를 똑같이 그려 지금 어디인지 알 수 없었다.
+   *
+   * 목업 경로는 B3 승강장(205) → 엘리베이터(202) → B2(102)다. 첫 구간 끝쪽에 서면 안내가 층
+   * 전환 구간으로 넘어가야 한다.
+   */
+  it('걸어간 만큼 안내 카드와 상세 경로가 다음 구간으로 넘어간다', async () => {
+    useNavigationStore.setState({
+      // 첫 구간(205 → 202)의 끝에 가까운 지점. B3이다.
+      currentFloorId: 2,
+      currentMapX: -2,
+      currentMapY: 27,
+    });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    // 첫 구간이 아니라 층 전환 구간을 안내한다.
+    expect(await screen.findByText('엘리베이터를 타고 B2로 이동하세요')).toBeInTheDocument();
+    expect(screen.queryByText('개찰구 방향으로 25m 직진하세요')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /상세 경로/ }));
+
+    // 상세 경로에서는 지금 구간만 표시가 붙는다. 지나온 구간은 지우지 않고 남긴다.
+    const passedStep = await screen.findByText('개찰구 방향으로 25m 직진하세요');
+    expect(passedStep.closest('[aria-current="step"]')).toBeNull();
+    expect(
+      screen.getAllByText('엘리베이터를 타고 B2로 이동하세요').at(-1)?.closest('[aria-current]'),
+    ).not.toBeNull();
   });
 
   /**

@@ -1,0 +1,166 @@
+import { routeProgressOf } from './routeProgress';
+import type { RoutePathNode } from '../model/types';
+
+const B3 = 2;
+const B2 = 1;
+
+/**
+ * B3 통로를 100m 걸어 엘리베이터로 B2에 올라간 뒤, **같은 x 구간을 되돌아** 걷는 경로.
+ *
+ * 두 층이 x를 공유하는 것이 역삼역의 실제 모양이다(B2 대합실이 B3 승강장 바로 위에 있다).
+ * 층을 보지 않고 투영하면 어느 층 구간에 붙을지 좌표만으로는 정해지지 않는다.
+ */
+const PATH: RoutePathNode[] = [
+  { nodeId: 1, floorId: B3, mapX: 0, mapY: 0 },
+  { nodeId: 2, floorId: B3, mapX: 100, mapY: 0 },
+  // 층 전환. 수평 거리가 0이다.
+  { nodeId: 3, floorId: B2, mapX: 100, mapY: 0 },
+  { nodeId: 4, floorId: B2, mapX: 0, mapY: 0 },
+];
+
+const STEPS = [{ distanceM: 100 }, { distanceM: 6 }, { distanceM: 100 }];
+
+describe('routeProgressOf', () => {
+  it('경로에 투영해 진행 거리를 구한다', () => {
+    const progress = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      // 통로에서 살짝 벗어나 걷는다. 투영하면 30m 지점이다.
+      currentLocation: { floorId: B3, mapX: 30, mapY: 2 },
+    });
+
+    expect(progress.travelledM).toBeCloseTo(30);
+    expect(progress.offRoute).toBe(false);
+    expect(progress.currentStepIndex).toBe(0);
+    /*
+      70이 아니다. 구간 거리 합(206m)을 경로 길이(200m)에 맞춰 줄이므로 첫 구간이 97.1m에서
+      끝난다. 차이는 엘리베이터의 수직 6m가 수평 경로에 없기 때문이고, 이 근사를 두는 이유는
+      `stepBoundaries`에 적어 두었다.
+    */
+    expect(progress.stepRemainingM).toBeCloseTo(67.1, 1);
+  });
+
+  /**
+   * 가장 빠지기 쉬운 함정.
+   *
+   * 역삼역 B2와 B3는 x·y가 거의 겹친다. 층을 보지 않고 투영하면 B3에 서 있는데 바로 위 B2 구간에
+   * 붙어, 아직 올라가지도 않은 층의 구간이 진행 중으로 표시된다.
+   */
+  it('같은 x·y라도 다른 층 구간에는 붙지 않는다', () => {
+    const onB3 = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      currentLocation: { floorId: B3, mapX: 70, mapY: 0 },
+    });
+    // B3 구간에 붙는다. 70m 지점이다.
+    expect(onB3.travelledM).toBeCloseTo(70);
+    expect(onB3.currentStepIndex).toBe(0);
+
+    const onB2 = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      currentLocation: { floorId: B2, mapX: 70, mapY: 0 },
+    });
+    /*
+      좌표는 같은데 층이 다르다. B2 구간은 100m에서 시작해 되돌아오므로 x=70은 130m 지점이다.
+      층을 보지 않으면 이 위치가 70m로 읽혀, 아직 올라가지도 않은 구간이 진행 중으로 표시된다.
+    */
+    expect(onB2.travelledM).toBeCloseTo(130);
+    expect(onB2.currentStepIndex).toBe(2);
+  });
+
+  /** 층을 옮기면 그 층 구간에 붙어 진행도가 자연히 넘어간다. 엘리베이터는 수평 거리가 0이다. */
+  it('층을 옮기면 진행도가 다음 층 구간으로 넘어간다', () => {
+    const progress = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      currentLocation: { floorId: B2, mapX: 100, mapY: 0 },
+      travelledM: 100,
+    });
+
+    expect(progress.passedNodeIds).toContain(3);
+    expect(progress.offRoute).toBe(false);
+  });
+
+  /**
+   * XR 위치는 흔들린다. 진행도가 뒤로 갔다 앞으로 오면 안내가 두 구간 사이를 깜빡이고, 사용자는
+   * 자기가 잘못 걷고 있다고 읽는다.
+   */
+  it('뒤로 물러난 위치로는 진행도를 되돌리지 않는다', () => {
+    const progress = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      currentLocation: { floorId: B3, mapX: 40, mapY: 0 },
+      travelledM: 60,
+    });
+
+    expect(progress.travelledM).toBeCloseTo(60);
+  });
+
+  /** 다른 복도를 걷는데 경로를 따라간 것으로 세면, 지나지도 않은 구간이 완료로 표시된다. */
+  it('경로에서 멀면 진행도를 올리지 않는다', () => {
+    const progress = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      // 통로에서 40m 떨어진 다른 복도.
+      currentLocation: { floorId: B3, mapX: 50, mapY: 40 },
+      travelledM: 10,
+    });
+
+    expect(progress.offRoute).toBe(true);
+    expect(progress.travelledM).toBeCloseTo(10);
+  });
+
+  it('지나온 노드를 순서대로 모은다', () => {
+    const progress = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      currentLocation: { floorId: B3, mapX: 100, mapY: 0 },
+    });
+
+    // 출발 노드는 언제나 포함된다. 100m 지점의 노드까지 지났다.
+    expect(progress.passedNodeIds).toEqual([1, 2, 3]);
+  });
+
+  it('위치를 모르면 진행도를 올리지 않고 첫 구간에 머문다', () => {
+    const progress = routeProgressOf({ pathNodes: PATH, steps: STEPS, currentLocation: null });
+
+    expect(progress.offRoute).toBe(true);
+    expect(progress.travelledM).toBe(0);
+    expect(progress.currentStepIndex).toBe(0);
+  });
+
+  /** 구간 거리 합(206m)과 경로 기하 길이(200m)가 다르다 — 엘리베이터 6m는 수직이다. */
+  it('경로 끝에서는 남은 거리가 0이다', () => {
+    const progress = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      currentLocation: { floorId: B2, mapX: 0, mapY: 0 },
+    });
+
+    expect(progress.currentStepIndex).toBe(2);
+    expect(progress.stepRemainingM).toBeCloseTo(0);
+  });
+
+  /** 길이가 0인 층 전환 구간도 자리를 갖는다. 아니면 그 안내가 한 번도 보이지 않는다. */
+  it('엘리베이터 앞에 서면 층 전환 구간을 안내한다', () => {
+    const progress = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      currentLocation: { floorId: B3, mapX: 100, mapY: 0 },
+    });
+
+    expect(progress.currentStepIndex).toBe(1);
+  });
+
+  it('경로가 없으면 판정할 것이 없다', () => {
+    const progress = routeProgressOf({
+      pathNodes: [],
+      currentLocation: { floorId: B2, mapX: 0, mapY: 0 },
+    });
+
+    expect(progress.travelledM).toBe(0);
+    expect(progress.currentStepIndex).toBeNull();
+    expect(progress.passedNodeIds).toEqual([]);
+  });
+});

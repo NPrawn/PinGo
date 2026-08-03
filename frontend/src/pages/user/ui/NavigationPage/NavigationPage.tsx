@@ -8,7 +8,12 @@ import {
   type Facility,
 } from '@/entities/facility';
 import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
-import { routePathNodesOf, useNavigationStore, type IndoorPoint } from '@/entities/navigation';
+import {
+  routePathNodesOf,
+  routeProgressOf,
+  useNavigationStore,
+  type IndoorPoint,
+} from '@/entities/navigation';
 import { routeUnavailableText } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
@@ -79,6 +84,9 @@ export function NavigationPage() {
   const currentMapY = useNavigationStore((state) => state.currentMapY);
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const setRouteResult = useNavigationStore((state) => state.setRouteResult);
+  const progressKey = useNavigationStore((state) => state.progressKey);
+  const storedTravelledM = useNavigationStore((state) => state.travelledM);
+  const setRouteProgress = useNavigationStore((state) => state.setRouteProgress);
   const waypoints = useNavigationStore((state) => state.waypoints);
   const addWaypoint = useNavigationStore((state) => state.addWaypoint);
   const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
@@ -149,7 +157,6 @@ export function NavigationPage() {
     retry: false,
   });
   const routeResult = routeQuery.data;
-  const firstStep = routeResult?.steps?.[0];
 
   /**
    * 안내 진입 시점의 확정 실내 위치. 위치 인식(FR-U-004)이 앵커링해 준 좌표다.
@@ -229,6 +236,38 @@ export function NavigationPage() {
     const code = floorCodeOf(floorMaps, followedFloorId);
     if (code) setFloor(code as FloorId);
   };
+
+  /**
+   * 경로상 어디까지 왔는지. 안내 카드와 상세 경로가 이 값으로 현재 구간을 고른다.
+   *
+   * **진행 거리는 스토어에 둔다.** 뒤로 가지 않게 지금까지의 최대값을 들고 있어야 하는데, 렌더
+   * 중에 ref를 읽거나 쓰는 것은 막혀 있고(`react-hooks/refs`) effect에서 상태를 갱신하는 것도
+   * 막혀 있다(`set-state-in-effect`). 스토어 값은 렌더에서 그냥 읽으면 되므로 둘 다 피한다.
+   *
+   * 어느 경로의 진행도인지 열쇠로 함께 남긴다. 열쇠가 다르면 0부터 다시 센다 — 경로가 바뀔 때
+   * 따로 지우지 않아도 지난 진행도가 새 경로에 섞이지 않는다.
+   */
+  const routeKey = `${currentNodeId}-${targetNodeId}-${route}-${waypointNodeIds.join(',')}`;
+  const pathNodes = routePathNodesOf(routeResult);
+  const travelledM = progressKey === routeKey ? storedTravelledM : 0;
+  const progress = routeProgressOf({
+    pathNodes,
+    steps: routeResult?.steps,
+    currentLocation,
+    travelledM,
+  });
+
+  useEffect(() => {
+    if (progressKey !== routeKey || progress.travelledM > storedTravelledM) {
+      setRouteProgress(routeKey, progress.travelledM);
+    }
+  }, [progressKey, routeKey, progress.travelledM, storedTravelledM, setRouteProgress]);
+
+  /** 지금 안내할 구간. 예전에는 `steps[0]`에 고정돼 걸어도 안내가 넘어가지 않았다. */
+  const activeStep =
+    progress.currentStepIndex === null
+      ? undefined
+      : routeResult?.steps?.[progress.currentStepIndex];
 
   /**
    * 목적지 마커. **이름과 좌표가 같은 곳을 가리켜야 한다.**
@@ -339,7 +378,7 @@ export function NavigationPage() {
             : '다른 경로를 선택해 주세요.'),
       };
     }
-    if (!firstStep) {
+    if (!activeStep) {
       return {
         eyebrow: '다음 안내 · -',
         title: '안내할 구간이 없어요',
@@ -349,6 +388,17 @@ export function NavigationPage() {
 
     const totalDistance = Math.round(routeResult?.totalDistanceM ?? 0);
     const totalMinutes = Math.max(1, Math.ceil((routeResult?.estimatedTimeSec ?? 0) / 60));
+    /*
+      현재 구간에서 **남은** 거리를 적는다. 구간 전체 길이를 적어 두면 그 구간을 절반 걸어도
+      숫자가 그대로여서, 걷고 있는데 아무 일도 일어나지 않는 것처럼 보인다.
+
+      위치를 모르거나 경로에서 벗어난 동안에는 구간 전체 길이로 돌아간다 — 진행도를 올리지
+      않았으므로 남은 거리라고 말할 근거가 없다.
+    */
+    const nextDistance = progress.offRoute
+      ? (activeStep.distanceM ?? 0)
+      : (progress.stepRemainingM ?? activeStep.distanceM ?? 0);
+
     return {
       /*
         다시 계산하는 동안에만 그렇게 적는다. 예전에는 한 번 경유지를 건드리면 안내가 끝날
@@ -357,8 +407,8 @@ export function NavigationPage() {
       eyebrow:
         recalculated && routeQuery.isFetching
           ? '다음 안내 · 경로 다시 계산 중'
-          : `다음 안내 · ${Math.round(firstStep.distanceM ?? 0)}m`,
-      title: firstStep.instruction ?? '경로를 따라 이동하세요',
+          : `다음 안내 · ${Math.round(nextDistance)}m`,
+      title: activeStep.instruction ?? '경로를 따라 이동하세요',
       meta: `총 ${totalDistance}m · 약 ${totalMinutes}분`,
     };
   })();
@@ -764,28 +814,59 @@ export function NavigationPage() {
 
             {stepsOpen && (
               <div className={styles.steps}>
-                {routeResult?.steps?.map((step) => (
-                  <div
-                    key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
-                    className={styles.step}
-                  >
-                    <span className={styles.stepIcon}>↑</span>
-                    <b>{step.instruction ?? step.moveType ?? '이동'}</b>
-                    <span>
-                      {Math.round(step.distanceM ?? 0)}m · 약{' '}
-                      {Math.max(1, Math.ceil((step.estimatedTimeSec ?? 0) / 60))}분
-                    </span>
-                  </div>
-                ))}
-                {waypoints.map((waypoint) => (
-                  <div key={waypoint.nodeId} className={styles.step}>
-                    <span className={styles.stepIcon}>
-                      <Icon name="pin" size={14} />
-                    </span>
-                    <b>{waypoint.nameKo}</b>
-                    <span>추가 경유지</span>
-                  </div>
-                ))}
+                {routeResult?.steps?.map((step, index) => {
+                  /*
+                    지나온 구간은 지우지 않고 흐리게 둔다. 지워 버리면 목록이 짧아지면서 남은
+                    구간이 위로 튀어 올라, 방금 읽던 줄이 어디로 갔는지 알 수 없다. 흐린 줄로
+                    남기면 어디까지 왔는지도 함께 보인다.
+
+                    경로에서 벗어난 동안에는 아무 줄도 강조하지 않는다. 진행도를 올리지 않았으므로
+                    어느 구간에 있다고 말할 근거가 없고, 틀린 줄을 강조하면 그것을 따라 걷는다.
+                  */
+                  const active = !progress.offRoute && index === progress.currentStepIndex;
+                  const passed =
+                    !progress.offRoute &&
+                    progress.currentStepIndex !== null &&
+                    index < progress.currentStepIndex;
+
+                  return (
+                    <div
+                      key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
+                      className={[styles.step, passed && styles.stepPassed, active && styles.stepOn]
+                        .filter(Boolean)
+                        .join(' ')}
+                      aria-current={active ? 'step' : undefined}
+                    >
+                      <span className={styles.stepIcon}>
+                        {passed ? <Icon name="check" size={13} /> : '↑'}
+                      </span>
+                      <b>{step.instruction ?? step.moveType ?? '이동'}</b>
+                      <span>
+                        {Math.round(step.distanceM ?? 0)}m · 약{' '}
+                        {Math.max(1, Math.ceil((step.estimatedTimeSec ?? 0) / 60))}분
+                      </span>
+                    </div>
+                  );
+                })}
+                {waypoints.map((waypoint, index) => {
+                  // 지나온 경유지도 흐리게 둔다. 지도의 번호 핀과 같은 순서다.
+                  const passed = progress.passedNodeIds.includes(waypoint.nodeId);
+
+                  return (
+                    <div
+                      key={waypoint.nodeId}
+                      className={[styles.step, passed && styles.stepPassed]
+                        .filter(Boolean)
+                        .join(' ')}
+                    >
+                      <span className={styles.stepIcon}>
+                        {passed ? <Icon name="check" size={13} /> : <Icon name="pin" size={14} />}
+                      </span>
+                      <b>{waypoint.nameKo}</b>
+                      <span>경유 {index + 1}</span>
+                    </div>
+                  );
+                })}
                 <div className={styles.step}>
                   <span className={styles.stepIcon}>
                     <Icon name="flag" size={14} />

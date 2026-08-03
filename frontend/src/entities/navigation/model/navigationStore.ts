@@ -58,6 +58,20 @@ type NavigationStore = {
   /** Optional stops added from the indoor map while navigation is active. */
   waypoints: Waypoint[];
   /**
+   * 어느 경로의 진행도인지. 출발·도착·유형·경유지를 묶은 문자열이며 화면이 만든다.
+   *
+   * 값만 두면 경로가 바뀌었을 때 지난 경로의 진행도를 그대로 쓰게 된다. 어느 경로의 것인지
+   * 함께 들고 있으면, 열쇠가 다른 순간 읽는 쪽이 0부터 다시 세면 된다 — 따로 지울 필요가 없다.
+   */
+  progressKey: string | null;
+  /**
+   * 경로를 따라 진행한 거리(m). 뒤로 가지 않는다.
+   *
+   * XR 위치는 흔들린다. 매 위치마다 다시 계산하면 진행도가 앞뒤로 오가며 안내가 깜빡이므로,
+   * 지금까지의 최대값만 남긴다(`routeProgressOf`).
+   */
+  travelledM: number;
+  /**
    * 안내 중 위치 재인식으로 U-04에 다녀오는 중인지. (S15P11A206-141)
    *
    * **쿼리 파라미터로 넘기지 않는 이유.** 재인식은 U-10 → U-04(촬영·매칭) → U-05(위치 확인) →
@@ -100,6 +114,8 @@ type NavigationStore = {
    */
   setTargetNode: (targetNodeId: number, exitLabel: string | null) => void;
   setRouteResult: (route: RouteResponse | null) => void;
+  /** 진행도를 기록한다. 어느 경로의 것인지 함께 남긴다. */
+  setRouteProgress: (progressKey: string, travelledM: number) => void;
   addWaypoint: (waypoint: Waypoint) => void;
   /** 노드로 지운다. 같은 이름의 시설이 여러 개인 역(안내센터 A·B)에서 이름은 열쇠가 못 된다. */
   removeWaypoint: (nodeId: number) => void;
@@ -137,6 +153,8 @@ export const useNavigationStore = create<NavigationStore>()(
       route: 'fastest',
       stepsOpen: false,
       waypoints: [],
+      progressKey: null,
+      travelledM: 0,
       relocalizing: false,
       // 새 여정은 재인식 중 상태를 물려받지 않는다.
       startNewJourney: (destination, details) =>
@@ -183,6 +201,7 @@ export const useNavigationStore = create<NavigationStore>()(
             : { targetNodeId, targetExitLabel: exitLabel, routeResult: null },
         ),
       setRouteResult: (routeResult) => set({ routeResult }),
+      setRouteProgress: (progressKey, travelledM) => set({ progressKey, travelledM }),
       addWaypoint: (waypoint) =>
         set((state) => {
           const already = state.waypoints.some((item) => item.nodeId === waypoint.nodeId);
