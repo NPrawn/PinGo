@@ -635,6 +635,13 @@ describe('user routes', () => {
     expect(await screen.findByText('엘리베이터를 타고 B2로 이동하세요')).toBeInTheDocument();
     expect(screen.queryByText('개찰구 방향으로 25m 직진하세요')).toBeNull();
 
+    /*
+      카메라 화면의 화살표와 문구는 그리지 않는다. 층을 오르내리는 구간이라 수평 방향에 뜻이
+      없고, XR 추적 없이 들어왔으므로 방향각도 없다. 예전에는 이 자리에 `정면 통로를 따라
+      직진하세요`가 하드코딩돼 있어, 엘리베이터를 타야 할 때도 정면으로 걸으라고 말했다.
+    */
+    expect(screen.queryByText('정면 통로를 따라 직진하세요')).toBeNull();
+
     fireEvent.click(screen.getByRole('button', { name: /상세 경로/ }));
 
     // 상세 경로에서는 지금 구간만 표시가 붙는다. 지나온 구간은 지우지 않고 남긴다.

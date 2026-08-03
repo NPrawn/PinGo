@@ -303,11 +303,24 @@
   color: rgb(223 246 230 / 68%);
 }
 
+/* 다음 지점을 가리키는 큰 화살표. 각도는 화면이 인라인 스타일로 준다 —
+   경로 기하와 XR 방향각에서 나온 값이라 CSS로 미리 정해 둘 수 없다.
+   회전 중심을 글리프 한가운데로 두어, 돌 때 화살표가 제자리에서 돈다. */
 .arrow {
   margin-top: 30px;
   font-size: 58px;
+  line-height: 1;
   color: #fff;
   text-shadow: 0 3px 12px rgb(0 0 0 / 50%);
+  transform-origin: center;
+  /* 방향은 계단으로 들어오므로(5° 데드밴드) 짧게 이어 붙여 튀지 않게 한다. */
+  transition: transform 0.24s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrow {
+    transition: none;
+  }
 }
 
 .camCaption {

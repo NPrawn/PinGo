@@ -9,6 +9,7 @@ import {
 } from '@/entities/facility';
 import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
 import {
+  routeBearingOf,
   routePathNodesOf,
   routeProgressOf,
   useNavigationStore,
@@ -48,6 +49,19 @@ import styles from './NavigationPage.module.css';
  * 처럼 아직 시드되지 않은 유형도 같은 규칙으로 자연히 사라진다.
  */
 const MAP_FILTERS = FACILITY_MAP_FILTERS;
+
+/**
+ * 카메라 화면의 문구. 화살표가 가리키는 방향을 말로 한 번 더 적는다.
+ *
+ * 아래 안내 카드의 문구(`25m 직진하세요`)와 겹치지 않게 **방향만** 말한다. 거리는 카드가, 방향은
+ * 여기가 담당한다 — 같은 말을 두 곳에 쓰면 둘이 어긋날 여지만 생긴다.
+ */
+const CAM_CAPTIONS = {
+  straight: '정면 통로를 따라 직진하세요',
+  left: '왼쪽으로 도세요',
+  right: '오른쪽으로 도세요',
+  around: '뒤로 돌아가세요',
+} as const;
 
 /**
  * 화면이 들고 있는 출구 이름으로 실제 출구 시설을 찾는다.
@@ -268,6 +282,36 @@ export function NavigationPage() {
     progress.currentStepIndex === null
       ? undefined
       : routeResult?.steps?.[progress.currentStepIndex];
+
+  /**
+   * 카메라 화면의 큰 화살표가 가리킬 방향.
+   *
+   * 백엔드 `moveType`에는 회전이 없다(walkway·stair·escalator·elevator·gate). 그래서 좌우는
+   * 경로 기하와 XR 방향각으로 직접 구한다 — 다음 지점이 내가 보는 쪽에서 몇 도 벌어져 있는지다.
+   *
+   * 모르면 null이고, 그때는 화살표와 문구를 아예 그리지 않는다. 예전에는 위를 향한 화살표와
+   * `정면 통로를 따라 직진하세요`가 **하드코딩**돼 있어, 좌회전해야 할 때도 계단을 타야 할 때도
+   * 정면으로 걸으라고 말했다. 아래 카드는 실제 안내를 하고 있었으므로 한 화면에서 두 안내가
+   * 서로 다른 말을 했다.
+   */
+  const bearing = routeBearingOf({
+    pathNodes,
+    currentLocation,
+    headingDeg,
+    travelledM: progress.travelledM,
+  });
+  /**
+   * 층을 오르내리는 구간에서는 수평 방향을 그리지 않는다. 엘리베이터 앞에서 화살표가 통로를
+   * 가리키면 그쪽으로 걷게 된다 — 가야 할 곳은 위층이다. 그 구간의 안내는 카드가 맡는다.
+   */
+  const verticalMove =
+    activeStep?.moveType === 'elevator' ||
+    activeStep?.moveType === 'stair' ||
+    activeStep?.moveType === 'escalator';
+  const camGuide =
+    progress.offRoute || verticalMove || bearing === null
+      ? null
+      : { relativeDeg: bearing.relativeDeg, caption: CAM_CAPTIONS[bearing.turn] };
 
   /**
    * 목적지 마커. **이름과 좌표가 같은 곳을 가리켜야 한다.**
@@ -627,8 +671,20 @@ export function NavigationPage() {
               <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
           </div>
-          <div className={styles.arrow}>↑</div>
-          <div className={styles.camCaption}>정면 통로를 따라 직진하세요</div>
+          {/* 방향을 알 때만 그린다. 모르는데 위를 향한 화살표를 두면 "정면"이라고 말하는 셈이다. */}
+          {camGuide && (
+            <>
+              <div
+                className={styles.arrow}
+                style={{ transform: `rotate(${camGuide.relativeDeg}deg)` }}
+                role="img"
+                aria-label={camGuide.caption}
+              >
+                ↑
+              </div>
+              <div className={styles.camCaption}>{camGuide.caption}</div>
+            </>
+          )}
         </div>
 
         <div className={styles.lower}>
