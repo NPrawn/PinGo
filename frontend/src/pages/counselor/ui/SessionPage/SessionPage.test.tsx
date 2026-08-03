@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
+import { ApiError } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { SessionPage } from './SessionPage';
 
@@ -28,9 +29,14 @@ vi.mock('@/shared/api', async (importOriginal) => ({
 }));
 
 /** WebRTC·음성 인식은 이 화면의 관심사가 아니다. 쌓인 전문만 넘겨준다. */
-vi.mock('@/features/consult-signaling', () => ({
+vi.mock('@/features/consult-signaling', async (importOriginal) => ({
   // 번역은 이 화면의 관심사가 아니다. 옮기지 않은 것으로 둔다.
   useCaptionTranslation: () => '',
+  useTranslatedSpeech: vi.fn(),
+  // 안내 문구를 만드는 것은 순수 함수다. 가짜로 바꾸면 실제로 무슨 말이 뜨는지 못 본다.
+  describeRemoteCaptionTrouble: (
+    await importOriginal<typeof import('@/features/consult-signaling')>()
+  ).describeRemoteCaptionTrouble,
   useConsultSignaling: () => ({
     localVideoRef: { current: null },
     remoteVideoRef: { current: null },
@@ -38,6 +44,9 @@ vi.mock('@/features/consult-signaling', () => ({
     error: null,
     localCaption: '',
     remoteCaption: '',
+    remoteFinalCaption: '',
+    remoteCaptionFinal: true,
+    remoteCaptionError: null,
     captionsSupported: true,
     transcript: signalingMocks.transcript,
     screenShareBlocked: false,
@@ -88,6 +97,53 @@ describe('SessionPage', () => {
     );
     // 종료는 사용자가 이미 했다. 상담자가 다시 종료를 부르면 409로 거절된다.
     expect(apiMocks.endConsultation).not.toHaveBeenCalled();
+    await screen.findByText('상담 요청 목록');
+  });
+
+  /**
+   * 종료가 서버에 닿지 않았는데 화면만 넘어가면, 상담자는 끝냈다고 믿지만 서버에는 상담이
+   * 계속 진행 중으로 남는다. 그 상담은 요청 목록에서 사라지지 않고 상담자 상태도 '상담 중'에
+   * 묶여 다음 요청을 받지 못한다. 예전에는 실패를 통째로 삼키고 그대로 나가 버렸다.
+   */
+  it('종료가 서버에 거절당하면 화면을 넘기지 않고 이유를 알린다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
+    ]);
+    apiMocks.endConsultation.mockRejectedValue(
+      new ApiError('담당 상담자가 아닙니다.', { status: 409 }),
+    );
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '상담 종료' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('담당 상담자가 아닙니다.');
+    expect(alert).toHaveTextContent('상담은 아직 진행 중입니다');
+    // 목록으로 나가 버리면 상담자는 이 상담을 다시 끝낼 방법이 없다. 화면에 남아 다시
+    // 누를 수 있어야 한다. (좌측 내비게이션에도 '상담 요청 목록'이 있어 종료 버튼으로 본다.)
+    expect(screen.getByRole('button', { name: '상담 종료' })).toBeEnabled();
+    // 종료되지 않았으므로 전문도 보내지 않는다. 서버가 409로 거절한다.
+    expect(apiMocks.submitConsultationTranscript).not.toHaveBeenCalled();
+  });
+
+  /** 종료가 받아들여지면 전문을 남기고 목록으로 나간다. */
+  it('종료에 성공하면 전문을 저장하고 목록으로 나간다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
+    ]);
+    apiMocks.endConsultation.mockResolvedValue({});
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '상담 종료' }));
+
+    await waitFor(() => expect(apiMocks.endConsultation).toHaveBeenCalledWith('cs_1'));
+    await waitFor(() =>
+      expect(apiMocks.submitConsultationTranscript).toHaveBeenCalledWith('cs_1', {
+        transcript: signalingMocks.transcript,
+      }),
+    );
     await screen.findByText('상담 요청 목록');
   });
 
