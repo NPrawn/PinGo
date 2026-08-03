@@ -107,7 +107,7 @@ public class ConsultationSummaryService {
         return ConsultationSummaryResponse.of(
                 summary,
                 findCounselorName(session.getCounselorId()),
-                session.getEndedAt(),
+                ConsultationSession.toInstant(session.getEndedAt()),
                 findLanguage(session.getUserSessionId()),
                 transcripts.stream().map(TranscriptSegmentResponse::from).toList());
     }

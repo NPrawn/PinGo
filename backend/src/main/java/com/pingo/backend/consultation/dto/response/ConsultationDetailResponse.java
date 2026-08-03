@@ -4,7 +4,7 @@ import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.domain.ProblemType;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record ConsultationDetailResponse(
         String consultationId,
@@ -15,7 +15,7 @@ public record ConsultationDetailResponse(
         String destinationLabel,
         boolean videoConsent,
         boolean audioConsent,
-        LocalDateTime requestedAt,
+        Instant requestedAt,
         String signalingRoomId,
         String signalingAccessToken
 ){
@@ -29,7 +29,7 @@ public record ConsultationDetailResponse(
                 null, // [TODO] OO: 위와 동일
                 session.isVideoConsent(),
                 session.isAudioConsent(),
-                session.getRequestedAt(),
+                ConsultationSession.toInstant(session.getRequestedAt()),
                 session.getSignalingRoomId(),
                 signalingAccessToken
         );

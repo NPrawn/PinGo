@@ -14,7 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -43,7 +43,7 @@ class ConsultationCounselorQueryControllerTest {
     void getConsultations_성공() throws Exception {
         ConsultationListResponse response = new ConsultationListResponse(
                 CONSULTATION_ID, 1L, ProblemType.CANNOT_FIND_EXIT, ConsultationStatus.WAITING,
-                null, null, null, null, null, LocalDateTime.now()
+                null, null, null, null, null, null, Instant.now()
         );
         given(consultationSessionService.getConsultationsForCounselor(any(), isNull()))
                 .willReturn(List.of(response));
@@ -76,7 +76,7 @@ class ConsultationCounselorQueryControllerTest {
     void getConsultationDetail_성공() throws Exception {
         ConsultationDetailResponse response = new ConsultationDetailResponse(
                 CONSULTATION_ID, 1L, ProblemType.CANNOT_FIND_EXIT, ConsultationStatus.WAITING,
-                null, null, true, true, LocalDateTime.now(),
+                null, null, true, true, Instant.now(),
                 null,null
         );
         given(consultationSessionService.getConsultationDetailForCounselor(eq(CONSULTATION_ID), any()))
