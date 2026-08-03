@@ -1,7 +1,12 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { facilityIconOf, useStationFacilities, type Facility } from '@/entities/facility';
+import {
+  FACILITY_MAP_FILTERS,
+  facilityIconOf,
+  useStationFacilities,
+  type Facility,
+} from '@/entities/facility';
 import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
 import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
 import { routeUnavailableText } from '@/entities/route';
@@ -11,7 +16,6 @@ import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
-import type { IconName } from '@/shared/ui';
 import { stopCamera } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { IndoorMapView } from '@/widgets/indoor-map';
@@ -36,15 +40,7 @@ import styles from './NavigationPage.module.css';
  * TODO: `platform`은 역삼역에 등록된 시설이 없어 눌러도 표시할 것이 없다. 승강장 시설이
  * 시드되면 그대로 동작한다(백엔드 요청 예정).
  */
-const MAP_FILTERS: readonly { name: string; icon: IconName; facilityType: string }[] = [
-  { name: '화장실', icon: 'restroom', facilityType: 'restroom' },
-  { name: '승차권 충전', icon: 'card', facilityType: 'card_charger' },
-  { name: '엘리베이터', icon: 'elevator', facilityType: 'elevator' },
-  { name: '에스컬레이터', icon: 'escalator', facilityType: 'escalator' },
-  { name: '계단', icon: 'stairs', facilityType: 'stair' },
-  { name: '내린 위치', icon: 'train', facilityType: 'platform' },
-  { name: '출구', icon: 'door', facilityType: 'exit' },
-];
+const MAP_FILTERS = FACILITY_MAP_FILTERS;
 
 /**
  * 화면이 들고 있는 출구 이름으로 실제 출구 시설을 찾는다.

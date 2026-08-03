@@ -6,7 +6,13 @@ import { useNavigationStore } from '@/entities/navigation';
 import { usePermissionStore } from '@/entities/permission';
 import { useStationStore } from '@/entities/station';
 import { ensureUserSession, useUserSessionStore } from '@/entities/user-session';
-import { requestMediaPermissions, stopMediaStream } from '@/features/permissions';
+import {
+  captureConsultCamera,
+  captureConsultMedia,
+  holdConsultCamera,
+  holdConsultMedia,
+  releaseConsultMedia,
+} from '@/features/consult-signaling';
 import { ApiError, createConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import {
@@ -30,9 +36,9 @@ const SHARES = [
     key: 'cam',
     icon: 'camera',
     tone: 'coral',
-    name: '카메라 화면 공유',
-    desc: '상담원이 주변 환경을 함께 봐요',
-    short: '카메라',
+    name: '화면 공유',
+    desc: '상담원이 보고 있는 화면을 함께 봐요',
+    short: '화면',
   },
   {
     key: 'mic',
@@ -122,6 +128,8 @@ export function ConsultPermissionPage() {
       setConsultation(consultation.consultationId);
       void navigate(USER_ROUTES.CONSULT_WAITING);
     } catch (error) {
+      // 상담으로 이어지지 못했으니 잡아 둔 화면·마이크를 놓아 준다.
+      releaseConsultMedia();
       setErrorMessage(
         error instanceof ApiError && error.code === 'CONSULTATION_ALREADY_IN_PROGRESS'
           ? '이미 진행 중인 상담이 있습니다.'
@@ -138,27 +146,39 @@ export function ConsultPermissionPage() {
     setRequestingPermissions(true);
     setErrorMessage('');
     try {
-      const result = await requestMediaPermissions();
-      stopMediaStream(result.stream);
+      /**
+       * 화면 선택 창을 여기서 연다.
+       *
+       * 브라우저는 사용자가 버튼을 누른 직후에만 이 창을 열어 준다. 상담이 연결된 뒤로
+       * 미루면 조작 흔적이 사라져 거절되고, 사용자는 대기 화면만 보게 된다. 잡아 둔
+       * 스트림은 상담 화면이 그대로 이어받아 곧바로 상담자에게 보낸다.
+       */
+      const shared = await captureConsultMedia();
+      holdConsultMedia(shared);
 
-      const cameraGranted = result.camera.status === 'granted';
-      const microphoneGranted = result.microphone.status === 'granted';
+      /**
+       * 카메라도 여기서 함께 잡는다.
+       *
+       * 예전에는 잡지도 않고 `cam: true`로 기록만 해 두어, 상담 화면에 카메라가 켜진 적이
+       * 없는데도 권한이 허용된 것처럼 보였다. 카메라는 상담자에게 따로 보내지 않고 사용자
+       * 화면 위 셀프뷰로 띄운다 — 화면 전체가 공유 대상이라 그 안에 담겨 함께 건너간다.
+       *
+       * 카메라를 거절해도 상담은 이어 간다. 길 안내에 꼭 필요한 것은 화면과 목소리다.
+       */
+      const camera = await captureConsultCamera().catch(() => null);
+      if (camera) holdConsultCamera(camera);
+
       syncPermissions({
         loc: granted.loc,
-        cam: cameraGranted,
-        mic: microphoneGranted,
+        cam: camera !== null,
+        mic: shared.getAudioTracks().length > 0,
       });
-
-      if (!cameraGranted || !microphoneGranted) {
-        setErrorMessage('카메라와 마이크 권한을 모두 허용해 주세요.');
-        setReminderOpen(true);
-        return;
-      }
 
       setReminderOpen(false);
       await requestConsultation();
     } catch {
-      setErrorMessage('카메라와 마이크 권한을 확인하지 못했습니다.');
+      syncPermissions({ loc: granted.loc, cam: false, mic: false });
+      setErrorMessage('화면 공유와 마이크를 모두 허용해 주세요.');
       setReminderOpen(true);
     } finally {
       setRequestingPermissions(false);

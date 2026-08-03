@@ -11,10 +11,20 @@ const apiMocks = vi.hoisted(() => ({
   createConsultation: vi.fn(),
 }));
 
+const mediaMocks = vi.hoisted(() => ({
+  captureConsultMedia: vi.fn(),
+  holdConsultMedia: vi.fn(),
+  releaseConsultMedia: vi.fn(),
+  captureConsultCamera: vi.fn(),
+  holdConsultCamera: vi.fn(),
+}));
+
 vi.mock('@/shared/api', () => ({
   ApiError: class ApiError extends Error {},
   createConsultation: apiMocks.createConsultation,
 }));
+
+vi.mock('@/features/consult-signaling', () => mediaMocks);
 
 function renderPage() {
   return render(
@@ -40,6 +50,13 @@ describe('ConsultPermissionPage', () => {
     useUserSessionStore.setState({ userSessionId: 'session-1' });
     usePermissionStore.setState({ granted: { loc: true, cam: false, mic: false } });
     apiMocks.createConsultation.mockResolvedValue({ consultationId: 'consultation-1' });
+    mediaMocks.captureConsultMedia.mockResolvedValue({
+      getAudioTracks: () => [{ kind: 'audio' }],
+    } as unknown as MediaStream);
+    // 카메라는 셀프뷰로 쓴다. 상담자에게 따로 보내지 않지만 여기서 함께 확보한다.
+    mediaMocks.captureConsultCamera.mockResolvedValue({
+      getVideoTracks: () => [{ kind: 'video' }],
+    } as unknown as MediaStream);
   });
 
   afterEach(() => {
@@ -56,22 +73,21 @@ describe('ConsultPermissionPage', () => {
     vi.clearAllMocks();
   });
 
-  it('requests real camera and microphone access before creating a consultation', async () => {
-    const stop = vi.fn();
-    const getUserMedia = vi.fn().mockResolvedValue({
-      getTracks: () => [{ stop }],
-    });
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: { getUserMedia },
-    });
-
+  /**
+   * 화면 선택 창은 버튼을 누른 직후에만 열 수 있다. 상담이 연결된 뒤로 미루면 브라우저가
+   * 거절해 사용자 화면이 상담자에게 끝내 전달되지 않는다.
+   */
+  it('상담을 요청하기 전에 화면 공유를 확보해 상담 화면으로 넘긴다', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: '동의하고 상담 연결' }));
 
     expect(await screen.findByText('상담 대기 화면')).toBeInTheDocument();
-    expect(getUserMedia).toHaveBeenCalledWith({ video: true, audio: true });
-    expect(stop).toHaveBeenCalled();
+    expect(mediaMocks.captureConsultMedia).toHaveBeenCalled();
+    expect(mediaMocks.holdConsultMedia).toHaveBeenCalled();
+    // 카메라도 여기서 잡아 둬야 상담 화면에 셀프뷰가 뜬다.
+    expect(mediaMocks.captureConsultCamera).toHaveBeenCalled();
+    expect(mediaMocks.holdConsultCamera).toHaveBeenCalled();
+    expect(mediaMocks.releaseConsultMedia).not.toHaveBeenCalled();
     expect(usePermissionStore.getState().granted).toEqual({
       loc: true,
       cam: true,
@@ -90,17 +106,10 @@ describe('ConsultPermissionPage', () => {
     expect(request).not.toHaveProperty('destinationType');
   });
 
-  it('does not create a consultation when browser media permission is denied', async () => {
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: {
-        getUserMedia: vi
-          .fn()
-          .mockRejectedValue(
-            Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' }),
-          ),
-      },
-    });
+  it('화면 공유를 거절하면 상담을 만들지 않는다', async () => {
+    mediaMocks.captureConsultMedia.mockRejectedValue(
+      Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' }),
+    );
 
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: '동의하고 상담 연결' }));
@@ -108,9 +117,7 @@ describe('ConsultPermissionPage', () => {
     expect(
       await screen.findByRole('dialog', { name: '화면·음성 공유가 필요해요' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      '카메라와 마이크 권한을 모두 허용해 주세요.',
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent('화면 공유와 마이크를 모두 허용해 주세요.');
     expect(apiMocks.createConsultation).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(usePermissionStore.getState().granted).toEqual({

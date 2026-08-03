@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
+import { releaseConsultMedia } from '@/features/consult-signaling';
 import {
   ApiError,
   cancelConsultation,
@@ -103,6 +104,9 @@ export function ConsultWaitingPage() {
   }, [clearConsultation, consultationId, navigate, setSignalingRoom, userSessionId]);
 
   const leaveWaiting = () => {
+    // 상담으로 이어지지 않았으니 미리 잡아 둔 화면·마이크를 놓아 준다. 그대로 두면 장치를
+    // 계속 물고 있어서 다음 권한 요청이 응답 없이 멈춘다.
+    releaseConsultMedia();
     clearConsultation();
     void navigate(USER_ROUTES.CONSULT_REQUEST);
   };
