@@ -36,6 +36,47 @@ function stubGrantedEnvironment(): void {
   });
 }
 
+type FakePermissionStatus = {
+  state: 'granted' | 'prompt' | 'denied';
+  onchange: (() => void) | null;
+};
+
+/**
+ * Permissions API를 흉내낸다. 같은 권한에는 같은 객체를 돌려줘야 붙여 둔 `onchange`가
+ * 살아남고, 테스트가 `state`를 바꿔 브라우저 설정 변경을 흉내낼 수 있다.
+ */
+function stubPermissionStates(initial: Partial<Record<string, FakePermissionStatus['state']>>): {
+  statuses: Map<string, FakePermissionStatus>;
+} {
+  const statuses = new Map<string, FakePermissionStatus>();
+
+  const query = vi.fn(({ name }: { name: string }) => {
+    const existing = statuses.get(name);
+
+    if (existing) {
+      return Promise.resolve(existing);
+    }
+
+    const state = initial[name];
+
+    if (!state) {
+      return Promise.reject(new TypeError(`unsupported permission: ${name}`));
+    }
+
+    const status: FakePermissionStatus = { state, onchange: null };
+    statuses.set(name, status);
+
+    return Promise.resolve(status);
+  });
+
+  Object.defineProperty(navigator, 'permissions', {
+    configurable: true,
+    value: { query },
+  });
+
+  return { statuses };
+}
+
 beforeEach(() => {
   window.sessionStorage.clear();
 });
@@ -45,6 +86,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   Reflect.deleteProperty(navigator, 'geolocation');
   Reflect.deleteProperty(navigator, 'mediaDevices');
+  Reflect.deleteProperty(navigator, 'permissions');
   Reflect.deleteProperty(window, 'isSecureContext');
 });
 
@@ -59,7 +101,11 @@ describe('usePermissionRequest', () => {
     expect(result.current.canUseService).toBe(false);
   });
 
-  it('마운트 시 sessionStorage에 저장된 권한 상태를 불러온다', () => {
+  /**
+   * 저장값은 화면 복원에만 쓴다. 진입 허용은 브라우저에 물어본 뒤에 정해진다 — 그 사이에
+   * 허락해 버리면 권한을 꺼 둔 사용자가 조회 결과가 오기 전에 다음 화면으로 넘어간다.
+   */
+  it('마운트 시 sessionStorage에 저장된 권한 상태를 불러온다', async () => {
     const storedState: StoredRequiredPermissionState = {
       canUseService: true,
       location: 'granted',
@@ -72,7 +118,9 @@ describe('usePermissionRequest', () => {
     const { result } = renderHook(() => usePermissionRequest());
 
     expect(result.current.stored).toEqual(storedState);
-    expect(result.current.canUseService).toBe(true);
+    expect(result.current.canUseService).toBe(false);
+
+    await vi.waitFor(() => expect(result.current.canUseService).toBe(true));
   });
 
   it('requestPermissions 호출 시 completed로 전이하고 결과를 저장한다', async () => {
@@ -189,5 +237,105 @@ describe('usePermissionRequest', () => {
     expect(result.current.result).toBeNull();
     expect(result.current.stored).toBeNull();
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe('usePermissionRequest · 브라우저 권한 조회', () => {
+  /**
+   * 저장값은 "지난번에 물었더니 이랬다"일 뿐이다. 그 사이 사용자가 설정에서 권한을 껐다면
+   * 화면은 허용된 적 없는 권한을 허용됨으로 보여 주게 된다.
+   */
+  it('저장된 값보다 브라우저가 아는 상태를 우선한다', async () => {
+    const stored: StoredRequiredPermissionState = {
+      canUseService: true,
+      location: 'granted',
+      camera: 'granted',
+      microphone: 'granted',
+      savedAt: '2026-08-03T00:00:00.000Z',
+    };
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    stubPermissionStates({ geolocation: 'granted', camera: 'denied', microphone: 'prompt' });
+
+    const { result } = renderHook(() => usePermissionRequest());
+
+    await vi.waitFor(() => {
+      expect(result.current.statuses).toEqual({
+        location: 'granted',
+        camera: 'denied',
+        microphone: 'idle',
+      });
+    });
+
+    expect(result.current.canUseService).toBe(false);
+    expect(result.current.blockedKinds).toEqual(['camera']);
+    expect(result.current.promptableKinds).toEqual(['microphone']);
+  });
+
+  /** 조회할 수 없는 브라우저에서는 기존처럼 저장값을 쓴다. */
+  it('조회할 수 없으면 저장된 상태를 그대로 둔다', async () => {
+    const stored: StoredRequiredPermissionState = {
+      canUseService: true,
+      location: 'granted',
+      camera: 'granted',
+      microphone: 'granted',
+      savedAt: '2026-08-03T00:00:00.000Z',
+    };
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+
+    const { result } = renderHook(() => usePermissionRequest());
+
+    await vi.waitFor(() => expect(result.current.canUseService).toBe(true));
+    expect(result.current.blockedKinds).toEqual([]);
+  });
+
+  /**
+   * 거부된 권한에서 빠져나오는 유일한 길. 이것이 없으면 안내를 따라 설정을 바꾼 사용자도
+   * 새로고침을 해야 한다.
+   */
+  it('설정에서 권한을 켜면 새 요청 없이 진입 가능해진다', async () => {
+    const { statuses } = stubPermissionStates({
+      geolocation: 'granted',
+      camera: 'denied',
+      microphone: 'granted',
+    });
+
+    const { result } = renderHook(() => usePermissionRequest());
+
+    await vi.waitFor(() => expect(result.current.blockedKinds).toEqual(['camera']));
+    // 조회가 끝난 것과 구독이 붙은 것은 다른 시점이다. 붙기 전에 바꾸면 아무도 듣지 않는다.
+    await vi.waitFor(() =>
+      expect(statuses.get('camera')?.onchange).toBeTypeOf('function'),
+    );
+
+    // 사용자가 브라우저 설정에서 카메라를 켰다.
+    await act(async () => {
+      statuses.get('camera')!.state = 'granted';
+      statuses.get('camera')!.onchange?.();
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => expect(result.current.canUseService).toBe(true));
+    expect(result.current.blockedKinds).toEqual([]);
+  });
+
+  /** 다시 물어도 팝업이 뜨지 않는다. 호출하면 같은 요청에 묶인 권한까지 함께 실패한다. */
+  it('막힌 권한은 요청하지 않는다', async () => {
+    stubGrantedEnvironment();
+    stubPermissionStates({ geolocation: 'granted', camera: 'denied', microphone: 'denied' });
+
+    const { result } = renderHook(() => usePermissionRequest());
+
+    await vi.waitFor(() => expect(result.current.blockedKinds).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.requestPermissions();
+    });
+
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(result.current.statuses).toEqual({
+      location: 'granted',
+      camera: 'denied',
+      microphone: 'denied',
+    });
   });
 });
