@@ -65,6 +65,21 @@ const CAM_CAPTIONS = {
 } as const;
 
 /**
+ * 초를 분으로. **모르면 `null`이고, 모른다고 말한다.**
+ *
+ * 예전에는 `Math.max(1, Math.ceil((sec ?? 0) / 60))`으로 적어 두어서, 시간을 모르는 경우가
+ * 자신 있는 `약 1분`이 됐다. 서버는 경로상 간선 하나라도 예상 시간이 없으면 그 구간과 총
+ * 시간을 null로 내려보내므로(`RoutePath`), 간선 하나가 비어 있을 뿐인데 전체 경로가 1분으로
+ * 보였다. 안내에서 시간을 짧게 말하는 것은 사용자가 열차를 놓치게 만든다. (S15P11A206-339)
+ *
+ * 0초는 0분이 아니라 1분으로 올린다. `약 0분`은 도착했다는 뜻으로 읽힌다.
+ */
+function minutesOf(seconds: number | null | undefined): number | null {
+  if (seconds == null) return null;
+  return Math.max(1, Math.ceil(seconds / 60));
+}
+
+/**
  * 화면이 들고 있는 출구 이름으로 실제 출구 시설을 찾는다.
  *
  * 화면은 `7번 출입구`, 응답은 `7번 출구`로 표기가 다르다. 출구 번호만 뽑아 맞춘다.
@@ -488,7 +503,14 @@ export function NavigationPage() {
     }
 
     const totalDistance = Math.round(routeResult?.totalDistanceM ?? 0);
-    const totalMinutes = Math.max(1, Math.ceil((routeResult?.estimatedTimeSec ?? 0) / 60));
+    /*
+      시간을 모르면 말하지 않는다.
+
+      `?? 0`으로 채우면 `Math.max(1, 0)`이 되어 **모르는 것이 "약 1분"으로 단언된다.** 서버는
+      경로상 간선 하나라도 예상 시간이 없으면 총 시간을 null로 내려보내므로(`RoutePath`),
+      간선 하나가 비어 있을 뿐인데 전체 경로가 1분으로 보였다.
+    */
+    const totalMinutes = minutesOf(routeResult?.estimatedTimeSec);
     /*
       현재 구간에서 **남은** 거리를 적는다. 구간 전체 길이를 적어 두면 그 구간을 절반 걸어도
       숫자가 그대로여서, 걷고 있는데 아무 일도 일어나지 않는 것처럼 보인다.
@@ -510,7 +532,7 @@ export function NavigationPage() {
           ? '다음 안내 · 경로 다시 계산 중'
           : `다음 안내 · ${Math.round(nextDistance)}m`,
       title: activeStep.instruction ?? '경로를 따라 이동하세요',
-      meta: `총 ${totalDistance}m · 약 ${totalMinutes}분`,
+      meta: totalMinutes === null ? `총 ${totalDistance}m` : `총 ${totalDistance}m · 약 ${totalMinutes}분`,
     };
   })();
 
@@ -968,8 +990,10 @@ export function NavigationPage() {
                       </span>
                       <b>{step.instruction ?? step.moveType ?? '이동'}</b>
                       <span>
-                        {Math.round(step.distanceM ?? 0)}m · 약{' '}
-                        {Math.max(1, Math.ceil((step.estimatedTimeSec ?? 0) / 60))}분
+                        {Math.round(step.distanceM ?? 0)}m
+                        {minutesOf(step.estimatedTimeSec) === null
+                          ? null
+                          : ` · 약 ${minutesOf(step.estimatedTimeSec)}분`}
                       </span>
                     </div>
                   );
