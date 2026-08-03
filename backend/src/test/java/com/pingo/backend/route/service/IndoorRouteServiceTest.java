@@ -470,6 +470,43 @@ class IndoorRouteServiceTest {
                 .doesNotContain(22L, 23L);
     }
 
+    /**
+     * 직선 구간이 길면 후보에서 빠진다.
+     *
+     * <p>직선은 그래프 경로의 하한이라 미터당 싸다. 그래서 상한이 없으면 목적지 쪽으로 멀리 있는
+     * 노드가 이긴다 — 걸어서 갈 수 없는 지름길을 태우는 셈이다.
+     *
+     * <p>3 과 4 사이 통로는 굽어 있어 걸어서 70m 인데 직선으로는 50m 다. 그래서 직선을 길게
+     * 쓰는 4 쪽이 상한 없이는 이긴다.
+     *
+     * <pre>
+     *   2(0,0) --- 3(10,0) ==== 굽은 통로 70m ==== 4(60,0) --- 목적지 5(70,0)
+     *   사용자(6,0)
+     *
+     *   상한 없이:  4 로  54 + 10 = 64   &lt;- 54m 를 순간이동한다
+     *              3 으로  4 + 80 = 84
+     *   상한 15m:   4 는 후보에서 빠지고 3 이 남는다
+     * </pre>
+     */
+    @Test
+    @DisplayName("직선으로 상한을 넘게 떨어진 노드는 진입점 후보에서 빠진다")
+    void skipsEntryNodeBeyondStraightLimit() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 10, 0), nodeAt(4L, 60, 0), nodeAt(5L, 70, 0));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 70, RouteMoveType.WALKWAY),
+                edge(1L, 4L, 5L, 10, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 5L, null, "fastest", Language.KO,
+                new BigDecimal("6.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(3L);
+        assertThat(response.totalDistanceM()).isEqualByComparingTo("80");
+    }
+
     @Test
     @DisplayName("상세 경로 안내에 회전과 층 이동 방향이 실린다")
     void writesTurnAndFloorDirection() {
