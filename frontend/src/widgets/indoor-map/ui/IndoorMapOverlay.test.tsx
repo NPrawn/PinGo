@@ -28,6 +28,7 @@ function renderOverlay(props: {
   viewScale?: number;
   pathNodes?: readonly RoutePathNode[];
   waypointNodeIds?: readonly number[];
+  activeLeg?: number | null;
   project?: (mapX: number, mapY: number) => PixelPoint | null;
 }) {
   return render(
@@ -46,6 +47,7 @@ function renderOverlay(props: {
       viewScale={props.viewScale}
       pathNodes={props.pathNodes}
       waypointNodeIds={props.waypointNodeIds}
+      activeLeg={props.activeLeg}
     />,
   );
 }
@@ -287,16 +289,16 @@ describe('IndoorMapOverlay', () => {
     ];
 
     /**
-     * 그리는 순서가 뒤집혀 있다 — 먼 다리를 먼저, 지금 걷는 다리를 마지막에.
+     * 지금 걷는 다리가 가장 진하고, 그것을 마지막에 그린다.
      *
-     * 같은 복도를 두 번 지나면 나중에 그린 것이 위에 남는다. 순서를 그대로 두면 연한 먼 다리가
+     * 같은 복도를 두 번 지나면 나중에 그린 것이 위에 남는다. 순서를 그대로 두면 연한 남은 다리가
      * 진한 현재 다리를 덮어, 정작 지금 필요한 화살표가 사라진다.
      */
-    it('먼 다리를 먼저 그리고 지금 걷는 다리를 위에 얹는다', () => {
-      renderOverlay({ pathNodes: throughWaypoint, waypointNodeIds: [2] });
+    it('첫 다리를 걷는 중이면 그 다리를 진하게 그리고 위에 얹는다', () => {
+      renderOverlay({ pathNodes: throughWaypoint, waypointNodeIds: [2], activeLeg: 0 });
 
       // 경유지 노드는 두 다리가 공유한다. 한쪽에만 넣으면 그 자리에 틈이 생긴다.
-      // 그린 순서대로 나오므로 먼 다리(500→1000)가 앞이다.
+      // 남은 다리(500→1000)를 먼저, 지금 걷는 다리(0→500)를 마지막에 그린다.
       expect(routeSegments()).toEqual(['500,0 1000,0', '0,0 500,0']);
 
       const [far, near] = routeToneClasses();
@@ -304,11 +306,37 @@ describe('IndoorMapOverlay', () => {
       expect(near).toContain('routeNear');
     });
 
+    /**
+     * 예전에는 첫 다리를 늘 진하게 칠했다. 첫 경유지를 지나 두 번째 구간을 걷고 있어도 이미
+     * 지나온 첫 구간이 가장 눈에 띄고 정작 갈 길이 연했다 — 의도와 반대로 동작했다.
+     */
+    it('경유지를 지나면 지나온 다리를 흐리게 하고 다음 다리를 진하게 한다', () => {
+      renderOverlay({ pathNodes: throughWaypoint, waypointNodeIds: [2], activeLeg: 1 });
+
+      // 지나온 다리를 아래에, 지금 걷는 다리를 위에 그린다.
+      expect(routeSegments()).toEqual(['0,0 500,0', '500,0 1000,0']);
+
+      const [passed, near] = routeToneClasses();
+      expect(passed).toContain('routePassed');
+      expect(near).toContain('routeNear');
+    });
+
+    /** 경로에서 벗어난 동안은 어느 다리를 걷는지 말할 근거가 없다. */
+    it('진행 중인 다리를 모르면 한 색으로 그린다', () => {
+      renderOverlay({ pathNodes: throughWaypoint, waypointNodeIds: [2] });
+
+      const classes = routeToneClasses();
+      classes.forEach((className) => {
+        expect(className).not.toContain('routeNear');
+        expect(className).not.toContain('routeFar');
+        expect(className).not.toContain('routePassed');
+      });
+    });
+
     it('경유지가 없으면 한 색으로 그린다', () => {
       renderOverlay({ pathNodes: throughWaypoint });
 
       expect(routeSegments()).toEqual(['0,0 500,0 1000,0']);
-      // 단계를 매길 순서가 없다. 기본 색 그대로다.
       expect(routeToneClasses()[0]).not.toContain('routeNear');
       expect(routeToneClasses()[0]).not.toContain('routeFar');
     });
@@ -352,8 +380,7 @@ describe('IndoorMapOverlay', () => {
         waypointNodeIds: [2],
       });
 
-      // 먼 다리가 먼저 그려진다.
-      expect(routeSegments()).toEqual(['500,0 1000,0 500,0', '0,0 500,0']);
+      expect(routeSegments()).toEqual(['0,0 500,0', '500,0 1000,0 500,0']);
     });
   });
 

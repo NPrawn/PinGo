@@ -41,6 +41,8 @@ interface IndoorMapViewProps {
   pathNodes?: readonly RoutePathNode[];
   /** 경유지 노드. 경로에 실어 보낸 순서 그대로 넘긴다 — 다리별 색과 번호 핀에 쓰인다. */
   waypointNodeIds?: readonly number[];
+  /** 지금 걷고 있는 다리(0이 출발 → 첫 경유지). 다리별 명도를 정한다. */
+  activeLeg?: number | null;
   /**
    * 지도에 표시할 시설 유형. 넘기지 않으면 **아무 시설도 그리지 않는다.**
    *
@@ -132,6 +134,7 @@ export function IndoorMapView({
   destinationLabel,
   pathNodes,
   waypointNodeIds,
+  activeLeg,
   facilityType,
   showAllFacilities = false,
   selectedFacilityId,
@@ -333,6 +336,7 @@ export function IndoorMapView({
           destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
           waypointNodeIds={waypointNodeIds}
+          activeLeg={activeLeg}
           facilities={facilities}
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
@@ -388,6 +392,7 @@ function MapOverlay({
   destinationLabel,
   pathNodes,
   waypointNodeIds,
+  activeLeg,
   facilities,
   selectedFacilityId,
   onSelectFacility,
@@ -402,6 +407,8 @@ function MapOverlay({
   destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
   waypointNodeIds?: readonly number[];
+  /** 지금 걷고 있는 다리(0이 출발 → 첫 경유지). 다리별 명도를 정한다. */
+  activeLeg?: number | null;
   facilities?: readonly Facility[];
   selectedFacilityId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
@@ -433,6 +440,7 @@ function MapOverlay({
       destinationLabel={destinationLabel}
       pathNodes={pathNodes}
       waypointNodeIds={waypointNodeIds}
+      activeLeg={activeLeg}
       facilities={facilities}
       selectedFacilityId={selectedFacilityId}
       onSelectFacility={onSelectFacility}

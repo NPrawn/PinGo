@@ -102,12 +102,53 @@ describe('routeBearingOf', () => {
     ).toBeNull();
   });
 
-  /** 층을 오르내리는 구간에서 수평 방향은 뜻이 없다. 그 안내는 `moveType`이 담당한다. */
-  it('다음 지점이 다른 층이면 아무 방향도 주지 않는다', () => {
+  /**
+   * 층 전환 직전에도 진입 지점을 계속 가리킨다.
+   *
+   * 예전에는 3m 앞 노드가 다른 층이면 방향이 없다고 보고 끊었다. 그래서 엘리베이터·계단 3m
+   * 앞에서 화살표가 갑자기 사라졌다 — 실내에서 3m는 어느 쪽으로 가야 하는지 잊기에 충분하다.
+   */
+  it('층 전환 지점이 가까워도 그 지점을 계속 가리킨다', () => {
     const bearing = routeBearingOf({
       pathNodes: [
         { nodeId: 1, floorId: B3, mapX: 0, mapY: 0 },
-        { nodeId: 2, floorId: B2, mapX: 20, mapY: 0 },
+        // 이 층에서 남은 마지막 지점. 곧 엘리베이터 진입 지점이다.
+        { nodeId: 2, floorId: B3, mapX: 2, mapY: 0 },
+        { nodeId: 3, floorId: B2, mapX: 2, mapY: 0 },
+      ],
+      currentLocation: AT_START,
+      headingDeg: 0,
+      travelledM: 0,
+    });
+
+    // 2m 앞이라 LOOKAHEAD(3m)보다 가깝지만, 그래도 그쪽을 가리켜야 한다.
+    expect(bearing?.turn).toBe('straight');
+    expect(bearing?.relativeDeg).toBeCloseTo(0);
+  });
+
+  /** 위층 통로를 가리키면 지금 층 벽을 향해 걷게 된다. */
+  it('다른 층 노드는 가리키지 않는다', () => {
+    const bearing = routeBearingOf({
+      pathNodes: [
+        { nodeId: 1, floorId: B3, mapX: 0, mapY: 0 },
+        // 위층에만 남은 경로. 이 층에서 갈 곳이 없다.
+        { nodeId: 2, floorId: B2, mapX: 0, mapY: 40 },
+      ],
+      currentLocation: AT_START,
+      headingDeg: 0,
+      travelledM: 0,
+    });
+
+    expect(bearing).toBeNull();
+  });
+
+  /** 발밑을 가리키면 한 걸음에 방향이 뒤집힌다. 그 순간의 안내는 카드가 맡는다. */
+  it('전환 지점에 다 닿으면 방향을 주지 않는다', () => {
+    const bearing = routeBearingOf({
+      pathNodes: [
+        { nodeId: 1, floorId: B3, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: B3, mapX: 0.3, mapY: 0 },
+        { nodeId: 3, floorId: B2, mapX: 0.3, mapY: 0 },
       ],
       currentLocation: AT_START,
       headingDeg: 0,

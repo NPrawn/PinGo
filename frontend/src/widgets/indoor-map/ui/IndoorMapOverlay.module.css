@@ -36,6 +36,12 @@
   stroke: var(--color-route-far);
 }
 
+/* 이미 지나온 다리. 지우지 않고 흐리게 둔다 — 어디서 왔는지가 보여야 지금 위치가 읽힌다. */
+.routePassed {
+  stroke: var(--color-route-far);
+  opacity: 0.45;
+}
+
 /* 경유지 번호 핀. 목적지와 같은 계열의 진한 색을 쓰되 숫자로 구분한다. */
 .waypointPin {
   fill: var(--color-route-near);

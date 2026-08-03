@@ -46,6 +46,16 @@ interface IndoorMapOverlayProps {
    */
   waypointNodeIds?: readonly number[];
   /**
+   * 지금 걷고 있는 다리. 0이 출발 → 첫 경유지다.
+   *
+   * 이 값으로 다리마다 명도를 정한다 — 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는
+   * 연하게. 넘기지 않거나 null이면 전부 기본 색이다.
+   *
+   * 위젯이 스스로 계산하지 않는 이유는 진행도가 화면의 것이기 때문이다. 진행 거리는 XR 위치와
+   * 래칫으로 정해지고 화면이 스토어에 들고 있다(`routeProgressOf`).
+   */
+  activeLeg?: number | null;
+  /**
    * 지도에 표시할 시설. 표시 층에 속한 것만 그린다.
    *
    * **호출부가 이미 걸러서 넘긴다.** 역 하나의 시설이 층당 30여 개인데 안내 화면의 지도는
@@ -95,6 +105,7 @@ export function IndoorMapOverlay({
   destinationLabel,
   pathNodes,
   waypointNodeIds,
+  activeLeg = null,
   facilities,
   selectedFacilityId,
   onSelectFacility,
@@ -147,8 +158,7 @@ export function IndoorMapOverlay({
 
   const waypoints = waypointNodeIds ?? [];
   const routeSegments = floorSegments(pathNodes ?? [], floorId, project, waypoints);
-  const paintOrder = farthestLegFirst(routeSegments);
-  const legCount = waypoints.length + 1;
+  const paintOrder = activeLegLast(routeSegments, activeLeg);
   /** 이 층에 보이는 경유지와 그 번호. 헤더의 `경유 N`과 같은 번호다. */
   const waypointPins = waypoints.flatMap((nodeId, index) => {
     const node = (pathNodes ?? []).find((item) => item.nodeId === nodeId);
@@ -197,7 +207,7 @@ export function IndoorMapOverlay({
           {paintOrder.map((segment, index) => (
             <polyline
               key={index}
-              className={[styles.route, legToneClass(segment.leg, legCount)]
+              className={[styles.route, legToneClass(segment.leg, activeLeg)]
                 .filter(Boolean)
                 .join(' ')}
               strokeWidth={routeWidth}
@@ -594,36 +604,50 @@ function floorSegments(
 }
 
 /**
- * 경유지가 있을 때 다리마다 다른 색을 입힌다.
+ * 다리를 **진행도 기준으로** 칠한다.
  *
- * **지금 걷는 다리가 가장 진하다.** 남은 길은 맥락이고 지금 갈 길이 지시다. 목적지로 갈수록
- * 진해지게 두면 강조가 거꾸로 걸려, 아직 갈 일 없는 구간이 화면에서 가장 눈에 띈다.
+ * - 지나온 다리 → 흐리게
+ * - 지금 걷는 다리 → 가장 진하게
+ * - 남은 다리 → 연하게
+ *
+ * 예전에는 첫 다리를 늘 가장 진하게 칠했다. 그래서 첫 경유지를 지나 두 번째 구간을 걷고 있어도
+ * 이미 지나온 첫 구간이 가장 눈에 띄고 정작 갈 길이 연했다 — "지금 걷는 다리가 가장 진하다"는
+ * 의도와 반대로 동작했다.
  *
  * 색을 여러 가지로 나누지 않고 **한 색의 명도 단계**로 둔다. 지도에는 이미 민트(시설)와
  * 파스텔 레드(경로)가 있어서 주황·파랑을 더하면 무엇이 무엇인지 다시 알 수 없게 된다.
  * 명도 차이는 색을 구분하기 어려운 사용자에게도 남는다.
  *
- * 경유지가 없으면(다리 하나) 기본 색 그대로다 — 단계를 매길 순서가 없다.
- * 가운데 다리도 기본 색이다. 처음과 끝만 갈라도 순서는 충분히 읽힌다.
+ * 진행 중인 다리를 모르면 전부 기본 색이다. 경로에서 벗어난 동안이 그렇다 — 어느 다리를 걷는지
+ * 말할 근거가 없는데 한 곳을 진하게 칠하면 그 길을 따라 걷게 된다.
  */
-function legToneClass(leg: number, legCount: number): string | undefined {
-  if (legCount <= 1) return undefined;
-  if (leg === 0) return styles.routeNear;
-  if (leg === legCount - 1) return styles.routeFar;
+function legToneClass(leg: number, activeLeg: number | null): string | undefined {
+  if (activeLeg === null) return undefined;
+  if (leg < activeLeg) return styles.routePassed;
+  if (leg === activeLeg) return styles.routeNear;
 
-  return undefined;
+  return styles.routeFar;
 }
 
 /**
- * 그리는 순서. **먼 다리를 먼저, 지금 걷는 다리를 마지막에** 그린다.
+ * 그리는 순서. **지금 걷는 다리를 마지막에** 그린다.
  *
- * 같은 복도를 두 번 지나면 나중에 그린 것이 위에 남는다. 순서를 그대로 두면 연한 먼 다리가
- * 진한 현재 다리를 덮어, 정작 지금 필요한 화살표가 사라진다.
+ * 같은 복도를 두 번 지나면 나중에 그린 것이 위에 남는다. 순서를 그대로 두면 흐린 지나온 다리나
+ * 연한 남은 다리가 진한 현재 다리를 덮어, 정작 지금 필요한 화살표가 사라진다.
  *
- * 층 구간 순서는 유지한다 — 같은 다리 안에서는 그린 순서가 보이는 결과를 바꾸지 않는다.
+ * 지나온 다리를 가장 아래, 남은 다리를 그 위, 현재 다리를 맨 위에 둔다. 진행 중인 다리를 모르면
+ * 순서를 바꿀 이유가 없다.
+ *
+ * 같은 층 구간 순서는 유지한다 — 한 다리 안에서는 그린 순서가 보이는 결과를 바꾸지 않는다.
  */
-function farthestLegFirst(segments: readonly RouteSegment[]): RouteSegment[] {
-  return [...segments].sort((left, right) => right.leg - left.leg);
+function activeLegLast(
+  segments: readonly RouteSegment[],
+  activeLeg: number | null,
+): RouteSegment[] {
+  if (activeLeg === null) return [...segments];
+
+  const rank = (leg: number) => (leg === activeLeg ? 2 : leg > activeLeg ? 1 : 0);
+  return [...segments].sort((left, right) => rank(left.leg) - rank(right.leg));
 }
 
 /** 표시 층에 속한 시설만 픽셀 좌표와 함께 남긴다. 좌표를 변환할 수 없는 시설은 건너뛴다. */

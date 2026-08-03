@@ -284,6 +284,21 @@ export function NavigationPage() {
       : routeResult?.steps?.[progress.currentStepIndex];
 
   /**
+   * 지금 걷고 있는 다리. **지나온 경유지 수가 곧 다리 번호다.**
+   *
+   * 지도가 이 값으로 다리마다 명도를 정한다 — 지나온 다리는 흐리게, 지금 다리는 진하게, 남은
+   * 다리는 연하게. 예전에는 첫 다리를 늘 진하게 칠해서, 첫 경유지를 지나도 이미 지나온 구간이
+   * 가장 눈에 띄고 정작 갈 길이 연했다.
+   *
+   * 경유지가 없으면 나눌 다리가 없고, 경로에서 벗어난 동안에는 어느 다리를 걷는지 말할 근거가
+   * 없다. 둘 다 null이며 지도는 한 색으로 그린다.
+   */
+  const activeLeg =
+    progress.offRoute || waypoints.length === 0
+      ? null
+      : waypointNodeIds.filter((nodeId) => progress.passedNodeIds.includes(nodeId)).length;
+
+  /**
    * 카메라 화면의 큰 화살표가 가리킬 방향.
    *
    * 백엔드 `moveType`에는 회전이 없다(walkway·stair·escalator·elevator·gate). 그래서 좌우는
@@ -736,6 +751,8 @@ export function NavigationPage() {
                   pathNodes={routePathNodesOf(routeResult)}
                   /* 다리별 색과 번호 핀에 쓰인다. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
                   waypointNodeIds={waypointNodeIds}
+                  /* 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는 연하게 그린다. */
+                  activeLeg={activeLeg}
                   facilityType={effectiveType}
                   /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼져
                      아무 시설도 그리지 않는다. */
