@@ -487,7 +487,10 @@ export function SessionPage() {
               도면과 아무 관계가 없어 상담자가 짚어 준 자리를 사용자가 현장에서 찾을 수 없었다.
             */}
             <FloorRail
-              options={floorMaps.map((map) => ({ value: String(map.floorId), label: map.floorCode }))}
+              options={floorMaps.map((map) => ({
+                value: String(map.floorId),
+                label: map.floorCode,
+              }))}
               value={displayedFloorId == null ? '' : String(displayedFloorId)}
               onChange={(value) => {
                 // 층을 직접 고르는 것은 사용자 시점을 벗어나겠다는 뜻이다.
@@ -625,20 +628,6 @@ export function SessionPage() {
               </div>
             )}
             <div className={styles.notesBody}>
-              {/* 확정된 말은 순서대로 쌓아 둔다. 상담자가 앞의 내용을 되짚어 볼 수 있어야 한다. */}
-              {transcript.map((segment) => (
-                <div key={segment.seq}>
-                  <span
-                    className={
-                      segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
-                    }
-                  >
-                    {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
-                  </span>
-                  <br />
-                  <span className={styles.line}>{segment.content}</span>
-                </div>
-              ))}
               <div>
                 <span className={styles.speakerUser}>사용자</span>
                 <br />
@@ -673,6 +662,20 @@ export function SessionPage() {
                       : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                 </span>
               </div>
+              {/* 최신 확정 발화부터 보여 주고, 이전 대화는 아래로 스크롤해 확인한다. */}
+              {[...transcript].reverse().map((segment) => (
+                <div key={segment.seq}>
+                  <span
+                    className={
+                      segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
+                    }
+                  >
+                    {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
+                  </span>
+                  <br />
+                  <span className={styles.line}>{segment.content}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
