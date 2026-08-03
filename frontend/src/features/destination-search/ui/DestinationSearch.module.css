@@ -18,6 +18,18 @@
   gap: 6px;
 }
 
+/* 단계 카드 안에서는 남은 높이만 사용하고 결과 목록에 스크롤을 넘긴다. */
+.compact {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.compact .results {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .compact .tile {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
