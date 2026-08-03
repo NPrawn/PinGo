@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import { holdConsultMedia, releaseConsultMedia } from './consultMedia';
 import { useConsultSignaling } from './useConsultSignaling';
 
 /**
@@ -60,7 +61,7 @@ class FakeSocket {
   onopen: (() => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: (() => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code?: number; reason?: string }) => void) | null = null;
   send = vi.fn();
   close = vi.fn();
 
@@ -220,7 +221,7 @@ describe('useConsultSignaling', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
-        // 화면 공유는 지원하지 않는 브라우저로 둔다. 카메라·마이크가 늦게 도착한다.
+        // 마이크가 늦게 도착하는 상황을 만든다.
         getUserMedia: vi.fn(
           () =>
             new Promise<MediaStream>((resolve) => {
@@ -253,9 +254,14 @@ describe('useConsultSignaling', () => {
     expect(audioTrack.stop).toHaveBeenCalledTimes(1);
   });
 
-  /** 사용자 화면을 공유해야 상담자가 지도 위에 길을 그려 줄 수 있다. */
-  it('사용자는 카메라가 아니라 화면을 공유한다', async () => {
-    const getDisplayMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('video')]));
+  /**
+   * 화면 공유(`getDisplayMedia`)는 쓰지 않는다.
+   *
+   * 데스크톱 브라우저에만 있는 기능이라, 이 서비스가 상대하는 모바일 기기에서는 함수 자체가
+   * 없어 부르는 순간 `TypeError` 가 난다. 상담자가 보는 지도는 MAP_SYNC 로 따로 건너간다.
+   */
+  it('화면 공유를 시도하지 않는다', async () => {
+    const getDisplayMedia = vi.fn();
     const getUserMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')]));
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
@@ -272,24 +278,22 @@ describe('useConsultSignaling', () => {
       await Promise.resolve();
     });
 
-    expect(getDisplayMedia).toHaveBeenCalled();
-    // 마이크만 장치에서 받는다. 카메라 영상은 요청하지 않는다.
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
-    expect(getUserMedia).not.toHaveBeenCalledWith(expect.objectContaining({ video: true }));
-    expect(view.result.current.screenShareBlocked).toBe(false);
+    expect(getDisplayMedia).not.toHaveBeenCalled();
 
     view.unmount();
   });
 
-  /** 화면 공유를 거절해도 상담 자체는 이어져야 한다. 대신 다시 공유하라고 알린다. */
-  it('화면 공유가 막히면 카메라로 물러나고 다시 공유할 수 있다고 알린다', async () => {
-    const getDisplayMedia = vi.fn().mockRejectedValue(new Error('NotAllowedError'));
-    const getUserMedia = vi.fn((constraints: MediaStreamConstraints) =>
-      Promise.resolve(fakeStream([fakeTrack(constraints.video ? 'video' : 'audio')])),
-    );
+  /**
+   * 동의 화면을 거치지 않고 이 화면에 닿은 경우.
+   *
+   * 무엇을 보내도 좋다는 답을 받은 적이 없으므로 카메라를 열지 않는다. 여기서 `video: true`
+   * 를 요청하면 끄기로 한 사용자의 카메라가 재연결마다 도로 켜진다.
+   */
+  it('잡아 둔 스트림이 없으면 카메라를 열지 않고 목소리만 보낸다', async () => {
+    const getUserMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')]));
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
-      value: { getUserMedia, getDisplayMedia },
+      value: { getUserMedia },
     });
 
     const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
@@ -302,10 +306,37 @@ describe('useConsultSignaling', () => {
       await Promise.resolve();
     });
 
-    expect(getUserMedia).toHaveBeenCalledWith({ video: true, audio: true });
-    expect(view.result.current.screenShareBlocked).toBe(true);
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(getUserMedia).not.toHaveBeenCalledWith(expect.objectContaining({ video: true }));
 
     view.unmount();
+  });
+
+  /** 동의 화면이 고른 대로 잡아 둔 것을 그대로 쓴다. 장치를 다시 열지 않는다. */
+  it('동의 화면에서 잡아 둔 스트림을 그대로 보낸다', async () => {
+    const prepared = fakeStream([fakeTrack('video'), fakeTrack('audio')]);
+    holdConsultMedia(prepared);
+    const getUserMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')]));
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+
+    view.unmount();
+    // 다음 상담이 이 스트림을 물려받지 않게 여기서 놓아 준다.
+    releaseConsultMedia();
   });
 
   /**
@@ -390,7 +421,7 @@ describe('useConsultSignaling', () => {
     expect(sentTypes(FakeSocket.instances[0])).toContain('OFFER');
     expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled();
     // 연결이 맺어져도 지워지면 안 되는 안내다. 상담자는 자기 목소리가 나가지 않음을 알아야 한다.
-    expect(view.result.current.error).toBe('화면 공유 또는 마이크를 사용할 수 없습니다.');
+    expect(view.result.current.error).toBe('카메라 또는 마이크를 사용할 수 없습니다.');
 
     view.unmount();
   });
@@ -398,7 +429,7 @@ describe('useConsultSignaling', () => {
   /**
    * 상담자는 answer 를 받을 때까지 같은 offer 를 되풀이해 보낸다. 답한 직후 도착한 재전송을
    * 새 상담자로 오해해 연결을 다시 맺으면, 상담자는 이미 answer 를 적용해 두어 다시는
-   * offer 를 만들지 않으므로 화면 공유가 영영 뜨지 않는다.
+   * offer 를 만들지 않으므로 사용자 영상이 영영 뜨지 않는다.
    */
   it('이미 답한 offer 가 다시 와도 연결을 새로 맺지 않고 answer 만 다시 보낸다', async () => {
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -441,6 +472,231 @@ describe('useConsultSignaling', () => {
     // 상담자가 놓쳤을 수 있으니 답은 다시 보낸다.
     expect(sentTypes(socket).filter((type) => type === 'ANSWER')).toHaveLength(2);
     expect(view.result.current.error).toBeNull();
+
+    view.unmount();
+  });
+
+  /**
+   * signaling 토큰은 10분이면 만료되는데 상담은 그보다 오래간다.
+   *
+   * 예전에는 한 번 받은 토큰을 상담이 끝날 때까지 그대로 썼다. 연결을 다시 맺어야 하는
+   * 순간(상대가 새로고침했거나 망이 끊긴 때) handshake 가 401 로 거절되고 그대로 끝이었다.
+   * 상대 화면에는 `연결 상태: signaling` 만 남고 화면 공유는 영영 도착하지 않았다.
+   */
+  it('handshake 가 거절되면 곧바로 실패로 남기지 않고 새 토큰을 받아 오라고 알린다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-expired'));
+    await flushSetup();
+
+    expect(view.result.current.tokenRejected).toBe(0);
+
+    // 한 번도 열리지 못한 채 닫힌다. 만료된 토큰이 거절당한 모습이다.
+    await act(async () => {
+      FakeSocket.instances[0]?.onclose?.({ code: 1006 });
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.tokenRejected).toBe(1);
+    // 새 토큰으로 붙을 수 있다. 여기서 실패로 단정하면 화면이 회복을 포기한다.
+    expect(view.result.current.error).toBeNull();
+
+    view.unmount();
+  });
+
+  /** 새 토큰으로도 계속 거절당하면 만료 문제가 아니다. 그때는 사실대로 알려야 한다. */
+  it('토큰을 새로 받아도 계속 거절당하면 연결 실패로 알린다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+
+    const view = renderHook(
+      ({ token }) => useConsultSignaling('room_1', 'COUNSELOR', token),
+      { initialProps: { token: 'token-1' } },
+    );
+    await flushSetup();
+
+    // 토큰을 새로 받아 다시 붙어 보기를 되풀이한다.
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      await act(async () => {
+        FakeSocket.instances.at(-1)?.onclose?.({ code: 1006 });
+        await Promise.resolve();
+      });
+      view.rerender({ token: `token-${attempt + 1}` });
+      await flushSetup();
+    }
+
+    expect(view.result.current.error).toContain('상담 연결 서버에 접속하지 못했습니다.');
+
+    view.unmount();
+  });
+
+  /**
+   * 상대가 새로고침하면 새 offer 가 온다. 이쪽은 연결을 통째로 다시 맺어야 하는데, 그때
+   * `LEAVE` 를 보내면 서버 방에서 지워진다. 상대가 2초마다 보내는 offer 는 갈 곳을 잃고,
+   * 상대 화면은 `연결 상태: signaling` 에서 멈춘다.
+   */
+  it('새 offer 를 받아 연결을 다시 맺을 때는 방에서 나갔다고 알리지 않는다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getDisplayMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('video')])),
+        getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])),
+      },
+    });
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
+    await flushSetup();
+
+    const first = FakeSocket.instances[0];
+    await act(async () => {
+      first?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // 첫 offer 에 답해 협상을 끝낸다.
+    await act(async () => {
+      first?.onmessage?.(offerMessage('first-offer'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(sentTypes(first)).toContain('ANSWER');
+
+    // 상담자가 새로고침해 전혀 다른 offer 를 보내온다.
+    await act(async () => {
+      first?.onmessage?.(offerMessage('offer-after-counselor-reload'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // 연결은 통째로 다시 맺되, 방에서 나갔다고 알리면 안 된다.
+    expect(FakePeerConnection.instances.length).toBeGreaterThan(1);
+    expect(sentTypes(first)).not.toContain('LEAVE');
+
+    view.unmount();
+  });
+
+  /**
+   * 자막이 안 된다는 사실은 이쪽 화면에만 남아서는 소용이 없다.
+   *
+   * Chrome 이 아닌 브라우저로 상담을 받으면 상대 화면에는 아무 경고 없이 "말하면 이 자리에
+   * 표시됩니다"만 상담 내내 떠 있었다. 자막이 고장난 것인지 이쪽이 조용한 것인지 구분할
+   * 방법이 없어, 상대는 오지 않을 자막을 계속 기다렸다.
+   */
+  it('음성 인식을 지원하지 않는 브라우저면 그 사실을 상대에게 알린다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    // SpeechRecognition 을 stub 하지 않는다. 지원하지 않는 브라우저다.
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    const socket = FakeSocket.instances[0];
+    const statuses = (socket?.send.mock.calls ?? [])
+      .map(([raw]) => JSON.parse(String(raw)) as { type: string; payload?: { captionStatus?: string } })
+      .filter((message) => message.type === 'CAPTION')
+      .map((message) => message.payload?.captionStatus);
+
+    expect(statuses).toContain('unsupported');
+    expect(view.result.current.captionsSupported).toBe(false);
+
+    view.unmount();
+  });
+
+  /**
+   * 상대가 아직 방에 없을 때 보낸 경고는 서버가 버린다. 붙은 뒤에 다시 알리지 않으면
+   * 상대는 끝내 알지 못한다.
+   */
+  it('연결이 맺어지면 앞서 보낸 자막 경고를 다시 알린다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    const socket = FakeSocket.instances[0];
+    const captionSends = () =>
+      (socket?.send.mock.calls ?? [])
+        .map(([raw]) => JSON.parse(String(raw)) as { type: string })
+        .filter((message) => message.type === 'CAPTION').length;
+
+    const before = captionSends();
+
+    const peer = FakePeerConnection.instances[0];
+    await act(async () => {
+      if (peer) peer.connectionState = 'connected';
+      peer?.onconnectionstatechange?.();
+      await Promise.resolve();
+    });
+
+    expect(captionSends()).toBeGreaterThan(before);
+
+    view.unmount();
+  });
+
+  /** 경고 한 통 때문에 마지막으로 들은 말까지 지워지면 화면이 더 비어 보인다. */
+  it('상대의 자막 경고를 받아도 지금 떠 있는 자막은 그대로 둔다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getDisplayMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('video')])),
+        getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])),
+      },
+    });
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
+    await flushSetup();
+
+    const socket = FakeSocket.instances[0];
+    const caption = (payload: unknown) =>
+      socket?.onmessage?.({
+        data: JSON.stringify({
+          sessionId: 'room_1',
+          senderType: 'COUNSELOR',
+          type: 'CAPTION',
+          payload,
+          timestamp: '',
+        }),
+      } as MessageEvent);
+
+    await act(async () => {
+      caption({ text: '3번 출구로', final: false, language: 'ko-KR' });
+      await Promise.resolve();
+    });
+
+    // 말하는 도중이라 아직 확정된 문장이 아니다.
+    expect(view.result.current.remoteCaption).toBe('3번 출구로');
+    expect(view.result.current.remoteCaptionFinal).toBe(false);
+
+    await act(async () => {
+      caption({ captionStatus: 'network' });
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.remoteCaptionError).toBe('network');
+    expect(view.result.current.remoteCaption).toBe('3번 출구로');
+
+    // 한 마디라도 다시 오면 경고는 더 이상 사실이 아니다.
+    await act(async () => {
+      caption({ text: '3번 출구로 가세요', final: true, language: 'ko-KR' });
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.remoteCaptionError).toBeNull();
+    expect(view.result.current.remoteCaptionFinal).toBe(true);
+    expect(view.result.current.remoteFinalCaption).toBe('3번 출구로 가세요');
 
     view.unmount();
   });

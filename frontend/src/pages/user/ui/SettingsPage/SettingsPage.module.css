@@ -50,6 +50,13 @@
   border-bottom: none;
 }
 
+/* 권한 카드가 왜 눌리지 않는지 바로 아래에서 설명한다. */
+.permissionNote {
+  margin-top: 8px;
+  font-size: 12.5px;
+  text-align: left;
+}
+
 .rowLabel {
   flex: 1;
   font-size: 13.5px;

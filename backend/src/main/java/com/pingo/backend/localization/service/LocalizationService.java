@@ -7,6 +7,7 @@ import com.pingo.backend.localization.anchoring.IndoorPositionResolver;
 import com.pingo.backend.localization.client.AiLocalizationClient;
 import com.pingo.backend.localization.client.AiLocalizationClientErrorType;
 import com.pingo.backend.localization.client.AiLocalizationClientException;
+import com.pingo.backend.localization.client.AiLocalizationProperties;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
 import com.pingo.backend.localization.dto.request.LocalizationRequestMetadata;
 import com.pingo.backend.localization.dto.response.LocalizationResponse;
@@ -27,6 +28,7 @@ public class LocalizationService {
     private final AiLocalizationRequestMapper requestMapper;
     private final ColmapToCanonicalMapper canonicalMapper;
     private final IndoorPositionResolver positionResolver;
+    private final AiLocalizationProperties aiLocalizationProperties;
 
     public LocalizationService(
             AiLocalizationClient aiLocalizationClient,
@@ -34,7 +36,8 @@ public class LocalizationService {
             LocalizationFallbackPolicy fallbackPolicy,
             AiLocalizationRequestMapper requestMapper,
             ColmapToCanonicalMapper canonicalMapper,
-            IndoorPositionResolver positionResolver
+            IndoorPositionResolver positionResolver,
+            AiLocalizationProperties aiLocalizationProperties
     ) {
         this.aiLocalizationClient = aiLocalizationClient;
         this.statusMapper = statusMapper;
@@ -42,6 +45,7 @@ public class LocalizationService {
         this.requestMapper = requestMapper;
         this.canonicalMapper = canonicalMapper;
         this.positionResolver = positionResolver;
+        this.aiLocalizationProperties = aiLocalizationProperties;
     }
 
     public LocalizationResponse localize(
@@ -49,17 +53,22 @@ public class LocalizationService {
             MultipartFile image,
             LocalizationRequestMetadata metadata
     ) {
+        String mapVersion = aiLocalizationProperties.mapSetVersionFor(metadata.stationId());
+        if (mapVersion == null) {
+            return responseFor(requestId, null, null, LocalizationResultStatus.MAP_NOT_READY);
+        }
+
         try {
             AiLocalizationResponse aiResponse = aiLocalizationClient.localize(
                     requestId,
-                    metadata.mapVersion(),
+                    mapVersion,
                     image,
                     requestMapper.toAiMetadata(metadata)
             );
             if (aiResponse == null || aiResponse.status() == null) {
                 return responseFor(
                         requestId,
-                        metadata.mapVersion(),
+                        mapVersion,
                         processingTimeMs(aiResponse),
                         LocalizationResultStatus.INTERNAL_ERROR
                 );
@@ -75,7 +84,7 @@ public class LocalizationService {
             return new LocalizationResponse(
                     requestId,
                     finalStatus,
-                    responseMapVersion(aiResponse, metadata),
+                    responseMapVersion(aiResponse, mapVersion),
                     anchored.map(LocalizationService::toPosition).orElse(null),
                     anchored.map(AnchoredLocation::startNodeId).orElse(null),
                     anchored.map(AnchoredLocation::startNodeLabel).orElse(null),
@@ -85,7 +94,7 @@ public class LocalizationService {
         } catch (AiLocalizationClientException e) {
             return responseFor(
                     requestId,
-                    metadata.mapVersion(),
+                    mapVersion,
                     null,
                     mapClientError(e.getErrorType())
             );
@@ -209,9 +218,9 @@ public class LocalizationService {
         return aiResponse.timingMs().total();
     }
 
-    private String responseMapVersion(AiLocalizationResponse aiResponse, LocalizationRequestMetadata metadata) {
+    private String responseMapVersion(AiLocalizationResponse aiResponse, String requestedMapVersion) {
         if (aiResponse.mapVersion() == null || aiResponse.mapVersion().isBlank()) {
-            return metadata.mapVersion();
+            return requestedMapVersion;
         }
 
         return aiResponse.mapVersion();

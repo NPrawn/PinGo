@@ -1,16 +1,20 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { isClosedConsultation, useConsultStore } from '@/entities/consult';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
-import { useTranslation } from 'react-i18next';
 import {
+  describeRemoteCaptionTrouble,
   peekConsultCamera,
+  releaseConsultMedia,
   useCaptionTranslation,
   useConsultSignaling,
+  useTranslatedSpeech,
 } from '@/features/consult-signaling';
+import { usePermissionsRevoked } from '@/features/permissions';
 import { useRemoteScreenDraw } from '@/features/shared-screen-draw';
 import { endConsultationByUser, getConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
@@ -26,6 +30,8 @@ const CONSULTATION_WATCH_MS = 4000;
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
   const navigate = useNavigate();
+  const { i18n } = useTranslation();
+  const userLanguage = i18n.resolvedLanguage ?? i18n.language ?? 'en';
   const consultationId = useConsultStore((state) => state.consultationId);
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
   const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
@@ -38,8 +44,9 @@ export function ConsultSessionPage() {
    * 상담 요청 화면에서 잡아 둔 카메라를 셀프뷰에 붙인다.
    *
    * 예전에는 카메라를 잡지도 않고 권한만 허용된 것으로 기록해, 상담 내내 카메라가 꺼진
-   * 채였다. 상담자 화면에는 `화면 공유 · 사용자 카메라`라고 적혀 있는데 정작 사용자 모습은
-   * 어디에도 없었다.
+   * 채였다. 상담자 화면에는 카메라가 온다고 적혀 있는데 정작 사용자 모습은 어디에도 없었다.
+   *
+   * 같은 영상 트랙이 상담자에게도 건너간다. 여기 보이는 것과 상담자가 보는 것이 같다.
    */
   const cameraRef = useRef<HTMLVideoElement>(null);
   const [cameraOn, setCameraOn] = useState(false);
@@ -100,26 +107,43 @@ export function ConsultSessionPage() {
     error,
     reconnecting,
     remoteCaption,
-    remoteFinalCaption,
+    remoteCaptionFinal,
+    remoteCaptionError,
     captionsSupported,
     captionError,
-    screenShareBlocked,
-    shareScreen,
     sendConsultEvent,
     eventChannelOpen,
-  } = useConsultSignaling(signalingRoomId, 'USER', signalingAccessToken, handleDataEvent);
-  /**
-   * 상담원이 한 말을 사용자가 고른 언어로 옮겨 보여 준다.
-   *
-   * 표시 언어는 화면 전체가 쓰는 i18n 언어를 그대로 따른다. 상담을 위해 따로 고르게 하면
-   * 사용자가 이미 언어 화면(U-02)에서 고른 것과 어긋난다.
-   */
-  const { i18n } = useTranslation();
+    tokenRejected,
+  } = useConsultSignaling(
+    signalingRoomId,
+    'USER',
+    signalingAccessToken,
+    handleDataEvent,
+    userLanguage,
+  );
+  /** 상담원이 말한 한국어를 영어 자막으로 옮겨 보여 준다. */
   const translatedRemoteCaption = useCaptionTranslation(
     consultationId,
-    remoteFinalCaption,
-    i18n.language,
+    remoteCaption,
+    userLanguage,
   );
+  useTranslatedSpeech(translatedRemoteCaption, userLanguage, remoteCaptionFinal);
+  /**
+   * 옮긴 문장을 큰 자리에, 지금 들어오는 원문을 아래 줄에 둔다.
+   *
+   * 번역은 말이 끝난 문장에만 건다 — 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라지고,
+   * 번역 요청도 초당 몇 번씩 나간다. 그런데 옮긴 문장만 띄우면 상담원이 다음 말을 하는
+   * 내내 화면이 지난 문장에서 멈춰 있다. 첫 문장만 실시간으로 흐르고 그 뒤로는 문장이
+   * 끝날 때까지 아무 변화가 없어, 사용자는 자막이 멈춘 것으로 본다.
+   *
+   * 그래서 옮긴 문장은 큰 자리에 그대로 두되(읽어야 하는 것은 자기 언어로 된 쪽이다),
+   * 지금 들어오는 원문은 아래 줄에 흘려보낸다.
+   */
+  const captionPrimary = translatedRemoteCaption || remoteCaption;
+  /** 큰 자리와 같은 말이면 두 번 쓰지 않는다(아직 옮기지 못해 원문이 위에 올라간 경우다). */
+  const captionSource = remoteCaption && remoteCaption !== captionPrimary ? remoteCaption : '';
+  /** 상담원 쪽 자막이 죽었다는 사실. 이쪽 마이크 문제와 섞이지 않게 따로 띄운다. */
+  const remoteCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '상담원');
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
   /**
@@ -201,6 +225,19 @@ export function ConsultSessionPage() {
   ]);
 
   /**
+   * 거절당한 토큰을 버린다. 아래 복구 effect 가 곧바로 새 토큰을 받아 온다.
+   *
+   * 토큰은 10분이면 만료되는데 상담은 그보다 오래간다. 예전에는 한 번 받은 토큰을 상담이
+   * 끝날 때까지 그대로 썼기 때문에, 연결을 다시 맺어야 하는 순간 — 상담원이 새로고침했거나
+   * 망이 끊긴 때 — handshake 가 401 로 거절되고 그대로 끝이었다. 상담원 화면에는
+   * `연결 상태: signaling` 만 남고 사용자 화면은 영영 도착하지 않았다.
+   */
+  useEffect(() => {
+    if (!tokenRejected || !signalingRoomId) return;
+    setSignalingRoom(signalingRoomId, null);
+  }, [setSignalingRoom, signalingRoomId, tokenRejected]);
+
+  /**
    * 새로고침하면 signaling 토큰이 남지 않는다(짧은 만료 시간). 방은 알고 있으므로
    * 상세 조회로 토큰만 다시 받아 WebSocket 접속이 401로 거절되지 않게 한다.
    */
@@ -243,17 +280,37 @@ export function ConsultSessionPage() {
    *
    * 상담자가 먼저 끝냈다면 이미 종료된 상담이라 거절된다. 그래도 화면은 넘어간다.
    */
-  const endCall = async () => {
+  const endCall = useCallback(async () => {
     if (consultationId && userSessionId) {
       await endConsultationByUser(consultationId, userSessionId).catch(() => undefined);
     }
     void navigate(USER_ROUTES.CONSULT_ENDED);
-  };
+  }, [consultationId, navigate, userSessionId]);
+
+  /**
+   * 상담 도중 권한이 사라지면 상담을 끝낸다.
+   *
+   * 이 화면은 경로 가드(`RequirePermissions`) 밖에 있다. 가드에 맡기면 권한 화면으로 튕겨
+   * 나가면서 잡아 둔 카메라·마이크가 그대로 남고, 서버의 상담도 진행 중으로 남는다. 상담자는
+   * 연결돼 있다고 믿은 채 빈 화면에 대고 안내를 이어 가게 된다.
+   *
+   * 장치를 먼저 놓아 준다. 서버 응답을 기다리는 동안 표시등이 켜져 있을 이유가 없다.
+   */
+  const permissionsRevoked = usePermissionsRevoked();
+  const endingRef = useRef(false);
+
+  useEffect(() => {
+    if (!permissionsRevoked || endingRef.current) return;
+
+    endingRef.current = true;
+    releaseConsultMedia();
+    void endCall();
+  }, [endCall, permissionsRevoked]);
 
   return (
     <PhoneFrame dark layout="flush">
       <>
-        {/* 상담원이 공유 화면 위에 그린 선. 화면 전체가 공유 대상이라 화면을 덮는다. */}
+        {/* 상담원이 카메라 영상 위에 그린 선. 좌표는 0~1 정규화 값이라 화면을 덮어 얹는다. */}
         <canvas ref={annotationRef} className={styles.annotation} aria-hidden />
         <div className={styles.bar}>
           <span className={styles.liveChip}>
@@ -261,14 +318,11 @@ export function ConsultSessionPage() {
               <span className={styles.liveDot} />
               <span className={styles.liveRing} />
             </span>
-            상담 연결됨 · 화면 공유 중
+            {/* 무엇이 건너가고 있는지 그대로 적는다. 카메라를 끈 사용자에게 켜져 있다고
+                말하면 안 된다. */}
+            {cameraOn ? '상담 연결됨 · 카메라 공유 중' : '상담 연결됨 · 음성만'}
             <span className={styles.liveShine} />
           </span>
-          {screenShareBlocked && (
-            <button type="button" className={styles.shareScreen} onClick={() => void shareScreen()}>
-              화면 공유하기
-            </button>
-          )}
           <button type="button" className={styles.endCall} onClick={() => void endCall()}>
             상담 종료
           </button>
@@ -287,16 +341,11 @@ export function ConsultSessionPage() {
             </div>
           )}
           {/*
-            상담원은 목소리만 보낸다. 영상을 띄우면 이 화면이 통째로 다시 상담원에게
-            공유되면서 화면 속에 화면이 겹친다. 소리를 내려면 요소 자체는 있어야 하므로
-            보이지 않게만 둔다.
+            상담원은 목소리만 보낸다. 소리를 내려면 요소 자체는 있어야 하므로 보이지 않게만
+            둔다.
           */}
           <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteAudio} />
-          {/*
-            사용자 카메라 셀프뷰. 상담자에게 따로 보내지 않는다 — 이 화면 전체가 이미 공유
-            대상이라 여기 담긴 카메라 영상이 그대로 함께 건너간다. 영상 트랙을 하나 더
-            협상하지 않고도 상담자가 사용자의 상황을 볼 수 있다.
-          */}
+          {/* 사용자 카메라 셀프뷰. 이 트랙이 그대로 상담자에게 건너간다. */}
           <video
             ref={cameraRef}
             autoPlay
@@ -368,20 +417,41 @@ export function ConsultSessionPage() {
               실시간 자막 · 상담원
             </div>
             {/*
+              상담원 쪽 자막이 죽었다는 사실은 자막이 있든 없든 보여야 한다. 아래 본문
+              자리에만 끼워 넣으면, 상담 도중에 인식이 멈춘 경우 마지막 문장에 가려 영영
+              뜨지 않는다.
+            */}
+            {remoteCaptionNotice && (
+              <div className={styles.translationAlert} role="alert">
+                <Icon name="warning" size={12} />
+                <span>{remoteCaptionNotice}</span>
+              </div>
+            )}
+            {/*
               옮긴 문장을 크게, 원문을 그 아래 작게 둔다. 사용자가 읽어야 하는 것은 자기
               언어로 된 쪽이고, 원문은 숫자나 출구 이름을 눈으로 맞춰 보는 데 쓴다.
               아직 옮기지 못했으면 원문이라도 큰 자리에 띄운다 — 빈 화면보다 낫다.
             */}
             <div className={styles.translationPrimary}>
-              {translatedRemoteCaption ||
-                remoteCaption ||
+              {captionPrimary ||
+                remoteCaptionNotice ||
                 (captionError ??
                   (captionsSupported
                     ? '상담원이 말하면 이 자리에 표시됩니다.'
                     : '이 브라우저에서는 음성 자막을 지원하지 않습니다.'))}
             </div>
-            {translatedRemoteCaption && remoteFinalCaption !== translatedRemoteCaption && (
-              <div className={styles.translationSource}>{remoteFinalCaption}</div>
+            {/*
+              상담원이 말하는 중에는 이 줄이 한 마디씩 흘러간다. 위의 옮긴 문장은 말이
+              끝나야 바뀌므로, 이 줄이 없으면 화면은 멈춰 있는 것처럼 보인다.
+            */}
+            {captionSource && (
+              <div
+                className={[styles.translationSource, !remoteCaptionFinal && styles.captionLive]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {captionSource}
+              </div>
             )}
           </div>
         </div>

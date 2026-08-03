@@ -15,7 +15,8 @@ import {
   acceptConsultation,
   ApiError,
   getCounselorConsultation,
-  queryKeys
+  getCounselorMe,
+  queryKeys,
 } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { Button, Icon } from '@/shared/ui';
@@ -83,6 +84,23 @@ export function RequestsPage() {
     [queueQuery.data],
   );
   const selected = requests.find((request) => request.consultationId === selectedId) ?? requests[0];
+  /**
+   * 지금 로그인한 상담자. 어떤 상담이 내 것인지 가리는 데 쓴다.
+   *
+   * 목록은 담당 역의 상담을 모두 주기 때문에, 내가 맡은 상담과 남이 맡은 상담이 섞여 있다.
+   */
+  const meQuery = useQuery({ queryKey: ['counselor-me'], queryFn: getCounselorMe });
+  /**
+   * 내가 들어갈 수 있는 상담인지.
+   *
+   * 아직 담당자가 없으면(수락 전) 누구든 들어갈 수 있고, 담당자가 있으면 그게 나여야 한다.
+   * 내가 누구인지 아직 모르는 동안에는 막지 않는다 — 조회 한 번 늦었다고 내 상담에 못
+   * 들어가는 편이 더 나쁘다.
+   */
+  const mineToHandle =
+    selected?.counselorId == null ||
+    meQuery.data?.accountId == null ||
+    selected.counselorId === meQuery.data.accountId;
 
   const acceptMutation = useMutation({
     mutationFn: acceptConsultation,
@@ -188,16 +206,27 @@ export function RequestsPage() {
                     상담 수락
                   </Button>
                 )}
-                {selected.status === 'ACCEPTED' && (
-                  <Button
-                    size="sm"
-                    className={styles.openSession}
-                    onClick={() => reenterMutation.mutate(selected.consultationId)}
-                    disabled={reenterMutation.isPending}
-                  >
-                    {reenterMutation.isPending ? '연결 준비 중…' : '상담 화면 열기'}
-                  </Button>
-                )}
+                {selected.status === 'ACCEPTED' &&
+                  (mineToHandle ? (
+                    <Button
+                      size="sm"
+                      className={styles.openSession}
+                      onClick={() => reenterMutation.mutate(selected.consultationId)}
+                      disabled={reenterMutation.isPending}
+                    >
+                      {reenterMutation.isPending ? '연결 준비 중…' : '상담 화면 열기'}
+                    </Button>
+                  ) : (
+                    /*
+                      다른 상담자가 맡은 상담이다.
+
+                      목록은 담당 역의 상담을 모두 담아서 남이 맡은 것도 함께 온다. 예전에는
+                      그 구분 없이 '상담 화면 열기'를 열어 줬는데, 들어가 봐야 signaling
+                      토큰이 나오지 않아 연결되지 않고 종료를 눌러도 서버가 403(담당 상담자가
+                      아님)으로 거절했다. 화면에는 아무 설명이 없어 "종료가 안 된다"로만 보였다.
+                    */
+                    <span className={styles.otherCounselor}>다른 상담자가 진행 중</span>
+                  ))}
               </div>
 
               {actionError && (

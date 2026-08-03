@@ -363,3 +363,15 @@
     opacity: 0.4;
   }
 }
+
+/* 다른 상담자가 맡은 상담. 들어가 봐야 연결되지 않고 종료도 거절된다. */
+.otherCounselor {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-sub);
+  background: #f1f1f4;
+  border-radius: var(--radius-pill);
+}

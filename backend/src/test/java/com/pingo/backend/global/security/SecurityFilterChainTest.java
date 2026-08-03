@@ -156,8 +156,7 @@ class SecurityFilterChainTest {
                 """
                 {
                   "userSessionId": "usr_sess_01JABC",
-                  "stationId": 1,
-                  "mapVersion": "YS-2026-07-23.1"
+                  "stationId": 1
                 }
                 """.getBytes(StandardCharsets.UTF_8)
         );

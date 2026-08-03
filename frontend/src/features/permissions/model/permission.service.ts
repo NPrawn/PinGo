@@ -91,6 +91,24 @@ export type RequiredPermissionsProgress = Partial<Record<PermissionKind, Permiss
 export interface RequestRequiredPermissionsOptions {
   /** 각 단계가 끝날 때마다 확정된 상태를 전달받는다. */
   onProgress?: (progress: RequiredPermissionsProgress) => void;
+  /**
+   * 브라우저가 이미 거부로 기억하고 있는 권한. 요청 대신 곧바로 `denied`로 확정한다.
+   *
+   * 거부된 권한은 다시 물어도 팝업 없이 즉시 거절된다. 그래도 호출하면 얻는 것 없이
+   * 시간만 쓰고, 무엇보다 같은 요청에 묶인 다른 권한까지 함께 실패한다 — 카메라가 거부돼
+   * 있으면 `{video, audio}` 요청이 통째로 실패해서 마이크가 허용 가능한지조차 알 수 없다.
+   *
+   * 조회할 수 없는 브라우저에서는 비워 둔다. 그때는 요청해 보는 것이 유일한 확인 수단이다.
+   */
+  deniedKinds?: readonly PermissionKind[];
+  /**
+   * 브라우저가 이미 허용으로 기억하고 있는 권한. 요청하지 않고 곧바로 `granted`로 확정한다.
+   *
+   * **물어볼 것이 없는데 장치를 건드리면 오히려 실패한다.** 앞 화면의 카메라 미리보기나 XR
+   * 세션이 카메라를 아직 쥐고 있으면 확인용 `getUserMedia`가 `NotReadableError`로 떨어지고,
+   * 화면은 방금 허용한 권한을 거부됨으로 그린다. 새로고침해야 넘어가던 원인이 이것이다.
+   */
+  grantedKinds?: readonly PermissionKind[];
 }
 
 /**
@@ -517,54 +535,111 @@ export function requestMicrophonePermission(): Promise<SingleMediaPermissionResu
 }
 
 /**
+ * 권한 하나를 어떻게 처리할지.
+ *
+ * - ask: 아직 모르니 물어본다
+ * - settled: 브라우저가 이미 답을 갖고 있다. 물어보지 않고 그 답을 그대로 쓴다
+ */
+type MediaPlan = 'ask' | 'granted' | 'denied';
+
+/** 요청하지 않고 확정한 결과. 브라우저가 이미 그렇게 기억하고 있다. */
+function settledResult(kind: 'camera' | 'microphone', plan: 'granted' | 'denied') {
+  return {
+    kind,
+    status: plan,
+    ...(plan === 'denied' && {
+      error: {
+        name: 'NotAllowedError',
+        message: 'Permission is already blocked for this origin.',
+      },
+    }),
+  } satisfies PermissionRequestResult;
+}
+
+/**
+ * 아직 답을 모르는 미디어 권한만 요청한다.
+ *
+ * 둘 다 물어봐야 하면 한 번에 요청한다. 브라우저가 팝업을 하나로 합쳐 주므로 사용자가 답할
+ * 횟수가 적다. 한쪽 답을 이미 알 때만 나머지를 따로 요청한다 — 합쳐 부르면 막힌 쪽 때문에
+ * 요청 전체가 실패해서, 나머지 한쪽이 허용 가능한지 확인할 길이 없어진다.
+ */
+async function requestPromptableMedia(
+  camera: MediaPlan,
+  microphone: MediaPlan,
+): Promise<MediaPermissionsResult> {
+  if (camera === 'ask') {
+    if (microphone === 'ask') {
+      return requestMediaPermissions();
+    }
+
+    const asked = await requestCameraPermission();
+
+    return {
+      camera: asked,
+      microphone: settledResult('microphone', microphone),
+      stream: asked.stream,
+    };
+  }
+
+  if (microphone === 'ask') {
+    const asked = await requestMicrophonePermission();
+
+    return {
+      camera: settledResult('camera', camera),
+      microphone: asked,
+      stream: asked.stream,
+    };
+  }
+
+  return {
+    camera: settledResult('camera', camera),
+    microphone: settledResult('microphone', microphone),
+  };
+}
+
+/**
  * 서비스 이용에 필요한 모든 권한을 요청한다.
  *
  * 이 함수가 권한 화면의 [모두 수락] 버튼에 연결될 대표 함수다.
  *
  * 처리 순서:
  * 1. 위치 권한 요청
- * 2. 위치 권한 실패 시 즉시 서비스 진입 불가 처리
- * 3. 카메라+마이크 권한 요청
- * 4. 세 권한이 모두 granted일 때만 canUseService = true
+ * 2. 카메라+마이크 권한 요청
+ * 3. 세 권한이 모두 granted일 때만 canUseService = true
+ *
+ * **위치가 거부돼도 카메라·마이크를 마저 묻는다.** 예전에는 여기서 멈췄는데, 그러면 화면이
+ * "위치는 거부됨, 나머지는 미요청"만 보여 준다. 세 권한이 모두 있어야 진입할 수 있으므로
+ * 사용자는 어차피 전부 처리해야 하는데, 무엇이 남았는지 한 번에 알 수 없으니 같은 화면을
+ * 여러 번 통과하게 된다.
  *
  * onProgress를 넘기면 각 단계가 끝나는 즉시 확정된 상태를 전달받는다.
  */
 export async function requestRequiredPermissions({
   onProgress,
+  deniedKinds = [],
+  grantedKinds = [],
 }: RequestRequiredPermissionsOptions = {}): Promise<RequiredPermissionsResult> {
-  const idleCamera: PermissionRequestResult = {
-    kind: 'camera',
-    status: 'idle',
-  };
+  const blocked = new Set(deniedKinds);
+  const allowed = new Set(grantedKinds);
+  const planFor = (kind: PermissionKind): MediaPlan =>
+    blocked.has(kind) ? 'denied' : allowed.has(kind) ? 'granted' : 'ask';
 
-  const idleMicrophone: PermissionRequestResult = {
-    kind: 'microphone',
-    status: 'idle',
-  };
-
-  /**
-   * 위치 권한을 먼저 요청한다.
-   *
-   * 위치 권한이 실패하면 서비스 진입이 불가능하므로
-   * 카메라/마이크 권한 요청을 이어서 하지 않는다.
-   */
-  const location = await requestLocationPermission();
+  const location: LocationPermissionResult = blocked.has('location')
+    ? {
+        kind: 'location',
+        status: 'denied',
+        error: {
+          name: 'PermissionDeniedError',
+          message: 'Location permission is already blocked for this origin.',
+        },
+      }
+    : allowed.has('location')
+      ? { kind: 'location', status: 'granted' }
+      : await requestLocationPermission();
 
   onProgress?.({ location: location.status });
 
-  if (location.status !== 'granted') {
-    return {
-      canUseService: false,
-      location,
-      camera: idleCamera,
-      microphone: idleMicrophone,
-    };
-  }
-
-  /**
-   * 위치 권한이 허용된 경우에만 카메라+마이크를 요청한다.
-   */
-  const media = await requestMediaPermissions();
+  const media = await requestPromptableMedia(planFor('camera'), planFor('microphone'));
 
   /**
    * 이번 단계에서는 권한 확인만 하므로 즉시 스트림을 종료한다.

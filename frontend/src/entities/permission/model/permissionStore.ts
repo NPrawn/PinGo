@@ -7,7 +7,6 @@ export type PermissionState = Record<PermissionKey, boolean>;
 
 type PermissionStore = {
   granted: PermissionState;
-  toggle: (key: PermissionKey) => void;
   grant: (...keys: PermissionKey[]) => void;
   /**
    * Replaces every permission at once.
@@ -26,16 +25,12 @@ type PermissionStore = {
  * Crosses pages: the onboarding permission screen sets it, the consult flow
  * reads it to decide whether it can start a call.
  *
- * The onboarding screen (U-02) feeds this from the real browser permission
- * results through `sync`.
- *
- * TODO: The consult and settings screens still toggle these by hand, mirroring
- * the prototype's opt-in checkboxes. Point them at the browser results too once
- * their fallback behaviour is agreed.
+ * 값은 브라우저가 정한다. 화면이 임의로 켜고 끄지 않는다 — 권한을 실제로 바꿀 수 있는 곳은
+ * 브라우저 설정뿐이라, 여기서 뒤집으면 화면만 허용됐다고 말하고 다음 단계에서 다시 막힌다.
+ * 온보딩 화면(U-02)과 경로 가드가 실제 조회 결과를 `sync`로 넣는다.
  */
 export const usePermissionStore = create<PermissionStore>((set, get) => ({
   granted: { loc: false, cam: false, mic: false },
-  toggle: (key) => set((state) => ({ granted: { ...state.granted, [key]: !state.granted[key] } })),
   grant: (...keys) =>
     set((state) => ({
       granted: keys.reduce((acc, key) => ({ ...acc, [key]: true }), state.granted),

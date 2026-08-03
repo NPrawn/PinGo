@@ -15,6 +15,7 @@ import com.pingo.backend.localization.client.dto.AiLocalizationRequestMetadata;
 import com.pingo.backend.localization.client.dto.AiLocalizationStatus;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -36,7 +37,7 @@ class RestClientAiLocalizationClientTest {
 
         client = new RestClientAiLocalizationClient(
                 builder.build(),
-                new AiLocalizationProperties("http://ai.test", "secret-token", 300, 6000)
+                new AiLocalizationProperties("http://ai.test", "secret-token", 300, 6000, Map.of())
         );
     }
 

@@ -12,12 +12,7 @@ import type {
 } from '@/shared/api';
 import { createConsultEvent, parseConsultEvent } from '@/shared/types';
 import type { ConsultDataEvent, ConsultEventBody } from '@/shared/types';
-import {
-  captureConsultMedia,
-  isConsultScreenLive,
-  peekConsultMedia,
-  replaceConsultScreenTrack,
-} from './consultMedia';
+import { captureConsultMicrophone, peekConsultMedia } from './consultMedia';
 import { createConsultEventFallback } from './consultEventFallback';
 import type { ConsultEventFallback } from './consultEventFallback';
 import {
@@ -25,6 +20,7 @@ import {
   markConsultPhase,
   startRtcStatsMonitor,
 } from '@/shared/lib/perf';
+import type { CaptionTrouble } from './captionTrouble';
 
 /** 서버가 한 번에 받는 전문 조각 수와 조각당 길이. 넘기면 400으로 거절된다. */
 const MAX_TRANSCRIPT_SEGMENTS = 500;
@@ -47,6 +43,19 @@ const DISCONNECTED_GRACE_MS = 4000;
 const MAX_RECOVERY_ATTEMPTS = 5;
 
 /**
+ * 만료된 토큰을 새로 받아 다시 붙어 보는 횟수.
+ *
+ * signaling 토큰은 10분이면 끝나는데 상담은 그보다 오래간다. 그동안 화면을 새로고침하지
+ * 않은 쪽은 처음 받은 토큰을 그대로 들고 있어서, 연결을 다시 맺어야 하는 순간(상대가
+ * 새로고침했거나 ICE 가 끊긴 때) handshake 가 401 로 거절된다. 그러면 그 상담은 두 번
+ * 다시 붙지 못하고, 상대 화면은 `연결 상태: signaling` 에서 영영 멈춘다.
+ *
+ * 끝없이 되풀이하지는 않는다. 상담이 이미 끝났거나 방이 사라진 경우에도 거절되는데,
+ * 그때는 새 토큰을 받아도 결과가 같다.
+ */
+const MAX_TOKEN_REFRESH_ATTEMPTS = 3;
+
+/**
  * 음성 인식이 잇따라 실패해도 다시 시작해 보는 횟수.
  *
  * 한두 번은 흔한 일이라 곧바로 알리면 상담자를 불필요하게 놀라게 한다. 그 이상 이어지면
@@ -60,14 +69,13 @@ const MAX_CAPTION_ERROR_STREAK = 3;
  * 상담을 시작하고 20초 넘게 양쪽 모두 한마디도 하지 않는 일은 드물다. 조용해서가 아니라
  * 소리가 들어오지 않는 것이라고 보는 편이 실제에 가깝다.
  */
-const CAPTION_SILENCE_MS = 20000;
 
 /**
- * 화면·마이크를 얻는 데 기다려 주는 시간.
+ * 카메라·마이크를 얻는 데 기다려 주는 시간.
  *
  * `getUserMedia` 는 거절될 때만 오류를 던진다. 장치가 다른 앱에 잡혀 있거나 사용자가 권한
  * 창을 그대로 두면 **아무 대답 없이 계속 매달려 있다.** 협상이 그 뒤에 있으면 offer 를 영영
- * 만들지 못해, 화면에는 `연결 상태: signaling` 만 남고 화면 공유가 시작되지 않는다.
+ * 만들지 못해, 화면에는 `연결 상태: signaling` 만 남고 영상이 시작되지 않는다.
  * 여기서 끊고 협상만이라도 진행한다.
  */
 const MEDIA_CAPTURE_TIMEOUT_MS = 8000;
@@ -97,6 +105,16 @@ type CaptionPayload = {
   text: string;
   final: boolean;
   language: string;
+};
+
+/**
+ * 자막이 왜 오지 않는지 알리는 payload. 자막 본문 대신 이것만 실려 온다.
+ *
+ * 새 signaling 타입을 만들지 않고 `CAPTION` 에 얹는다. 서버는 payload 를 들여다보지 않고
+ * 그대로 중계하므로, 이 한 줄을 나르자고 서버 enum 을 늘릴 이유가 없다.
+ */
+type CaptionStatusPayload = {
+  captionStatus: CaptionTrouble | null;
 };
 
 type SpeechRecognitionResultLike = {
@@ -175,6 +193,7 @@ export function useConsultSignaling(
   role: SignalingRole,
   accessToken?: string | null,
   onDataEvent?: (event: ConsultDataEvent) => void,
+  localSpeechLanguage?: string,
 ) {
   /**
    * 매 렌더마다 바뀌는 콜백을 effect 의존성에 넣으면 연결이 끊었다 붙기를 반복한다.
@@ -222,6 +241,20 @@ export function useConsultSignaling(
   const [remoteCaption, setRemoteCaption] = useState('');
   /** 상대가 말을 마친 마지막 문장. 번역은 이 값으로만 건다. */
   const [remoteFinalCaption, setRemoteFinalCaption] = useState('');
+  /**
+   * 지금 들고 있는 `remoteCaption` 이 말을 마친 문장인지.
+   *
+   * 거짓이면 상대가 말하는 중이다. 화면은 이 값으로 "아직 옮기지 않은 원문이 흘러가는 중"과
+   * "옮길 준비가 끝난 문장"을 구분한다.
+   */
+  const [remoteCaptionFinal, setRemoteCaptionFinal] = useState(true);
+  /**
+   * 상대 쪽 음성 인식이 멈춘 이유. null 이면 정상이다.
+   *
+   * 이쪽 마이크가 멀쩡해도 상대 자막은 오지 않을 수 있다. 그 사실을 알 방법이 없으면
+   * 화면은 "상대가 조용한 것"과 똑같아 보인다.
+   */
+  const [remoteCaptionError, setRemoteCaptionError] = useState<CaptionTrouble | null>(null);
   const [captionsSupported, setCaptionsSupported] = useState(true);
   /**
    * 음성 인식이 왜 안 되는지.
@@ -235,10 +268,6 @@ export function useConsultSignaling(
   const restartCaptions = useCallback(() => restartCaptionsRef.current(), []);
   const [transcript, setTranscript] = useState<ConsultationTranscriptSegment[]>([]);
   const [transcriptRoomId, setTranscriptRoomId] = useState(roomId);
-  /** 사용자가 화면 대신 카메라를 보내고 있는 상태. 화면 공유를 거절했거나 도중에 멈춘 경우다. */
-  const [screenShareBlocked, setScreenShareBlocked] = useState(false);
-  /** 화면 공유를 다시 시작할 때 보내는 트랙만 갈아 끼우려고 붙잡아 둔다. */
-  const videoSenderRef = useRef<RTCRtpSender | null>(null);
   /** 서버가 준 STUN·TURN 설정. 받기 전에는 연결을 시작하지 않는다. */
   const [rtcConfig, setRtcConfig] = useState<RTCConfiguration | null>(null);
   /** 연결을 처음부터 다시 맺어야 할 때 올린다. 값이 바뀌면 아래 effect 가 통째로 다시 돈다. */
@@ -250,6 +279,23 @@ export function useConsultSignaling(
    * 매번 0으로 돌아가 끝없이 되풀이한다.
    */
   const recoveryAttemptsRef = useRef(0);
+  /**
+   * 지금 끊는 것이 자리를 비우는 것이 아니라 곧바로 다시 붙기 위한 것인지.
+   *
+   * effect 를 넘어 살아남아야 한다. 다시 맺기가 곧 effect 를 다시 도는 일이라, 정리 함수가
+   * 이 값을 읽는 시점은 새 effect 가 돌기 전이다. 화면 바깥(`shareScreen`)에서 다시 맺는
+   * 경우도 있어 effect 안의 지역 변수로는 닿지 않는다.
+   */
+  const rebuildingRef = useRef(false);
+  /** 만료된 토큰으로 거절당한 횟수. 한 번 붙으면 0으로 돌아간다. */
+  const tokenRefreshAttemptsRef = useRef(0);
+  /**
+   * handshake 가 거절됐다고 화면에 알리는 신호. 값이 오르면 화면이 토큰을 새로 받아 온다.
+   *
+   * 토큰을 받아 오는 일은 화면의 몫이다 — 사용자 화면과 상담원 화면이 서로 다른 API 로
+   * 받는다. 이 훅은 "지금 들고 있는 토큰으로는 못 붙는다"는 사실만 알린다.
+   */
+  const [tokenRejected, setTokenRejected] = useState(0);
 
   /**
    * 받은 스트림을 영상 요소에 붙이고 재생시킨다.
@@ -310,6 +356,9 @@ export function useConsultSignaling(
     // ICE 설정 없이 연결을 열면 서로 다른 망에 있는 상대와 붙지 못한다.
     if (!rtcConfig) return;
 
+    // 이번 연결은 정상적으로 시작한다. 앞 연결이 남긴 "곧 다시 붙는다" 표시를 지운다.
+    rebuildingRef.current = false;
+
     let disposed = false;
     let offerTimer: number | undefined;
     let localStream: MediaStream | null = null;
@@ -317,7 +366,7 @@ export function useConsultSignaling(
      * 상담 요청 화면이 맡겨 둔 스트림을 그대로 쓰는 중인지.
      *
      * 그런 스트림은 이 연결의 것이 아니라 상담 전체의 것이다. 연결을 정리할 때 같이 끄면
-     * 재연결에서 화면 공유가 사라진다. 끄는 일은 상담 화면이 떠날 때 한 번만 한다.
+     * 재연결에서 카메라와 목소리가 사라진다. 끄는 일은 상담 화면이 떠날 때 한 번만 한다.
      */
     let reusedPreparedStream = false;
     let recognition: SpeechRecognitionLike | null = null;
@@ -476,8 +525,37 @@ export function useConsultSignaling(
     /** 잇따라 실패한 횟수. 한 번 알아들으면 0으로 돌아간다. */
     let captionErrorStreak = 0;
     /** 한 번이라도 알아들었는지. 조용히 아무것도 못 듣는 상태를 가려낸다. */
-    let heardAnything = false;
-    let captionWatchdog: number | undefined;
+    /** 상대에게 마지막으로 알린 자막 상태. 달라졌을 때만 다시 보낸다. */
+    let captionStatus: CaptionTrouble | null = null;
+
+    const sendCaptionStatus = () => send('CAPTION', { captionStatus });
+
+    /**
+     * 자막이 왜 안 되는지 화면과 **상대에게** 함께 알린다.
+     *
+     * 예전에는 이 사실이 이쪽 화면에만 남았다. 그런데 손해를 보는 쪽은 상대다 — 상담원이
+     * Chrome 이 아닌 브라우저로 상담을 받으면, 사용자 화면에는 아무 경고 없이 "상담원이
+     * 말하면 이 자리에 표시됩니다"만 상담 내내 떠 있었다. 자막이 고장난 것인지 상담원이
+     * 조용한 것인지 구분할 방법이 없어, 사용자는 오지 않을 자막을 계속 기다렸다.
+     */
+    const reportCaptionStatus = (trouble: CaptionTrouble | null, message: string | null) => {
+      setCaptionError(message);
+      // 한 마디 알아들을 때마다 null 로 되돌리는 자리가 있다. 그대로면 보내지 않는다.
+      if (captionStatus === trouble) return;
+      captionStatus = trouble;
+      sendCaptionStatus();
+    };
+
+    /**
+     * 상대가 방에 들어온 뒤 한 번 더 알린다.
+     *
+     * 자막이 안 된다는 것은 대개 상담이 붙기도 전에 드러난다(브라우저가 지원하지 않는
+     * 경우가 그렇다). 그때 보낸 알림은 중계할 상대가 아직 없어 서버가 버린다. 연결이
+     * 맺어진 시점에 다시 보내지 않으면 상대는 끝내 알지 못한다.
+     */
+    const resendCaptionStatus = () => {
+      if (captionStatus !== null) sendCaptionStatus();
+    };
 
     /**
      * 시작만 하고 아무 소리도 못 듣는 경우를 잡는다.
@@ -487,16 +565,6 @@ export function useConsultSignaling(
      * `onerror` 도 오지 않아 화면에는 "인식하고 있습니다"만 떠 있고, 상담자는 자기 말이
      * 기록되는 줄 알고 상담을 끝낸다. 전문은 비어 있고 요약도 만들어지지 않는다.
      */
-    const armCaptionWatchdog = () => {
-      if (captionWatchdog !== undefined) window.clearTimeout(captionWatchdog);
-      captionWatchdog = window.setTimeout(() => {
-        if (disposed || heardAnything) return;
-        setCaptionError(
-          '마이크 소리가 음성 인식으로 들어오지 않습니다. 마이크가 다른 앱에 잡혀 있지 않은지 확인하고, 아래 버튼으로 다시 시도해 주세요.',
-        );
-      }, CAPTION_SILENCE_MS);
-    };
-
     const startCaptions = () => {
       const speechWindow = window as typeof window & {
         SpeechRecognition?: SpeechRecognitionConstructor;
@@ -505,14 +573,18 @@ export function useConsultSignaling(
       const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
       if (!Recognition) {
         setCaptionsSupported(false);
-        setCaptionError('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome이나 Edge에서 열어 주세요.');
+        reportCaptionStatus(
+          'unsupported',
+          '이 브라우저는 음성 인식을 지원하지 않습니다. Chrome이나 Edge에서 열어 주세요.',
+        );
         return;
       }
 
       recognition = new Recognition();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = role === 'COUNSELOR' ? 'ko-KR' : navigator.language || 'en-US';
+      recognition.lang =
+        role === 'COUNSELOR' ? 'ko-KR' : localSpeechLanguage || navigator.language || 'en-US';
       recognition.onresult = (event) => {
         // 누적 전문(`transcript` 상태)과 헷갈리지 않게 이번 결과 조각은 `spoken`으로 둔다.
         let spoken = '';
@@ -525,9 +597,7 @@ export function useConsultSignaling(
         if (!text) return;
         // 한 번이라도 알아들었으면 앞의 실패는 지나간 일이다.
         captionErrorStreak = 0;
-        heardAnything = true;
-        if (captionWatchdog !== undefined) window.clearTimeout(captionWatchdog);
-        setCaptionError(null);
+        reportCaptionStatus(null, null);
         setLocalCaption(text);
         if (final) appendFinalCaption(role, text);
         send('CAPTION', { text, final, language: recognition?.lang ?? navigator.language });
@@ -548,7 +618,10 @@ export function useConsultSignaling(
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           shouldRecognize = false;
           setCaptionsSupported(false);
-          setCaptionError('마이크 사용이 차단돼 음성이 기록되지 않습니다. 주소창의 자물쇠에서 마이크를 허용해 주세요.');
+          reportCaptionStatus(
+            'blocked',
+            '마이크 사용이 차단돼 음성이 기록되지 않습니다. 주소창의 자물쇠에서 마이크를 허용해 주세요.',
+          );
           return;
         }
 
@@ -560,7 +633,8 @@ export function useConsultSignaling(
          * 상태가 상담 내내 이어지므로 여기서 멈추고 알린다.
          */
         shouldRecognize = false;
-        setCaptionError(
+        reportCaptionStatus(
+          event.error === 'network' ? 'network' : 'stopped',
           event.error === 'network'
             ? '음성 인식 서버에 연결하지 못해 대화가 기록되지 않습니다. 네트워크를 확인하거나 Chrome에서 다시 열어 주세요.'
             : `음성 인식이 멈췄습니다(${event.error}). 상담 내용이 기록되지 않습니다.`,
@@ -583,10 +657,9 @@ export function useConsultSignaling(
       };
       try {
         recognition.start();
-        armCaptionWatchdog();
       } catch {
         setCaptionsSupported(false);
-        setCaptionError('음성 인식을 시작하지 못했습니다. 상담 내용이 기록되지 않습니다.');
+        reportCaptionStatus('stopped', '음성 인식을 시작하지 못했습니다. 상담 내용이 기록되지 않습니다.');
       }
     };
 
@@ -599,9 +672,8 @@ export function useConsultSignaling(
       if (disposed) return;
       shouldRecognize = true;
       captionErrorStreak = 0;
-      heardAnything = false;
       setCaptionsSupported(true);
-      setCaptionError(null);
+      reportCaptionStatus(null, null);
       try {
         recognition?.stop();
       } catch {
@@ -667,7 +739,7 @@ export function useConsultSignaling(
      *
      * 협상이 끝난 뒤 미디어만 끊기는 일이 있다(ICE 실패, 와이파이 전환, 절전). 예전에는
      * 여기서 아무것도 하지 않아 상담자 화면이 검은 채로 남았다 — 그리기와 자막은 다른 길로
-     * 오가니 멀쩡해 보이는데 화면 공유만 사라진 이유가 이것이다.
+     * 오가니 멀쩡해 보이는데 영상만 사라진 이유가 이것이다.
      *
      * 답하는 쪽이 혼자 다시 맺어 봐야 소용이 없다. offer 를 만드는 상담자는 이미 answer 를
      * 적용해 두어 다시는 offer 를 만들지 않기 때문이다. 그래서 사용자는 다시 맺기 전에
@@ -683,6 +755,7 @@ export function useConsultSignaling(
       }
 
       recovering = true;
+      rebuildingRef.current = true;
       recoveryAttemptsRef.current += 1;
       setReconnecting(true);
       if (role === 'USER') send('RENEGOTIATE', { reason });
@@ -707,6 +780,8 @@ export function useConsultSignaling(
         // 항목 5·6 — 이제부터 실제 통화 품질(편도 지연·지터·패킷 손실)을 잴 수 있다.
         // 재연결로 다시 'connected' 가 되어도 하나만 돌리면 되므로 이미 있으면 새로 켜지 않는다.
         stopRtcStatsMonitor ??= startRtcStatsMonitor(peer);
+        // 상대가 확실히 방에 있는 시점이다. 붙기 전에 보낸 자막 경고는 버려졌으므로 다시 알린다.
+        resendCaptionStatus();
       }
       if (peer.connectionState === 'failed') {
         publishMediaFailure('VIDEO_FAILED', 'peer_connection_failed');
@@ -736,40 +811,30 @@ export function useConsultSignaling(
     };
 
     /**
-     * 사용자는 화면 전체를, 상담자는 카메라를 보낸다.
+     * 사용자는 카메라와 목소리를, 상담자는 목소리만 보낸다.
      *
-     * 상담자가 지도 위에 길을 그려 주려면 사용자가 실제로 보고 있는 화면이 필요하다.
-     * 카메라 영상만으로는 지도도 경로도 보이지 않아 그릴 대상이 없다.
-     *
-     * 화면 공유는 브라우저가 사용자 조작 직후에만 허용하는 경우가 있고, 모바일 브라우저는
-     * 아예 지원하지 않는다. 실패하면 카메라로 물러나되 화면에서 다시 시도할 수 있게 알린다.
+     * 상담자가 보는 지도는 이 영상에 담기지 않는다. MAP_SYNC 로 따로 건너간 값으로 상담자
+     * 화면이 직접 다시 그린다 — 그래서 여기서는 눈앞 상황만 보내면 된다.
      */
     const captureLocalStream = async () => {
       if (role === 'USER') {
-        // 상담 요청 화면에서 이미 잡아 둔 것이 있으면 그대로 쓴다. 화면 선택 창을 다시
-        // 열지 않으니 연결되자마자 영상이 나가고, 재연결 때도 다시 묻지 않는다.
+        /*
+          상담 요청 화면에서 무엇을 보낼지 이미 정하고 잡아 두었다. 그대로 쓴다.
+
+          여기서 새로 잡으면 사용자가 끄기로 한 카메라를 다시 열게 된다. 재연결 때마다
+          표시등이 깜빡이는 것도 이걸 빠뜨렸을 때 생긴다.
+        */
         const prepared = peekConsultMedia();
         if (prepared) {
           reusedPreparedStream = true;
-          /**
-           * 화면 공유가 이미 끝난 스트림일 수 있다.
-           *
-           * 사용자가 '공유 중지'를 눌렀거나 브라우저가 멈춘 경우다. 끝난 트랙은 되살릴 수
-           * 없어 그대로 보내면 상담자에게 검은 화면만 간다. 소리는 살아 있으니 스트림은
-           * 그대로 쓰고, 화면만 다시 공유하라고 알린다.
-           */
-          if (!isConsultScreenLive()) setScreenShareBlocked(true);
           return prepared;
         }
 
-        try {
-          return await captureConsultMedia();
-        } catch {
-          setScreenShareBlocked(true);
-        }
-
-        // 화면 공유가 막혔어도 카메라로라도 주변 상황은 보여 준다.
-        return navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        /*
+          동의 화면을 거치지 않고 이 화면에 닿은 경우다. 무엇을 보내도 좋다는 답을 받은 적이
+          없으므로 카메라는 열지 않고 목소리만 보낸다.
+        */
+        return captureConsultMicrophone();
       }
 
       /**
@@ -807,10 +872,17 @@ export function useConsultSignaling(
     socket.onopen = async () => {
       socketOpened = true;
       markConsultPhase('소켓 open, JOIN 전송');   // 추가
+      // 붙었으니 토큰은 멀쩡하다. 다음에 거절당하면 다시 처음부터 셈한다.
+      tokenRefreshAttemptsRef.current = 0;
       setStatus('signaling');
       // 접속에 성공했으므로 지난 시도의 실패 안내는 더 이상 사실이 아니다.
       setError(null);
       send('JOIN');
+      /**
+       * 자막은 소켓보다 먼저 시작한다. 그 사이에 드러난 고장은 보낼 소켓이 없어 그대로
+       * 묻혔다. 방에 들어오자마자 한 번 알린다(상대가 아직이면 아래 연결 시점에 또 보낸다).
+       */
+      resendCaptionStatus();
       try {
         /**
          * 매달려 있는 장치 요청에 협상을 볼모로 잡히지 않는다.
@@ -837,23 +909,15 @@ export function useConsultSignaling(
         localStream = stream;
         setMediaError(null);
         if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-        localStream.getTracks().forEach((track) => {
-          const sender = peer.addTrack(track, localStream!);
-          if (track.kind === 'video') videoSenderRef.current = sender;
-        });
-        // 사용자가 브라우저의 '공유 중지'를 누르면 트랙이 그대로 끝난다. 그때부터는 상담자에게
-        // 검은 화면만 가므로, 다시 공유할 수 있다고 알려야 한다.
-        localStream
-          .getVideoTracks()
-          .forEach((track) => track.addEventListener('ended', () => setScreenShareBlocked(true)));
+        localStream.getTracks().forEach((track) => peer.addTrack(track, localStream!));
       } catch (cause) {
         const timedOut = cause instanceof Error && cause.message === 'media_capture_timeout';
         markConsultPhase(timedOut ? '미디어 캡처 타임아웃(8초)' : '미디어 캡처 실패');   // 추가
         if (!disposed) {
           setMediaError(
             timedOut
-              ? '마이크·화면 장치가 응답하지 않아 소리 없이 연결합니다. 다른 앱이 마이크를 쓰고 있는지 확인해 주세요.'
-              : '화면 공유 또는 마이크를 사용할 수 없습니다.',
+              ? '카메라·마이크가 응답하지 않아 소리 없이 연결합니다. 다른 앱이 마이크를 쓰고 있는지 확인해 주세요.'
+              : '카메라 또는 마이크를 사용할 수 없습니다.',
           );
         }
         publishMediaFailure(
@@ -893,7 +957,7 @@ export function useConsultSignaling(
          * 직후에 그 재전송이 도착하는 일은 흔한데, 이를 새 상담자로 오해해 연결을 다시
          * 맺으면 되돌아올 수 없다 — 상담자는 이미 answer 를 적용해 두어 다시는 offer 를
          * 만들지 않으므로, 새로 만든 이쪽 연결은 영영 offer 를 기다린다. 결과는 끝내
-         * 뜨지 않는 화면 공유다. 같은 offer 면 답만 다시 보낸다.
+         * 뜨지 않는 사용자 영상이다. 같은 offer 면 답만 다시 보낸다.
          */
         if (answeredOfferSdp !== null && answeredOfferSdp === offer.sdp) {
           if (peer.localDescription) send('ANSWER', peer.localDescription.toJSON());
@@ -907,7 +971,17 @@ export function useConsultSignaling(
          * offer 를 다시 보내므로 새 연결이 그 다음 offer 를 받는다.
          */
         if (peer.remoteDescription) {
-          if (!disposed) setConnectionEpoch((epoch) => epoch + 1);
+          if (!disposed) {
+            /**
+             * 곧바로 다시 들어올 참이므로 자리를 비운다고 알리지 않는다.
+             *
+             * `LEAVE` 는 서버 방에서 나를 지운다. 그 사이에 상담자가 2초마다 보내는 offer 는
+             * 갈 곳을 잃고 버려진다. 상담자 화면이 `연결 상태: signaling` 에서 멈춰 있던
+             * 원인 중 하나가 이것이다.
+             */
+            rebuildingRef.current = true;
+            setConnectionEpoch((epoch) => epoch + 1);
+          }
           return;
         }
 
@@ -946,9 +1020,23 @@ export function useConsultSignaling(
         return;
       }
       if (message.type === 'CAPTION' && message.payload) {
-        const caption = message.payload as CaptionPayload;
+        const payload = message.payload as Partial<CaptionPayload & CaptionStatusPayload>;
+
+        /**
+         * 자막 본문이 아니라 "자막이 왜 안 오는지"를 알려 온 것이다. 지금 떠 있는 자막을
+         * 건드리지 않는다 — 마지막으로 들은 말까지 지울 이유는 없다.
+         */
+        if ('captionStatus' in payload) {
+          setRemoteCaptionError(payload.captionStatus ?? null);
+          return;
+        }
+
+        const caption = payload as CaptionPayload;
         if (typeof caption.text !== 'string') return;
+        // 한 마디라도 도착했다면 상대 자막은 살아 있다. 지난 경고는 더 이상 사실이 아니다.
+        setRemoteCaptionError(null);
         setRemoteCaption(caption.text);
+        setRemoteCaptionFinal(Boolean(caption.final));
         if (caption.final) {
           appendFinalCaption(remoteRole, caption.text);
           // 번역은 확정된 문장만 건다. 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라진다.
@@ -978,6 +1066,23 @@ export function useConsultSignaling(
           : '';
 
       if (!socketOpened) {
+        /**
+         * handshake 자체가 거절됐다. 대부분 토큰이 만료된 경우다.
+         *
+         * signaling 토큰은 10분이면 끝나는데 상담은 그보다 오래간다. 화면을 새로고침하지
+         * 않은 쪽은 처음 받은 토큰을 그대로 들고 있어서, 연결을 다시 맺어야 하는 순간
+         * — 상대가 새로고침했거나 ICE 가 끊긴 때 — 여기로 떨어져 두 번 다시 붙지 못했다.
+         * 상대 화면에는 `연결 상태: signaling` 만 남았다.
+         *
+         * 만료가 원인이라면 새 토큰으로 붙을 수 있다. 화면에 토큰을 다시 받아 오라고
+         * 알리고, 실패를 알리는 것은 그래도 안 될 때로 미룬다.
+         */
+        if (!disposed && tokenRefreshAttemptsRef.current < MAX_TOKEN_REFRESH_ATTEMPTS) {
+          tokenRefreshAttemptsRef.current += 1;
+          setTokenRejected(tokenRefreshAttemptsRef.current);
+          return;
+        }
+
         fail(`상담 연결 서버에 접속하지 못했습니다.${detail}`);
         return;
       }
@@ -1016,7 +1121,6 @@ export function useConsultSignaling(
       disposed = true;
       if (offerTimer) window.clearInterval(offerTimer);
       if (recoverTimer) window.clearTimeout(recoverTimer);
-      if (captionWatchdog) window.clearTimeout(captionWatchdog);
       stopRtcStatsMonitor?.();
       /**
        * 다시 맺는 중이면 자리를 비운다고 알리지 않는다.
@@ -1024,7 +1128,7 @@ export function useConsultSignaling(
        * `LEAVE` 는 서버 방에서 나를 지운다. 곧바로 다시 들어오는 참인데 지워 버리면, 그
        * 사이에 상대가 보낸 offer 가 갈 곳을 잃어 새 연결이 첫 offer 를 놓친다.
        */
-      if (!recovering) send('LEAVE');
+      if (!rebuildingRef.current) send('LEAVE');
       shouldRecognize = false;
       recognition?.stop();
       dataChannelRef.current = null;
@@ -1036,49 +1140,7 @@ export function useConsultSignaling(
       peer.close();
       if (!reusedPreparedStream) localStream?.getTracks().forEach((track) => track.stop());
     };
-  }, [accessToken, attachRemoteStream, connectionEpoch, role, roomId, rtcConfig]);
-
-  /**
-   * 화면 공유를 (다시) 시작한다.
-   *
-   * 브라우저가 화면 선택 창을 사용자 조작 직후에만 띄워 주는 경우가 있어, 연결 시점에
-   * 자동으로 잡지 못하면 화면의 버튼에서 이 함수를 부른다. 이미 협상이 끝난 연결이라
-   * 보내는 트랙만 갈아 끼워 다시 협상하지 않는다.
-   */
-  const shareScreen = useCallback(async () => {
-    if (!navigator.mediaDevices?.getDisplayMedia) return;
-
-    try {
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const [track] = display.getVideoTracks();
-      if (!track) return;
-
-      const sender = videoSenderRef.current;
-      /**
-       * 이미 협상이 끝난 연결이면 보내는 트랙만 갈아 끼운다. 보낼 자리조차 없다면
-       * (트랙 없이 협상이 끝난 경우) 바꿔 낄 곳이 없어 연결을 다시 맺는다.
-       */
-      if (sender) {
-        const previous = sender.track;
-        await sender.replaceTrack(track);
-        // 맡겨 둔 스트림은 여기서 정리한다. 옛 트랙은 아래에서 함께 멈춘다.
-        if (previous && previous !== track) previous.stop();
-      }
-      /**
-       * 맡겨 둔 스트림도 새 화면으로 바꿔 둔다.
-       *
-       * 이걸 빠뜨리면 다음에 연결이 다시 맺어질 때 이미 끝난 옛 트랙을 도로 집어 든다.
-       * 사용자는 방금 다시 공유했는데 상담자 화면은 계속 검은 채로 남는다.
-       */
-      replaceConsultScreenTrack(track);
-      if (localVideoRef.current) localVideoRef.current.srcObject = new MediaStream([track]);
-      track.addEventListener('ended', () => setScreenShareBlocked(true));
-      setScreenShareBlocked(false);
-      if (!sender) setConnectionEpoch((epoch) => epoch + 1);
-    } catch {
-      setScreenShareBlocked(true);
-    }
-  }, []);
+  }, [accessToken, attachRemoteStream, connectionEpoch, localSpeechLanguage, role, roomId, rtcConfig]);
 
   /**
    * 상담 이벤트를 상대에게 보낸다.
@@ -1115,7 +1177,7 @@ export function useConsultSignaling(
     /**
      * 화면에 보여 줄 실패 안내.
      *
-     * 연결이 끊겼다는 말보다 마이크·화면을 못 얻었다는 말이 먼저다. 상담자가 손쓸 수 있는
+     * 연결이 끊겼다는 말보다 카메라·마이크를 못 얻었다는 말이 먼저다. 상담자가 손쓸 수 있는
      * 쪽이고, 연결 문제도 대개 거기서 시작된다.
      */
     error: mediaError ?? error,
@@ -1129,6 +1191,10 @@ export function useConsultSignaling(
     remoteCaption,
     /** 상대가 말을 마친 마지막 문장. 번역에 쓴다. */
     remoteFinalCaption,
+    /** `remoteCaption` 이 말을 마친 문장인지. 거짓이면 상대가 지금 말하는 중이다. */
+    remoteCaptionFinal,
+    /** 상대 쪽 음성 인식이 멈춘 이유. null 이면 정상이다. */
+    remoteCaptionError,
     captionsSupported,
     /** 음성 인식이 멈춘 이유. null 이면 정상이다. */
     captionError,
@@ -1136,11 +1202,14 @@ export function useConsultSignaling(
     restartCaptions,
     /** 상담 종료 뒤 서버에 넘길 확정 자막. 말한 순서대로 쌓인다. */
     transcript,
-    /** 사용자가 화면 대신 카메라를 보내고 있는지. 참이면 화면에서 다시 공유를 권해야 한다. */
-    screenShareBlocked,
-    shareScreen,
     sendConsultEvent,
     /** 상담 이벤트 채널이 열렸는지. 상태 스냅숏을 다시 보내야 할 시점이다. */
     eventChannelOpen,
+    /**
+     * handshake 가 거절된 횟수. 오르면 화면이 signaling 토큰을 새로 받아 와야 한다.
+     *
+     * 0 이면 아직 거절당한 적이 없다.
+     */
+    tokenRejected,
   };
 }

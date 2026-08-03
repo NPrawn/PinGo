@@ -24,7 +24,6 @@ class AiLocalizationRequestMapperTest {
         LocalizationRequestMetadata request = new LocalizationRequestMetadata(
                 "usr_sess_01JABC",
                 1L,
-                "YS-2026-07-23.1",
                 126.8,
                 capturedAt,
                 new CameraMetadataRequest(
@@ -52,7 +51,6 @@ class AiLocalizationRequestMapperTest {
         LocalizationRequestMetadata request = new LocalizationRequestMetadata(
                 "usr_sess_01JABC",
                 1L,
-                "YS-2026-07-23.1",
                 null,
                 null,
                 null

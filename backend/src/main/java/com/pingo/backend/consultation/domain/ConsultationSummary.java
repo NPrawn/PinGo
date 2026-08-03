@@ -2,6 +2,7 @@ package com.pingo.backend.consultation.domain;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "consultation_summary")
@@ -49,7 +50,7 @@ public class ConsultationSummary {
         this.guidedExitFacilityId = guidedExitFacilityId;
         this.guidedExitLabel = guidedExitLabel;
         this.routeType = routeType;
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
     public static ConsultationSummary pending(String consultationId, String startLocationLabel,
@@ -62,7 +63,7 @@ public class ConsultationSummary {
     public void complete(String summaryText) {
         this.summaryText = summaryText;
         this.status = SummaryStatus.COMPLETED;
-        this.completedAt = LocalDateTime.now();
+        this.completedAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
     public void fail() {

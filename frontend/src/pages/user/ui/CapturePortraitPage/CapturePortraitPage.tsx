@@ -2,12 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
-import { useUserSessionStore } from '@/entities/user-session';
+import { queueCurrentNodeSync, useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
-import { getStationMaps, localize, updateUserSession } from '@/shared/api';
+import { localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
-import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
+import {
+  CameraFallbackNotice,
+  CameraFeed,
+  useCameraPreview,
+  vpsFrameDimensions,
+} from '@/widgets/camera-preview';
 import { RecordingBadge, ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './CapturePortraitPage.module.css';
@@ -93,10 +98,11 @@ export function CapturePortraitPage() {
         scheduleNextCapture();
         return;
       }
-      // 위치추정은 카메라가 실제로 본 화면과 내부 파라미터가 맞아야 한다. 화면 표시 크기가
-      // 아니라 원본 해상도를 그대로 보낸다.
-      const frameWidth = video.videoWidth;
-      const frameHeight = video.videoHeight;
+      // 위치추정은 카메라가 실제로 본 화면과 내부 파라미터가 맞아야 한다. 화면을 자르지
+      // 않고 긴 변만 768px로 축소하며, 메타데이터도 전송 프레임 크기에 맞춘다.
+      const frame = vpsFrameDimensions(video.videoWidth, video.videoHeight);
+      const frameWidth = frame.width;
+      const frameHeight = frame.height;
 
       captureInFlight.current = true;
       let localized = false;
@@ -104,14 +110,9 @@ export function CapturePortraitPage() {
         const blob = await camera.capture();
         if (!blob) throw new Error('Camera frame encoding failed');
 
-        const maps = await getStationMaps(stationId);
-        const mapVersion = maps.find((map) => map.version)?.version;
-        if (!mapVersion) throw new Error('VPS map is not ready');
-
         const result = await localize(new File([blob], 'capture.jpg', { type: 'image/jpeg' }), {
           userSessionId,
           stationId,
-          mapVersion,
           capturedAt: new Date().toISOString(),
           camera: {
             model: 'PINHOLE',
@@ -124,13 +125,15 @@ export function CapturePortraitPage() {
         // 좌표 정합이 없는 층(역삼역 B1)은 status가 map_not_ready로 내려온다. (S15P11A206-128)
         const position = result.position;
 
-        if (disposed || timedOutRef.current) return;
+        if (disposed) return;
         if (
           result.resultStatus === 'success' &&
           result.startNodeId != null &&
           position?.floorId != null
         ) {
           localized = true;
+          timedOutRef.current = false;
+          setTimeoutOpen(false);
           setCurrentLocation({
             nodeId: result.startNodeId,
             floorId: position.floorId,
@@ -138,7 +141,7 @@ export function CapturePortraitPage() {
             mapX: position.mapX,
             mapY: position.mapY,
           });
-          const floorCode = maps.find((map) => map.floorId === position.floorId)?.floorCode;
+          const floorCode = position.floorCode;
           if (
             floorCode === '1F' ||
             floorCode === 'B1' ||
@@ -147,7 +150,7 @@ export function CapturePortraitPage() {
           ) {
             setFloor(floorCode);
           }
-          await updateUserSession(userSessionId, { currentNodeId: result.startNodeId });
+          queueCurrentNodeSync(result.startNodeId);
           navigate(USER_ROUTES.LOCATE_SUCCESS, { replace: true });
           return;
         }

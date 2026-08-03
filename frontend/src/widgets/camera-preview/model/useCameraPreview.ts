@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { RefObject } from 'react';
 import { acquireCamera, releaseCamera, useCameraStore, type CameraStatus } from './cameraStream';
 import { captureFrame } from '../lib/captureFrame';
@@ -33,5 +33,14 @@ export function useCameraPreview(): CameraPreview {
 
   const capture = useCallback(() => captureFrame(videoRef.current), []);
 
-  return { videoRef, stream, status, isLive: status === 'live' && stream !== null, capture };
+  return useMemo(
+    () => ({
+      videoRef,
+      stream,
+      status,
+      isLive: status === 'live' && stream !== null,
+      capture,
+    }),
+    [capture, status, stream],
+  );
 }
