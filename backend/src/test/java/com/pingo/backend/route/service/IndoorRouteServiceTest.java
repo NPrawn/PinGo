@@ -11,9 +11,12 @@ import com.pingo.backend.route.dto.request.RouteOptionsRequest;
 import com.pingo.backend.route.dto.response.RouteOptionResponse;
 import com.pingo.backend.route.dto.response.RoutePathNode;
 import com.pingo.backend.route.dto.response.RouteResponse;
+import com.pingo.backend.route.dto.response.RouteStep;
 import com.pingo.backend.route.repository.RouteEdgeRepository;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.station.domain.Station;
+import com.pingo.backend.station.domain.StationFloor;
+import com.pingo.backend.station.repository.StationFloorRepository;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.Language;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,12 +49,20 @@ class IndoorRouteServiceTest {
     @Mock
     private StationRepository stationRepository;
 
+    @Mock
+    private StationFloorRepository stationFloorRepository;
+
     private IndoorRouteService indoorRouteService;
 
     @BeforeEach
     void setUp() {
         indoorRouteService = new IndoorRouteService(
-                routeNodeRepository, routeEdgeRepository, stationRepository, new RouteFinder());
+                routeNodeRepository,
+                routeEdgeRepository,
+                stationRepository,
+                stationFloorRepository,
+                new RouteFinder(),
+                new RouteInstructionWriter());
     }
 
     @Test
@@ -65,7 +77,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, null, null));
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 4L, null, null));
 
         assertThat(options)
                 .extracting(RouteOptionResponse::routeType, RouteOptionResponse::available)
@@ -91,7 +103,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, null, null));
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 4L, null, null));
 
         // 휠체어·유모차 기준으로는 에스컬레이터도 계단과 같은 장벽이다.
         assertThat(options.get(0).hasStairsOrEscalator()).isTrue();
@@ -108,7 +120,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 3L, null, null));
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 3L, null, null));
 
         assertThat(options).allSatisfy(option ->
                 assertThat(option.hasStairsOrEscalator()).isFalse());
@@ -122,7 +134,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, null, null));
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 2L, null, null));
 
         assertThat(options.get(1).available()).isFalse();
         assertThat(options.get(1).hasStairsOrEscalator()).isFalse();
@@ -136,9 +148,9 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
 
         RouteOptionResponse korean = indoorRouteService
-                .getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, null, Language.KO)).get(1);
+                .getRouteOptions(optionsRequest(1L, 1L, 2L, null, Language.KO)).get(1);
         RouteOptionResponse english = indoorRouteService
-                .getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, null, Language.EN)).get(1);
+                .getRouteOptions(optionsRequest(1L, 1L, 2L, null, Language.EN)).get(1);
 
         assertThat(korean.unavailableReason()).isEqualTo("NO_ACCESSIBLE_ROUTE");
         assertThat(korean.unavailableMessage())
@@ -157,7 +169,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
 
         RouteOptionResponse option = indoorRouteService
-                .getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, null, null)).get(1);
+                .getRouteOptions(optionsRequest(1L, 1L, 2L, null, null)).get(1);
 
         assertThat(option.unavailableMessage())
                 .isEqualTo(RouteUnavailableReason.NO_ACCESSIBLE_ROUTE.messageFor(Language.DEFAULT));
@@ -171,7 +183,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY));
 
         RouteOptionResponse option = indoorRouteService
-                .getRouteOptions(new RouteOptionsRequest(1L, 1L, 2L, null, Language.KO)).get(0);
+                .getRouteOptions(optionsRequest(1L, 1L, 2L, null, Language.KO)).get(0);
 
         assertThat(option.available()).isTrue();
         assertThat(option.unavailableMessage()).isNull();
@@ -185,7 +197,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
 
         RouteResponse route = indoorRouteService
-                .createRoute(new RouteCreateRequest(1L, 1L, 2L, null, "elevator_only", Language.KO));
+                .createRoute(createRequest(1L, 1L, 2L, null, "elevator_only", Language.KO));
 
         assertThat(route.available()).isFalse();
         assertThat(route.unavailableMessage())
@@ -204,7 +216,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR));
 
         RouteResponse response =
-                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 4L, null, "elevator_only", null));
+                indoorRouteService.createRoute(createRequest(1L, 1L, 4L, null, "elevator_only", null));
 
         assertThat(response.routeType()).isEqualTo("elevator_only");
         assertThat(response.available()).isTrue();
@@ -232,7 +244,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR, false));
 
         RouteResponse response =
-                indoorRouteService.createRoute(new RouteCreateRequest(
+                indoorRouteService.createRoute(createRequest(
                         1L, 1L, 4L, List.of(3L), "fastest", null));
 
         assertThat(response.available()).isTrue();
@@ -259,7 +271,7 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 10, RouteMoveType.WALKWAY));
 
         List<RouteOptionResponse> options =
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, List.of(3L), null));
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 4L, List.of(3L), null));
 
         assertThat(options.get(0).available()).isTrue();
         assertThat(options.get(0).totalDistanceM()).isEqualByComparingTo(BigDecimal.valueOf(30));
@@ -276,7 +288,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
 
         RouteResponse response =
-                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, null, "elevator_only", null));
+                indoorRouteService.createRoute(createRequest(1L, 1L, 2L, null, "elevator_only", null));
 
         assertThat(response.available()).isFalse();
         assertThat(response.unavailableReason()).isEqualTo("NO_ACCESSIBLE_ROUTE");
@@ -292,7 +304,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L, edge(1L, 1L, 5L, 10, RouteMoveType.WALKWAY)); // 목적지 2와 단절
 
         RouteResponse response =
-                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, null, "fastest", null));
+                indoorRouteService.createRoute(createRequest(1L, 1L, 2L, null, "fastest", null));
 
         assertThat(response.available()).isFalse();
         assertThat(response.unavailableReason()).isEqualTo("NO_ROUTE");
@@ -304,7 +316,7 @@ class IndoorRouteServiceTest {
     @DisplayName("지원하지 않는 routeType이면 예외가 발생한다")
     void createRouteRejectsUnsupportedRouteType() {
         assertThatThrownBy(() ->
-                indoorRouteService.createRoute(new RouteCreateRequest(1L, 1L, 2L, null, "flying", null)))
+                indoorRouteService.createRoute(createRequest(1L, 1L, 2L, null, "flying", null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNSUPPORTED_ROUTE_TYPE));
     }
@@ -315,7 +327,7 @@ class IndoorRouteServiceTest {
         when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, null, null)))
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 4L, null, null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.STATION_NOT_FOUND));
     }
@@ -327,7 +339,7 @@ class IndoorRouteServiceTest {
         givenNodes(1L, node(2L), node(4L)); // 출발 노드 1 없음
 
         assertThatThrownBy(() ->
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, null, null)))
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 4L, null, null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ROUTE_NODE_NOT_FOUND));
     }
@@ -339,9 +351,134 @@ class IndoorRouteServiceTest {
         givenNodes(1L, node(1L), node(4L)); // 경유지 노드 3 없음
 
         assertThatThrownBy(() ->
-                indoorRouteService.getRouteOptions(new RouteOptionsRequest(1L, 1L, 4L, List.of(3L), null)))
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 4L, List.of(3L), null)))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ROUTE_NODE_NOT_FOUND));
+    }
+
+    /**
+     * 목적지 반대쪽 노드가 더 가깝더라도 총 거리가 짧은 쪽을 진입점으로 삼는다.
+     *
+     * <p>역삼역 B3 에서 3번 출구로 갈 때 실제로 겪은 모양을 줄여 옮겼다. 사용자는 노드 2와 3
+     * 사이에 있고 노드 2가 조금 더 가깝지만, 목적지(4)로 가려면 노드 3을 거쳐야 한다.
+     *
+     * <pre>
+     *   2(0,0) --- 사용자(6,0) --- 3(10,0) --- 4(30,0)
+     *   가까운 쪽 2로 가면  6 + 10 + 20 = 36
+     *   3으로 가면          4 +      20 = 24
+     * </pre>
+     */
+    @Test
+    @DisplayName("현재 좌표를 주면 목적지까지 총 거리가 짧은 노드를 진입점으로 고른다")
+    void choosesEntryNodeByTotalDistance() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 10, 0), nodeAt(4L, 30, 0));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 20, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 4L, null, "fastest", Language.KO,
+                new BigDecimal("6.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(3L);
+        assertThat(response.totalDistanceM()).isEqualByComparingTo("20");
+    }
+
+    @Test
+    @DisplayName("현재 좌표가 없으면 요청에 온 진입 노드를 그대로 쓴다")
+    void keepsRequestedEntryNodeWithoutPosition() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 10, 0), nodeAt(4L, 30, 0));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 20, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 2L, 4L, null, "fastest", Language.KO));
+
+        assertThat(response.startNodeId()).isEqualTo(2L);
+        assertThat(response.totalDistanceM()).isEqualByComparingTo("30");
+    }
+
+    /**
+     * {@code elevator_only} 는 계단 간선을 쓰지 않으므로 그 간선으로만 목적지에 닿는 노드는
+     * 진입점 후보가 될 수 없다. 후보에서 빠지지 않으면 도달 불가한 노드에서 출발하게 된다.
+     */
+    @Test
+    @DisplayName("경로 유형에서 목적지에 닿지 못하는 노드는 진입점 후보에서 빠진다")
+    void skipsUnreachableEntryNodeForRouteType() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 10, 0), nodeAt(4L, 30, 0), nodeAt(5L, 7, 0));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 20, RouteMoveType.WALKWAY),
+                // 5는 사용자와 가장 가깝지만 계단으로만 목적지에 닿는다
+                edge(1L, 5L, 4L, 1, RouteMoveType.STAIR));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 4L, null, "elevator_only", Language.KO,
+                new BigDecimal("6.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("상세 경로 안내에 회전과 층 이동 방향이 실린다")
+    void writesTurnAndFloorDirection() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 10, 0), nodeAt(3L, 10, 12), nodeAtFloor(4L, 2L, 10, 12));
+        givenEdges(1L,
+                edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 3L, 12, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 5, RouteMoveType.STAIR));
+        givenFloors(1L, new long[] {1L, 2L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 4L, null, "fastest", Language.KO));
+
+        assertThat(response.steps())
+                .extracting(RouteStep::instruction)
+                .containsExactly(
+                        "10m 직진하세요.",
+                        "오른쪽으로 돌아 12m 이동하세요.",
+                        "계단으로 한 층 내려가세요.");
+    }
+
+    @Test
+    @DisplayName("언어가 한국어가 아니면 안내가 영어로 나온다")
+    void writesEnglishInstructions() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 10, 0));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 2L, null, "fastest", Language.EN));
+
+        assertThat(response.steps())
+                .extracting(RouteStep::instruction)
+                .containsExactly("Go straight for 10m.");
+    }
+
+    /** 현재 좌표 없이 보내는 요청. 좌표는 선택이라 대부분의 시나리오가 이 형태다. */
+    private RouteOptionsRequest optionsRequest(
+            Long stationId, Long startNodeId, Long targetNodeId, List<Long> waypointNodeIds, Language language) {
+        return new RouteOptionsRequest(stationId, startNodeId, targetNodeId, waypointNodeIds, language, null, null);
+    }
+
+    private RouteCreateRequest createRequest(
+            Long stationId,
+            Long startNodeId,
+            Long targetNodeId,
+            List<Long> waypointNodeIds,
+            String routeType,
+            Language language) {
+        return new RouteCreateRequest(
+                stationId, startNodeId, targetNodeId, waypointNodeIds, routeType, language, null, null);
     }
 
     private void givenActiveStation(long stationId) {
@@ -367,6 +504,30 @@ class IndoorRouteServiceTest {
                 new BigDecimal("10.0"), new BigDecimal("20.0"), null, false);
         ReflectionTestUtils.setField(node, "id", id);
         return node;
+    }
+
+    private RouteNode nodeAt(long id, double x, double y) {
+        return nodeAtFloor(id, 1L, x, y);
+    }
+
+    private RouteNode nodeAtFloor(long id, long floorId, double x, double y) {
+        RouteNode node = RouteNode.create(1L, floorId, "normal", "노드" + id,
+                BigDecimal.valueOf(x), BigDecimal.valueOf(y), null, false);
+        ReflectionTestUtils.setField(node, "id", id);
+        return node;
+    }
+
+    /** 층 순서는 위층이 작다. 넘긴 순서대로 1부터 매긴다. */
+    private void givenFloors(long stationId, long[] floorIds) {
+        List<StationFloor> floors = new ArrayList<>();
+        long[] ids = floorIds;
+        for (int i = 0; i < ids.length; i++) {
+            StationFloor floor = StationFloor.create(
+                    station(stationId), "B" + (i + 1), "지하" + (i + 1) + "층", i + 1, null);
+            ReflectionTestUtils.setField(floor, "id", ids[i]);
+            floors.add(floor);
+        }
+        when(stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(stationId)).thenReturn(floors);
     }
 
     private RouteEdge edge(long stationId, long fromNodeId, long toNodeId, long distanceM, RouteMoveType moveType) {

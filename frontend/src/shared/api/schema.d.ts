@@ -1076,9 +1076,20 @@ export interface components {
       startNodeId: number;
       /** Format: int64 */
       targetNodeId: number;
+      /** 경유 노드. 최대 10개(백엔드 `@Size(max = 10)`). 생략하면 빈 목록이다. */
+      waypointNodeIds?: number[];
       routeType: string;
       /** @enum {string} */
       language?: 'ko' | 'en' | 'ja' | 'zh';
+      /**
+       * 사용자의 실제 캐노니컬 좌표. 선택이며 **짝으로 있어야** 쓰인다.
+       *
+       * 있으면 서버가 진입 노드를 목적지까지의 총 거리가 가장 짧은 것으로 다시 고른다.
+       * 옵션 조회(`RouteOptionsRequest`)와 같은 값을 보내야 옵션에서 본 거리와 상세 경로가
+       * 일치한다. (S15P11A206-337)
+       */
+      currentMapX?: number;
+      currentMapY?: number;
     };
     ApiResponseRouteResponse: {
       success?: boolean;
@@ -1123,6 +1134,28 @@ export interface components {
       estimatedTimeSec?: number;
       moveType?: string;
       instruction?: string;
+      /**
+       * 이전 구간에서 이 구간으로 꺾이는 방향. (S15P11A206-337)
+       *
+       * **첫 단계이거나 구간이 너무 짧아 판단할 수 없으면 없다** — `straight`와 구분된다.
+       * 화면이 지금 쓰는 것은 `instruction` 문장이며, 이 값은 아이콘·다국어에 쓸 여지로 둔다.
+       *
+       * 카메라 화면의 큰 화살표는 이 값으로 대신할 수 없다. 저것은 **사용자가 지금 보고 있는
+       * 쪽을 기준으로** 몇 도 벌어졌는지이고(`routeBearingOf`), 이 값은 앞 구간을 기준으로 한
+       * 네 방향이다.
+       *
+       * @enum {string}
+       */
+      turn?: 'straight' | 'left' | 'right' | 'around';
+      /**
+       * 오르내리는 층수. **위로 가면 양수.** 층 이동이 아니거나 층을 알 수 없으면 없다.
+       *
+       * 같은 층 안의 계단이면 0이다 — 역삼역 B1 개찰구 위 중간층(`floorId`는 B1, `mapZ`가 7.5)이
+       * 여기 해당한다.
+       *
+       * Format: int32
+       */
+      floorDelta?: number;
     };
     RouteOptionsRequest: {
       /** Format: int64 */
@@ -1133,6 +1166,9 @@ export interface components {
       targetNodeId: number;
       /** @enum {string} */
       language?: 'ko' | 'en' | 'ja' | 'zh';
+      /** 사용자의 실제 캐노니컬 좌표. 선택이며 짝으로 있어야 쓰인다. (S15P11A206-337) */
+      currentMapX?: number;
+      currentMapY?: number;
     };
     ApiResponseListRouteOptionResponse: {
       success?: boolean;

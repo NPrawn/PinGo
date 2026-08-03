@@ -194,6 +194,15 @@ describe('user routes', () => {
       currentFloorId: 1,
       currentMapX: -30,
       currentMapY: 10,
+      /*
+        스토어에 남는 값들을 테스트마다 되돌린다.
+
+        `stepsOpen`과 진행도는 화면을 다시 열어도 남는 것이 정상이다(같은 경로를 이어서 안내한다).
+        그래서 앞 테스트가 상세 경로를 펼치거나 걸어간 상태가 뒤 테스트로 넘어간다.
+      */
+      stepsOpen: false,
+      progressKey: null,
+      travelledM: 0,
     });
   });
 
@@ -389,7 +398,7 @@ describe('user routes', () => {
     expect(screen.queryByRole('heading', { name: '목적지 선택' })).toBeNull();
 
     fireEvent.click(await screen.findByRole('button', { name: /역삼역.*실내 안내 가능/ }));
-    useNavigationStore.setState({ waypoints: ['화장실'] });
+    useNavigationStore.setState({ waypoints: [{ nodeId: 130, nameKo: '화장실' }] });
 
     expect(screen.getAllByText('출발지')).not.toHaveLength(0);
     expect(screen.getByText('역삼역')).toBeInTheDocument();
@@ -473,6 +482,288 @@ describe('user routes', () => {
       'true',
     );
     expect(within(floorGroup).getByRole('button', { name: 'B2' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  /**
+   * 경로선. (S15P11A206-83 / FR-U-010)
+   *
+   * 예전에는 화면이 `pathNodes`를 넘기지 않아 위젯이 목업(B3 승강장 → 3번출구 엘리베이터)으로
+   * 채웠다. 사용자가 어디로 가든 늘 같은 선이 그려져 있었고, 그것이 실제 안내 경로처럼 보였다.
+   *
+   * 응답의 경로는 B3에 두 노드, B2에 한 노드를 지난다. 한 점만으로는 선이 되지 않으므로 B2에는
+   * 그려지지 않는 것이 맞다.
+   */
+  it('안내 경로는 응답의 노드를 따라 그린다', async () => {
+    useNavigationStore.setState({ currentNodeId: 205, targetNodeId: 325 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B3' }));
+
+    expect(await screen.findByRole('img', { name: '이동 경로' })).toBeInTheDocument();
+  });
+
+  /** 경로를 모르면 아무것도 그리지 않는다. 목업으로 대신하면 가지 않을 길을 안내하게 된다. */
+  it('경로를 조회할 수 없으면 경로선을 그리지 않는다', async () => {
+    useNavigationStore.setState({ currentNodeId: null, targetNodeId: null });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B3' }));
+
+    await screen.findByRole('group', { name: '시설 필터' });
+    expect(screen.queryByRole('img', { name: '이동 경로' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * 경유지. (S15P11A206-83 / FR-U-010)
+   *
+   * 예전에는 이름만 저장하고 요청에도 조회 키에도 싣지 않았다. 경유지를 추가하면 헤더에 칩이
+   * 붙고 안내 카드가 "경로 업데이트 완료"로 바뀌었지만, 서버는 그 사실을 몰랐고 지도의 선은
+   * 하나도 바뀌지 않았다.
+   */
+  it('경유지를 추가하면 그 노드를 실어 경로를 다시 계산한다', async () => {
+    const routeRequests: { waypointNodeIds?: number[] }[] = [];
+    server.use(
+      http.post('*/api/routes/indoor', async ({ request }) => {
+        routeRequests.push((await request.json()) as { waypointNodeIds?: number[] });
+        return HttpResponse.json({ success: true, data: {}, message: null });
+      }),
+    );
+
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    // 첫 조회에는 경유지가 없다.
+    await waitFor(() => expect(routeRequests).not.toHaveLength(0));
+    expect(routeRequests[0]?.waypointNodeIds).toEqual([]);
+
+    fireEvent.click(await screen.findByRole('button', { name: '승차권 충전' }));
+    fireEvent.click(await screen.findByRole('button', { name: '경유지로 추가' }));
+
+    // 시설의 linkedNodeId 가 그대로 실린다. 이름으로 되찾지 않는다.
+    await waitFor(() => expect(routeRequests.at(-1)?.waypointNodeIds).toEqual([121]));
+    expect(useNavigationStore.getState().waypoints).toEqual([
+      { nodeId: 121, nameKo: '승차권 충전' },
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: '승차권 충전 경유지 삭제' }));
+
+    await waitFor(() => expect(routeRequests.at(-1)?.waypointNodeIds).toEqual([]));
+  });
+
+  /**
+   * 서버가 진입 노드를 멀리 고른 경우. (S15P11A206-83 / S15P11A206-337)
+   *
+   * 좌표를 보내면 서버가 목적지까지의 총 거리로 진입 노드를 다시 고르는데, 그 결과가 계단·엘리베이터
+   * 노드일 수 있다. 그러면 사용자가 서 있는 층에 경로 노드가 **그 하나만** 남고, 그것이 수십 m
+   * 떨어져 있다. 역삼역 B3 복도(노드 209)에서 2번 출구로 갈 때 계단 2가 56m 떨어진 채 뽑힌다.
+   *
+   * 예전에는 그 층 지도가 통째로 비었다. 선으로 그릴 구간이 없고(점 하나), 이탈로 판정되어 이어
+   * 주는 선까지 꺼졌다 — 사용자가 서 있는 층인데 아무 안내도 없었다.
+   */
+  it('진입 노드가 멀어도 내 층에 경로를 그린다', async () => {
+    server.use(
+      http.post('*/api/routes/indoor', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            routeType: 'fastest',
+            available: true,
+            startNodeId: 237,
+            targetNodeId: 341,
+            totalDistanceM: 120,
+            steps: [],
+            pathNodes: [
+              // B3에는 계단 2 하나뿐이다. 사용자(노드 209)에게서 56m 떨어져 있다.
+              { nodeId: 237, floorId: 2, mapX: 105.207, mapY: 27.57 },
+              { nodeId: 137, floorId: 1, mapX: 105.207, mapY: 27.57 },
+              { nodeId: 112, floorId: 1, mapX: 106.264, mapY: 22.653 },
+            ],
+          },
+          message: null,
+        }),
+      ),
+    );
+
+    // 실제 시드값이다. B3 복도 노드 209.
+    useNavigationStore.setState({
+      currentNodeId: 209,
+      currentFloorId: 2,
+      currentMapX: 49.121,
+      currentMapY: 24.331,
+    });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B3' }));
+
+    // 이어 주는 선 하나뿐이어도 그 층의 안내다.
+    expect(await screen.findByRole('img', { name: '이동 경로' })).toBeInTheDocument();
+  });
+
+  /**
+   * 사용자 좌표. (S15P11A206-83 / S15P11A206-337)
+   *
+   * 좌표를 보내면 서버가 진입 노드를 목적지 기준으로 다시 고르는데, 그 기준이 **직선 거리**라
+   * 선로를 모른다. 역삼역 B3는 선로 양쪽에 승강장이 있어(y≈24와 y≈2) 반대편 계단이 직선으로 더
+   * 가깝게 나오고, 실제로 관통하는 경로가 나왔다 — 같은 승강장 계단 5가 27.7m인데 건너편 계단 7
+   * (35.6m)이 뽑혔다.
+   *
+   * 배선은 남겨 두고 `SEND_CURRENT_POSITION`만 껐다. 백엔드가 그래프 거리로 고르게 되면 그 값을
+   * 되돌리고 이 테스트를 "좌표를 함께 보낸다"로 바꾼다.
+   */
+  it('지금은 좌표를 보내지 않는다', async () => {
+    const routeRequests: Record<string, unknown>[] = [];
+    server.use(
+      http.post('*/api/routes/indoor', async ({ request }) => {
+        routeRequests.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ success: true, data: {}, message: null });
+      }),
+    );
+
+    useNavigationStore.setState({ currentMapX: 49.121, currentMapY: 24.331 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    await waitFor(() => expect(routeRequests).not.toHaveLength(0));
+    expect(routeRequests[0]).not.toHaveProperty('currentMapX');
+    expect(routeRequests[0]).not.toHaveProperty('currentMapY');
+    // 좌표가 없으면 서버가 요청에 온 진입 노드를 그대로 쓴다. 내가 서 있는 노드에서 시작한다.
+    expect(routeRequests[0]).toMatchObject({ startNodeId: 205 });
+  });
+
+  /**
+   * 시설 필터. (S15P11A206-83)
+   *
+   * 진입하면 그 층 시설을 모두 보여 주고, 칩은 그 층에 실제로 있는 유형만 둔다. 눌러서 아무것도
+   * 나오지 않는 것을 확인해야만 없다는 걸 알 수 있는 칩은 두지 않는다.
+   */
+  it('시설 칩은 표시 층에 있는 유형만 두고 기본은 전부 보여준다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const filterGroup = await screen.findByRole('group', { name: '시설 필터' });
+    const floorGroup = screen.getByRole('group', { name: '층 선택' });
+
+    // B2에는 승차권 충전기와 엘리베이터가 있다. 유형을 고르기 전에도 지도에 떠 있어야 한다.
+    expect(await screen.findByRole('button', { name: '승차권 충전' })).toBeInTheDocument();
+    expect(
+      within(filterGroup).getByRole('button', { name: '승차권 충전 필터 적용' }),
+    ).toBeInTheDocument();
+
+    // B1에는 출구뿐이다. 승차권 충전 칩이 남아 있으면 안 된다.
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B1' }));
+
+    await waitFor(() =>
+      expect(
+        within(filterGroup).queryByRole('button', { name: '승차권 충전 필터 적용' }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(within(filterGroup).getByRole('button', { name: '출구 필터 적용' })).toBeInTheDocument();
+  });
+
+  /**
+   * 전부 감추기.
+   *
+   * 유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 켠 뒤 되돌릴 수 없으면 누르기
+   * 망설이게 되므로, 같은 버튼이 다시 보이기까지 맡는다.
+   */
+  it('시설 아이콘을 한 번에 감추고 다시 보일 수 있다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    expect(await screen.findByRole('button', { name: '승차권 충전' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '시설 아이콘 모두 숨기기' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: '승차권 충전' })).not.toBeInTheDocument(),
+    );
+    // 안내에 필요한 표시는 남는다. 시설만 감추는 버튼이다.
+    expect(screen.getByRole('img', { name: '현재 위치' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '시설 아이콘 다시 보기' }));
+
+    expect(await screen.findByRole('button', { name: '승차권 충전' })).toBeInTheDocument();
+  });
+
+  /**
+   * 진행도에 따른 안내. (S15P11A206-83)
+   *
+   * 예전에는 안내 카드가 `steps[0]`에 고정돼 있어 걸어도 첫 구간 문구가 그대로였고, 상세 경로도
+   * 모든 단계를 똑같이 그려 지금 어디인지 알 수 없었다.
+   *
+   * 목업 경로는 B3 승강장(205) → 엘리베이터(202) → B2(102)다. 첫 구간 끝쪽에 서면 안내가 층
+   * 전환 구간으로 넘어가야 한다.
+   */
+  it('걸어간 만큼 안내 카드와 상세 경로가 다음 구간으로 넘어간다', async () => {
+    useNavigationStore.setState({
+      // 첫 구간(205 → 202)의 끝에 가까운 지점. B3이다.
+      currentFloorId: 2,
+      currentMapX: -2,
+      currentMapY: 27,
+    });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    // 첫 구간이 아니라 층 전환 구간을 안내한다.
+    expect(await screen.findByText('엘리베이터를 타고 B2로 이동하세요')).toBeInTheDocument();
+    expect(screen.queryByText('개찰구 방향으로 25m 직진하세요')).toBeNull();
+
+    /*
+      카메라 화면의 화살표와 문구는 그리지 않는다. 층을 오르내리는 구간이라 수평 방향에 뜻이
+      없고, XR 추적 없이 들어왔으므로 방향각도 없다. 예전에는 이 자리에 `정면 통로를 따라
+      직진하세요`가 하드코딩돼 있어, 엘리베이터를 타야 할 때도 정면으로 걸으라고 말했다.
+    */
+    expect(screen.queryByText('정면 통로를 따라 직진하세요')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /상세 경로/ }));
+
+    // 상세 경로에서는 지금 구간만 표시가 붙는다. 지나온 구간은 지우지 않고 남긴다.
+    const passedStep = await screen.findByText('개찰구 방향으로 25m 직진하세요');
+    expect(passedStep.closest('[aria-current="step"]')).toBeNull();
+    expect(
+      screen.getAllByText('엘리베이터를 타고 B2로 이동하세요').at(-1)?.closest('[aria-current]'),
+    ).not.toBeNull();
+  });
+
+  /**
+   * `내 위치` 버튼과 층. (S15P11A206-83)
+   *
+   * 예전에는 시점만 되돌렸다. 층은 화면이 들고 있어서 다른 층을 보던 사용자는 그 층 지도가
+   * 자기 좌표로 옮겨진 것만 보고, 마커는 다른 층이라 그려지지 않았다 — 내 위치로 가는 버튼을
+   * 눌렀는데 내 위치가 화면에 없었다.
+   *
+   * 지도를 밀지 않고 층만 넘긴 경우에는 추종이 켜져 있어 버튼 자체가 나타나지도 않았다.
+   */
+  it('다른 층에서 내 위치 버튼을 누르면 내가 있는 층으로 돌아온다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B1' }));
+    expect(within(floorGroup).getByRole('button', { name: 'B1' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // 지도를 밀지 않았어도 다른 층이면 돌아갈 곳을 제시해야 한다.
+    fireEvent.click(await screen.findByRole('button', { name: '내 위치' }));
+
+    // 내 층은 B2다(`currentFloorId: 1`). 시점만이 아니라 층까지 돌아와야 마커가 보인다.
+    expect(within(floorGroup).getByRole('button', { name: 'B2' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(floorGroup).getByRole('button', { name: 'B1' })).toHaveAttribute(
       'aria-pressed',
       'false',
     );
@@ -717,7 +1008,10 @@ describe('user routes', () => {
       route: 'elevator_only',
       // 경로 옵션 화면에서 엘리베이터 우선을 고르면 그 유형의 출구가 여기 남는다.
       targetExitLabel: '2번 출입구',
-      waypoints: ['화장실', '승차권 충전'],
+      waypoints: [
+        { nodeId: 130, nameKo: '화장실' },
+        { nodeId: 121, nameKo: '승차권 충전' },
+      ],
     });
     await renderSection('/user/navigation');
 
@@ -741,9 +1035,11 @@ describe('user routes', () => {
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
 
     /**
-     * 시설 마커는 유형 필터를 켠 뒤에 나타난다. 기본으로 전부 그리지 않는 이유는 밀도다 —
-     * 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가 시설 36개를 모두 그리면 마커가
-     * 서로를 덮는다(FR-U-006 점진적 공개). 좌표는 시설 조회 응답에서 온다.
+     * 유형을 켜면 그 유형만 남는다. 좌표는 시설 조회 응답에서 온다.
+     *
+     * 진입 시에는 그 층 시설이 모두 떠 있고(S15P11A206-83), 하나를 고르려면 유형을 켜야 한다 —
+     * 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가 36개를 모두 그리면 마커가 서로를
+     * 덮기 때문이다.
      */
     fireEvent.click(screen.getByRole('button', { name: '승차권 충전 필터 적용' }));
     fireEvent.click(await screen.findByRole('button', { name: '승차권 충전' }));
@@ -764,14 +1060,20 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: '엘리베이터' }));
     fireEvent.click(await screen.findByRole('button', { name: '새 목적지로 설정' }));
     expect(useNavigationStore.getState().destination).toBe('엘리베이터');
-    expect(useNavigationStore.getState().waypoints).toEqual(['화장실', '승차권 충전']);
+    expect(useNavigationStore.getState().waypoints.map((waypoint) => waypoint.nameKo)).toEqual([
+      '화장실',
+      '승차권 충전',
+    ]);
     expect(within(routeHeader).getByText('엘리베이터')).toBeInTheDocument();
     expect(within(routeHeader).queryByText('2번 출입구')).toBeNull();
     expect(within(routeHeader).getByText('화장실')).toBeInTheDocument();
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '목적지를 2번 출입구로 되돌리기' }));
     expect(useNavigationStore.getState().destination).toBe('GS25 역삼역점');
-    expect(useNavigationStore.getState().waypoints).toEqual(['화장실', '승차권 충전']);
+    expect(useNavigationStore.getState().waypoints.map((waypoint) => waypoint.nameKo)).toEqual([
+      '화장실',
+      '승차권 충전',
+    ]);
     expect(within(routeHeader).getByText('2번 출입구')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '목적지를 2번 출입구로 되돌리기' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '화장실 경유지 삭제' }));
@@ -785,14 +1087,12 @@ describe('user routes', () => {
      * 예전에는 경로를 모를 때도 `직진 25m`·`개찰구를 지나 에스컬레이터 방향으로 이동`을
      * 그대로 띄웠다. 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
      */
-    /**
-     * 안내 문구는 경로 응답의 첫 구간에서 온다.
-     *
-     * 예전에는 경로를 모를 때도 `직진 25m`·`개찰구를 지나 에스컬레이터 방향으로 이동`을
-     * 그대로 띄웠다. 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
-     */
     expect(await screen.findByText('개찰구 방향으로 25m 직진하세요')).toBeInTheDocument();
-    expect(screen.getByText('다음 안내 · 경로 업데이트 완료')).toBeInTheDocument();
+    /*
+      다시 계산이 끝나면 거리 표시로 돌아온다. 예전에는 경유지를 한 번 건드리면 안내가 끝날
+      때까지 `경로 업데이트 완료`에 머물러, 다음 지점까지 몇 미터인지가 영영 사라졌다.
+    */
+    expect(await screen.findByText('다음 안내 · 25m')).toBeInTheDocument();
     expect(screen.getByText('총 224m · 약 5분')).toBeInTheDocument();
   });
 

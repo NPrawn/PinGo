@@ -7,11 +7,11 @@ import {
   consultationStatusLabel,
   isClosedConsultation,
   speakerColor,
+  useCounselorConsultations,
 } from '@/entities/consult';
 import {
   ApiError,
   getConsultationSummary,
-  getCounselorConsultations,
   queryKeys,
   submitConsultationTranscript,
 } from '@/shared/api';
@@ -196,10 +196,7 @@ export function HistoryPage() {
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
-  const historyQuery = useQuery({
-    queryKey: ['counselor-consultations', 'history'],
-    queryFn: () => getCounselorConsultations(),
-  });
+  const historyQuery = useCounselorConsultations();
 
   const closed = useMemo(
     () =>

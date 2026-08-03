@@ -43,6 +43,7 @@ export const en = {
         currentLocation: 'Current location',
         destination: 'Destination',
         route: 'Route',
+        waypoint: 'Stop {{order}}',
       },
     },
   },

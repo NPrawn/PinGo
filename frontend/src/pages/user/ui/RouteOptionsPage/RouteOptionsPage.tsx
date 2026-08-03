@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigationStore } from '@/entities/navigation';
-import { routeUnavailableText } from '@/entities/route';
+import { routeOriginOf, routeUnavailableText, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
@@ -55,6 +55,8 @@ export function RouteOptionsPage() {
   const destination = useNavigationStore((state) => state.destination);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const currentMapX = useNavigationStore((state) => state.currentMapX);
+  const currentMapY = useNavigationStore((state) => state.currentMapY);
   const destinationLatitude = useNavigationStore((state) => state.destinationLatitude);
   const destinationLongitude = useNavigationStore((state) => state.destinationLongitude);
   const route = useNavigationStore((state) => state.route);
@@ -63,11 +65,19 @@ export function RouteOptionsPage() {
   const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
 
+  /**
+   * 카드에 적을 거리를 서버가 계산할 때 쓰는 입력.
+   *
+   * **안내 화면의 경로 생성과 같은 값이어야 한다**(`NavigationPage`). 한쪽만 좌표를 보내면 여기서
+   * 본 거리와 실제 안내 경로의 길이가 어긋난다. 그래서 켜고 끄는 것도 같은 값을 본다
+   * (`SEND_CURRENT_POSITION` — 지금은 꺼져 있고 사유가 거기 적혀 있다).
+   */
   const lookup = {
     stationId,
     startNodeId: currentNodeId,
     destinationLatitude,
     destinationLongitude,
+    origin: SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null,
   };
   const fastestQuery = useExitRoute('fastest', lookup);
   const elevatorQuery = useExitRoute('elevator_only', lookup);

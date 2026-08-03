@@ -3,6 +3,32 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { RouteResponse } from '@/shared/api';
 import type { RouteType } from '@/shared/types';
 
+/**
+ * 안내 도중 들르기로 한 곳.
+ *
+ * **노드 id를 함께 들고 있어야 한다.** 예전에는 이름만 저장해서 경로 요청에 실을 것이 없었고,
+ * 경유지를 추가해도 서버는 그대로 최단 경로를 돌려줬다. 화면만 "경로 업데이트 완료"라고
+ * 적혀 있었을 뿐 지도의 선은 하나도 바뀌지 않았다.
+ *
+ * 이름으로 시설을 되찾는 방법은 쓰지 않는다. 표기가 조금만 달라도 다른 곳을 가리키는데,
+ * 목적지 마커에서 이미 같은 문제를 겪었다(`matchExitByName`).
+ */
+export interface Waypoint {
+  /** 경로 요청에 싣는 `waypointNodeIds` 항목. */
+  nodeId: number;
+  /** 화면에 쓰는 이름. */
+  nameKo: string;
+}
+
+/**
+ * 한 번에 들를 수 있는 곳의 수.
+ *
+ * 백엔드는 10개까지 받지만(`RouteCreateRequest`) 화면은 2개로 둔다. 안내 헤더가 출발지·경유지·
+ * 목적지를 한 줄에 늘어놓는 구조라, 셋을 넘기면 좁은 화면에서 이름이 읽을 수 없게 눌린다.
+ * 늘리려면 헤더를 먼저 다시 짜야 한다.
+ */
+const MAX_WAYPOINTS = 2;
+
 type NavigationStore = {
   /** Destination name the user picked from search. */
   destination: string | null;
@@ -30,7 +56,21 @@ type NavigationStore = {
   /** Whether the turn-by-turn step list is expanded over the camera view. */
   stepsOpen: boolean;
   /** Optional stops added from the indoor map while navigation is active. */
-  waypoints: string[];
+  waypoints: Waypoint[];
+  /**
+   * 어느 경로의 진행도인지. 출발·도착·유형·경유지를 묶은 문자열이며 화면이 만든다.
+   *
+   * 값만 두면 경로가 바뀌었을 때 지난 경로의 진행도를 그대로 쓰게 된다. 어느 경로의 것인지
+   * 함께 들고 있으면, 열쇠가 다른 순간 읽는 쪽이 0부터 다시 세면 된다 — 따로 지울 필요가 없다.
+   */
+  progressKey: string | null;
+  /**
+   * 경로를 따라 진행한 거리(m). 뒤로 가지 않는다.
+   *
+   * XR 위치는 흔들린다. 매 위치마다 다시 계산하면 진행도가 앞뒤로 오가며 안내가 깜빡이므로,
+   * 지금까지의 최대값만 남긴다(`routeProgressOf`).
+   */
+  travelledM: number;
   /**
    * 안내 중 위치 재인식으로 U-04에 다녀오는 중인지. (S15P11A206-141)
    *
@@ -74,8 +114,11 @@ type NavigationStore = {
    */
   setTargetNode: (targetNodeId: number, exitLabel: string | null) => void;
   setRouteResult: (route: RouteResponse | null) => void;
-  addWaypoint: (waypoint: string) => void;
-  removeWaypoint: (waypoint: string) => void;
+  /** 진행도를 기록한다. 어느 경로의 것인지 함께 남긴다. */
+  setRouteProgress: (progressKey: string, travelledM: number) => void;
+  addWaypoint: (waypoint: Waypoint) => void;
+  /** 노드로 지운다. 같은 이름의 시설이 여러 개인 역(안내센터 A·B)에서 이름은 열쇠가 못 된다. */
+  removeWaypoint: (nodeId: number) => void;
   clearWaypoints: () => void;
   toggleSteps: () => void;
   /** 안내 중 재인식을 시작한다. U-04로 떠나기 직전에 부른다. */
@@ -110,6 +153,8 @@ export const useNavigationStore = create<NavigationStore>()(
       route: 'fastest',
       stepsOpen: false,
       waypoints: [],
+      progressKey: null,
+      travelledM: 0,
       relocalizing: false,
       // 새 여정은 재인식 중 상태를 물려받지 않는다.
       startNewJourney: (destination, details) =>
@@ -156,16 +201,18 @@ export const useNavigationStore = create<NavigationStore>()(
             : { targetNodeId, targetExitLabel: exitLabel, routeResult: null },
         ),
       setRouteResult: (routeResult) => set({ routeResult }),
+      setRouteProgress: (progressKey, travelledM) => set({ progressKey, travelledM }),
       addWaypoint: (waypoint) =>
         set((state) => {
-          if (state.waypoints.includes(waypoint) || state.waypoints.length >= 2) {
+          const already = state.waypoints.some((item) => item.nodeId === waypoint.nodeId);
+          if (already || state.waypoints.length >= MAX_WAYPOINTS) {
             return state;
           }
 
           return { waypoints: [...state.waypoints, waypoint] };
         }),
-      removeWaypoint: (waypoint) =>
-        set((state) => ({ waypoints: state.waypoints.filter((item) => item !== waypoint) })),
+      removeWaypoint: (nodeId) =>
+        set((state) => ({ waypoints: state.waypoints.filter((item) => item.nodeId !== nodeId) })),
       clearWaypoints: () => set({ waypoints: [] }),
       toggleSteps: () => set((state) => ({ stepsOpen: !state.stepsOpen })),
       beginRelocalize: () => set({ relocalizing: true }),
@@ -174,6 +221,21 @@ export const useNavigationStore = create<NavigationStore>()(
     {
       name: 'pingo.navigation',
       storage: createJSONStorage(() => sessionStorage),
+      /**
+       * 1 — 경유지가 이름 문자열에서 `Waypoint`(노드 + 이름)로 바뀌었다.
+       *
+       * 지난 세션이 남긴 이름만으로는 노드를 되찾을 수 없다. 그대로 두면 문자열이 `Waypoint`인
+       * 척 섞여 들어와 `waypoint.nodeId`가 undefined가 되고, 경로 요청에 `null`이 실린다.
+       * 되살릴 수 없으니 비운다 — 안내 중 새로고침한 사용자는 경유지를 다시 골라야 하지만,
+       * 있지도 않은 노드로 계산된 경로를 따라가는 것보다 낫다.
+       */
+      version: 1,
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<NavigationStore> | undefined;
+        if (version >= 1 || !state) return state;
+
+        return { ...state, waypoints: [] };
+      },
     },
   ),
 );

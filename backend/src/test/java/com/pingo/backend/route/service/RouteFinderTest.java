@@ -3,6 +3,7 @@ package com.pingo.backend.route.service;
 import com.pingo.backend.route.domain.RouteMoveType;
 import com.pingo.backend.route.domain.RouteType;
 import com.pingo.backend.route.service.RouteFinder.GraphEdge;
+import com.pingo.backend.route.service.RouteFinder.InboundSearch;
 import com.pingo.backend.route.service.RouteFinder.RoutePath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -153,6 +154,79 @@ class RouteFinderTest {
         assertThat(path.segments()).isEmpty();
         assertThat(path.totalDistanceM()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(path.totalTimeSec()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("역방향 탐색은 모든 노드에서 목적지까지의 거리를 한 번에 구한다")
+    void searchInboundCollectsDistancesToDestination() {
+        List<GraphEdge> edges = List.of(
+                edge(1, 2, 10, RouteMoveType.WALKWAY, true),
+                edge(2, 3, 20, RouteMoveType.WALKWAY, true)
+        );
+
+        InboundSearch search = routeFinder.searchInbound(edges, 3, RouteType.FASTEST);
+
+        assertThat(search.distanceFrom(1L)).isEqualByComparingTo(BigDecimal.valueOf(30));
+        assertThat(search.distanceFrom(2L)).isEqualByComparingTo(BigDecimal.valueOf(20));
+        assertThat(search.distanceFrom(3L)).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("역방향 탐색이 돌려준 경로는 진행 방향이 그대로다")
+    void searchInboundPathRunsForward() {
+        List<GraphEdge> edges = List.of(
+                timedEdge(1, 2, 10, 15, RouteMoveType.WALKWAY, true),
+                timedEdge(2, 3, 20, 30, RouteMoveType.WALKWAY, true)
+        );
+
+        RoutePath path = routeFinder.searchInbound(edges, 3, RouteType.FASTEST).pathFrom(1L);
+
+        assertThat(path.nodeIds()).containsExactly(1L, 2L, 3L);
+        assertThat(path.segments())
+                .extracting(RouteFinder.Segment::fromNodeId, RouteFinder.Segment::toNodeId)
+                .containsExactly(tuple(1L, 2L), tuple(2L, 3L));
+        assertThat(path.totalDistanceM()).isEqualByComparingTo(BigDecimal.valueOf(30));
+        assertThat(path.totalTimeSec()).isEqualTo(45);
+    }
+
+    /**
+     * 정방향으로 돌고 경로를 뒤집으면 단방향 간선을 거꾸로 걷는 경로가 나온다. 역방향
+     * 그래프에서 돌아야 그런 경로가 애초에 만들어지지 않는다.
+     */
+    @Test
+    @DisplayName("단방향 간선을 거꾸로 걷는 경로를 만들지 않는다")
+    void searchInboundRespectsOneWayEdges() {
+        List<GraphEdge> edges = List.of(
+                // 1 -> 2 로만 갈 수 있다. 2 에서 1 로는 못 간다.
+                edge(1, 2, 10, RouteMoveType.WALKWAY, false),
+                edge(3, 2, 5, RouteMoveType.WALKWAY, true)
+        );
+
+        InboundSearch toOne = routeFinder.searchInbound(edges, 1, RouteType.FASTEST);
+        InboundSearch toTwo = routeFinder.searchInbound(edges, 2, RouteType.FASTEST);
+
+        // 2 에서 1 로 가는 길은 없다
+        assertThat(toOne.reaches(2L)).isFalse();
+        assertThat(toOne.pathFrom(2L).isReachable()).isFalse();
+        // 1 에서 2 로는 갈 수 있다
+        assertThat(toTwo.reaches(1L)).isTrue();
+        assertThat(toTwo.pathFrom(1L).segments())
+                .extracting(RouteFinder.Segment::fromNodeId, RouteFinder.Segment::toNodeId)
+                .containsExactly(tuple(1L, 2L));
+    }
+
+    @Test
+    @DisplayName("경로 유형이 막은 간선으로만 닿는 노드는 결과에 없다")
+    void searchInboundExcludesFilteredEdges() {
+        List<GraphEdge> edges = List.of(
+                edge(1, 2, 10, RouteMoveType.STAIR, true),
+                edge(3, 2, 10, RouteMoveType.WALKWAY, true)
+        );
+
+        InboundSearch search = routeFinder.searchInbound(edges, 2, RouteType.ELEVATOR_ONLY);
+
+        assertThat(search.reaches(1L)).isFalse();
+        assertThat(search.reaches(3L)).isTrue();
     }
 
     private GraphEdge edge(long from, long to, long distanceM, RouteMoveType moveType, boolean bidirectional) {
