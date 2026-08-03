@@ -528,10 +528,12 @@ describe('user routes', () => {
    * 하나도 바뀌지 않았다.
    */
   it('경유지를 추가하면 그 노드를 실어 경로를 다시 계산한다', async () => {
-    const routeRequests: { waypointNodeIds?: number[] }[] = [];
+    const routeRequests: { waypointNodeIds?: number[]; language?: string }[] = [];
     server.use(
       http.post('*/api/routes/indoor', async ({ request }) => {
-        routeRequests.push((await request.json()) as { waypointNodeIds?: number[] });
+        routeRequests.push(
+          (await request.json()) as { waypointNodeIds?: number[]; language?: string },
+        );
         return HttpResponse.json({ success: true, data: {}, message: null });
       }),
     );
@@ -542,6 +544,14 @@ describe('user routes', () => {
     // 첫 조회에는 경유지가 없다.
     await waitFor(() => expect(routeRequests).not.toHaveLength(0));
     expect(routeRequests[0]?.waypointNodeIds).toEqual([]);
+    /*
+      선택한 언어가 함께 실린다. (S15P11A206-339)
+
+      상세 안내 문장(`instruction`)은 서버가 이 값으로 조립한다. 실리지 않으면 백엔드가
+      `Language.DEFAULT`(=EN)로 떨어져 한국어를 골라도 "Go straight"가 나온다. 빠뜨린 쪽은
+      아무 오류도 보지 못하므로 여기서 붙잡는다.
+    */
+    expect(routeRequests[0]?.language).toBe('ko');
 
     fireEvent.click(await screen.findByRole('button', { name: '승차권 충전' }));
     fireEvent.click(await screen.findByRole('button', { name: '경유지로 추가' }));
