@@ -15,7 +15,7 @@ import {
   useNavigationStore,
   type IndoorPoint,
 } from '@/entities/navigation';
-import { routeUnavailableText } from '@/entities/route';
+import { routeOriginOf, routeUnavailableText, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { createIndoorRoute } from '@/shared/api';
@@ -155,10 +155,29 @@ export function NavigationPage() {
    * **경유지가 키에 들어간다.** 예전에는 빠져 있어서, 경유지를 추가해도 같은 키의 응답을 그대로
    * 재사용했다. 요청에도 실리지 않았으니 서버는 애초에 최단 경로만 알고 있었고, 화면만
    * "경로 업데이트 완료"라고 적혀 있었다.
+   *
+   * **사용자 좌표는 지금 보내지 않는다.** 보내면 서버가 진입 노드를 다시 고르는데, 그 기준이 직선
+   * 거리라 선로를 모른다 — B3 승강장에서 선로 건너편 계단이 뽑혀 관통하는 경로가 나왔다. 사유와
+   * 되돌리는 방법은 `SEND_CURRENT_POSITION`에 적어 두었다.
+   *
+   * 배선은 남겨 둔다. 좌표는 선택 필드라 `enabled`에 넣지 않는다 — 좌표 정합이 없는 층(역삼역 B1)
+   * 에서는 위치 인식이 좌표를 주지 못하는데, 조건에 넣으면 그 층에서 안내 자체를 받지 못한다.
    */
   const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
+  const origin = SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null;
   const routeQuery = useQuery({
-    queryKey: ['indoor-route', stationId, currentNodeId, targetNodeId, route, waypointNodeIds],
+    queryKey: [
+      'indoor-route',
+      stationId,
+      currentNodeId,
+      targetNodeId,
+      route,
+      waypointNodeIds,
+      /* 좌표가 바뀌면 서버가 진입 노드를 다시 골라 다른 경로가 나온다. 키에 없으면 재인식으로
+         출발 노드가 그대로인 채 좌표만 바뀐 경우 옛 경로가 그대로 보인다. */
+      origin?.currentMapX ?? null,
+      origin?.currentMapY ?? null,
+    ],
     queryFn: () =>
       createIndoorRoute({
         stationId: stationId!,
@@ -166,6 +185,7 @@ export function NavigationPage() {
         targetNodeId: targetNodeId!,
         waypointNodeIds,
         routeType: route,
+        ...(origin ?? {}),
       }),
     enabled: stationId != null && currentNodeId != null && targetNodeId != null,
     retry: false,
@@ -261,7 +281,16 @@ export function NavigationPage() {
    * 어느 경로의 진행도인지 열쇠로 함께 남긴다. 열쇠가 다르면 0부터 다시 센다 — 경로가 바뀔 때
    * 따로 지우지 않아도 지난 진행도가 새 경로에 섞이지 않는다.
    */
-  const routeKey = `${currentNodeId}-${targetNodeId}-${route}-${waypointNodeIds.join(',')}`;
+  const routeKey = [
+    currentNodeId,
+    targetNodeId,
+    route,
+    waypointNodeIds.join(','),
+    /* 좌표도 경로를 바꾼다. 같은 출발 노드라도 좌표가 다르면 서버가 진입 노드를 다시 골라
+       다른 경로가 오므로, 열쇠에 없으면 지난 경로의 진행 거리를 새 경로에 그대로 얹는다. */
+    origin?.currentMapX ?? '',
+    origin?.currentMapY ?? '',
+  ].join('-');
   const pathNodes = routePathNodesOf(routeResult);
   const travelledM = progressKey === routeKey ? storedTravelledM : 0;
   const progress = routeProgressOf({
@@ -301,8 +330,10 @@ export function NavigationPage() {
   /**
    * 카메라 화면의 큰 화살표가 가리킬 방향.
    *
-   * 백엔드 `moveType`에는 회전이 없다(walkway·stair·escalator·elevator·gate). 그래서 좌우는
-   * 경로 기하와 XR 방향각으로 직접 구한다 — 다음 지점이 내가 보는 쪽에서 몇 도 벌어져 있는지다.
+   * **응답의 `steps[].turn`으로 대신할 수 없다.** 그 값은 앞 구간을 기준으로 한 네 방향이고
+   * (S15P11A206-337) 여기 필요한 것은 **내가 지금 보고 있는 쪽**을 기준으로 몇 도 벌어졌는지다.
+   * 서버는 사용자의 방향각을 모르므로 첫 단계의 `turn`은 아예 비어 있다. 그래서 경로 기하와 XR
+   * 방향각으로 직접 구한다 — 다음 지점이 내가 보는 쪽에서 몇 도 벌어져 있는지다.
    *
    * 모르면 null이고, 그때는 화살표와 문구를 아예 그리지 않는다. 예전에는 위를 향한 화살표와
    * `정면 통로를 따라 직진하세요`가 **하드코딩**돼 있어, 좌회전해야 할 때도 계단을 타야 할 때도
@@ -753,6 +784,17 @@ export function NavigationPage() {
                   waypointNodeIds={waypointNodeIds}
                   /* 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는 연하게 그린다. */
                   activeLeg={activeLeg}
+                  /* 내 점과 경로 사이의 빈 자리를 잇는다.
+
+                     **경로에서 벗어난 동안에도 잇는다.** 처음에는 이탈이면 끊었는데, 그러면 정작
+                     필요한 자리에서 사라졌다 — 서버가 진입 노드를 목적지 기준으로 다시 고르면
+                     (S15P11A206-337) 그 노드가 수십 m 떨어질 수 있고, 그 층에 남는 경로 노드가
+                     그것 하나뿐이면 이탈로 판정되어 지도가 통째로 비었다. 역삼역 B3 복도(노드 209)
+                     에서 2번 출구로 갈 때 실제로 그랬다.
+
+                     벗어난 자리에서 가장 가까운 경로 지점으로 이어 주는 것이 필요한 안내다.
+                     아무것도 그리지 않으면 사용자는 자기 층에 경로가 없다고 읽는다. */
+                  connectCurrentToRoute
                   facilityType={effectiveType}
                   /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼져
                      아무 시설도 그리지 않는다. */

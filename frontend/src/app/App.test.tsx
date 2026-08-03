@@ -558,6 +558,88 @@ describe('user routes', () => {
   });
 
   /**
+   * 서버가 진입 노드를 멀리 고른 경우. (S15P11A206-83 / S15P11A206-337)
+   *
+   * 좌표를 보내면 서버가 목적지까지의 총 거리로 진입 노드를 다시 고르는데, 그 결과가 계단·엘리베이터
+   * 노드일 수 있다. 그러면 사용자가 서 있는 층에 경로 노드가 **그 하나만** 남고, 그것이 수십 m
+   * 떨어져 있다. 역삼역 B3 복도(노드 209)에서 2번 출구로 갈 때 계단 2가 56m 떨어진 채 뽑힌다.
+   *
+   * 예전에는 그 층 지도가 통째로 비었다. 선으로 그릴 구간이 없고(점 하나), 이탈로 판정되어 이어
+   * 주는 선까지 꺼졌다 — 사용자가 서 있는 층인데 아무 안내도 없었다.
+   */
+  it('진입 노드가 멀어도 내 층에 경로를 그린다', async () => {
+    server.use(
+      http.post('*/api/routes/indoor', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            routeType: 'fastest',
+            available: true,
+            startNodeId: 237,
+            targetNodeId: 341,
+            totalDistanceM: 120,
+            steps: [],
+            pathNodes: [
+              // B3에는 계단 2 하나뿐이다. 사용자(노드 209)에게서 56m 떨어져 있다.
+              { nodeId: 237, floorId: 2, mapX: 105.207, mapY: 27.57 },
+              { nodeId: 137, floorId: 1, mapX: 105.207, mapY: 27.57 },
+              { nodeId: 112, floorId: 1, mapX: 106.264, mapY: 22.653 },
+            ],
+          },
+          message: null,
+        }),
+      ),
+    );
+
+    // 실제 시드값이다. B3 복도 노드 209.
+    useNavigationStore.setState({
+      currentNodeId: 209,
+      currentFloorId: 2,
+      currentMapX: 49.121,
+      currentMapY: 24.331,
+    });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B3' }));
+
+    // 이어 주는 선 하나뿐이어도 그 층의 안내다.
+    expect(await screen.findByRole('img', { name: '이동 경로' })).toBeInTheDocument();
+  });
+
+  /**
+   * 사용자 좌표. (S15P11A206-83 / S15P11A206-337)
+   *
+   * 좌표를 보내면 서버가 진입 노드를 목적지 기준으로 다시 고르는데, 그 기준이 **직선 거리**라
+   * 선로를 모른다. 역삼역 B3는 선로 양쪽에 승강장이 있어(y≈24와 y≈2) 반대편 계단이 직선으로 더
+   * 가깝게 나오고, 실제로 관통하는 경로가 나왔다 — 같은 승강장 계단 5가 27.7m인데 건너편 계단 7
+   * (35.6m)이 뽑혔다.
+   *
+   * 배선은 남겨 두고 `SEND_CURRENT_POSITION`만 껐다. 백엔드가 그래프 거리로 고르게 되면 그 값을
+   * 되돌리고 이 테스트를 "좌표를 함께 보낸다"로 바꾼다.
+   */
+  it('지금은 좌표를 보내지 않는다', async () => {
+    const routeRequests: Record<string, unknown>[] = [];
+    server.use(
+      http.post('*/api/routes/indoor', async ({ request }) => {
+        routeRequests.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ success: true, data: {}, message: null });
+      }),
+    );
+
+    useNavigationStore.setState({ currentMapX: 49.121, currentMapY: 24.331 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    await waitFor(() => expect(routeRequests).not.toHaveLength(0));
+    expect(routeRequests[0]).not.toHaveProperty('currentMapX');
+    expect(routeRequests[0]).not.toHaveProperty('currentMapY');
+    // 좌표가 없으면 서버가 요청에 온 진입 노드를 그대로 쓴다. 내가 서 있는 노드에서 시작한다.
+    expect(routeRequests[0]).toMatchObject({ startNodeId: 205 });
+  });
+
+  /**
    * 시설 필터. (S15P11A206-83)
    *
    * 진입하면 그 층 시설을 모두 보여 주고, 칩은 그 층에 실제로 있는 유형만 둔다. 눌러서 아무것도
