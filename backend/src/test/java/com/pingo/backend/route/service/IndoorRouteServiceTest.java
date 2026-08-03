@@ -448,6 +448,92 @@ class IndoorRouteServiceTest {
                         "계단으로 한 층 내려가세요.");
     }
 
+    /**
+     * 연달아 직진하는 통로는 한 안내로 묶인다(S15P11A206-339).
+     *
+     * <p>간선 하나가 안내 하나면 긴 통로에서 같은 문장이 되풀이된다. 역삼역 승강장은 복도 노드가
+     * 평균 7.7m 마다 있어 B3 서쪽 끝에서 8번 출구까지 "직진하세요" 가 11번 연달아 나왔다.
+     *
+     * <p><b>{@code pathNodes} 는 묶지 않는다.</b> 지도가 꼭짓점을 다 필요로 한다.
+     */
+    @Test
+    @DisplayName("곧게 이어지는 통로를 한 안내로 묶고 거리와 시간을 합친다")
+    void mergesStraightWalkwayIntoOneStep() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 20, 0), nodeAt(3L, 45, 0), nodeAt(4L, 70, 0));
+        givenEdges(1L,
+                timedEdge(1L, 1L, 2L, 20, 16, RouteMoveType.WALKWAY),
+                timedEdge(1L, 2L, 3L, 25, 20, RouteMoveType.WALKWAY),
+                timedEdge(1L, 3L, 4L, 25, 20, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 4L, null, "fastest", Language.KO));
+
+        assertThat(response.steps()).hasSize(1);
+        assertThat(response.steps().get(0))
+                .satisfies(step -> {
+                    assertThat(step.instruction()).isEqualTo("70m 직진하세요.");
+                    assertThat(step.distanceM()).isEqualByComparingTo("70");
+                    assertThat(step.estimatedTimeSec()).isEqualTo(56);
+                    // 묶은 구간의 처음과 끝이다. 중간 노드 2·3은 step 이 아니라 pathNodes 로만 남는다.
+                    assertThat(step.fromNodeId()).isEqualTo(1L);
+                    assertThat(step.toNodeId()).isEqualTo(4L);
+                });
+        assertThat(response.pathNodes())
+                .extracting(RoutePathNode::nodeId)
+                .containsExactly(1L, 2L, 3L, 4L);
+    }
+
+    @Test
+    @DisplayName("꺾이는 곳과 층 이동에서는 안내를 끊는다")
+    void keepsStepsSeparateAtTurnAndFloorChange() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 20, 0), nodeAt(3L, 45, 0),
+                nodeAt(4L, 45, 25), nodeAtFloor(5L, 2L, 45, 25));
+        givenEdges(1L,
+                edge(1L, 1L, 2L, 20, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 3L, 25, RouteMoveType.WALKWAY),   // 여기까지 직진
+                edge(1L, 3L, 4L, 25, RouteMoveType.WALKWAY),   // 남쪽으로 90도
+                edge(1L, 4L, 5L, 5, RouteMoveType.STAIR));
+        givenFloors(1L, new long[] {2L, 1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 5L, null, "fastest", Language.KO));
+
+        assertThat(response.steps())
+                .extracting(RouteStep::instruction)
+                .containsExactly(
+                        "45m 직진하세요.",
+                        "오른쪽으로 돌아 25m 이동하세요.",
+                        "계단으로 한 층 올라가세요.");
+    }
+
+    /**
+     * 시간을 모르는 간선이 섞이면 묶은 안내의 시간도 비운다.
+     *
+     * <p>있는 것만 더하면 실제보다 짧은 수가 나가는데 받는 쪽은 부분 합인지 알 수 없다. 경로 총
+     * 시간도 같은 규칙이다.
+     */
+    @Test
+    @DisplayName("묶은 구간 중 시간을 모르는 간선이 있으면 그 안내의 시간은 비운다")
+    void leavesMergedTimeNullWhenAnyEdgeHasNoTime() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 20, 0), nodeAt(3L, 45, 0));
+        givenEdges(1L,
+                timedEdge(1L, 1L, 2L, 20, 16, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 3L, 25, RouteMoveType.WALKWAY));   // 시간 없음
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 3L, null, "fastest", Language.KO));
+
+        assertThat(response.steps()).hasSize(1);
+        assertThat(response.steps().get(0).distanceM()).isEqualByComparingTo("45");
+        assertThat(response.steps().get(0).estimatedTimeSec()).isNull();
+        assertThat(response.estimatedTimeSec()).isNull();
+    }
+
     @Test
     @DisplayName("언어가 한국어가 아니면 안내가 영어로 나온다")
     void writesEnglishInstructions() {
@@ -532,6 +618,18 @@ class IndoorRouteServiceTest {
 
     private RouteEdge edge(long stationId, long fromNodeId, long toNodeId, long distanceM, RouteMoveType moveType) {
         return edge(stationId, fromNodeId, toNodeId, distanceM, moveType, true);
+    }
+
+    /**
+     * 예상 시간이 있는 간선. {@link #edge} 는 시간을 비워 두므로 시간을 검증할 때 이것을 쓴다.
+     *
+     * <p>역삼역 시드 간선 205개는 전부 시간이 들어 있다. 시간이 빈 간선은 관리자가 그렇게 만든
+     * 경우다 — {@code RouteEdgeCreateRequest.estimatedTimeSec} 가 필수가 아니다.
+     */
+    private RouteEdge timedEdge(
+            long stationId, long fromNodeId, long toNodeId, long distanceM, int seconds, RouteMoveType moveType) {
+        return RouteEdge.create(stationId, fromNodeId, toNodeId, BigDecimal.valueOf(distanceM),
+                seconds, moveType.getCode(), true, true);
     }
 
     private RouteEdge edge(

@@ -47,6 +47,31 @@ public class RouteInstructionWriter {
     /** 이보다 크게 꺾이면 좌우가 아니라 되돌아가는 것으로 본다. */
     private static final double TURN_MAX_DEGREES = 150.0;
 
+    /**
+     * 한 안내로 합칠 구간들이 처음 방향에서 벗어날 수 있는 최대 각도(도).
+     *
+     * <p>{@link #STRAIGHT_MAX_DEGREES} 는 <b>인접한 두 구간</b>만 본다. 그것만으로 이어 붙이면
+     * 45도 미만으로 조금씩 꺾이는 구간이 끝없이 합쳐진다. 42도씩 세 번 꺾여도 매번 직진으로
+     * 판정되므로 126도를 돈 길이 "직진하세요" 한 문장이 된다.
+     *
+     * <p>그래서 <b>구간의 첫 방향과도</b> 견준다. 역삼역 시드로 B3 출발 노드 43개 × 출구 9곳의
+     * 경로를 모두 뽑아, 합쳐지는 구간 938개의 첫 방향 대비 마지막 방향 차이를 재었다.
+     *
+     * <pre>
+     *   중앙 18.8도   90%분위 33.9도   최대 69.9도
+     *
+     *   상한 30도 -> 938개 중 150개(16.0%)가 더 쪼개진다
+     *   상한 45도 -> 71개(7.6%)
+     *   상한 60도 -> 45개(4.8%)
+     *   상한 90도 -> 0개 (상한이 없는 것과 같다)
+     * </pre>
+     *
+     * <p>{@link #STRAIGHT_MAX_DEGREES} 와 같은 45도로 둔다. "한 걸음을 직진으로 느끼는 한계" 와
+     * "여러 걸음을 합쳐 직진이라 부를 한계" 가 같은 값이면 설명할 것이 하나로 줄어든다. 가장
+     * 많이 휘는 곳은 GFC몰 연결통로(B1)로, 70도를 도는 세 구간이 여기서 끊긴다.
+     */
+    private static final double MAX_RUN_DRIFT_DEGREES = 45.0;
+
     /** 방향을 판단하기에 너무 짧은 구간(m). 좌표 오차가 각도를 지배한다. */
     private static final double MIN_TURN_BASELINE_M = 0.5;
 
@@ -112,6 +137,72 @@ public class RouteInstructionWriter {
     }
 
     /**
+     * 앞 구간에 이어 붙여 한 안내로 합칠 수 있는지.
+     *
+     * <p>간선 하나가 안내 하나가 되면 긴 통로에서 같은 문장이 되풀이된다. 역삼역 승강장은 복도
+     * 노드가 평균 7.7m 마다 있어 B3 서쪽 끝에서 8번 출구까지 "직진하세요" 가 11번 연달아 나왔다.
+     * 노드가 있다는 것은 지도에 선을 그릴 꼭짓점이 있다는 뜻일 뿐, 사용자가 거기서 무엇을 하지
+     * 않는다. 그러면 한 번의 행동이므로 한 문장이어야 한다. (S15P11A206-339)
+     *
+     * <p>네 조건을 모두 만족할 때만 합친다.
+     *
+     * <ol>
+     *   <li>양쪽 다 통로다 — 계단·엘리베이터·개찰구는 각각 할 행동이 있다</li>
+     *   <li>직전 구간에서 꺾이지 않는다({@link #STRAIGHT_MAX_DEGREES})</li>
+     *   <li>구간의 첫 방향에서도 벗어나지 않는다({@link #MAX_RUN_DRIFT_DEGREES})</li>
+     *   <li>높이가 같다 — 역삼역 B1 은 개찰구 위 중간층이 별도 층이 아니라 같은 {@code floorId}
+     *       안의 {@code map_z=7.5} 노드로 돼 있어, 층만 보면 바닥과 중간층을 한 구간으로 합친다</li>
+     * </ol>
+     *
+     * <p>방향을 판단할 수 없으면({@link Turn#UNKNOWN}) 합치지 않는다. 모르는 것을 직진으로
+     * 취급하면 실제로 꺾이는 구간이 조용히 흡수된다.
+     *
+     * @param runStart  지금 묶고 있는 구간의 첫 간선
+     * @param previous  지금까지 묶은 마지막 간선
+     * @param candidate 이어 붙일지 판단할 간선
+     */
+    public boolean continuesStraightRun(
+            Segment runStart,
+            Segment previous,
+            Segment candidate,
+            Map<Long, RouteNode> nodes
+    ) {
+        if (previous.moveType() != RouteMoveType.WALKWAY || candidate.moveType() != RouteMoveType.WALKWAY) {
+            return false;
+        }
+        if (!sameHeight(runStart.fromNodeId(), candidate.toNodeId(), nodes)) {
+            return false;
+        }
+        if (turnOf(previous, candidate, nodes) != Turn.STRAIGHT) {
+            return false;
+        }
+
+        Double drift = deviationDegrees(runStart, candidate, nodes);
+        return drift != null && drift <= MAX_RUN_DRIFT_DEGREES;
+    }
+
+    /**
+     * 두 노드의 캐노니컬 높이가 같은지.
+     *
+     * <p>높이를 모르는 노드가 섞이면 합치지 않는다 — 관리자가 높이를 넣지 않은 노드가 중간층일
+     * 수도 있어서다. 둘 다 모르면 층 정보가 아예 없는 역이므로 같은 높이로 본다.
+     */
+    private boolean sameHeight(long fromNodeId, long toNodeId, Map<Long, RouteNode> nodes) {
+        RouteNode from = nodes.get(fromNodeId);
+        RouteNode to = nodes.get(toNodeId);
+        if (from == null || to == null) {
+            return false;
+        }
+
+        BigDecimal fromZ = from.getMapZ();
+        BigDecimal toZ = to.getMapZ();
+        if (fromZ == null || toZ == null) {
+            return fromZ == null && toZ == null;
+        }
+        return fromZ.compareTo(toZ) == 0;
+    }
+
+    /**
      * 이전 구간에서 이 구간으로 얼마나 꺾이는지.
      *
      * <p><b>외적이 양수면 오른쪽이다.</b> 캐노니컬 프레임은 +y 가 남쪽이라 이미지 좌표처럼
@@ -124,23 +215,34 @@ public class RouteInstructionWriter {
             return Turn.UNKNOWN;
         }
 
-        double[] before = direction(previous, nodes);
-        double[] after = direction(current, nodes);
-        if (before == null || after == null) {
+        Double degrees = deviationDegrees(previous, current, nodes);
+        if (degrees == null) {
             return Turn.UNKNOWN;
         }
-
-        double cross = before[0] * after[1] - before[1] * after[0];
-        double dot = before[0] * after[0] + before[1] * after[1];
-        double degrees = Math.toDegrees(Math.atan2(Math.abs(cross), dot));
-
         if (degrees <= STRAIGHT_MAX_DEGREES) {
             return Turn.STRAIGHT;
         }
         if (degrees >= TURN_MAX_DEGREES) {
             return Turn.AROUND;
         }
+
+        double[] before = direction(previous, nodes);
+        double[] after = direction(current, nodes);
+        double cross = before[0] * after[1] - before[1] * after[0];
         return cross > 0 ? Turn.RIGHT : Turn.LEFT;
+    }
+
+    /** 두 구간의 방향 차이(도). 좌우는 구분하지 않는다. 방향을 알 수 없으면 {@code null}. */
+    private Double deviationDegrees(Segment before, Segment after, Map<Long, RouteNode> nodes) {
+        double[] first = direction(before, nodes);
+        double[] second = direction(after, nodes);
+        if (first == null || second == null) {
+            return null;
+        }
+
+        double cross = first[0] * second[1] - first[1] * second[0];
+        double dot = first[0] * second[0] + first[1] * second[1];
+        return Math.toDegrees(Math.atan2(Math.abs(cross), dot));
     }
 
     /** 구간의 단위 방향. 노드가 없거나 너무 짧으면 {@code null}. */

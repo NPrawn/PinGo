@@ -240,6 +240,110 @@ class RouteInstructionWriterTest {
                 .isEqualTo("straight");
     }
 
+    /**
+     * 안내를 합치는 판정(S15P11A206-339).
+     *
+     * <p>간선 하나가 안내 하나면 긴 통로에서 "직진하세요" 가 되풀이된다. 역삼역 B3 서쪽 끝에서
+     * 8번 출구까지 11번 연달아 나왔다.
+     */
+    @Test
+    @DisplayName("곧게 이어지는 통로는 한 안내로 합친다")
+    void mergesStraightWalkway() {
+        node(1L, 1L, 0, 0);
+        node(2L, 1L, 20, 0);
+        node(3L, 1L, 45, 0);
+
+        boolean merges = writer.continuesStraightRun(
+                walkway(1L, 2L, 20), walkway(1L, 2L, 20), walkway(2L, 3L, 25), nodes);
+
+        assertThat(merges).isTrue();
+    }
+
+    @Test
+    @DisplayName("꺾이는 곳에서는 합치지 않는다")
+    void doesNotMergeAcrossTurn() {
+        node(1L, 1L, 0, 0);
+        node(2L, 1L, 20, 0);      // 동쪽으로
+        node(3L, 1L, 20, 25);     // 남쪽으로 90도
+
+        boolean merges = writer.continuesStraightRun(
+                walkway(1L, 2L, 20), walkway(1L, 2L, 20), walkway(2L, 3L, 25), nodes);
+
+        assertThat(merges).isFalse();
+    }
+
+    /**
+     * 인접한 두 구간만 보면 조금씩 꺾이는 길이 끝없이 합쳐진다.
+     *
+     * <p>40도씩 두 번 꺾으면 매번 직진으로 판정되지만(45도 미만) 합쳐 놓으면 80도를 돈 길이
+     * "직진하세요" 한 문장이 된다. 구간의 첫 방향과도 견주어 끊는다.
+     */
+    @Test
+    @DisplayName("조금씩 꺾여 누적으로 크게 휘면 합치지 않는다")
+    void doesNotMergeWhenDriftAccumulates() {
+        node(1L, 1L, 0, 0);
+        node(2L, 1L, 20, 0);                                  // 0도
+        node(3L, 1L, 20 + 15.3, 12.9);                        // 첫 구간 대비 40도
+        node(4L, 1L, 20 + 15.3 + 3.5, 12.9 + 19.7);           // 첫 구간 대비 80도
+
+        Segment runStart = walkway(1L, 2L, 20);
+        Segment second = walkway(2L, 3L, 20);
+        // 40도씩이라 인접 판정만으로는 둘 다 직진이다
+        assertThat(writer.continuesStraightRun(runStart, runStart, second, nodes)).isTrue();
+
+        boolean merges = writer.continuesStraightRun(runStart, second, walkway(3L, 4L, 20), nodes);
+
+        assertThat(merges).isFalse();
+    }
+
+    @Test
+    @DisplayName("이동 수단이 다르면 합치지 않는다")
+    void doesNotMergeAcrossMoveType() {
+        node(1L, 1L, 0, 0);
+        node(2L, 1L, 20, 0);
+        node(3L, 1L, 45, 0);
+
+        Segment runStart = walkway(1L, 2L, 20);
+
+        assertThat(writer.continuesStraightRun(
+                runStart, runStart, segment(2L, 3L, 25, RouteMoveType.STAIR), nodes)).isFalse();
+        assertThat(writer.continuesStraightRun(
+                runStart, runStart, segment(2L, 3L, 25, RouteMoveType.GATE), nodes)).isFalse();
+    }
+
+    /**
+     * 역삼역 B1 은 개찰구 위 중간층이 별도 층이 아니다. 같은 {@code floorId} 안에
+     * {@code map_z=7.5} 인 노드로 들어 있어, 층만 보면 바닥과 중간층을 한 구간으로 합친다.
+     */
+    @Test
+    @DisplayName("높이가 다르면 같은 층이어도 합치지 않는다")
+    void doesNotMergeAcrossHeight() {
+        nodeAtHeight(1L, 1L, 0, 0, 0.0);
+        nodeAtHeight(2L, 1L, 20, 0, 0.0);
+        nodeAtHeight(3L, 1L, 45, 0, 7.5);     // 중간층
+
+        Segment runStart = walkway(1L, 2L, 20);
+
+        boolean merges = writer.continuesStraightRun(runStart, runStart, walkway(2L, 3L, 25), nodes);
+
+        assertThat(merges).isFalse();
+    }
+
+    /** 모르는 것을 직진으로 취급하면 실제로 꺾이는 구간이 조용히 흡수된다. */
+    @Test
+    @DisplayName("방향을 판단할 수 없으면 합치지 않는다")
+    void doesNotMergeWhenDirectionUnknown() {
+        node(1L, 1L, 0, 0);
+        node(2L, 1L, 20, 0);
+        node(3L, 1L, 20.1, 0);    // 0.1m — 방향을 재기에 너무 짧다
+
+        Segment runStart = walkway(1L, 2L, 20);
+
+        boolean merges = writer.continuesStraightRun(runStart, runStart, walkway(2L, 3L, 1), nodes);
+
+        assertThat(merges).isFalse();
+    }
+
     private String write(Segment previous, Segment current) {
         return write(previous, current, Language.KO);
     }
@@ -263,6 +367,14 @@ class RouteInstructionWriterTest {
     private void node(long id, long floorId, double x, double y) {
         RouteNode node = RouteNode.create(1L, floorId, "normal", "노드" + id,
                 BigDecimal.valueOf(x), BigDecimal.valueOf(y), null, false);
+        ReflectionTestUtils.setField(node, "id", id);
+        nodes.put(id, node);
+    }
+
+    /** 같은 층 안에서 높이가 갈리는 구간(역삼역 B1 중간층)을 세울 때 쓴다. */
+    private void nodeAtHeight(long id, long floorId, double x, double y, double z) {
+        RouteNode node = RouteNode.create(1L, floorId, "normal", "노드" + id,
+                BigDecimal.valueOf(x), BigDecimal.valueOf(y), BigDecimal.valueOf(z), false);
         ReflectionTestUtils.setField(node, "id", id);
         nodes.put(id, node);
     }

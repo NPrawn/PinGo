@@ -275,11 +275,18 @@ public class IndoorRouteService {
         return Math.hypot(node.getMapX().doubleValue() - x, node.getMapY().doubleValue() - y);
     }
 
+    /**
+     * 경로 구간을 단계별 안내로 옮긴다.
+     *
+     * <p><b>한 단계가 간선 하나가 아니다.</b> 연달아 직진하는 통로 구간은 하나로 묶는다
+     * ({@link #mergeStraightRuns}). {@code pathNodes} 는 묶지 않는다 — 지도가 꼭짓점을 다
+     * 필요로 한다. (S15P11A206-339)
+     */
     private List<RouteStep> toSteps(List<Segment> segments, RouteGraphData data, Language language) {
         List<RouteStep> steps = new ArrayList<>();
         Segment previous = null;
         int order = 1;
-        for (Segment segment : segments) {
+        for (Segment segment : mergeStraightRuns(segments, data.nodes())) {
             RouteMoveType moveType = segment.moveType();
             RouteInstructionWriter.Guidance guidance =
                     instructionWriter.write(previous, segment, data.nodes(), data.floorOrders(), language);
@@ -297,6 +304,70 @@ public class IndoorRouteService {
             previous = segment;
         }
         return steps;
+    }
+
+    /**
+     * 연달아 직진하는 통로 구간을 하나로 묶는다. 판단 규칙은
+     * {@link RouteInstructionWriter#continuesStraightRun} 에 있다.
+     *
+     * <p>묶인 구간의 회전은 <b>합친 구간의 현(chord)</b> 기준으로 판정된다 — 첫 간선만 보고
+     * 판단하던 예전과 값이 달라질 수 있다. 여러 간선을 하나로 안내하는 것이니 그 전체가 어느
+     * 방향으로 가는지가 맞는 기준이다.
+     */
+    private List<Segment> mergeStraightRuns(List<Segment> segments, Map<Long, RouteNode> nodes) {
+        List<Segment> merged = new ArrayList<>();
+        List<Segment> run = new ArrayList<>();
+
+        for (Segment segment : segments) {
+            if (run.isEmpty()) {
+                run.add(segment);
+                continue;
+            }
+
+            Segment runStart = run.get(0);
+            Segment last = run.get(run.size() - 1);
+            if (instructionWriter.continuesStraightRun(runStart, last, segment, nodes)) {
+                run.add(segment);
+                continue;
+            }
+
+            merged.add(collapse(run));
+            run = new ArrayList<>();
+            run.add(segment);
+        }
+
+        if (!run.isEmpty()) {
+            merged.add(collapse(run));
+        }
+        return merged;
+    }
+
+    /**
+     * 묶은 구간을 하나의 구간으로 만든다. 거리는 합이고 노드는 처음과 끝이다.
+     *
+     * <p><b>시간은 하나라도 비면 전체를 비운다.</b> 있는 것만 더하면 실제보다 짧은 수가
+     * 나가는데, 받는 쪽은 그것이 부분 합인지 알 수 없다. 경로 총 시간도 같은 규칙이다
+     * ({@link RoutePath}).
+     */
+    private Segment collapse(List<Segment> run) {
+        if (run.size() == 1) {
+            return run.get(0);
+        }
+
+        Segment first = run.get(0);
+        Segment last = run.get(run.size() - 1);
+        BigDecimal distanceM = BigDecimal.ZERO;
+        Integer estimatedTimeSec = 0;
+        for (Segment segment : run) {
+            distanceM = distanceM.add(segment.distanceM());
+            if (estimatedTimeSec != null) {
+                estimatedTimeSec = segment.estimatedTimeSec() == null
+                        ? null
+                        : estimatedTimeSec + segment.estimatedTimeSec();
+            }
+        }
+
+        return new Segment(first.fromNodeId(), last.toNodeId(), distanceM, estimatedTimeSec, first.moveType());
     }
 
     private List<RoutePathNode> toPathNodes(List<Long> nodeIds, Map<Long, RouteNode> nodes) {
