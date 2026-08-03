@@ -2,9 +2,14 @@
 @import './variables.css';
 
 /* Atmospheric page backdrop — ported from the prototype's `body` gradients. */
+/*
+  `min-width`를 두지 않는다. Vite 기본 템플릿의 320px이 남아 있었는데, 그보다 좁은 기기
+  (폴더블 커버 화면 등)에서 화면마다 가로 스크롤을 만들었다. 사용자 화면은 프레임부터
+  내용까지 280px에서도 넘치지 않는다.
+*/
 body {
-  min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: var(--font-family-base);
   font-size: var(--font-size-base);
   color: var(--color-text);
@@ -55,6 +60,7 @@ body::after {
   position: relative;
   z-index: 1;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 a {
