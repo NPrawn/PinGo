@@ -5,8 +5,10 @@ import com.pingo.backend.route.domain.RouteType;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -223,6 +225,47 @@ public class RouteFinder {
         }
 
         return new InboundSearch(destinationNodeId, distance, departsBy);
+    }
+
+    /**
+     * 주어진 노드 집합 안에서만 움직여 {@code startNodeId} 에서 걸어 닿는 노드.
+     *
+     * <p>진입 노드 후보를 <b>실제로 걸어갈 수 있는 곳</b>으로 좁히는 데 쓴다. {@link #searchInbound}
+     * 의 도달성은 목적지 기준이고 층을 가리지 않는다. 그래서 역 그래프가 하나로 이어져 있으면
+     * 어느 노드든 통과한다 — 역삼역 B3 두 승강장은 그 층 간선만으로는 서로 이어지지 않는데도
+     * B2 를 경유해 이어지는 것으로 계산돼, 선로 건너편 노드가 후보에 남았다.
+     *
+     * <p>거리는 재지 않는다. 후보를 고르는 비용식이 따로 있고, 여기서 필요한 것은 "걸어갈 수
+     * 있는가" 뿐이라 너비 우선으로 훑는다.
+     *
+     * <p>{@code startNodeId} 는 집합에 없어도 결과에 들어간다. 요청에 온 진입 노드를 후보에서
+     * 떨어뜨리지 않기 위해서다.
+     */
+    public Set<Long> reachableWithin(
+            List<GraphEdge> edges,
+            long startNodeId,
+            Set<Long> allowedNodeIds,
+            RouteType routeType
+    ) {
+        Map<Long, List<Segment>> adjacency = buildAdjacency(edges, routeType);
+
+        Set<Long> reached = new HashSet<>();
+        reached.add(startNodeId);
+        Deque<Long> queue = new ArrayDeque<>();
+        queue.add(startNodeId);
+
+        while (!queue.isEmpty()) {
+            long node = queue.poll();
+            for (Segment segment : adjacency.getOrDefault(node, List.of())) {
+                long next = segment.toNodeId();
+                if (!allowedNodeIds.contains(next) || !reached.add(next)) {
+                    continue;
+                }
+                queue.add(next);
+            }
+        }
+
+        return reached;
     }
 
     /**

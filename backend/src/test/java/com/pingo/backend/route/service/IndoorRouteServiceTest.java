@@ -426,6 +426,50 @@ class IndoorRouteServiceTest {
         assertThat(response.startNodeId()).isEqualTo(3L);
     }
 
+    /**
+     * 같은 층이어도 걸어갈 수 없는 노드는 진입점이 될 수 없다.
+     *
+     * <p>역삼역 B3 를 줄여 옮겼다. 선로 양쪽에 승강장이 있고 그 둘은 같은 층인데 간선이 없다.
+     * 건너가려면 위층(2)으로 올라갔다 내려와야 한다. 사용자는 아래쪽 승강장에 서 있다.
+     *
+     * <pre>
+     *   위층      12 ------------- 13 --- 목적지 14
+     *              |                |
+     *   B측 2 --- 3(계단)      건너편 22 --- 23(계단)
+     *        사용자(6,0)
+     * </pre>
+     *
+     * <p>건너편 22 는 직선으로 가깝고(사용자에서 9.2m) 목적지까지 그래프 거리도 짧아 예전
+     * 비용식으로는 뽑혔다. 그러나 B3 간선만으로는 거기 갈 수 없다. (S15P11A206-338)
+     */
+    @Test
+    @DisplayName("같은 층이어도 그 층 간선으로 닿지 못하는 노드는 진입점 후보에서 빠진다")
+    void skipsEntryNodeAcrossDisconnectedPlatform() {
+        givenActiveStation(1L);
+        givenNodes(1L,
+                nodeAt(2L, 0, 0), nodeAt(3L, 10, 0),          // 사용자가 선 승강장
+                nodeAt(22L, 10, 9), nodeAt(23L, 20, 9),       // 선로 건너편 승강장 (간선으로 안 이어짐)
+                nodeAtFloor(12L, 2L, 10, 0), nodeAtFloor(13L, 2L, 20, 9), nodeAtFloor(14L, 2L, 30, 9));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 22L, 23L, 10, RouteMoveType.WALKWAY),
+                // 두 승강장은 위층을 거쳐서만 이어진다
+                edge(1L, 3L, 12L, 5, RouteMoveType.STAIR),
+                edge(1L, 23L, 13L, 5, RouteMoveType.STAIR),
+                edge(1L, 12L, 13L, 14, RouteMoveType.WALKWAY),
+                edge(1L, 13L, 14L, 10, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {2L, 1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 14L, null, "fastest", Language.KO,
+                new BigDecimal("6.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isIn(2L, 3L);
+        assertThat(response.pathNodes())
+                .extracting(RoutePathNode::nodeId)
+                .doesNotContain(22L, 23L);
+    }
+
     @Test
     @DisplayName("상세 경로 안내에 회전과 층 이동 방향이 실린다")
     void writesTurnAndFloorDirection() {

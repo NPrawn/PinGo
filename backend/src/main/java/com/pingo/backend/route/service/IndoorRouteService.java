@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -61,7 +62,7 @@ public class IndoorRouteService {
         for (RouteType routeType : RouteType.values()) {
             InboundSearch toFirstStop = searchToFirstStop(
                     requested, data, routeType, request.currentMapX(), request.currentMapY());
-            List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop,
+            List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop, routeType,
                     request.currentMapX(), request.currentMapY());
             RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType, toFirstStop);
             if (path.isReachable()) {
@@ -85,7 +86,7 @@ public class IndoorRouteService {
         RouteGraphData data = loadGraph(request.stationId(), requested);
         InboundSearch toFirstStop = searchToFirstStop(
                 requested, data, routeType, request.currentMapX(), request.currentMapY());
-        List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop,
+        List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop, routeType,
                 request.currentMapX(), request.currentMapY());
         RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType, toFirstStop);
 
@@ -202,12 +203,17 @@ public class IndoorRouteService {
      * 사용자 좌표에서 그 노드까지의 직선 거리를 더해 가장 작은 것을 고른다. 경로 유형마다 도달
      * 가능한 노드가 다르므로 유형별로 따로 고른다.
      *
-     * <p><b>같은 층만 후보로 둔다.</b> 층 이동은 계단·엘리베이터를 타야 하는데 직선 거리는
-     * 그것을 모른다. 층은 요청에 온 {@code startNodeId} 의 층을 쓴다.
+     * <p><b>그 층에서 걸어갈 수 있는 노드만 후보로 둔다.</b> 요청에 온 진입 노드에서 같은 층
+     * 간선만으로 닿는 노드로 좁힌다({@link RouteFinder#reachableWithin}). 같은 층인 것만으로는
+     * 모자라다 — 역삼역 B3 는 선로 양쪽에 승강장이 있고 그 둘은 같은 층인데도 이어져 있지
+     * 않다. {@code toFirstStop} 의 도달성은 층을 가리지 않아 B2 를 경유해 이어지는 것으로
+     * 계산되므로, 그것만 믿으면 선로 건너편 노드가 후보에 남는다(S15P11A206-338).
      *
      * <p><b>직선 거리라 벽을 모른다.</b> 직선으로 가깝지만 실제로는 벽 너머인 노드가 뽑힐 수
      * 있다. 지금 {@code IndoorPositionResolver} 도 같은 한계를 갖고 있어 일관은 하다. 제대로
      * 하려면 노드가 아니라 간선 위의 점에 투영해야 하고, 그것은 그래프 모델을 바꾸는 일이다.
+     * 걸어갈 수 있는 노드로 좁히는 것은 그 근사의 <b>범위</b>를 그 층 통로로 묶는 일이지,
+     * 벽을 아는 일은 아니다.
      *
      * <p>탐색 결과가 없거나 후보를 찾지 못하면 요청에 온 진입 노드를 그대로 쓴다. 선택 필드라
      * 클라이언트가 늦게 반영해도 동작이 바뀌지 않아야 한다.
@@ -216,6 +222,7 @@ public class IndoorRouteService {
             List<Long> stopNodeIds,
             RouteGraphData data,
             InboundSearch toFirstStop,
+            RouteType routeType,
             BigDecimal currentMapX,
             BigDecimal currentMapY
     ) {
@@ -229,10 +236,16 @@ public class IndoorRouteService {
             return stopNodeIds;
         }
 
+        Set<Long> sameFloor = data.nodes().values().stream()
+                .filter(node -> node.getFloorId().equals(requestedNode.getFloorId()))
+                .map(RouteNode::getId)
+                .collect(Collectors.toSet());
+        Set<Long> walkable = routeFinder.reachableWithin(data.edges(), requestedEntry, sameFloor, routeType);
+
         double x = currentMapX.doubleValue();
         double y = currentMapY.doubleValue();
-        Long chosen = data.nodes().values().stream()
-                .filter(node -> node.getFloorId().equals(requestedNode.getFloorId()))
+        Long chosen = walkable.stream()
+                .map(data.nodes()::get)
                 .filter(node -> toFirstStop.reaches(node.getId()))
                 .min(Comparator.comparingDouble(node ->
                         straightDistance(x, y, node) + toFirstStop.distanceFrom(node.getId()).doubleValue()))
