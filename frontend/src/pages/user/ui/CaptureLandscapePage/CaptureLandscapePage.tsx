@@ -91,10 +91,6 @@ export function CaptureLandscapePage() {
               </div>
             </div>
 
-            <div className={styles.statusBar} aria-hidden>
-              <span>9:41</span>
-              <span className={styles.statusRight}>●●● ▮</span>
-            </div>
 
             <div className={styles.topBar}>
               <Link to={USER_ROUTES.CAPTURE_GUIDE} className={styles.back} aria-label="촬영 안내로">

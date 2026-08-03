@@ -51,11 +51,7 @@ export function StationPage() {
         <Sub className={styles.description}>
           출발지와 목적지만 고르면 역 안의 길을 안내해 드려요.
         </Sub>
-        <ConsultCta
-          variant="chip"
-          label="상담 연결하기"
-          className={styles.heroConsult}
-        />
+        <ConsultCta variant="chip" label="상담 연결하기" className={styles.heroConsult} />
       </section>
 
       <nav className={styles.progress} aria-label="출발지와 목적지 선택 단계">
@@ -96,18 +92,17 @@ export function StationPage() {
             <span>출발지</span>
             <strong>{station}</strong>
           </div>
-          <button
-            type="button"
-            className={styles.changeButton}
-            onClick={() => setStep('origin')}
-          >
+          <button type="button" className={styles.changeButton} onClick={() => setStep('origin')}>
             변경
           </button>
         </div>
       )}
 
       {step === 'origin' && (
-        <section className={styles.section} aria-labelledby="origin-heading">
+        <section
+          className={`${styles.section} ${styles.originSection}`}
+          aria-labelledby="origin-heading"
+        >
           <div className={styles.sectionHead}>
             <span className={styles.step}>1</span>
             <div>
@@ -123,7 +118,10 @@ export function StationPage() {
       )}
 
       {step === 'destination' && (
-        <section className={`${styles.section} ${styles.sectionEntering}`} aria-labelledby="destination-heading">
+        <section
+          className={`${styles.section} ${styles.sectionEntering}`}
+          aria-labelledby="destination-heading"
+        >
           <div className={styles.sectionHead}>
             <span className={styles.step}>2</span>
             <div>

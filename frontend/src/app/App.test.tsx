@@ -404,11 +404,11 @@ describe('user routes', () => {
     expect(screen.getByText('역삼역')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '목적지 선택' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /GS25 역삼역점/ }));
+    fireEvent.click(screen.getByRole('button', { name: /블리스 라운드 역삼점/ }));
 
-    expect(useNavigationStore.getState().waypoints).toEqual([]);
+    await waitFor(() => expect(useNavigationStore.getState().waypoints).toEqual([]));
     expect(await screen.findByRole('heading', { name: '출발지와 목적지' })).toBeInTheDocument();
-    expect(screen.getByLabelText('역삼역에서 GS25 역삼역점까지')).toBeInTheDocument();
+    expect(screen.getByLabelText('역삼역에서 블리스 라운드 역삼점까지')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /이 경로로 촬영 시작/ })).toBeInTheDocument();
   });
 

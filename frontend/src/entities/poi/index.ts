@@ -7,5 +7,5 @@ export {
   FACILITY_TINTS,
   DEFAULT_FACILITY_TINT,
 } from './model/fixtures';
-export { useDestinationSearch } from './api/useDestinationSearch';
+export { resolveDestination, useDestinationSearch } from './api/useDestinationSearch';
 export type { Poi, PoiKind, FacilityPin } from './model/types';

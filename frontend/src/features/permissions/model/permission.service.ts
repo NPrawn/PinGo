@@ -311,6 +311,7 @@ export function requestLocationPermission(): Promise<LocationPermissionResult> {
        * 위치 권한 허용 및 위치 조회 성공.
        */
       (position) => {
+        saveLocation(position);
         resolve({
           kind: 'location',
           status: 'granted',
@@ -665,3 +666,4 @@ export async function requestRequiredPermissions({
     microphone: media.microphone,
   };
 }
+import { saveLocation } from '@/shared/lib/location-cache';

@@ -5,11 +5,6 @@
   position: relative;
 }
 
-.statusBar {
-  position: relative;
-  z-index: 1;
-}
-
 /* Dimmed copy of the navigation screen behind the dialog. */
 .backdrop {
   position: absolute;

@@ -48,7 +48,7 @@ public class UserSession implements Persistable<String> {
 
     private LocalDateTime expiresAt;
 
-    private static final Duration SESSION_TTL = Duration.ofHours(1);
+    private static final Duration SESSION_TTL = Duration.ofHours(6);
 
     public static UserSession create(Language language){
         UserSession session = new UserSession();
@@ -91,10 +91,8 @@ public class UserSession implements Persistable<String> {
         this.lastGpsLongitude = longitude;
     }
 
-    public void renewActivity(){
-        LocalDateTime now = LocalDateTime.now();
-        this.lastActiveAt = now;
-        this.expiresAt = now.plus(SESSION_TTL);
+    public void recordActivity(){
+        this.lastActiveAt = LocalDateTime.now();
     }
 
     public boolean isExpired() {
