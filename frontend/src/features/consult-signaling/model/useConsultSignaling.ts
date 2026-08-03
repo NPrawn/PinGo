@@ -197,6 +197,15 @@ export function useConsultSignaling(
   const [status, setStatus] = useState<RTCPeerConnectionState | 'idle' | 'signaling'>('idle');
   const [error, setError] = useState<string | null>(null);
   /**
+   * 끊긴 연결을 자동으로 다시 맺는 중인지.
+   *
+   * signaling 소켓이 한 번 열렸다가(JOIN까지는 성공) 채 붙기도 전에 닫히면(예: SDP가
+   * 컨테이너 버퍼를 넘겨 1009로 닫히는 경우) 화면에는 원인 코드가 그대로 노출된 채
+   * 아무 안내 없이 멈춰 있었다. 재시도가 끝날 때까지는 그 자리에 로딩 화면을 보여 주고,
+   * 다시 시도해도 안 되면(한도 초과) 이 값을 내려 실제 실패 안내로 돌아간다.
+   */
+  const [reconnecting, setReconnecting] = useState(false);
+  /**
    * 마이크·화면을 얻지 못했다는 안내. 연결 오류와 따로 둔다.
    *
    * 연결이 맺어지면 연결 오류는 사실이 아니게 되어 지우지만, 마이크가 없다는 사실은
@@ -263,7 +272,6 @@ export function useConsultSignaling(
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
-
     void getIceServers(accessToken)
       .then((response) => {
         if (!cancelled) setRtcConfig(toRtcConfiguration(response));
@@ -379,7 +387,6 @@ export function useConsultSignaling(
     } else {
       peer.ondatachannel = (event) => attachDataChannel(event.channel);
     }
-
     const wsBase = env.VITE_WS_BASE_URL.replace(/\/$/, '');
     const socket = new WebSocket(`${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`);
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
@@ -657,12 +664,14 @@ export function useConsultSignaling(
       if (disposed || recovering) return;
 
       if (recoveryAttemptsRef.current >= MAX_RECOVERY_ATTEMPTS) {
+        setReconnecting(false);
         setError('상담 연결을 회복하지 못했습니다. 상담을 다시 시작해 주세요.');
         return;
       }
 
       recovering = true;
       recoveryAttemptsRef.current += 1;
+      setReconnecting(true);
       if (role === 'USER') send('RENEGOTIATE', { reason });
       setConnectionEpoch((epoch) => epoch + 1);
     };
@@ -679,6 +688,7 @@ export function useConsultSignaling(
         recoveryAttemptsRef.current = 0;
         // 재접속으로 연결됐다면 이전 시도의 실패 안내는 더 이상 사실이 아니다.
         setError(null);
+        setReconnecting(false);
       }
       if (peer.connectionState === 'failed') {
         publishMediaFailure('VIDEO_FAILED', 'peer_connection_failed');
@@ -950,6 +960,18 @@ export function useConsultSignaling(
       // 이미 영상까지 붙었으면 signaling이 닫혀도 통화는 유지된다.
       if (peer.connectionState === 'connected') return;
       fail(`상담 연결이 끊어졌습니다. 잠시 후 다시 시도해 주세요.${detail}`);
+
+      /**
+       * 협상이 끝나기 전에 signaling 소켓만 먼저 닫힌 경우 다시 맺는다.
+       *
+       * SDP가 컨테이너 버퍼를 넘겨 1009로 닫히는 경우가 이런 모양이다 — JOIN까지는
+       * 성공했지만(`socketOpened`) offer를 보내는 순간 연결이 끊겨 협상이 시작도 못 한다.
+       * 서버가 상담을 끝내며 보낸 4400(종료)·4408(방 만료)까지 다시 맺으면 이미 끝난
+       * 상담을 붙잡고 헛수고를 하게 되므로 그 둘은 뺀다.
+       */
+      if (event.code !== 4400 && event.code !== 4408) {
+        recover('signaling_closed_before_connected');
+      }
     };
 
     /**
@@ -1072,6 +1094,12 @@ export function useConsultSignaling(
      * 쪽이고, 연결 문제도 대개 거기서 시작된다.
      */
     error: mediaError ?? error,
+    /**
+     * 끊긴 연결을 자동으로 다시 맺는 중. 화면은 이 값이 참이면 실패 문구 대신 로딩 화면을
+     * 보여 줘야 한다 — 재시도가 곧 이어지므로 코드 1009 같은 원인 문구만 보여 주고 멈춰
+     * 있으면 사용자가 새로고침 말고는 손쓸 방법이 없다고 오해한다.
+     */
+    reconnecting,
     localCaption,
     remoteCaption,
     /** 상대가 말을 마친 마지막 문장. 번역에 쓴다. */

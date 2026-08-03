@@ -98,6 +98,7 @@ export function ConsultSessionPage() {
     remoteVideoRef,
     status,
     error,
+    reconnecting,
     remoteCaption,
     remoteFinalCaption,
     captionsSupported,
@@ -275,6 +276,17 @@ export function ConsultSessionPage() {
 
         <div className={styles.cam}>
           {/*
+            signaling이 붙기 전에 끊기면(1009 등) 원인 코드만 화면에 남아 있었다. 자동으로
+            다시 맺는 동안에는 그 문구 대신 로딩 화면을 보여 준다 — 재시도가 곧 이어지므로
+            사용자가 새로고침 말고는 손쓸 방법이 없다고 오해하지 않게 한다.
+          */}
+          {reconnecting && (
+            <div className={styles.reconnecting} role="status">
+              <span className={styles.reconnectingSpinner} aria-hidden />
+              <span>연결을 다시 시도하고 있어요</span>
+            </div>
+          )}
+          {/*
             상담원은 목소리만 보낸다. 영상을 띄우면 이 화면이 통째로 다시 상담원에게
             공유되면서 화면 속에 화면이 겹친다. 소리를 내려면 요소 자체는 있어야 하므로
             보이지 않게만 둔다.
@@ -295,9 +307,12 @@ export function ConsultSessionPage() {
           />
           <span
             className={styles.connectionStatus}
-            role={(error ?? tokenError) ? 'alert' : undefined}
+            role={!reconnecting && (error ?? tokenError) ? 'alert' : undefined}
           >
-            {error ?? tokenError ?? `연결 상태: ${status}`}
+            {/* 재시도 중에는 위 로딩 화면이 안내를 대신하므로 원인 코드를 여기 또 띄우지 않는다. */}
+            {reconnecting
+              ? '연결 상태: 재시도 중'
+              : (error ?? tokenError ?? `연결 상태: ${status}`)}
           </span>
           <div
             className={[styles.routeHeader, waypoints.length > 0 && styles.routeHeaderCompact]

@@ -29,6 +29,13 @@ import styles from './SessionPage.module.css';
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
 
+/** 재시도 중에는 원인 코드 대신 재시도 중임을 알린다. 그 문구는 로딩 화면이 대신 보여 준다. */
+function statusMessage(reconnecting: boolean, failure: string | null, status: string): string {
+  if (reconnecting) return '연결 상태: 재시도 중';
+  if (failure) return `${failure} · 연결 상태: ${status}`;
+  return `연결 상태: ${status}`;
+}
+
 type DrawStrokeStart = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_START' }>['payload'];
 type DrawStrokeMove = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_MOVE' }>['payload'];
 type DrawStrokeEnd = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_END' }>['payload'];
@@ -62,6 +69,7 @@ export function SessionPage() {
     remoteVideoRef,
     status,
     error,
+    reconnecting,
     localCaption,
     remoteCaption,
     remoteFinalCaption,
@@ -291,11 +299,9 @@ export function SessionPage() {
           */}
           <span
             className={styles.connectionStatus}
-            role={(error ?? tokenError) ? 'alert' : undefined}
+            role={!reconnecting && (error ?? tokenError) ? 'alert' : undefined}
           >
-            {(error ?? tokenError)
-              ? `${error ?? tokenError} · 연결 상태: ${status}`
-              : `연결 상태: ${status}`}
+            {statusMessage(reconnecting, error ?? tokenError, status)}
           </span>
           <div className={styles.summary}>
             <div className={styles.summaryBody}>
@@ -410,7 +416,10 @@ export function SessionPage() {
               도면과 아무 관계가 없어 상담자가 짚어 준 자리를 사용자가 현장에서 찾을 수 없었다.
             */}
             <FloorRail
-              options={floorMaps.map((map) => ({ value: String(map.floorId), label: map.floorCode }))}
+              options={floorMaps.map((map) => ({
+                value: String(map.floorId),
+                label: map.floorCode,
+              }))}
               value={displayedFloorId == null ? '' : String(displayedFloorId)}
               onChange={(value) => {
                 // 층을 직접 고르는 것은 사용자 시점을 벗어나겠다는 뜻이다.
@@ -605,6 +614,17 @@ export function SessionPage() {
             화면이라 실제 수신 영상으로 바꿨다.
           */}
           <div className={styles.stream}>
+            {/*
+              signaling이 붙기 전에 끊기면(1009 등) 원인 코드만 화면에 남아 있었다. 자동으로
+              다시 맺는 동안에는 그 문구 대신 로딩 화면을 보여 준다 — 재시도가 곧 이어지므로
+              상담자가 새로고침 말고는 손쓸 방법이 없다고 오해하지 않게 한다.
+            */}
+            {reconnecting && (
+              <div className={styles.reconnecting} role="status">
+                <span className={styles.reconnectingSpinner} aria-hidden />
+                <span>연결을 다시 시도하고 있어요</span>
+              </div>
+            )}
             <video
               ref={remoteVideoRef}
               autoPlay
@@ -612,7 +632,7 @@ export function SessionPage() {
               className={styles.sharedScreen}
               aria-label="사용자가 공유 중인 화면"
             />
-            {!sharing && (
+            {!sharing && !reconnecting && (
               <p className={styles.streamPlaceholder}>
                 {error ?? tokenError ?? '사용자 화면을 기다리는 중입니다.'}
               </p>
