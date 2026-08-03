@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 // 경로 조회는 `entities/route`를 쓴다. `shared/api`의 생성 타입과 달리 응답 필드가 모두 있다.
-import { getIndoorRouteOptions, type RouteOption } from '@/entities/route';
+import { getIndoorRouteOptions, type RouteOption, type RouteOrigin } from '@/entities/route';
 import { ApiError, findNearestExit, getFacility } from '@/shared/api';
 import type { RouteType } from '@/shared/types';
 
@@ -23,6 +23,15 @@ interface UseExitRouteParams {
   startNodeId: number | null;
   destinationLatitude: number | null;
   destinationLongitude: number | null;
+  /**
+   * 사용자의 실제 좌표. 서버가 진입 노드를 다시 고르는 데 쓴다. (`routeOriginOf`)
+   *
+   * **안내 화면의 경로 생성과 같은 값을 보내야 한다.** 한쪽만 보내면 진입 노드가 달라져,
+   * 이 화면의 카드에 적힌 거리와 실제 안내되는 경로의 길이가 어긋난다.
+   *
+   * 없어도 조회는 된다 — 선택 필드이므로 `ready` 조건에 넣지 않는다.
+   */
+  origin?: RouteOrigin | null;
 }
 
 /**
@@ -52,7 +61,7 @@ function formatExitLabel(exitNumber: string | undefined, fallbackName: string | 
  * 모두 성공해야 카드 한 장이 완성되기 때문이다. 부분 성공 상태를 화면이 따로 다룰 것이 없다.
  */
 export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
-  const { stationId, startNodeId, destinationLatitude, destinationLongitude } = params;
+  const { stationId, startNodeId, destinationLatitude, destinationLongitude, origin } = params;
   const accessibleOnly = routeType === 'elevator_only';
   const ready =
     stationId != null &&
@@ -68,6 +77,10 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
       startNodeId,
       destinationLatitude,
       destinationLongitude,
+      /* 좌표도 결과를 바꾼다 — 서버가 그 값으로 진입 노드를 다시 골라 총 거리가 달라진다.
+         키에 없으면 재인식으로 좌표만 바뀐 경우 옛 거리가 카드에 남는다. */
+      origin?.currentMapX ?? null,
+      origin?.currentMapY ?? null,
     ],
     queryFn: async (): Promise<ExitRoute | null> => {
       /**
@@ -95,6 +108,7 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
         stationId: stationId!,
         startNodeId: startNodeId!,
         targetNodeId: facility.linkedNodeId,
+        ...(origin ?? {}),
       });
 
       return {
