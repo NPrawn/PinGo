@@ -38,3 +38,12 @@ export const PERMISSION_CATALOG: readonly PermissionCopy[] = [
     short: '마이크',
   },
 ];
+
+/**
+ * 권한 이름을 문장에 넣을 수 있게 잇는다. 카탈로그 순서를 따르므로 늘 같은 차례로 읽힌다.
+ */
+export function permissionNamesOf(keys: readonly PermissionKey[]): string {
+  return PERMISSION_CATALOG.filter((permission) => keys.includes(permission.key))
+    .map((permission) => permission.name)
+    .join('·');
+}
