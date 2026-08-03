@@ -52,8 +52,12 @@ export function UserRoutes() {
         권한 화면을 통과한 뒤 브라우저 설정에서 권한을 꺼도 그대로 이용되던 문제 때문에 둔다.
         도중에 사라진 권한은 처음부터 없었던 것과 같게 다뤄, 권한 화면으로 돌려보낸다.
 
-        설정·오프라인 화면은 밖에 둔다. 권한이 없을 때 사용자가 상황을 확인하러 가는 곳이라,
-        거기까지 막으면 되돌아올 방법을 안내할 자리가 없어진다.
+        **설정 화면도 안에 둔다.** 권한 카드가 상태를 보여 주기만 하게 바뀐 뒤로 거기서 할 수
+        있는 일이 없다. 복구 안내와 다시 갖춰졌을 때의 자동 진행은 권한 화면이 갖고 있으므로,
+        설정 화면에서 권한을 풀었을 때 돌아갈 곳도 거기다.
+
+        오프라인 화면만 밖에 남긴다. 그쪽은 네트워크 이야기라, 권한 문제로 가려 버리면 사용자가
+        무엇 때문에 막혔는지 알 수 없다.
       */}
       <Route element={<RequirePermissions />}>
         <Route path={rel(USER_ROUTES.STATION)} element={<StationPage />} />
@@ -96,10 +100,10 @@ export function UserRoutes() {
         <Route path={rel(USER_ROUTES.CONSULT_WAITING)} element={<ConsultWaitingPage />} />
         <Route path={rel(USER_ROUTES.CONSULT_SESSION)} element={<ConsultSessionPage />} />
         <Route path={rel(USER_ROUTES.CONSULT_ENDED)} element={<ConsultEndedPage />} />
+
+        <Route path={rel(USER_ROUTES.SETTINGS)} element={<SettingsPage />} />
       </Route>
 
-      {/* Settings and exceptions */}
-      <Route path={rel(USER_ROUTES.SETTINGS)} element={<SettingsPage />} />
       <Route path={rel(USER_ROUTES.OFFLINE)} element={<OfflinePage />} />
 
       <Route path="*" element={<Navigate to={USER_ROUTES.SPLASH} replace />} />

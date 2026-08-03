@@ -315,6 +315,32 @@ describe('user routes', () => {
     ).toBeInTheDocument();
   });
 
+  /**
+   * 설정 화면에서 권한을 풀어도 돌아가야 한다.
+   *
+   * 권한 카드가 상태를 보여 주기만 하게 바뀐 뒤로 그 화면에서 할 수 있는 일이 없다. 복구
+   * 안내와 다시 갖춰졌을 때의 자동 진행은 권한 화면에 있으므로 거기로 보낸다.
+   */
+  it('sends the user back when a permission is revoked on the settings screen', async () => {
+    stubPermissionStates({ geolocation: 'granted', camera: 'prompt', microphone: 'granted' });
+
+    await renderSection('/user/settings');
+
+    expect(
+      await screen.findByRole('heading', { name: /이용에 필요한 권한을/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the settings screen while every permission is still granted', async () => {
+    stubPermissionStates({ geolocation: 'granted', camera: 'granted', microphone: 'granted' });
+
+    await renderSection('/user/settings');
+
+    expect(await screen.findByRole('heading', { name: '설정' })).toBeInTheDocument();
+    // 권한은 여기서 바꿀 수 없다. 상태만 읽는다.
+    expect(screen.getAllByText('허용됨')).toHaveLength(3);
+  });
+
   /** 조회할 수 없는 브라우저에서 모르는 것을 없는 것으로 치면 멀쩡한 사용자까지 막힌다. */
   it('does not block when the browser cannot report permission state', async () => {
     await renderSection('/user/station');
