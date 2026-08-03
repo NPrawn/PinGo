@@ -48,11 +48,12 @@ public class IndoorRouteService {
      * 출발 노드에서 도착 노드까지의 경로 옵션(빠른 경로·엘리베이터 이용 경로)을 요약으로 조회한다.
      */
     public List<RouteOptionResponse> getRouteOptions(RouteOptionsRequest request) {
-        RouteGraphData data = loadGraph(request.stationId(), request.startNodeId(), request.targetNodeId());
+        List<Long> stopNodeIds = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        RouteGraphData data = loadGraph(request.stationId(), stopNodeIds);
 
         List<RouteOptionResponse> options = new ArrayList<>();
         for (RouteType routeType : RouteType.values()) {
-            RoutePath path = routeFinder.find(data.edges(), request.startNodeId(), request.targetNodeId(), routeType);
+            RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType);
             if (path.isReachable()) {
                 options.add(RouteOptionResponse.available(
                         routeType, path.totalDistanceM(), path.totalTimeSec(), hasStairsOrEscalator(path)));
@@ -70,8 +71,9 @@ public class IndoorRouteService {
         RouteType routeType = RouteType.fromCode(request.routeType())
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNSUPPORTED_ROUTE_TYPE));
 
-        RouteGraphData data = loadGraph(request.stationId(), request.startNodeId(), request.targetNodeId());
-        RoutePath path = routeFinder.find(data.edges(), request.startNodeId(), request.targetNodeId(), routeType);
+        List<Long> stopNodeIds = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        RouteGraphData data = loadGraph(request.stationId(), stopNodeIds);
+        RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType);
 
         if (!path.isReachable()) {
             return RouteResponse.unavailable(
@@ -92,13 +94,47 @@ public class IndoorRouteService {
         );
     }
 
-    private RouteGraphData loadGraph(Long stationId, Long startNodeId, Long targetNodeId) {
+    private List<Long> stopNodeIds(Long startNodeId, List<Long> waypointNodeIds, Long targetNodeId) {
+        List<Long> stopNodeIds = new ArrayList<>();
+        stopNodeIds.add(startNodeId);
+        stopNodeIds.addAll(waypointNodeIds);
+        stopNodeIds.add(targetNodeId);
+        return stopNodeIds;
+    }
+
+    private RoutePath findThroughStops(List<GraphEdge> edges, List<Long> stopNodeIds, RouteType routeType) {
+        List<Long> nodeIds = new ArrayList<>();
+        List<Segment> segments = new ArrayList<>();
+        BigDecimal totalDistanceM = BigDecimal.ZERO;
+        Integer totalTimeSec = 0;
+
+        for (int i = 0; i < stopNodeIds.size() - 1; i++) {
+            RoutePath path = routeFinder.find(edges, stopNodeIds.get(i), stopNodeIds.get(i + 1), routeType);
+            if (!path.isReachable()) {
+                return RoutePath.unreachable();
+            }
+
+            if (nodeIds.isEmpty()) {
+                nodeIds.addAll(path.nodeIds());
+            } else if (path.nodeIds().size() > 1) {
+                nodeIds.addAll(path.nodeIds().subList(1, path.nodeIds().size()));
+            }
+            segments.addAll(path.segments());
+            totalDistanceM = totalDistanceM.add(path.totalDistanceM());
+            if (totalTimeSec != null) {
+                totalTimeSec = path.totalTimeSec() == null ? null : totalTimeSec + path.totalTimeSec();
+            }
+        }
+
+        return new RoutePath(nodeIds, segments, totalDistanceM, totalTimeSec);
+    }
+
+    private RouteGraphData loadGraph(Long stationId, List<Long> nodeIdsToValidate) {
         validateStationActive(stationId);
 
         Map<Long, RouteNode> nodes = routeNodeRepository.search(stationId, null).stream()
                 .collect(Collectors.toMap(RouteNode::getId, Function.identity()));
-        requireNodeInStation(nodes, startNodeId);
-        requireNodeInStation(nodes, targetNodeId);
+        nodeIdsToValidate.forEach(nodeId -> requireNodeInStation(nodes, nodeId));
 
         List<GraphEdge> edges = routeEdgeRepository.findAllByStationIdAndActiveTrueOrderByIdAsc(stationId).stream()
                 .map(edge -> new GraphEdge(
