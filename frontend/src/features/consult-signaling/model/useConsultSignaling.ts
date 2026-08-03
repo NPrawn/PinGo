@@ -12,12 +12,7 @@ import type {
 } from '@/shared/api';
 import { createConsultEvent, parseConsultEvent } from '@/shared/types';
 import type { ConsultDataEvent, ConsultEventBody } from '@/shared/types';
-import {
-  captureConsultMedia,
-  isConsultScreenLive,
-  peekConsultMedia,
-  replaceConsultScreenTrack,
-} from './consultMedia';
+import { captureConsultMicrophone, peekConsultMedia } from './consultMedia';
 import { createConsultEventFallback } from './consultEventFallback';
 import type { ConsultEventFallback } from './consultEventFallback';
 
@@ -58,11 +53,11 @@ const MAX_CAPTION_ERROR_STREAK = 3;
 const CAPTION_SILENCE_MS = 20000;
 
 /**
- * 화면·마이크를 얻는 데 기다려 주는 시간.
+ * 카메라·마이크를 얻는 데 기다려 주는 시간.
  *
  * `getUserMedia` 는 거절될 때만 오류를 던진다. 장치가 다른 앱에 잡혀 있거나 사용자가 권한
  * 창을 그대로 두면 **아무 대답 없이 계속 매달려 있다.** 협상이 그 뒤에 있으면 offer 를 영영
- * 만들지 못해, 화면에는 `연결 상태: signaling` 만 남고 화면 공유가 시작되지 않는다.
+ * 만들지 못해, 화면에는 `연결 상태: signaling` 만 남고 영상이 시작되지 않는다.
  * 여기서 끊고 협상만이라도 진행한다.
  */
 const MEDIA_CAPTURE_TIMEOUT_MS = 8000;
@@ -221,10 +216,6 @@ export function useConsultSignaling(
   const restartCaptions = useCallback(() => restartCaptionsRef.current(), []);
   const [transcript, setTranscript] = useState<ConsultationTranscriptSegment[]>([]);
   const [transcriptRoomId, setTranscriptRoomId] = useState(roomId);
-  /** 사용자가 화면 대신 카메라를 보내고 있는 상태. 화면 공유를 거절했거나 도중에 멈춘 경우다. */
-  const [screenShareBlocked, setScreenShareBlocked] = useState(false);
-  /** 화면 공유를 다시 시작할 때 보내는 트랙만 갈아 끼우려고 붙잡아 둔다. */
-  const videoSenderRef = useRef<RTCRtpSender | null>(null);
   /** 서버가 준 STUN·TURN 설정. 받기 전에는 연결을 시작하지 않는다. */
   const [rtcConfig, setRtcConfig] = useState<RTCConfiguration | null>(null);
   /** 연결을 처음부터 다시 맺어야 할 때 올린다. 값이 바뀌면 아래 effect 가 통째로 다시 돈다. */
@@ -301,7 +292,7 @@ export function useConsultSignaling(
      * 상담 요청 화면이 맡겨 둔 스트림을 그대로 쓰는 중인지.
      *
      * 그런 스트림은 이 연결의 것이 아니라 상담 전체의 것이다. 연결을 정리할 때 같이 끄면
-     * 재연결에서 화면 공유가 사라진다. 끄는 일은 상담 화면이 떠날 때 한 번만 한다.
+     * 재연결에서 카메라와 목소리가 사라진다. 끄는 일은 상담 화면이 떠날 때 한 번만 한다.
      */
     let reusedPreparedStream = false;
     let recognition: SpeechRecognitionLike | null = null;
@@ -647,7 +638,7 @@ export function useConsultSignaling(
      *
      * 협상이 끝난 뒤 미디어만 끊기는 일이 있다(ICE 실패, 와이파이 전환, 절전). 예전에는
      * 여기서 아무것도 하지 않아 상담자 화면이 검은 채로 남았다 — 그리기와 자막은 다른 길로
-     * 오가니 멀쩡해 보이는데 화면 공유만 사라진 이유가 이것이다.
+     * 오가니 멀쩡해 보이는데 영상만 사라진 이유가 이것이다.
      *
      * 답하는 쪽이 혼자 다시 맺어 봐야 소용이 없다. offer 를 만드는 상담자는 이미 answer 를
      * 적용해 두어 다시는 offer 를 만들지 않기 때문이다. 그래서 사용자는 다시 맺기 전에
@@ -708,40 +699,30 @@ export function useConsultSignaling(
     };
 
     /**
-     * 사용자는 화면 전체를, 상담자는 카메라를 보낸다.
+     * 사용자는 카메라와 목소리를, 상담자는 목소리만 보낸다.
      *
-     * 상담자가 지도 위에 길을 그려 주려면 사용자가 실제로 보고 있는 화면이 필요하다.
-     * 카메라 영상만으로는 지도도 경로도 보이지 않아 그릴 대상이 없다.
-     *
-     * 화면 공유는 브라우저가 사용자 조작 직후에만 허용하는 경우가 있고, 모바일 브라우저는
-     * 아예 지원하지 않는다. 실패하면 카메라로 물러나되 화면에서 다시 시도할 수 있게 알린다.
+     * 상담자가 보는 지도는 이 영상에 담기지 않는다. MAP_SYNC 로 따로 건너간 값으로 상담자
+     * 화면이 직접 다시 그린다 — 그래서 여기서는 눈앞 상황만 보내면 된다.
      */
     const captureLocalStream = async () => {
       if (role === 'USER') {
-        // 상담 요청 화면에서 이미 잡아 둔 것이 있으면 그대로 쓴다. 화면 선택 창을 다시
-        // 열지 않으니 연결되자마자 영상이 나가고, 재연결 때도 다시 묻지 않는다.
+        /*
+          상담 요청 화면에서 무엇을 보낼지 이미 정하고 잡아 두었다. 그대로 쓴다.
+
+          여기서 새로 잡으면 사용자가 끄기로 한 카메라를 다시 열게 된다. 재연결 때마다
+          표시등이 깜빡이는 것도 이걸 빠뜨렸을 때 생긴다.
+        */
         const prepared = peekConsultMedia();
         if (prepared) {
           reusedPreparedStream = true;
-          /**
-           * 화면 공유가 이미 끝난 스트림일 수 있다.
-           *
-           * 사용자가 '공유 중지'를 눌렀거나 브라우저가 멈춘 경우다. 끝난 트랙은 되살릴 수
-           * 없어 그대로 보내면 상담자에게 검은 화면만 간다. 소리는 살아 있으니 스트림은
-           * 그대로 쓰고, 화면만 다시 공유하라고 알린다.
-           */
-          if (!isConsultScreenLive()) setScreenShareBlocked(true);
           return prepared;
         }
 
-        try {
-          return await captureConsultMedia();
-        } catch {
-          setScreenShareBlocked(true);
-        }
-
-        // 화면 공유가 막혔어도 카메라로라도 주변 상황은 보여 준다.
-        return navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        /*
+          동의 화면을 거치지 않고 이 화면에 닿은 경우다. 무엇을 보내도 좋다는 답을 받은 적이
+          없으므로 카메라는 열지 않고 목소리만 보낸다.
+        */
+        return captureConsultMicrophone();
       }
 
       /**
@@ -806,22 +787,14 @@ export function useConsultSignaling(
         localStream = stream;
         setMediaError(null);
         if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-        localStream.getTracks().forEach((track) => {
-          const sender = peer.addTrack(track, localStream!);
-          if (track.kind === 'video') videoSenderRef.current = sender;
-        });
-        // 사용자가 브라우저의 '공유 중지'를 누르면 트랙이 그대로 끝난다. 그때부터는 상담자에게
-        // 검은 화면만 가므로, 다시 공유할 수 있다고 알려야 한다.
-        localStream
-          .getVideoTracks()
-          .forEach((track) => track.addEventListener('ended', () => setScreenShareBlocked(true)));
+        localStream.getTracks().forEach((track) => peer.addTrack(track, localStream!));
       } catch (cause) {
         const timedOut = cause instanceof Error && cause.message === 'media_capture_timeout';
         if (!disposed) {
           setMediaError(
             timedOut
-              ? '마이크·화면 장치가 응답하지 않아 소리 없이 연결합니다. 다른 앱이 마이크를 쓰고 있는지 확인해 주세요.'
-              : '화면 공유 또는 마이크를 사용할 수 없습니다.',
+              ? '카메라·마이크가 응답하지 않아 소리 없이 연결합니다. 다른 앱이 마이크를 쓰고 있는지 확인해 주세요.'
+              : '카메라 또는 마이크를 사용할 수 없습니다.',
           );
         }
         publishMediaFailure(
@@ -860,7 +833,7 @@ export function useConsultSignaling(
          * 직후에 그 재전송이 도착하는 일은 흔한데, 이를 새 상담자로 오해해 연결을 다시
          * 맺으면 되돌아올 수 없다 — 상담자는 이미 answer 를 적용해 두어 다시는 offer 를
          * 만들지 않으므로, 새로 만든 이쪽 연결은 영영 offer 를 기다린다. 결과는 끝내
-         * 뜨지 않는 화면 공유다. 같은 offer 면 답만 다시 보낸다.
+         * 뜨지 않는 사용자 영상이다. 같은 offer 면 답만 다시 보낸다.
          */
         if (answeredOfferSdp !== null && answeredOfferSdp === offer.sdp) {
           if (peer.localDescription) send('ANSWER', peer.localDescription.toJSON());
@@ -992,48 +965,6 @@ export function useConsultSignaling(
   }, [accessToken, attachRemoteStream, connectionEpoch, role, roomId, rtcConfig]);
 
   /**
-   * 화면 공유를 (다시) 시작한다.
-   *
-   * 브라우저가 화면 선택 창을 사용자 조작 직후에만 띄워 주는 경우가 있어, 연결 시점에
-   * 자동으로 잡지 못하면 화면의 버튼에서 이 함수를 부른다. 이미 협상이 끝난 연결이라
-   * 보내는 트랙만 갈아 끼워 다시 협상하지 않는다.
-   */
-  const shareScreen = useCallback(async () => {
-    if (!navigator.mediaDevices?.getDisplayMedia) return;
-
-    try {
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const [track] = display.getVideoTracks();
-      if (!track) return;
-
-      const sender = videoSenderRef.current;
-      /**
-       * 이미 협상이 끝난 연결이면 보내는 트랙만 갈아 끼운다. 보낼 자리조차 없다면
-       * (트랙 없이 협상이 끝난 경우) 바꿔 낄 곳이 없어 연결을 다시 맺는다.
-       */
-      if (sender) {
-        const previous = sender.track;
-        await sender.replaceTrack(track);
-        // 맡겨 둔 스트림은 여기서 정리한다. 옛 트랙은 아래에서 함께 멈춘다.
-        if (previous && previous !== track) previous.stop();
-      }
-      /**
-       * 맡겨 둔 스트림도 새 화면으로 바꿔 둔다.
-       *
-       * 이걸 빠뜨리면 다음에 연결이 다시 맺어질 때 이미 끝난 옛 트랙을 도로 집어 든다.
-       * 사용자는 방금 다시 공유했는데 상담자 화면은 계속 검은 채로 남는다.
-       */
-      replaceConsultScreenTrack(track);
-      if (localVideoRef.current) localVideoRef.current.srcObject = new MediaStream([track]);
-      track.addEventListener('ended', () => setScreenShareBlocked(true));
-      setScreenShareBlocked(false);
-      if (!sender) setConnectionEpoch((epoch) => epoch + 1);
-    } catch {
-      setScreenShareBlocked(true);
-    }
-  }, []);
-
-  /**
    * 상담 이벤트를 상대에게 보낸다.
    *
    * DataChannel 이 열려 있으면 그 길로 간다. 열리지 않았으면 서버를 거치는 우회로로
@@ -1068,7 +999,7 @@ export function useConsultSignaling(
     /**
      * 화면에 보여 줄 실패 안내.
      *
-     * 연결이 끊겼다는 말보다 마이크·화면을 못 얻었다는 말이 먼저다. 상담자가 손쓸 수 있는
+     * 연결이 끊겼다는 말보다 카메라·마이크를 못 얻었다는 말이 먼저다. 상담자가 손쓸 수 있는
      * 쪽이고, 연결 문제도 대개 거기서 시작된다.
      */
     error: mediaError ?? error,
@@ -1083,9 +1014,6 @@ export function useConsultSignaling(
     restartCaptions,
     /** 상담 종료 뒤 서버에 넘길 확정 자막. 말한 순서대로 쌓인다. */
     transcript,
-    /** 사용자가 화면 대신 카메라를 보내고 있는지. 참이면 화면에서 다시 공유를 권해야 한다. */
-    screenShareBlocked,
-    shareScreen,
     sendConsultEvent,
     /** 상담 이벤트 채널이 열렸는지. 상태 스냅숏을 다시 보내야 할 시점이다. */
     eventChannelOpen,

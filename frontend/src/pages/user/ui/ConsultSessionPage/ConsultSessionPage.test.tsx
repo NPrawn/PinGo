@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
+import { peekConsultCamera } from '@/features/consult-signaling';
 import { USER_ROUTES } from '@/shared/config';
 import { ConsultSessionPage } from './ConsultSessionPage';
 
@@ -84,7 +85,22 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('상담 연결됨 · 화면 공유 중')).toBeInTheDocument();
+    expect(await screen.findByText('상담 연결됨 · 음성만')).toBeInTheDocument();
     expect(screen.queryByText('상담 종료 화면')).toBeNull();
+  });
+
+  /**
+   * 카메라를 끄고 상담을 시작한 사용자에게 공유 중이라고 적으면 안 된다.
+   *
+   * 화면 공유가 있던 시절에는 무엇을 보내든 `화면 공유 중`이라고만 적혀 있었다. 지금은 카메라가
+   * 유일한 영상이라, 껐는지 켰는지가 그대로 적혀야 무엇이 건너가는지 알 수 있다.
+   */
+  it('카메라를 잡아 두었으면 카메라 공유 중이라고 알린다', async () => {
+    apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
+    vi.mocked(peekConsultCamera).mockReturnValue({} as MediaStream);
+
+    renderPage();
+
+    expect(await screen.findByText('상담 연결됨 · 카메라 공유 중')).toBeInTheDocument();
   });
 });

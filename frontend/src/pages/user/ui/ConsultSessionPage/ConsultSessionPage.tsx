@@ -38,8 +38,9 @@ export function ConsultSessionPage() {
    * 상담 요청 화면에서 잡아 둔 카메라를 셀프뷰에 붙인다.
    *
    * 예전에는 카메라를 잡지도 않고 권한만 허용된 것으로 기록해, 상담 내내 카메라가 꺼진
-   * 채였다. 상담자 화면에는 `화면 공유 · 사용자 카메라`라고 적혀 있는데 정작 사용자 모습은
-   * 어디에도 없었다.
+   * 채였다. 상담자 화면에는 카메라가 온다고 적혀 있는데 정작 사용자 모습은 어디에도 없었다.
+   *
+   * 같은 영상 트랙이 상담자에게도 건너간다. 여기 보이는 것과 상담자가 보는 것이 같다.
    */
   const cameraRef = useRef<HTMLVideoElement>(null);
   const [cameraOn, setCameraOn] = useState(false);
@@ -102,8 +103,6 @@ export function ConsultSessionPage() {
     remoteFinalCaption,
     captionsSupported,
     captionError,
-    screenShareBlocked,
-    shareScreen,
     sendConsultEvent,
     eventChannelOpen,
   } = useConsultSignaling(signalingRoomId, 'USER', signalingAccessToken, handleDataEvent);
@@ -252,7 +251,7 @@ export function ConsultSessionPage() {
   return (
     <PhoneFrame dark layout="flush">
       <>
-        {/* 상담원이 공유 화면 위에 그린 선. 화면 전체가 공유 대상이라 화면을 덮는다. */}
+        {/* 상담원이 카메라 영상 위에 그린 선. 좌표는 0~1 정규화 값이라 화면을 덮어 얹는다. */}
         <canvas ref={annotationRef} className={styles.annotation} aria-hidden />
         <div className={styles.bar}>
           <span className={styles.liveChip}>
@@ -260,14 +259,11 @@ export function ConsultSessionPage() {
               <span className={styles.liveDot} />
               <span className={styles.liveRing} />
             </span>
-            상담 연결됨 · 화면 공유 중
+            {/* 무엇이 건너가고 있는지 그대로 적는다. 카메라를 끈 사용자에게 켜져 있다고
+                말하면 안 된다. */}
+            {cameraOn ? '상담 연결됨 · 카메라 공유 중' : '상담 연결됨 · 음성만'}
             <span className={styles.liveShine} />
           </span>
-          {screenShareBlocked && (
-            <button type="button" className={styles.shareScreen} onClick={() => void shareScreen()}>
-              화면 공유하기
-            </button>
-          )}
           <button type="button" className={styles.endCall} onClick={() => void endCall()}>
             상담 종료
           </button>
@@ -275,16 +271,11 @@ export function ConsultSessionPage() {
 
         <div className={styles.cam}>
           {/*
-            상담원은 목소리만 보낸다. 영상을 띄우면 이 화면이 통째로 다시 상담원에게
-            공유되면서 화면 속에 화면이 겹친다. 소리를 내려면 요소 자체는 있어야 하므로
-            보이지 않게만 둔다.
+            상담원은 목소리만 보낸다. 소리를 내려면 요소 자체는 있어야 하므로 보이지 않게만
+            둔다.
           */}
           <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteAudio} />
-          {/*
-            사용자 카메라 셀프뷰. 상담자에게 따로 보내지 않는다 — 이 화면 전체가 이미 공유
-            대상이라 여기 담긴 카메라 영상이 그대로 함께 건너간다. 영상 트랙을 하나 더
-            협상하지 않고도 상담자가 사용자의 상황을 볼 수 있다.
-          */}
+          {/* 사용자 카메라 셀프뷰. 이 트랙이 그대로 상담자에게 건너간다. */}
           <video
             ref={cameraRef}
             autoPlay

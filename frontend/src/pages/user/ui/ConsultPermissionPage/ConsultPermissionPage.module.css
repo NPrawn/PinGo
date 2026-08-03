@@ -39,6 +39,36 @@
   margin-top: 32px;
 }
 
+/* SelectRow 를 쓰지 않는다. 고르는 줄이 아니라 무엇이 전달되는지 알리는 줄이다. */
+.option {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+  background: rgb(255 255 255 / 82%);
+  backdrop-filter: blur(18px) saturate(1.2);
+  border: 1.5px solid rgb(255 255 255 / 90%);
+  border-radius: 18px;
+  box-shadow:
+    0 4px 12px -6px color-mix(in srgb, var(--color-ink) 8%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 85%);
+}
+
+.requiredMark {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-sub);
+}
+
+/* 저장 정책. 동의 버튼 바로 위에 둬야 누르기 전에 읽힌다. */
+.retention {
+  margin-top: 12px;
+  font-size: 11.5px;
+  text-align: left;
+}
+
 .options button:disabled {
   cursor: default;
   opacity: 1;
