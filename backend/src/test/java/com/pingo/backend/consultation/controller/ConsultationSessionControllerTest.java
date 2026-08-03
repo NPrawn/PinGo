@@ -53,7 +53,7 @@ class ConsultationSessionControllerTest {
     void createConsultation_성공() throws Exception {
         ConsultationCreateRequest request = new ConsultationCreateRequest(
                 USER_SESSION_ID, 1L, ProblemType.CANNOT_FIND_EXIT,
-                15L, "place", 3L, true, true
+                15L, "place", 3L, true, true, true
         );
         ConsultationCreateResponse response = new ConsultationCreateResponse(
                 CONSULTATION_ID, ConsultationStatus.WAITING, LocalDateTime.now()

@@ -222,6 +222,7 @@ class SecurityFilterChainTest {
                 "place",
                 3L,
                 true,
+                true,
                 true
         );
         session.accept(counselorAccountId);

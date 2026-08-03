@@ -69,7 +69,8 @@ public class ConsultationSessionService {
                 request.destinationType(),
                 request.destinationId(),
                 request.videoConsent(),
-                request.audioConsent()
+                request.audioConsent(),
+                request.locationConsent()
         );
         consultationSessionRepository.save(session);
         consultationWaitingEventPublisher.publishWaiting(session.getConsultationId());

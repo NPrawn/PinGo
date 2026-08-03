@@ -81,7 +81,7 @@ class ConsultationSessionServiceTest {
     void setUp() {
         createRequest = new ConsultationCreateRequest(
                 USER_SESSION_ID, STATION_ID, ProblemType.CANNOT_FIND_EXIT,
-                15L, "place", 3L, true, true
+                15L, "place", 3L, true, true, true
         );
         userSession = mock(UserSession.class);
     }
@@ -89,7 +89,7 @@ class ConsultationSessionServiceTest {
     private ConsultationSession newSession() {
         return ConsultationSession.create(
                 USER_SESSION_ID, STATION_ID, ProblemType.CANNOT_FIND_EXIT,
-                15L, "place", 3L, true, true
+                15L, "place", 3L, true, true, true
         );
     }
 
@@ -158,7 +158,7 @@ class ConsultationSessionServiceTest {
     void create_실패_목적지_유형과_ID_중_하나만_전달됨() {
         ConsultationCreateRequest invalidRequest = new ConsultationCreateRequest(
                 USER_SESSION_ID, STATION_ID, ProblemType.CANNOT_FIND_EXIT,
-                15L, "place", null, true, true
+                15L, "place", null, true, true, true
         );
 
         assertThatThrownBy(() -> consultationSessionService.create(invalidRequest))
@@ -532,6 +532,7 @@ class ConsultationSessionServiceTest {
                 consultationSessionService.getConsultationDetailForCounselor(session.getConsultationId(), COUNSELOR_ACCOUNT_ID);
 
         assertThat(response.consultationId()).isEqualTo(session.getConsultationId());
+        assertThat(response.locationConsent()).isTrue(); // ← 추가 검증
         assertThat(response.signalingRoomId()).isNull();
         assertThat(response.signalingAccessToken()).isNull();
     }
