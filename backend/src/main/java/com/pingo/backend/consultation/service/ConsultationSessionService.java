@@ -9,6 +9,7 @@ import com.pingo.backend.consultation.domain.ConsultationStatus;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
+import com.pingo.backend.consultation.event.ConsultationAcceptedEvent;
 import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
@@ -112,7 +113,16 @@ public class ConsultationSessionService {
 
         session.accept(counselor.getAccountId());
         counselor.changeStatus(CounselorStatus.BUSY);
-        consultationWaitingEventPublisher.publishAccepted(session.getConsultationId(), session.getSignalingRoomId());
+        /*
+         * 커밋된 뒤에 알린다.
+         *
+         * SSE 를 여기서 바로 보내면, 그 알림을 받은 사용자가 곧바로 상담 조회를 호출했을 때
+         * 아직 커밋되지 않은 이 트랜잭션의 변경을 볼 수 없다. 상담은 WAITING 인 채로 읽히고,
+         * signaling room 은 ACCEPTED 상태에서만 만들어지므로 토큰이 null 로 나간다.
+         * 사용자 화면이 "상담 연결 정보를 받지 못했습니다" 로 멈추고, 새로고침해야만 넘어간다.
+         */
+        applicationEventPublisher.publishEvent(
+                new ConsultationAcceptedEvent(session.getConsultationId(), session.getSignalingRoomId()));
         return ConsultationAcceptResponse.from(session, createCounselorSignalingAccessToken(session));
     }
 

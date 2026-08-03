@@ -1,31 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { useConsultStore, useCounselorQueueStore } from '@/entities/consult';
-import { DEFAULT_FACILITY_TINT, FACILITY_TINTS, FLOOR_FACILITY_PINS } from '@/entities/poi';
-import { useConsultSignaling } from '@/features/consult-signaling';
-import type { FloorId } from '@/shared/types';
+import {
+  consultationProblemLabel,
+  destinationTypeLabel,
+  isClosedConsultation,
+  useConsultStore,
+  useCounselorQueueStore,
+  waitedLabel,
+} from '@/entities/consult';
+import { FACILITY_MAP_FILTERS, type Facility } from '@/entities/facility';
+import { useStationFloorMaps } from '@/entities/floor-map';
+import { useCaptionTranslation, useConsultSignaling } from '@/features/consult-signaling';
+import type { ConsultDataEvent, ConsultEventBody, MapSyncPayload } from '@/shared/types';
 import { useScreenDraw } from '@/features/shared-screen-draw';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { endConsultation, getCounselorConsultation } from '@/shared/api';
 import {
-  Badge,
-  Button,
-  FacilityPin,
-  FloorRail,
-  HeadingMarker,
-  Icon,
-  MapPreview,
-  MapToggle,
-  PillButton,
-} from '@/shared/ui';
+  endConsultation,
+  getCounselorConsultation,
+  getCounselorConsultations,
+  submitConsultationTranscript,
+} from '@/shared/api';
+import { Badge, Button, FloorRail, Icon, MapPreview, MapToggle, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
+import { IndoorMapView } from '@/widgets/indoor-map';
 import styles from './SessionPage.module.css';
 
-const FLOORS: readonly { value: FloorId; label: string }[] = [
-  { value: '1F', label: '1F · 출구' },
-  { value: 'B1', label: 'B1 · 대합실' },
-  { value: 'B2', label: 'B2 · 승강장' },
-];
+/** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
+const CONSULTATION_WATCH_MS = 4000;
+
+type DrawStrokeStart = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_START' }>['payload'];
+type DrawStrokeMove = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_MOVE' }>['payload'];
+type DrawStrokeEnd = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_END' }>['payload'];
+
+/* 층 목록은 더 이상 상수로 두지 않는다. 사용자가 보고 있는 역의 실제 지도에서 만든다. */
 
 /** Screen 30 (FR-C-004 / FR-W-002) — the counselor's live consultation view. */
 export function SessionPage() {
@@ -35,21 +43,62 @@ export function SessionPage() {
   const consultationId = useConsultStore((state) => state.consultationId);
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  /** 상담자가 직접 종료를 진행 중인지. 종료 감시와 겹쳐 화면이 두 번 넘어가지 않게 한다. */
+  const [ending, setEnding] = useState(false);
+  /**
+   * 사용자가 보내온 지도 상태.
+   *
+   * 상담자는 사용자의 안내 상태를 알 방법이 없다. 이 스냅숏을 받기 전에는 그릴 지도가 없어
+   * 예전처럼 아무 지도나 띄우지 않는다 — 사용자와 다른 지도를 띄우면 거기에 그린 길이
+   * 현장에서는 다른 곳을 가리킨다.
+   */
+  const [mapSync, setMapSync] = useState<MapSyncPayload | null>(null);
+  const handleDataEvent = useCallback((event: ConsultDataEvent) => {
+    if (event.eventType !== 'MAP_SYNC') return;
+    setMapSync(event.payload);
+  }, []);
   const {
-    localVideoRef,
     remoteVideoRef,
     status,
     error,
     localCaption,
     remoteCaption,
+    remoteFinalCaption,
     captionsSupported,
-  } = useConsultSignaling(signalingRoomId, 'COUNSELOR', signalingAccessToken);
+    captionError,
+    restartCaptions,
+    transcript,
+    sendConsultEvent,
+  } = useConsultSignaling(signalingRoomId, 'COUNSELOR', signalingAccessToken, handleDataEvent);
+
+  /**
+   * 사용자가 한 말을 한국어로 옮겨 둔다.
+   *
+   * 상담자 콘솔은 한국어로 쓰인다. 사용자가 다른 언어로 말하면 상담자는 자막을 읽고도
+   * 무슨 말인지 알 수 없어, 실시간 자막이 있으나 마나가 된다.
+   */
+  const translatedUserCaption = useCaptionTranslation(consultationId, remoteFinalCaption, 'ko');
+
+  /** 그린 선을 사용자 화면에도 그대로 보낸다(명세 7장). */
+  const drawEmitter = useMemo(
+    () => ({
+      onStrokeStart: (payload: DrawStrokeStart) =>
+        sendConsultEvent({ eventType: 'DRAW_STROKE_START', payload }),
+      onStrokeMove: (payload: DrawStrokeMove) =>
+        sendConsultEvent({ eventType: 'DRAW_STROKE_MOVE', payload }),
+      onStrokeEnd: (payload: DrawStrokeEnd) =>
+        sendConsultEvent({ eventType: 'DRAW_STROKE_END', payload }),
+      onClear: () => sendConsultEvent({ eventType: 'DRAW_CLEAR', payload: {} }),
+    }),
+    [sendConsultEvent],
+  );
   const selected = useCounselorQueueStore((state) => state.selected);
   const complete = useCounselorQueueStore((state) => state.complete);
-  const [floor, setFloor] = useState<FloorId>('B1');
-  const [facility, setFacility] = useState<string | null>(null);
+  /** 상담자가 직접 고른 층. 자유 탐색일 때만 쓴다. */
+  const [pickedFloorId, setPickedFloorId] = useState<number | null>(null);
   const [synced, setSynced] = useState(true);
-  const [arrowSent] = useState(false);
+  /** 사용자 영상이 실제로 들어오고 있는지. 패널 문구와 상태 칩이 이 값을 따른다. */
+  const sharing = status === 'connected';
   /**
    * Which pin the counselor is repositioning.
    *
@@ -57,9 +106,71 @@ export function SessionPage() {
    * dropping the new pin needs the map coordinate contract.
    */
   const [repinning, setRepinning] = useState<'dest' | 'origin' | null>(null);
-  const { canvasRef, enabled: drawing, toggle: toggleDraw, clear: clearDraw } = useScreenDraw();
+  const {
+    canvasRef,
+    enabled: drawing,
+    toggle: toggleDraw,
+    clear: clearDraw,
+  } = useScreenDraw(drawEmitter, remoteVideoRef);
 
-  const pins = FLOOR_FACILITY_PINS[floor];
+  /**
+   * 층 목록은 사용자가 보고 있는 역의 실제 지도에서 만든다.
+   *
+   * 예전에는 `1F·B1·B2`가 상수로 박혀 있었다. 역마다 등록된 층이 다르고 `floorId`는
+   * auto-increment라, 상수로 두면 있지도 않은 층을 눌러 빈 화면을 보게 된다.
+   */
+  const floorMapsQuery = useStationFloorMaps(mapSync?.stationId ?? 0);
+  const floorMaps = useMemo(() => floorMapsQuery.data ?? [], [floorMapsQuery.data]);
+  /**
+   * 화면에 띄울 층.
+   *
+   * 동기화 중이면 사용자가 보는 층을 그대로 따라간다. 자유 탐색이면 상담자가 고른 층을 쓴다.
+   * 사용자가 아직 위치를 확정하지 않아 층을 모를 수도 있는데, 그때 빈 화면을 보여 주면
+   * 상담자가 역 구조조차 볼 수 없다. 등록된 첫 층으로라도 열어 둔다.
+   */
+  const displayedFloorId =
+    (synced ? null : pickedFloorId) ?? mapSync?.floorId ?? floorMaps[0]?.floorId;
+  /** 지도에 켜 둔 시설 유형. 안내 화면과 같은 목록에서 고른다. */
+  const [facilityType, setFacilityType] = useState<string | null>(null);
+  /** 방금 사용자에게 보낸 변경. 상담자가 무엇을 눌렀는지 화면에 남긴다. */
+  const [lastPick, setLastPick] = useState<string | null>(null);
+
+  /**
+   * 상담자가 지도에서 지점을 짚었다. 사용자 화면의 목적지·현재 위치를 그리로 옮긴다.
+   *
+   * 이름이 아니라 좌표와 노드까지 함께 보낸다. 이름만 넘기면 사용자 화면이 그 이름으로
+   * 시설을 다시 찾아야 하는데, 표기가 조금만 달라도 엉뚱한 곳을 가리킨다.
+   *
+   * 사용자 화면이 값을 바꾸면 곧 새 MAP_SYNC 가 돌아와 이 지도에도 반영된다. 여기서 미리
+   * 그려 두지 않는 이유다 — 실제로 사용자 화면이 받아들인 것만 보여야 한다.
+   */
+  const pickOnMap = useCallback(
+    (facility: Facility) => {
+      if (!repinning) return;
+
+      const payload = {
+        facilityId: facility.facilityId,
+        nameKo: facility.nameKo,
+        floorId: facility.floorId,
+        mapX: facility.mapX,
+        mapY: facility.mapY,
+        linkedNodeId: facility.linkedNodeId ?? null,
+      };
+      const sent = sendConsultEvent(
+        repinning === 'dest'
+          ? { eventType: 'DESTINATION_CHANGE_REQUESTED', payload }
+          : { eventType: 'CURRENT_LOCATION_CORRECTED', payload },
+      );
+
+      setLastPick(
+        sent
+          ? `${facility.nameKo}(으)로 ${repinning === 'dest' ? '목적지' : '현재 위치'}를 옮겼어요`
+          : '사용자에게 전달하지 못했어요. 연결을 확인해 주세요.',
+      );
+      setRepinning(null);
+    },
+    [repinning, sendConsultEvent],
+  );
 
   /**
    * 새로고침하면 signaling 토큰이 남지 않는다(짧은 만료 시간). 방은 알고 있으므로
@@ -81,10 +192,76 @@ export function SessionPage() {
       );
   }, [consultationId, setSignalingRoom, signalingAccessToken, signalingRoomId]);
 
+  /**
+   * 사용자가 먼저 끊었는지 지켜본다. 상담 목록으로 확인하는 이유는 상세 조회가 부를 때마다
+   * signaling 토큰을 새로 발급하기 때문이다. 상태만 알면 되는 자리에서 쓸 요청이 아니다.
+   */
+  const queueQuery = useQuery({
+    queryKey: ['counselor-consultations'],
+    queryFn: () => getCounselorConsultations(),
+    enabled: Boolean(consultationId),
+    refetchInterval: CONSULTATION_WATCH_MS,
+  });
+  /**
+   * 지금 상담 중인 요청. 위 목록 조회에서 그대로 꺼낸다.
+   *
+   * 상세 조회(`getCounselorConsultation`)를 쓰지 않는 이유는 그쪽이 부를 때마다 signaling
+   * 토큰을 새로 발급하기 때문이다. 여기서 쓰면 4초마다 토큰이 바뀌어 연결이 끊었다 붙기를
+   * 되풀이한다. 출발지·목적지·문의 유형은 목록 응답에도 모두 들어 있다.
+   */
+  const consultation = consultationId
+    ? queueQuery.data?.find((item) => item.consultationId === consultationId)
+    : undefined;
+  const destinationKind = destinationTypeLabel(consultation?.destinationType);
+  const closedByUser = Boolean(consultation && isClosedConsultation(consultation.status));
+
+  /**
+   * 사용자가 먼저 끝냈을 때도 상담 전문을 남긴다.
+   *
+   * 예전에는 상담자가 직접 '상담 종료'를 누른 경우에만 저장했다. 실제로는 사용자가 먼저
+   * 끊는 일이 더 잦은데, 그때는 화면만 목록으로 넘어가고 방금 나눈 대화가 통째로 사라졌다.
+   * 상담 내역에는 '저장된 상담 내용이 없습니다'만 남고 AI 요약도 만들어지지 않았다.
+   *
+   * 상담자가 직접 끝내는 중이라면 그쪽이 저장까지 마치고 나가게 둔다. 여기가 먼저 화면을
+   * 넘겨 버리면 종료 도중에 화면이 사라진다.
+   */
+  const leavingRef = useRef(false);
+  useEffect(() => {
+    if (!closedByUser || ending || leavingRef.current) return;
+    leavingRef.current = true;
+
+    const leave = async () => {
+      // 사용자가 끝냈으니 상담은 이미 `ENDED`다. 종료 요청 없이 바로 전문만 올린다.
+      if (consultationId && transcript.length > 0) {
+        await submitConsultationTranscript(consultationId, { transcript }).catch(() => undefined);
+      }
+      complete(selected);
+      void navigate(COUNSELOR_ROUTES.REQUESTS);
+    };
+
+    void leave();
+  }, [closedByUser, complete, consultationId, ending, navigate, selected, transcript]);
+
   /** Marks the request done so the queue shows it as completed, then leaves. */
   const endCall = async () => {
+    setEnding(true);
     if (consultationId) {
-      await endConsultation(consultationId).catch(() => undefined);
+      const ended = await endConsultation(consultationId).then(
+        () => true,
+        () => false,
+      );
+      /**
+       * 전문은 상담이 `ENDED`가 된 뒤에만 받는다. 종료가 실패했다면 보내도 거절되므로 건너뛴다.
+       *
+       * 저장에 실패해도 종료 흐름은 막지 않는다. 요약은 부가 기능이고, 실패하면 상담 내역
+       * 상세에 '저장된 요약이 없습니다'로 드러난다.
+       *
+       * TODO: 출발지·안내한 출구·경로 유형은 상담 화면이 아직 실제 값을 들고 있지 않아
+       * 보내지 않는다. 지도 연동이 끝나면 함께 싣는다.
+       */
+      if (ended && transcript.length > 0) {
+        await submitConsultationTranscript(consultationId, { transcript }).catch(() => undefined);
+      }
     }
     complete(selected);
     void navigate(COUNSELOR_ROUTES.REQUESTS);
@@ -94,13 +271,19 @@ export function SessionPage() {
     <CounselorConsoleShell connected>
       <div className={styles.layout}>
         <div className={styles.main}>
-          <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteVideo} />
-          <video ref={localVideoRef} autoPlay muted playsInline className={styles.localVideo} />
+          {/* 사용자 영상은 오른쪽 화면 공유 패널이 맡는다. 상담자 자신의 카메라는 되비추지 않는다. */}
+          {/*
+            실패했을 때도 peer 상태를 함께 남긴다. 'new'(협상 시작 못 함)인지
+            'connecting'(상대를 못 찾음)인지 'failed'(ICE 실패)인지에 따라 볼 곳이 완전히
+            달라서, 문구만으로는 어디부터 봐야 할지 알 수 없다.
+          */}
           <span
             className={styles.connectionStatus}
-            role={error ?? tokenError ? 'alert' : undefined}
+            role={(error ?? tokenError) ? 'alert' : undefined}
           >
-            {error ?? tokenError ?? `연결 상태: ${status}`}
+            {(error ?? tokenError)
+              ? `${error ?? tokenError} · 연결 상태: ${status}`
+              : `연결 상태: ${status}`}
           </span>
           <div className={styles.summary}>
             <div className={styles.summaryBody}>
@@ -123,24 +306,35 @@ export function SessionPage() {
                 </span>
                 <div>
                   <div className={styles.summaryLabel}>사용자 정보</div>
+                  {/*
+                    상담 요청에 실제로 담겨 온 출발지·목적지. 예전에는 `역삼역 2번 개찰구 →
+                    3번 출구`가 그대로 적혀 있어, 상담자가 사용자와 무관한 경로를 읽고 안내를
+                    시작했다. 서버가 채우지 못한 값은 지어내지 않고 모른다고 적는다.
+                  */}
                   <div className={styles.summaryRoute}>
-                    역삼역 2번 개찰구 <span className={styles.summaryArrow}>→</span> 3번 출구
+                    {consultation?.currentLocationLabel ?? '출발지 미확인'}
+                    <span className={styles.summaryArrow}>→</span>
+                    {consultation?.destinationLabel ?? '목적지 미지정'}
                   </div>
                 </div>
               </div>
               <div className={styles.tags}>
                 <Badge tone="neutral" className={styles.tag}>
-                  <Icon name="globe" size={12} />
-                  한국어
+                  <Icon name="chat" size={12} />
+                  {consultationProblemLabel(consultation?.problemType)}
                 </Badge>
-                <Badge className={styles.tag}>
-                  <Icon name="luggage" size={12} />
-                  계단 없는 경로
-                </Badge>
-                <Badge className={styles.tag}>
-                  <Icon name="elevator" size={12} />
-                  선택한 엘리베이터로만 이동
-                </Badge>
+                {destinationKind && (
+                  <Badge className={styles.tag}>
+                    <Icon name="pin" size={12} />
+                    {destinationKind}
+                  </Badge>
+                )}
+                {consultation?.requestedAt && (
+                  <Badge className={styles.tag}>
+                    <Icon name="clock" size={12} />
+                    대기 {waitedLabel(consultation.requestedAt)}
+                  </Badge>
+                )}
               </div>
             </div>
             <Button size="sm" className={styles.endCall} onClick={() => void endCall()}>
@@ -173,7 +367,9 @@ export function SessionPage() {
                 on={synced}
                 onClick={() => {
                   setSynced(true);
-                  setFloor('B1');
+                  // 따라가기로 돌아오면 직접 고른 층은 버린다. 남겨 두면 다음 자유 탐색이
+                  // 사용자 층이 아니라 한참 전에 보던 층에서 시작한다.
+                  setPickedFloorId(null);
                 }}
               >
                 사용자 시점 따라가기
@@ -196,155 +392,69 @@ export function SessionPage() {
           </div>
 
           <div className={styles.mapRow}>
+            {/*
+              층 목록·도면·마커를 모두 사용자가 보내온 지도 상태에서 그린다.
+              예전에는 층별로 손으로 그린 스키매틱 SVG와 고정 좌표 핀이 있었는데, 실제 역
+              도면과 아무 관계가 없어 상담자가 짚어 준 자리를 사용자가 현장에서 찾을 수 없었다.
+            */}
             <FloorRail
-              options={FLOORS}
-              value={floor}
+              options={floorMaps.map((map) => ({ value: String(map.floorId), label: map.floorCode }))}
+              value={displayedFloorId == null ? '' : String(displayedFloorId)}
               onChange={(value) => {
-                setFloor(value as FloorId);
-                setFacility(null);
+                // 층을 직접 고르는 것은 사용자 시점을 벗어나겠다는 뜻이다.
+                setSynced(false);
+                setPickedFloorId(Number(value));
               }}
             />
-            <MapPreview
-              className={styles.map}
-              me={{ left: '40%', top: '78%' }}
-              dest={{ left: '62%', top: '26%' }}
-            >
-              <svg
-                viewBox="0 0 340 250"
-                preserveAspectRatio="xMidYMid slice"
-                className={styles.mapSvg}
-                aria-hidden
-              >
-                <rect x="0" y="0" width="340" height="250" fill="#eef1f5" />
-                <rect
-                  x="18"
-                  y="16"
-                  width="304"
-                  height="218"
-                  rx="10"
-                  fill="#f8fafc"
-                  stroke="#cdd5df"
-                  strokeWidth="2"
-                />
-                {floor === '1F' && (
-                  <>
-                    <path d="M76 200 H264 V150 H76 Z" fill="#e9eef5" />
-                    <rect
-                      x="150"
-                      y="30"
-                      width="120"
-                      height="26"
-                      rx="5"
-                      fill="#eef6f0"
-                      stroke="#c4dfca"
-                      strokeWidth="1.5"
+            <MapPreview className={styles.map}>
+              {mapSync ? (
+                <>
+                  <div className={styles.mapCanvas}>
+                    <IndoorMapView
+                      stationId={mapSync.stationId}
+                      floorId={displayedFloorId}
+                      currentLocation={mapSync.current}
+                      currentHeadingDeg={mapSync.headingDeg}
+                      destination={mapSync.destination}
+                      destinationLabel={mapSync.destinationLabel}
+                      pathNodes={mapSync.pathNodes}
+                      facilityType={facilityType}
+                      /*
+                        재지정 모드일 때만 시설 선택을 사용자에게 보낸다. 켜지 않은 채로
+                        지도를 훑어보다 잘못 눌러 사용자의 목적지가 바뀌면 안 된다.
+                      */
+                      onSelectFacility={repinning ? pickOnMap : undefined}
+                      /* 따라가기일 때만 사용자 위치를 좇는다. 자유 탐색은 층 전체를 본다. */
+                      followCamera={synced}
+                      useMockData
                     />
-                    <text
-                      x="210"
-                      y="47"
-                      textAnchor="middle"
-                      fontFamily="Pretendard"
-                      fontSize="10"
-                      fontWeight="700"
-                      fill="#8fae97"
-                    >
-                      지상 광장
-                    </text>
-                  </>
-                )}
-                {floor === 'B1' && (
-                  <>
-                    <path
-                      d="M120 200 V96 H236 V60"
-                      fill="none"
-                      stroke="#e3e9f1"
-                      strokeWidth="28"
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                    />
-                    <rect
-                      x="34"
-                      y="30"
-                      width="58"
-                      height="44"
-                      rx="4"
-                      fill="#fef8ec"
-                      stroke="#e6d7ac"
-                      strokeWidth="1.5"
-                    />
-                    <rect x="150" y="150" width="9" height="9" rx="2" fill="#B08640" />
-                  </>
-                )}
-                {floor === 'B2' && (
-                  <>
-                    <rect
-                      x="40"
-                      y="170"
-                      width="260"
-                      height="52"
-                      rx="6"
-                      fill="#e5ebf2"
-                      stroke="#d3dbe4"
-                      strokeWidth="1.5"
-                    />
-                    <line
-                      x1="40"
-                      y1="186"
-                      x2="300"
-                      y2="186"
-                      stroke="#c3ccd8"
-                      strokeWidth="1.5"
-                      strokeDasharray="6 6"
-                    />
-                    <text
-                      x="170"
-                      y="212"
-                      textAnchor="middle"
-                      fontFamily="Pretendard"
-                      fontSize="10"
-                      fontWeight="700"
-                      fill="#9aa4b2"
-                    >
-                      2호선 승강장
-                    </text>
-                  </>
-                )}
-              </svg>
+                  </div>
 
-              <div className={styles.floorBadge}>{floor}</div>
-
-              {synced && (
-                <div className={styles.viewport}>
-                  <span className={styles.viewportLabel}>사용자 화면 영역</span>
-                </div>
+                  {/*
+                    시설 유형은 한 번에 하나만 켠다. 한 층 시설을 모두 그리면 마커가 서로를
+                    덮어 아무것도 짚을 수 없다. 목록은 안내 화면과 같은 것을 쓴다 — 사용자
+                    화면에 없는 유형을 상담자가 짚으면 현장에서 찾을 수 없다.
+                  */}
+                  <div className={styles.facilityFilters} role="group" aria-label="시설 표시">
+                    {FACILITY_MAP_FILTERS.map((filter) => (
+                      <MapToggle
+                        key={filter.facilityType}
+                        on={facilityType === filter.facilityType}
+                        onClick={() =>
+                          setFacilityType(
+                            facilityType === filter.facilityType ? null : filter.facilityType,
+                          )
+                        }
+                      >
+                        <Icon name={filter.icon} size={13} />
+                        {filter.name}
+                      </MapToggle>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className={styles.mapPlaceholder}>사용자 화면의 지도를 기다리는 중입니다.</p>
               )}
-
-              {arrowSent && <div className={styles.sentArrow}>➤</div>}
-
-              {pins.map((pin) => (
-                <FacilityPin
-                  key={pin.key}
-                  x={pin.x}
-                  y={pin.y}
-                  tint={FACILITY_TINTS[pin.icon] ?? DEFAULT_FACILITY_TINT}
-                  label={pin.label}
-                  icon={<Icon name={pin.icon} size={14} />}
-                  blink={facility === pin.key}
-                />
-              ))}
-
-              <div className={styles.facilityToggles}>
-                {pins.map((pin) => (
-                  <MapToggle
-                    key={pin.key}
-                    on={facility === pin.key}
-                    onClick={() => setFacility(facility === pin.key ? null : pin.key)}
-                  >
-                    <Icon name={pin.icon} size={13} />
-                    {pin.label}
-                  </MapToggle>
-                ))}
-              </div>
             </MapPreview>
           </div>
 
@@ -352,7 +462,10 @@ export function SessionPage() {
             <PillButton
               className={styles.mapAction}
               on={repinning === 'dest'}
-              onClick={() => setRepinning(repinning === 'dest' ? null : 'dest')}
+              onClick={() => {
+                setRepinning(repinning === 'dest' ? null : 'dest');
+                setLastPick(null);
+              }}
             >
               <Icon name="target" size={14} />
               목적지 재지정
@@ -360,33 +473,99 @@ export function SessionPage() {
             <PillButton
               className={styles.mapAction}
               on={repinning === 'origin'}
-              onClick={() => setRepinning(repinning === 'origin' ? null : 'origin')}
+              onClick={() => {
+                setRepinning(repinning === 'origin' ? null : 'origin');
+                setLastPick(null);
+              }}
             >
               <Icon name="pin" size={14} />
               현재 위치 수정
             </PillButton>
           </div>
 
+          {/*
+            무엇을 눌러야 하는지, 무엇이 사용자에게 갔는지 알려 준다. 예전에는 버튼이 켜지기만
+            하고 아무 일도 일어나지 않아, 상담자는 자기가 목적지를 바꾼 줄 알았다.
+          */}
+          {(repinning || lastPick) && (
+            <p className={styles.mapHint} role="status">
+              {repinning
+                ? `지도에서 ${repinning === 'dest' ? '새 목적지' : '사용자의 실제 위치'}를 누르세요. 시설이 안 보이면 아래 시설 버튼을 켜 주세요.`
+                : lastPick}
+            </p>
+          )}
+
           <div className={styles.notes}>
             <div className={styles.notesLabel}>
               <Icon name="note" size={13} />
               상담 메모 · 실시간 STT
+              {/*
+                지금까지 쌓인 줄 수를 함께 보여 준다. 이 값이 그대로 상담 전문으로 저장돼
+                AI 요약의 입력이 되는데, 예전에는 마지막 한 줄만 보여서 실제로 남고 있는지
+                끝날 때까지 알 수 없었다. 0에서 멈춰 있으면 음성 인식이 안 되고 있다는 뜻이다.
+              */}
+              <span className={styles.notesCount}>{transcript.length}줄 기록됨</span>
             </div>
+            {/*
+              기록이 안 되고 있으면 그 사실을 상담 중에 알아야 한다. 끝난 뒤에 알면 이미
+              전문이 비어 있고 AI 요약도 만들어지지 않아 되돌릴 방법이 없다.
+            */}
+            {captionError && (
+              <div className={styles.notesAlert} role="alert">
+                <Icon name="warning" size={12} />
+                <span>{captionError}</span>
+                {/* 마이크를 놓아 준 뒤 상담을 끊지 않고 자막만 되살릴 수 있어야 한다. */}
+                <button
+                  type="button"
+                  className={styles.notesRetry}
+                  onClick={() => restartCaptions()}
+                >
+                  다시 시도
+                </button>
+              </div>
+            )}
             <div className={styles.notesBody}>
+              {/* 확정된 말은 순서대로 쌓아 둔다. 상담자가 앞의 내용을 되짚어 볼 수 있어야 한다. */}
+              {transcript.map((segment) => (
+                <div key={segment.seq}>
+                  <span
+                    className={
+                      segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
+                    }
+                  >
+                    {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
+                  </span>
+                  <br />
+                  <span className={styles.line}>{segment.content}</span>
+                </div>
+              ))}
               <div>
                 <span className={styles.speakerUser}>사용자</span>
                 <br />
+                {/*
+                  사용자가 한국어로 말하지 않을 수 있다. 옮긴 문장을 먼저 두고 원문을 아래
+                  작게 붙인다 — 출구 번호나 역 이름은 원문으로 맞춰 봐야 할 때가 있다.
+                */}
                 <span className={styles.line}>
-                  {remoteCaption ||
+                  {translatedUserCaption ||
+                    remoteCaption ||
                     (captionsSupported
-                      ? '사용자 음성을 인식하고 있습니다.'
-                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
+                      ? '사용자가 말하면 이 자리에 표시됩니다.'
+                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                 </span>
+                {translatedUserCaption && remoteFinalCaption !== translatedUserCaption && (
+                  <span className={styles.sourceLine}>{remoteFinalCaption}</span>
+                )}
               </div>
               <div>
                 <span className={styles.speakerAgent}>상담원</span>
                 <br />
-                <span className={styles.line}>{localCaption || '상담원 음성 자막 대기 중'}</span>
+                <span className={styles.line}>
+                  {localCaption ||
+                    (captionsSupported
+                      ? '마이크를 켜고 말하면 이 자리에 표시됩니다.'
+                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
+                </span>
               </div>
             </div>
           </div>
@@ -404,11 +583,28 @@ export function SessionPage() {
             </span>
             <span className={styles.syncedChip}>
               <span className={styles.syncedDot} aria-hidden />
-              <span className={styles.syncedLabel}>좌측 지도와 동일</span>
+              <span className={styles.syncedLabel}>{sharing ? '수신 중' : '대기 중'}</span>
             </span>
           </div>
 
+          {/*
+            사용자가 실제로 보내오는 영상. 예전에는 이 자리에 사용자 화면을 흉내 낸 고정
+            그림(안내 문구·화살표·축소 지도)이 있었는데, 무엇을 보고 안내하는지 알 수 없는
+            화면이라 실제 수신 영상으로 바꿨다.
+          */}
           <div className={styles.stream}>
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className={styles.sharedScreen}
+              aria-label="사용자가 공유 중인 화면"
+            />
+            {!sharing && (
+              <p className={styles.streamPlaceholder}>
+                {error ?? tokenError ?? '사용자 화면을 기다리는 중입니다.'}
+              </p>
+            )}
             <canvas
               ref={canvasRef}
               className={styles.canvas}
@@ -425,57 +621,6 @@ export function SessionPage() {
                 <Icon name="pencil" size={13} />
                 그리기
               </MapToggle>
-            </div>
-
-            <div className={styles.cam}>
-              <div className={styles.camPill}>
-                <b>To 3번 출구</b> · 4분
-              </div>
-              <div className={styles.camArrow}>↑</div>
-              {arrowSent && <div className={styles.camSentArrow}>↗</div>}
-              <div className={styles.camCaption}>에스컬레이터에서 좌회전</div>
-            </div>
-
-            <div className={styles.miniMapWrap}>
-              <MapPreview className={styles.miniMap} dest={{ left: '68%', top: '26%' }}>
-                <svg
-                  viewBox="0 0 260 200"
-                  preserveAspectRatio="xMidYMid slice"
-                  className={styles.mapSvg}
-                  aria-hidden
-                >
-                  <rect x="0" y="0" width="260" height="200" fill="#eef1f5" />
-                  <rect
-                    x="14"
-                    y="12"
-                    width="232"
-                    height="176"
-                    rx="8"
-                    fill="#f8fafc"
-                    stroke="#cdd5df"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M96 158 V88 H176 V48"
-                    fill="none"
-                    stroke="#e3e9f1"
-                    strokeWidth="22"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                  />
-                  <rect x="150" y="118" width="7" height="7" rx="2" fill="#B08640" />
-                  <polyline
-                    points="96,158 96,88 176,88 176,52"
-                    fill="none"
-                    stroke="#3EB489"
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeDasharray="1 11"
-                  />
-                </svg>
-                <HeadingMarker style={{ left: '37%', top: '79%' }} />
-              </MapPreview>
             </div>
           </div>
         </div>

@@ -266,9 +266,12 @@
   font-weight: 700;
 }
 
-.cardMap {
-  height: 96px;
-  margin-top: 10px;
+/* 값이 비었거나 종류를 덧붙일 때 쓰는 보조 문장. */
+.cardHint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-sub);
 }
 
 .optionList {
@@ -277,9 +280,7 @@
   gap: 6px;
   margin-top: 10px;
   font-size: 12.5px;
-  /* The consultation id is one long token — let it wrap instead of stretching
-     the grid column. */
-  overflow-wrap: anywhere;
+  color: var(--color-sub);
 }
 
 .option {

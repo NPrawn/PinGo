@@ -58,11 +58,46 @@
   animation: consult-shine 2.8s ease-in-out infinite;
 }
 
+/* 상담원 목소리만 나오는 요소. display:none 이면 브라우저가 재생을 멈출 수 있어 숨기기만 한다. */
+.remoteAudio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* 상담원이 그린 선. 화면을 덮되 조작은 그대로 통과시킨다. */
+.annotation {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 화면 공유가 카메라로 물러났을 때만 나타난다. 종료 버튼과 헷갈리지 않게 색을 나눈다. */
+.shareScreen {
+  padding: 4px 10px;
+  margin-right: 6px;
+  font: inherit;
+  font-weight: 700;
+  color: #0f2c22;
+  cursor: pointer;
+  background: var(--color-mint);
+  border: none;
+  border-radius: 7px;
+}
+
 .endCall {
   padding: 4px 10px;
+  font: inherit;
   font-weight: 700;
   color: #fff;
+  cursor: pointer;
   background: var(--color-red);
+  border: none;
   border-radius: 7px;
 }
 
@@ -303,6 +338,15 @@
   color: #fff;
 }
 
+/* 옮기기 전 원문. 출구 번호나 역 이름을 눈으로 맞춰 보는 데 쓴다. */
+.translationSource {
+  margin-top: 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgb(255 255 255 / 55%);
+}
+
 .lower {
   display: flex;
   flex: 1;
@@ -318,26 +362,38 @@
   border: 1px solid #dfe3e8;
 }
 
-.mapSvg {
+/*
+  내 카메라 셀프뷰. 화면 오른쪽 위 작은 창으로 띄운다.
+  이 화면 전체가 상담자에게 공유되므로, 여기 담긴 카메라 영상이 그대로 함께 건너간다.
+*/
+.selfView {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: 10px;
+  right: 10px;
+  z-index: 15;
+  width: 84px;
+  height: 112px;
+  object-fit: cover;
+  background: #000;
+  border: 1.5px solid rgb(255 255 255 / 35%);
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 35%);
 }
 
-.destLabel {
+/* 카메라를 허용하지 않았으면 빈 검은 상자를 띄우지 않는다. */
+.selfViewOff {
+  display: none;
+}
+
+/* 실내 지도 위젯이 채우는 자리. 안내 화면(NavigationPage)과 같은 배치다. */
+.mapCanvas {
   position: absolute;
-  top: 26%;
-  left: 68%;
-  padding: 1px 6px;
-  font-size: 9px;
-  font-weight: 800;
-  white-space: nowrap;
-  color: var(--color-red);
-  background: #fff;
-  border-radius: 5px;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
-  transform: translate(-50%, -150%);
+  inset: 0;
+}
+
+/* 오버레이 SVG를 지도 위 요소보다 앞에 둔다. 현재 위치와 목적지 이름이 가리면 안 된다. */
+.mapCanvas svg {
+  z-index: 4;
 }
 
 .syncNote {

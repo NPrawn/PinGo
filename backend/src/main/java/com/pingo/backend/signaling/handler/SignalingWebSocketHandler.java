@@ -121,7 +121,8 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         switch (signalingMessage.type()) {
             case JOIN -> handleJoin(session, signalingMessage);
             case LEAVE -> signalingRoomRegistry.remove(session);
-            case OFFER, ANSWER, ICE_CANDIDATE, CAPTION -> relayToPeer(session, signalingMessage);
+            case OFFER, ANSWER, ICE_CANDIDATE, CAPTION, RENEGOTIATE ->
+                    relayToPeer(session, signalingMessage);
             case ERROR -> log.warn("Client sent signaling ERROR message. websocketSessionId={}, sessionId={}",
                     session.getId(),
                     signalingMessage.sessionId());

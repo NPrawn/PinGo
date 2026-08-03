@@ -12,3 +12,12 @@
 .strong {
   color: var(--color-ink);
 }
+
+/* 브라우저가 응답하지 않아 시간이 다 된 경우의 안내. 권한 거부와는 원인이 다르다. */
+.hint {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: center;
+  color: #b42318;
+}

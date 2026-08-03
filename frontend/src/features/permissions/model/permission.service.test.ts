@@ -198,6 +198,78 @@ describe('requestMediaPermissions', () => {
     expect(result.camera.status).toBe('error');
     expect(result.microphone.status).toBe('error');
   });
+
+  /**
+   * 시간이 다 됐다고 브라우저 쪽 요청이 사라지지는 않는다.
+   *
+   * 재시도가 `getUserMedia`를 새로 부르면 그 요청은 아직 답을 기다리는 앞의 요청 뒤에
+   * 줄을 서서 팝업조차 뜨지 않는다. 화면은 "권한 요청 중"과 "응답이 없어요"만 되풀이한다.
+   */
+  describe('응답이 없어 시간이 다 된 뒤', () => {
+    it('재시도는 새로 부르지 않고 기다리는 요청의 답을 받는다', async () => {
+      vi.useFakeTimers();
+
+      try {
+        const { stream } = createFakeStream();
+        let answerPrompt: (value: MediaStream) => void = () => {};
+        const getUserMedia = vi.fn(
+          () =>
+            new Promise<MediaStream>((resolve) => {
+              answerPrompt = resolve;
+            }),
+        );
+        setMediaDevices({ getUserMedia });
+
+        const timedOut = requestMediaPermissions();
+        await vi.advanceTimersByTimeAsync(45000);
+
+        expect((await timedOut).camera.error?.name).toBe('TimeoutError');
+
+        // 사용자가 팝업을 아직 못 본 사이에 [모두 허용하기]를 누른 경우.
+        const retried = requestMediaPermissions();
+        expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+        // 뒤늦게 팝업에 답하면 그 답이 재시도에 그대로 전달된다.
+        answerPrompt(stream);
+        await vi.advanceTimersByTimeAsync(0);
+
+        const result = await retried;
+        expect(result.camera.status).toBe('granted');
+        expect(result.microphone.status).toBe('granted');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('아무도 기다리지 않게 된 스트림은 꺼 둔다', async () => {
+      vi.useFakeTimers();
+
+      try {
+        const { stream, stop } = createFakeStream();
+        let answerPrompt: (value: MediaStream) => void = () => {};
+        setMediaDevices({
+          getUserMedia: vi.fn(
+            () =>
+              new Promise<MediaStream>((resolve) => {
+                answerPrompt = resolve;
+              }),
+          ),
+        });
+
+        const timedOut = requestMediaPermissions();
+        await vi.advanceTimersByTimeAsync(45000);
+        await timedOut;
+
+        // 재시도 없이 한참 뒤에 답한 경우. 켜진 카메라가 남으면 표시등이 계속 켜진다.
+        answerPrompt(stream);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(stop).toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });
 
 describe('requestCameraPermission / requestMicrophonePermission', () => {

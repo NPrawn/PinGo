@@ -1,4 +1,4 @@
-export { apiClient } from './client';
+export { apiClient, AUTH_EXPIRED_EVENT } from './client';
 export { ENDPOINTS } from './endpoints';
 export { queryKeys } from './queryKeys';
 export { clearAuthSession, getAccessToken, getAuthSession, setAuthSession } from './authSession';

@@ -1712,6 +1712,12 @@ DataChannel 연결 실패 또는 보조 전달이 필요한 경우 화살표, �
 | `ARROW_POINTED` | 상담자가 특정 방향 또는 위치를 화살표로 지시함 |
 | `GUIDE_MESSAGE_SENT` | 상담자가 안내 메시지를 전송함 |
 | `DESTINATION_CHANGE_REQUESTED` | 상담자가 목적지 변경을 요청함 |
+| `DRAW_STROKE_START` | 상담자가 공유 화면 위에 선을 그리기 시작함 |
+| `DRAW_STROKE_MOVE` | 그리는 중인 선의 좌표가 이어짐 |
+| `DRAW_STROKE_END` | 선 하나를 다 그림 |
+| `DRAW_CLEAR` | 그린 선을 모두 지움 |
+| `MAP_SYNC` | 사용자가 보고 있는 지도(역·층·현재 위치·경로)를 상담자 화면에 전달함 |
+| `CURRENT_LOCATION_CORRECTED` | 상담자가 지도에서 사용자의 실제 위치를 짚어 바로잡음 |
 
 #### Response
 
@@ -1806,6 +1812,69 @@ Event Name: `DATA_CHANNEL`
 - 평가는 상담당 1회만 가능하며 수정·취소할 수 없다.
 - 평가 결과는 상담자 통계 집계에만 사용한다.
 - 사용자 세션이 만료된 뒤에는 평가할 수 없으므로 상담 종료 화면에서 즉시 평가를 유도한다.
+
+---
+
+## 10.8 상담 자막 번역
+
+### POST `/api/consultations/{consultationId}/translate`
+
+상담 중 오가는 실시간 자막 한 줄을 상대 언어로 옮긴다. 사용자와 상담자가 서로 다른 언어를 쓰는 상황을 기본 전제로 한다(WebRTC Signaling 이벤트 명세서 13.2).
+
+STT는 각 클라이언트가 브라우저에서 수행하고, 확정된 문장만 이 API로 보낸다. 말하는 도중의 중간 결과까지 보내면 요청이 초당 수 회 발생하고 화면의 글자도 계속 바뀌어 읽을 수 없다.
+
+#### 인증
+
+인증이 필요 없는 공개 API다. 사용자는 로그인하지 않으므로 토큰을 요구할 수 없다. 경로의 상담 식별자는 어느 상담에서 나온 요청인지 추적하기 위한 것이다.
+
+#### Request
+
+```json
+{
+  "text": "3번 출구는 왼쪽입니다",
+  "targetLanguage": "en"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `text` | string | Y | 옮길 문장. 최대 1000자 |
+| `targetLanguage` | string | Y | 표시 언어. `ko`, `en`, `ja`, `zh`. `en-US`처럼 지역이 붙어도 언어만 본다 |
+
+#### Response
+
+`200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "text": "Exit 3 is on the left",
+    "targetLanguage": "en",
+    "translated": true
+  },
+  "message": null
+}
+```
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `text` | string | 옮긴 문장. 옮기지 못했으면 원문 |
+| `targetLanguage` | string | 실제로 적용한 언어 코드 |
+| `translated` | boolean | 옮겼으면 true, 원문을 그대로 돌려줬으면 false |
+
+#### 오류
+
+| 상황 | HTTP | code |
+| --- | --- | --- |
+| `text`가 비었거나 1000자 초과 | 400 | `INVALID_REQUEST` |
+| `targetLanguage`가 비었거나 16자 초과 | 400 | `INVALID_REQUEST` |
+
+#### 비고
+
+- **번역에 실패해도 200을 반환하고 원문을 돌려준다.** 오류로 응답하면 화면이 자막 자체를 띄우지 못해, 상대가 무슨 말을 했는지조차 알 수 없게 된다. 실패는 `translated: false`로 구분한다.
+- 지원하지 않는 언어도 같은 이유로 오류가 아니라 원문을 돌려준다.
+- 번역 모델은 상담 요약과 같은 GMS 엔드포인트를 쓰되 대기 시간을 짧게 잡는다(`translation.api.read-timeout-ms`). 늦게 도착한 번역은 이미 다음 말이 지나가 쓸모가 없다.
 
 ---
 

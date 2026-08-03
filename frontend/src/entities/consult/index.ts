@@ -10,8 +10,16 @@ export { useConsultStore } from './model/consultStore';
 export { useCounselorQueueStore } from './model/counselorQueueStore';
 export type { RequestStatus } from './model/counselorQueueStore';
 export {
+  CLOSED_CONSULTATION_STATUSES,
   CONSULTATION_STATUS_LABELS,
   CONSULTATION_PROBLEM_LABELS,
   consultationStatusLabel,
   consultationProblemLabel,
+  isClosedConsultation,
 } from './model/statusLabels';
+export {
+  consultationDateTimeLabel,
+  consultationRef,
+  destinationTypeLabel,
+  waitedLabel,
+} from './model/format';

@@ -1,7 +1,4 @@
-import type {
-  PermissionStatus,
-  RequiredPermissionsResult,
-} from './permission.service';
+import type { PermissionStatus, RequiredPermissionsResult } from './permission.service';
 
 /**
  * 권한 상태 저장 key.
@@ -60,9 +57,7 @@ function isPermissionStatus(value: unknown): value is PermissionStatus {
 /**
  * 저장된 객체가 권한 상태 저장 형식인지 확인한다.
  */
-function isStoredRequiredPermissionState(
-  value: unknown,
-): value is StoredRequiredPermissionState {
+function isStoredRequiredPermissionState(value: unknown): value is StoredRequiredPermissionState {
   if (!value || typeof value !== 'object') {
     return false;
   }
@@ -113,10 +108,7 @@ export function saveRequiredPermissionState(
   const state = toStoredRequiredPermissionState(result);
 
   try {
-    window.sessionStorage.setItem(
-      REQUIRED_PERMISSION_STORAGE_KEY,
-      JSON.stringify(state),
-    );
+    window.sessionStorage.setItem(REQUIRED_PERMISSION_STORAGE_KEY, JSON.stringify(state));
 
     return state;
   } catch {
@@ -133,9 +125,7 @@ export function getStoredRequiredPermissionState(): StoredRequiredPermissionStat
   }
 
   try {
-    const rawState = window.sessionStorage.getItem(
-      REQUIRED_PERMISSION_STORAGE_KEY,
-    );
+    const rawState = window.sessionStorage.getItem(REQUIRED_PERMISSION_STORAGE_KEY);
 
     if (!rawState) {
       return null;

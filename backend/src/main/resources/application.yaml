@@ -64,6 +64,8 @@ kakao:
 signaling:
   websocket:
     allowed-origin-patterns: ${SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://jenkins.example.invalid}
+    # SDP 한 통이 들어갈 크기. 기본값 8KB 로는 offer 가 잘려 연결이 1009 로 끊긴다.
+    max-text-message-buffer-size: ${SIGNALING_WEBSOCKET_MAX_TEXT_MESSAGE_BUFFER_SIZE:65536}
   access-token:
     expiration-ms: ${SIGNALING_ACCESS_TOKEN_EXPIRATION_MS:600000}
   room:
@@ -80,6 +82,17 @@ webrtc:
 
 summary:
   api:
-    base-url : ${SUMMARY_API_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+    # SSAFY GMS 프록시를 통해 Gemini 를 부른다. 발급받는 키가 구글 키 형식(`AIza...`)이
+    # 아니라서 구글 엔드포인트로 직접 보내면 거절된다.
+    base-url : ${SUMMARY_API_BASE_URL:https://gms.ssafy.io/gmsapi/generativelanguage.googleapis.com/v1beta}
     key : ${GMS_KEY:dummy-key}
-    model : ${SUMMARY_API_MODEL:gemini-3.5-flash-lite}
+    # GMS 가 열어 둔 모델명. `thinkingConfig.thinkingBudget` 은 2.5 전용 필드라 모델을
+    # 3.x 로 올릴 때 호출 본문도 함께 손봐야 한다.
+    model : ${SUMMARY_API_MODEL:gemini-2.5-flash-lite}
+
+# 실시간 자막 번역. 요약과 같은 키·엔드포인트를 쓰되 모델과 대기 시간은 따로 잡는다.
+# 자막은 훨씬 자주·짧게 부르고, 늦게 온 번역은 이미 지나간 말이라 쓸모가 없다.
+translation:
+  api:
+    model : ${TRANSLATION_API_MODEL:${SUMMARY_API_MODEL:gemini-2.5-flash-lite}}
+    read-timeout-ms : ${TRANSLATION_API_READ_TIMEOUT_MS:6000}

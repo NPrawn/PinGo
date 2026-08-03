@@ -16,15 +16,30 @@
   overflow: auto;
 }
 
-.remoteVideo {
+/* 사용자가 보내온 영상. 잘라내면 안내에 필요한 주변이 사라지므로 화면 전체를 담는다. */
+.sharedScreen {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  opacity: 0.22;
-  pointer-events: none;
+  object-fit: contain;
+  background: #000;
+}
+
+.streamPlaceholder {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: center;
+  color: #9a9aa4;
 }
 
 .localVideo {
@@ -242,68 +257,42 @@
   border: 1px solid #dfe3e8;
 }
 
-.mapSvg {
+/* 실내 지도 위젯이 채우는 자리. 안내 화면과 같은 배치다. */
+.mapCanvas {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
 }
 
-.floorBadge {
-  position: absolute;
-  top: 9px;
-  right: 11px;
-  padding: 2px 8px;
-  font: 800 12px var(--font-family-base);
-  color: var(--color-sub);
-  background: #fff;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+/* 오버레이 SVG를 지도 위 요소보다 앞에 둔다. 현재 위치와 목적지 이름이 가리면 안 된다. */
+.mapCanvas svg {
+  z-index: 4;
 }
 
-.viewport {
-  position: absolute;
-  top: 14%;
-  right: 16%;
-  bottom: 14%;
-  left: 16%;
-  z-index: 2;
-  pointer-events: none;
-  border: 2px dashed rgb(15 90 62 / 50%);
-  border-radius: 10px;
-}
-
-.viewportLabel {
-  position: absolute;
-  top: -10px;
-  left: 10px;
-  padding: 2px 7px;
-  font-size: 9.5px;
-  font-weight: 800;
-  color: #fff;
-  background: #0f5a3e;
-  border-radius: 5px;
-}
-
-.sentArrow {
-  position: absolute;
-  top: 50%;
-  left: 52%;
-  z-index: 3;
-  font-size: 26px;
-  color: var(--color-gold);
-  transform: rotate(-30deg);
-}
-
-.facilityToggles {
+/* 시설 유형 칩. 지도 위 오른쪽 아래에 깔린다. */
+.facilityFilters {
   position: absolute;
   right: 8px;
   bottom: 8px;
   left: 8px;
-  z-index: 4;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  justify-content: flex-end;
+}
+
+/* 사용자 지도가 아직 오지 않았을 때. 아무 지도나 대신 띄우지 않는다. */
+.mapPlaceholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-sub);
+  text-align: center;
 }
 
 .mapActions {
@@ -333,6 +322,67 @@
   font-size: 11px;
   font-weight: 700;
   color: #9a9aa4;
+}
+
+/* 재지정 안내와 결과. 버튼만 켜지고 아무 말이 없으면 무엇을 해야 할지 알 수 없다. */
+.mapHint {
+  padding: 7px 10px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #0f5a3e;
+  background: #eaf6ef;
+  border-radius: 8px;
+}
+
+/* 옮기기 전 원문. 출구 번호나 역 이름을 눈으로 맞춰 보는 데 쓴다. */
+.sourceLine {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #8b8b96;
+}
+
+/* 음성 인식이 멈췄다는 경고. 상담 중에 알아야 되돌릴 수 있다. */
+.notesAlert {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #ffd9d9;
+  background: rgb(220 70 70 / 22%);
+  border-radius: 7px;
+}
+
+.notesRetry {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  background: rgb(255 255 255 / 18%);
+  border: 0;
+  border-radius: 6px;
+}
+
+.notesRetry:hover {
+  background: rgb(255 255 255 / 28%);
+}
+
+/* 지금까지 상담 전문에 쌓인 줄 수. 저장될 내용이 실제로 늘고 있는지 보여 준다. */
+.notesCount {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #6f6f7a;
 }
 
 .notesBody {

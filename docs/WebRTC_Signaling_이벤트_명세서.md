@@ -119,6 +119,8 @@ Backend는 SDP와 ICE candidate 내용을 해석하거나 수정하지 않는다
 | `OFFER` | USER/COUNSELOR -> BE -> 상대방 | WebRTC SDP offer 전달 |
 | `ANSWER` | USER/COUNSELOR -> BE -> 상대방 | WebRTC SDP answer 전달 |
 | `ICE_CANDIDATE` | USER/COUNSELOR -> BE -> 상대방 | ICE candidate 전달 |
+| `CAPTION` | USER/COUNSELOR -> BE -> 상대방 | STT 자막 한 줄 전달 |
+| `RENEGOTIATE` | USER -> BE -> COUNSELOR | 연결을 처음부터 다시 맺어 달라는 요청 |
 | `ERROR` | BE -> FE | signaling 오류 응답 |
 
 ---
