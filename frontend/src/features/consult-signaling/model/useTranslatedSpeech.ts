@@ -4,6 +4,13 @@ import { useEffect, useRef } from 'react';
 export function useTranslatedSpeech(text: string, language: string, enabled = true) {
   const lastSpokenRef = useRef('');
 
+  /** 상담 화면을 떠난 뒤 이전 번역 음성이 계속 재생되지 않게 대기열까지 비운다. */
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
+  }, []);
+
   useEffect(() => {
     const value = text.trim();
     if (!enabled || !value || value === lastSpokenRef.current || !('speechSynthesis' in window)) {
