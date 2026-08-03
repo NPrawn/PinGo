@@ -2,9 +2,13 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
+  consultationDateTimeLabel,
   consultationProblemLabel,
+  consultationRef,
   consultationStatusLabel,
+  destinationTypeLabel,
   useConsultStore,
+  waitedLabel,
 } from '@/entities/consult';
 import {
   acceptConsultation,
@@ -13,7 +17,7 @@ import {
   getCounselorConsultations,
 } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { Button, Icon, MapPreview } from '@/shared/ui';
+import { Button, Icon } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import styles from './RequestsPage.module.css';
 
@@ -56,12 +60,6 @@ function errorMessage(error: unknown) {
     return '상담 상태가 “상담 가능”일 때만 수락할 수 있어요. 오른쪽 위에서 상태를 바꿔 주세요.';
   }
   return error.message;
-}
-
-function elapsedLabel(requestedAt: string) {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(requestedAt).getTime()) / 1000));
-  if (seconds < 60) return `${seconds}초`;
-  return `${Math.floor(seconds / 60)}분`;
 }
 
 /** 담당 역의 실제 상담 대기열을 조회하고 수락·거절을 서버 상태로 처리한다. */
@@ -148,8 +146,14 @@ export function RequestsPage() {
                     {consultationStatusLabel(request.status)}
                   </span>
                 </span>
-                <div className={styles.meta}>대기 {elapsedLabel(request.requestedAt)}</div>
-                <div className={styles.loc}>{request.currentLocationLabel ?? '위치 미확정'}</div>
+                <div className={styles.meta}>
+                  {request.status === 'WAITING'
+                    ? `${waitedLabel(request.requestedAt)} 기다리는 중`
+                    : consultationDateTimeLabel(request.requestedAt)}
+                </div>
+                <div className={styles.loc}>
+                  {request.currentLocationLabel ?? '위치를 아직 못 찾은 사용자'}
+                </div>
               </button>
             ))}
           </div>
@@ -173,8 +177,8 @@ export function RequestsPage() {
                     </span>
                   </div>
                   <div className={styles.route}>
-                    {selected.currentLocationLabel ?? '현재 위치 미확정'} →{' '}
-                    {selected.destinationLabel ?? '목적지 미지정'}
+                    {selected.currentLocationLabel ?? '위치 확인 안 됨'} →{' '}
+                    {selected.destinationLabel ?? '목적지 미정'}
                   </div>
                 </div>
                 {selected.status === 'WAITING' && (
@@ -209,21 +213,22 @@ export function RequestsPage() {
                 <div className={styles.card}>
                   <div className={styles.cardLabel}>현재 위치</div>
                   <div className={styles.cardValue}>
-                    {selected.currentLocationLabel ?? '위치 미확정'}
+                    {selected.currentLocationLabel ?? '확인 안 됨'}
                   </div>
-                  <MapPreview className={styles.cardMap} me={{ left: '44%', top: '50%' }} />
+                  {!selected.currentLocationLabel && (
+                    <p className={styles.cardHint}>
+                      사용자가 위치 인식을 끝내지 못한 채 상담을 요청했어요. 상담 중에 함께 찾아
+                      주세요.
+                    </p>
+                  )}
                 </div>
                 <div className={styles.card}>
                   <div className={styles.cardLabel}>목적지</div>
-                  <div className={styles.cardValue}>
-                    {selected.destinationLabel ?? '목적지 미지정'}
-                  </div>
-                  <div className={styles.optionList}>
-                    <span>
-                      요청 시각 {new Date(selected.requestedAt).toLocaleTimeString('ko-KR')}
-                    </span>
-                    <span>상담 ID {selected.consultationId}</span>
-                  </div>
+                  <div className={styles.cardValue}>{selected.destinationLabel ?? '미정'}</div>
+                  <p className={styles.cardHint}>
+                    {destinationTypeLabel(selected.destinationType) ??
+                      '사용자가 목적지를 아직 고르지 않았어요.'}
+                  </p>
                 </div>
               </div>
 
@@ -231,6 +236,13 @@ export function RequestsPage() {
                 <div className={styles.cardLabel}>문제 유형</div>
                 <div className={styles.issueText}>
                   {consultationProblemLabel(selected.problemType)}
+                </div>
+                <div className={styles.optionList}>
+                  <span>요청 시각 {consultationDateTimeLabel(selected.requestedAt)}</span>
+                  {/* 전체 식별자는 문의·로그 대조용으로만 필요해 툴팁에 남긴다. */}
+                  <span title={selected.consultationId}>
+                    상담 번호 {consultationRef(selected.consultationId)}
+                  </span>
                 </div>
               </div>
             </>

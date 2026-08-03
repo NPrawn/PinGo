@@ -1,16 +1,187 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { consultationProblemLabel, consultationStatusLabel } from '@/entities/consult';
-import { getCounselorConsultations } from '@/shared/api';
+import { useMemo, useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  consultationDateTimeLabel,
+  consultationProblemLabel,
+  consultationRef,
+  consultationStatusLabel,
+  isClosedConsultation,
+  speakerColor,
+} from '@/entities/consult';
+import {
+  ApiError,
+  getConsultationSummary,
+  getCounselorConsultations,
+  queryKeys,
+  submitConsultationTranscript,
+} from '@/shared/api';
 import { GhostButton, Icon, PillButton, SelectField } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import styles from './HistoryPage.module.css';
 
-const CLOSED_STATUSES = new Set(['ENDED', 'CANCELED', 'REJECTED', 'FAILED']);
+/** 요약은 상담 종료 뒤 AI가 비동기로 만든다. 만드는 동안 다시 물어보는 간격. */
+const SUMMARY_POLL_MS = 3000;
+const SPEAKER_LABELS = { USER: '사용자', COUNSELOR: '상담원' } as const;
 
 /** 정렬해서 중복을 없앤 필터 후보. 실제 기록에 있는 날짜만 고를 수 있게 한다. */
 function descendingOptions(values: readonly number[]) {
   return [...new Set(values)].sort((a, b) => b - a);
+}
+
+/** 요약이 아직 없는 상담은 몇 번을 물어도 404다. 그 응답만 재시도에서 뺀다. */
+function isMissingSummary(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
+}
+
+/** 상담 내용 패널이 비었을 때의 한 줄 안내. 제목은 남겨서 무엇이 비었는지 알린다. */
+function Notice({ children, alert }: { children: ReactNode; alert?: boolean }) {
+  return (
+    <>
+      <div className={styles.transcriptLabel}>
+        <Icon name="chat" size={12} />
+        상담 내용
+      </div>
+      <span className={styles.line} role={alert ? 'alert' : undefined}>
+        {children}
+      </span>
+    </>
+  );
+}
+
+/**
+ * 상담 하나의 요약. 접힌 카드의 한 줄과 펼친 상세가 같은 키를 쓰므로 요청은 한 번만 나가고,
+ * 상세를 열면 이미 받아 둔 응답이 그대로 보인다.
+ */
+function useConsultationSummary(consultationId: string) {
+  return useQuery({
+    queryKey: queryKeys.consultationSummary(consultationId),
+    queryFn: () => getConsultationSummary(consultationId),
+    retry: (failureCount, error) => !isMissingSummary(error) && failureCount < 2,
+    // 생성이 끝나면 멈춘다. 실패로 끝난 요약은 다시 물어도 그대로다.
+    refetchInterval: (query) => (query.state.data?.status === 'PENDING' ? SUMMARY_POLL_MS : false),
+  });
+}
+
+/**
+ * 접힌 카드에 얹는 AI 한 줄 요약. 상세를 열기 전에 무슨 상담이었는지 알아보라고 두는 자리라
+ * 긴 요약은 한 줄로 자른다. 전문(全文)은 상세의 같은 항목에서 본다.
+ */
+function ConsultationSummaryLine({ consultationId }: { consultationId: string }) {
+  const summaryQuery = useConsultationSummary(consultationId);
+
+  if (summaryQuery.isPending) {
+    return <span className={styles.summaryMuted}>요약을 불러오는 중입니다.</span>;
+  }
+
+  if (summaryQuery.isError) {
+    return (
+      <span className={styles.summaryMuted}>
+        {isMissingSummary(summaryQuery.error)
+          ? '저장된 상담 내용이 없어 요약도 없습니다.'
+          : '요약을 불러오지 못했습니다.'}
+      </span>
+    );
+  }
+
+  const { status, summaryText } = summaryQuery.data;
+
+  if (status === 'COMPLETED' && summaryText) {
+    return <b className={styles.summaryLine}>{summaryText}</b>;
+  }
+
+  return (
+    <span className={styles.summaryMuted}>
+      {status === 'PENDING' ? 'AI가 요약을 만들고 있습니다.' : '요약을 만들지 못했습니다.'}
+    </span>
+  );
+}
+
+/** 상세를 펼친 상담 하나의 AI 요약과 상담 전문. */
+function ConsultationSummaryView({ consultationId }: { consultationId: string }) {
+  const queryClient = useQueryClient();
+  const summaryQuery = useConsultationSummary(consultationId);
+
+  /**
+   * 전문은 서버에 그대로 남아 있다. 빈 본문이 곧 '저장된 전문으로 다시 만들라'는 뜻이라
+   * 자막을 다시 올리지 않는다. (API 명세서 11.7)
+   */
+  const retryMutation = useMutation({
+    mutationFn: () => submitConsultationTranscript(consultationId, {}),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.consultationSummary(consultationId) }),
+  });
+
+  if (summaryQuery.isPending) {
+    return <Notice>상담 내용을 불러오는 중입니다.</Notice>;
+  }
+
+  if (summaryQuery.isError) {
+    const missing = isMissingSummary(summaryQuery.error);
+    return (
+      <Notice alert={!missing}>
+        {missing
+          ? '저장된 상담 내용이 없습니다. 상담자가 자막을 남기지 않고 끝냈거나, 자막을 지원하지 않는 브라우저였을 수 있어요.'
+          : '상담 내용을 불러오지 못했습니다.'}
+      </Notice>
+    );
+  }
+
+  const summary = summaryQuery.data;
+  const transcript = summary.transcript ?? [];
+
+  return (
+    <>
+      <div className={styles.transcriptLabel}>
+        <Icon name="sparkle" size={12} />
+        AI 요약
+      </div>
+
+      {summary.status === 'PENDING' && (
+        <p className={styles.aiSummary}>AI가 요약을 만들고 있습니다. 잠시만 기다려 주세요.</p>
+      )}
+      {summary.status === 'FAILED' && (
+        <>
+          <p className={styles.aiSummary}>요약을 만들지 못했습니다.</p>
+          <PillButton
+            className={styles.retry}
+            disabled={retryMutation.isPending}
+            onClick={() => retryMutation.mutate()}
+          >
+            {retryMutation.isPending ? '다시 만드는 중…' : '요약 다시 만들기'}
+          </PillButton>
+          {retryMutation.isError && (
+            <span className={styles.line} role="alert">
+              다시 만들기를 시작하지 못했습니다.
+            </span>
+          )}
+        </>
+      )}
+      {summary.status === 'COMPLETED' && (
+        <p className={styles.aiSummary}>{summary.summaryText ?? '요약 내용이 비어 있습니다.'}</p>
+      )}
+
+      {/* 요약이 실패해도 전문은 남아 있다. 상담자에게는 이쪽이 더 중요하다. */}
+      <div className={styles.transcriptLabel}>
+        <Icon name="chat" size={12} />
+        상담 전문 {transcript.length > 0 && `· ${transcript.length}마디`}
+      </div>
+      {transcript.length === 0 ? (
+        <span className={styles.line}>저장된 대화가 없습니다.</span>
+      ) : (
+        transcript.map((segment) => {
+          const speaker = SPEAKER_LABELS[segment.speaker ?? 'USER'];
+          return (
+            <span key={segment.seq} className={styles.line}>
+              <b className={styles.speaker} style={{ color: speakerColor(speaker) }}>
+                {speaker}
+              </b>{' '}
+              {segment.content}
+            </span>
+          );
+        })
+      )}
+    </>
+  );
 }
 
 /** 서버의 종료 상담 목록을 날짜로 필터링해 표시한다. */
@@ -28,7 +199,7 @@ export function HistoryPage() {
   const closed = useMemo(
     () =>
       (historyQuery.data ?? [])
-        .filter((item) => CLOSED_STATUSES.has(item.status))
+        .filter((item) => isClosedConsultation(item.status))
         .map((item) => {
           const requestedAt = new Date(item.requestedAt);
           return {
@@ -136,27 +307,37 @@ export function HistoryPage() {
             const open = openId === entry.consultationId;
             return (
               <div key={entry.consultationId} className={styles.entry}>
+                {/* 상태와 문의 유형은 훑어보며 거르는 값이라 태그로 묶어 위에 붙인다. */}
                 <div className={styles.entryHead}>
-                  <span className={styles.agent}>{consultationStatusLabel(entry.status)}</span>
+                  <div className={styles.tags}>
+                    <span className={styles.agent}>{consultationStatusLabel(entry.status)}</span>
+                    <span className={styles.problemTag}>
+                      {consultationProblemLabel(entry.problemType)}
+                    </span>
+                  </div>
                   <span className={styles.date}>
-                    {new Date(entry.requestedAt).toLocaleString('ko-KR')}
+                    {consultationDateTimeLabel(entry.requestedAt)}
                   </span>
                 </div>
                 <div className={styles.summary}>
                   <span className={styles.summaryIcon}>
                     <Icon name="sparkle" size={14} />
                   </span>
-                  <b className={styles.summaryText}>
-                    {consultationProblemLabel(entry.problemType)}
-                  </b>
+                  <span className={styles.summaryText}>
+                    <span className={styles.summaryKind}>AI 요약</span>
+                    <ConsultationSummaryLine consultationId={entry.consultationId} />
+                  </span>
                 </div>
                 <div className={styles.facts}>
                   <span className={styles.factLabel}>출발 위치</span>
-                  <b className={styles.factValue}>{entry.currentLocationLabel ?? '미확정'}</b>
+                  <b className={styles.factValue}>{entry.currentLocationLabel ?? '확인 안 됨'}</b>
                   <span className={styles.factLabel}>목적지</span>
-                  <b className={styles.factValue}>{entry.destinationLabel ?? '미지정'}</b>
-                  <span className={styles.factLabel}>상담 ID</span>
-                  <b className={styles.factValue}>{entry.consultationId}</b>
+                  <b className={styles.factValue}>{entry.destinationLabel ?? '미정'}</b>
+                  <span className={styles.factLabel}>상담 번호</span>
+                  {/* 전체 식별자는 문의·로그 대조용으로만 필요해 툴팁에 남긴다. */}
+                  <b className={styles.factValue} title={entry.consultationId}>
+                    {consultationRef(entry.consultationId)}
+                  </b>
                 </div>
                 <PillButton
                   className={styles.toggle}
@@ -164,16 +345,10 @@ export function HistoryPage() {
                 >
                   {open ? '상세 닫기' : '상세 보기'}
                 </PillButton>
+                {/* 역 ID·노드 ID 같은 내부 식별자는 상담자가 쓸 일이 없어 상담 내용만 담는다. */}
                 {open && (
                   <div className={styles.transcript}>
-                    <div className={styles.transcriptLabel}>
-                      <Icon name="chat" size={12} />
-                      상담 메타데이터
-                    </div>
-                    <span className={styles.line}>
-                      역 ID {entry.stationId} · 현재 노드 {entry.currentNodeId ?? '-'} · 목적지 유형{' '}
-                      {entry.destinationType ?? '-'}
-                    </span>
+                    <ConsultationSummaryView consultationId={entry.consultationId} />
                   </div>
                 )}
               </div>

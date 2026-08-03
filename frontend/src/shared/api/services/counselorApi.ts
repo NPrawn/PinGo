@@ -22,6 +22,10 @@ export type CounselorConsultation = Omit<
   requestedAt: string;
 };
 export type CounselorConsultationDetail = Schemas['ConsultationDetailResponse'];
+export type ConsultationTranscriptRequest = Schemas['ConsultationTranscriptRequest'];
+export type ConsultationTranscriptSegment = Schemas['TranscriptSegmentRequest'];
+export type ConsultationSummary = Schemas['ConsultationSummaryResponse'];
+export type ConsultationSummaryStatus = Schemas['ConsultationSummaryStatusResponse'];
 
 /** status를 비우면 담당 역의 모든 상담을 받는다. */
 export function getCounselorConsultations(status?: CounselorConsultation['status']) {
@@ -52,6 +56,28 @@ export function rejectConsultation(consultationId: string) {
 export function endConsultation(consultationId: string) {
   return unwrap<Schemas['ConsultationEndResponse']>(
     apiClient.post(ENDPOINTS.consultations.end(consultationId), { endedBy: 'counselor' }),
+  );
+}
+
+/**
+ * 상담 전문을 저장한다. 서버는 이 요청을 받은 뒤 AI 요약을 비동기로 만들기 때문에
+ * 응답은 요약 본문이 아니라 생성 상태(`PENDING`)만 돌려준다.
+ *
+ * 상담이 `ENDED`가 된 뒤에만 받는다. 종료 요청보다 먼저 보내면 409로 거절된다.
+ */
+export function submitConsultationTranscript(
+  consultationId: string,
+  request: ConsultationTranscriptRequest,
+) {
+  return unwrap<ConsultationSummaryStatus>(
+    apiClient.post(ENDPOINTS.consultations.transcript(consultationId), request),
+  );
+}
+
+/** 요약이 아직 없으면 404(`CONSULTATION_SUMMARY_NOT_FOUND`)다. */
+export function getConsultationSummary(consultationId: string) {
+  return unwrap<ConsultationSummary>(
+    apiClient.get(ENDPOINTS.consultations.summary(consultationId)),
   );
 }
 

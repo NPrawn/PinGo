@@ -30,4 +30,6 @@ export const queryKeys = {
    */
   indoorRouteOptions: (stationId: number, startNodeId: number, targetNodeId: number) =>
     ['pingo', 'routes', 'indoor', 'options', stationId, startNodeId, targetNodeId] as const,
+  consultationSummary: (consultationId: string) =>
+    ['pingo', 'consultations', consultationId, 'summary'] as const,
 } as const;
