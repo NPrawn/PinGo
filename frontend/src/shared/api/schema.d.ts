@@ -2155,6 +2155,11 @@ export interface components {
       /** @enum {string} */
       status?:
         'WAITING' | 'ACCEPTED' | 'IN_PROGRESS' | 'ENDED' | 'CANCELED' | 'REJECTED' | 'FAILED';
+      /**
+       * Format: int64
+       * @description 이 상담을 맡은 상담자. 수락 전이면 null.
+       */
+      counselorId?: number;
       /** Format: int64 */
       currentNodeId?: number;
       currentLocationLabel?: string;

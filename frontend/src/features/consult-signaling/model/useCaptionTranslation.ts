@@ -28,18 +28,21 @@ export function useCaptionTranslation(
     if (!source || !consultationId) return;
 
     let cancelled = false;
-
-    void translateConsultationCaption(consultationId, { text: source, targetLanguage })
-      .then((response) => {
-        if (!cancelled) setResult({ source, text: response.text || source });
-      })
-      .catch(() => {
-        // 옮기지 못했으면 원문이라도 보여 준다.
-        if (!cancelled) setResult({ source, text: source });
-      });
+    // SpeechRecognition의 interim 결과는 단어마다 바뀐다. 짧게 모아서 번역하면
+    // 발화 중에도 자막이 흐르면서 요청 폭주와 오래된 응답의 역전을 막을 수 있다.
+    const timer = window.setTimeout(() => {
+      void translateConsultationCaption(consultationId, { text: source, targetLanguage })
+        .then((response) => {
+          if (!cancelled) setResult({ source, text: response.text || source });
+        })
+        .catch(() => {
+          if (!cancelled) setResult({ source, text: source });
+        });
+    }, 250);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [consultationId, source, targetLanguage]);
 

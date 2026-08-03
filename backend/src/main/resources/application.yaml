@@ -68,7 +68,8 @@ signaling:
   websocket:
     allowed-origin-patterns: ${SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://jenkins.example.invalid}
     # SDP 한 통이 들어갈 크기. 기본값 8KB 로는 offer 가 잘려 연결이 1009 로 끊긴다.
-    max-text-message-buffer-size: ${SIGNALING_WEBSOCKET_MAX_TEXT_MESSAGE_BUFFER_SIZE:65536}
+    # WebRTC SDP can grow well beyond the container default as codecs and ICE candidates accumulate.
+    max-text-message-buffer-size: ${SIGNALING_WEBSOCKET_MAX_TEXT_MESSAGE_BUFFER_SIZE:1048576}
   access-token:
     expiration-ms: ${SIGNALING_ACCESS_TOKEN_EXPIRATION_MS:600000}
   room:

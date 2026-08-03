@@ -20,7 +20,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 import com.pingo.backend.consultation.service.ConsultationRatingService;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -56,7 +56,7 @@ class ConsultationSessionControllerTest {
                 15L, "place", 3L, true, true, true
         );
         ConsultationCreateResponse response = new ConsultationCreateResponse(
-                CONSULTATION_ID, ConsultationStatus.WAITING, LocalDateTime.now()
+                CONSULTATION_ID, ConsultationStatus.WAITING, Instant.now()
         );
         given(consultationSessionService.create(any())).willReturn(response);
 
