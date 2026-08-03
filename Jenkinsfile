@@ -13,6 +13,7 @@ pipeline {
         BACKEND_BACKUP_JAR = '/opt/pingo/backend/releases/pingo-backend.previous.jar'
         BACKEND_SERVICE_NAME = 'pingo-backend'
         BACKEND_HEALTH_URL = 'http://127.0.0.1:8080/api/health'
+        AI_LOCALIZATION_BASE_URL = 'http://192.0.2.10:8000'
         FRONTEND_RELEASE_DIR = '/opt/pingo/frontend/releases/current'
         FRONTEND_BACKUP_DIR = '/opt/pingo/frontend/releases/previous'
         FRONTEND_HEALTH_URL = 'https://jenkins.example.invalid/'
@@ -67,7 +68,16 @@ pipeline {
                     dir('frontend') {
                         sh '''
                             npm ci
-                            npm run build
+                            export VITE_API_BASE_URL=""
+			    export VITE_WS_BASE_URL="wss://jenkins.example.invalid"
+			    export VITE_APP_ENV="production"
+
+			    echo "Frontend build env:"
+			    printenv | grep '^VITE_'
+
+			    npm run build
+
+			    grep -R "wss://jenkins.example.invalid" dist/assets >/dev/null
 
                             if npm run | grep -q " lint"; then
                               npm run lint
@@ -94,6 +104,12 @@ pipeline {
                         fi
 
                         sudo install -m 644 backend/build/libs/backend-0.0.1-SNAPSHOT.jar "${BACKEND_RELEASE_JAR}"
+                        sudo install -d "/etc/systemd/system/${BACKEND_SERVICE_NAME}.service.d"
+                        AI_LOCALIZATION_DROP_IN="$(mktemp)"
+                        printf '[Service]\nEnvironment="AI_LOCALIZATION_BASE_URL=%s"\n' "${AI_LOCALIZATION_BASE_URL}" > "${AI_LOCALIZATION_DROP_IN}"
+                        sudo install -m 644 "${AI_LOCALIZATION_DROP_IN}" "/etc/systemd/system/${BACKEND_SERVICE_NAME}.service.d/10-ai-localization.conf"
+                        rm -f "${AI_LOCALIZATION_DROP_IN}"
+                        sudo systemctl daemon-reload
                         sudo systemctl restart "${BACKEND_SERVICE_NAME}"
 
                         for i in $(seq 1 30); do
