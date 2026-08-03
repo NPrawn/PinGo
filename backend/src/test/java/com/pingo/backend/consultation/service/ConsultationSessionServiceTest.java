@@ -10,6 +10,7 @@ import com.pingo.backend.consultation.domain.ProblemType;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
+import com.pingo.backend.consultation.event.ConsultationAcceptedEvent;
 import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
@@ -297,8 +298,10 @@ class ConsultationSessionServiceTest {
         assertThat(response.signalingRoomId()).isEqualTo("room_" + session.getConsultationId());
         assertThat(response.signalingAccessToken()).isEqualTo("counselor-signaling-token");
         verify(counselor).changeStatus(CounselorStatus.BUSY);
-        verify(consultationWaitingEventPublisher)
-                .publishAccepted(session.getConsultationId(), "room_" + session.getConsultationId());
+        // 커밋 뒤에 알려야 사용자가 곧바로 조회했을 때 signaling 토큰을 받을 수 있다.
+        verify(applicationEventPublisher).publishEvent(
+                new ConsultationAcceptedEvent(
+                        session.getConsultationId(), "room_" + session.getConsultationId()));
     }
 
     @Test
