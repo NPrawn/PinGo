@@ -27,6 +27,7 @@ function renderOverlay(props: {
   onSelectFacility?: (facility: Facility) => void;
   viewScale?: number;
   pathNodes?: readonly RoutePathNode[];
+  waypointNodeIds?: readonly number[];
   project?: (mapX: number, mapY: number) => PixelPoint | null;
 }) {
   return render(
@@ -44,6 +45,7 @@ function renderOverlay(props: {
       onSelectFacility={props.onSelectFacility}
       viewScale={props.viewScale}
       pathNodes={props.pathNodes}
+      waypointNodeIds={props.waypointNodeIds}
     />,
   );
 }
@@ -59,6 +61,18 @@ function routeSegments(): string[] {
   const group = screen.getByRole('img', { name: '이동 경로' });
   return Array.from(group.querySelectorAll('polyline:not([aria-hidden])')).map(
     (line) => line.getAttribute('points') ?? '',
+  );
+}
+
+/**
+ * 경로 본선의 stroke 색. 경유지가 있으면 다리마다 달라진다.
+ *
+ * CSS 모듈 클래스 이름을 그대로 본다 — 어느 단계가 걸렸는지는 클래스가 결정한다.
+ */
+function routeToneClasses(): string[] {
+  const group = screen.getByRole('img', { name: '이동 경로' });
+  return Array.from(group.querySelectorAll('polyline:not([aria-hidden])')).map(
+    (line) => line.getAttribute('class') ?? '',
   );
 }
 
@@ -257,6 +271,90 @@ describe('IndoorMapOverlay', () => {
     // 오른쪽(0도)으로 가다 아래(90도)로 꺾인다. 이미지 좌표계는 y가 아래로 증가한다.
     expect(angles).toContain(0);
     expect(angles).toContain(90);
+  });
+
+  /**
+   * 경유지가 있는 경로. (S15P11A206-83)
+   *
+   * 같은 복도를 두 번 지나면 어느 쪽이 먼저인지 알 수 없다. 다리마다 명도를 달리하고 경유지에
+   * 번호를 붙여 순서를 남긴다.
+   */
+  describe('경유지', () => {
+    const throughWaypoint = [
+      { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+      { nodeId: 2, floorId: FLOOR_B2, mapX: 500, mapY: 0 },
+      { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+    ];
+
+    /**
+     * 그리는 순서가 뒤집혀 있다 — 먼 다리를 먼저, 지금 걷는 다리를 마지막에.
+     *
+     * 같은 복도를 두 번 지나면 나중에 그린 것이 위에 남는다. 순서를 그대로 두면 연한 먼 다리가
+     * 진한 현재 다리를 덮어, 정작 지금 필요한 화살표가 사라진다.
+     */
+    it('먼 다리를 먼저 그리고 지금 걷는 다리를 위에 얹는다', () => {
+      renderOverlay({ pathNodes: throughWaypoint, waypointNodeIds: [2] });
+
+      // 경유지 노드는 두 다리가 공유한다. 한쪽에만 넣으면 그 자리에 틈이 생긴다.
+      // 그린 순서대로 나오므로 먼 다리(500→1000)가 앞이다.
+      expect(routeSegments()).toEqual(['500,0 1000,0', '0,0 500,0']);
+
+      const [far, near] = routeToneClasses();
+      expect(far).toContain('routeFar');
+      expect(near).toContain('routeNear');
+    });
+
+    it('경유지가 없으면 한 색으로 그린다', () => {
+      renderOverlay({ pathNodes: throughWaypoint });
+
+      expect(routeSegments()).toEqual(['0,0 500,0 1000,0']);
+      // 단계를 매길 순서가 없다. 기본 색 그대로다.
+      expect(routeToneClasses()[0]).not.toContain('routeNear');
+      expect(routeToneClasses()[0]).not.toContain('routeFar');
+    });
+
+    it('경유지에 번호를 붙인다', () => {
+      renderOverlay({
+        pathNodes: [
+          ...throughWaypoint,
+          { nodeId: 4, floorId: FLOOR_B2, mapX: 1500, mapY: 0 },
+          { nodeId: 5, floorId: FLOOR_B2, mapX: 2000, mapY: 0 },
+        ],
+        waypointNodeIds: [2, 4],
+      });
+
+      expect(screen.getByRole('img', { name: '경유 1' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: '경유 2' })).toBeInTheDocument();
+    });
+
+    it('다른 층의 경유지는 번호를 그리지 않는다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B3, mapX: 500, mapY: 0 },
+          { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+        ],
+        waypointNodeIds: [2],
+      });
+
+      expect(screen.queryByRole('img', { name: '경유 1' })).not.toBeInTheDocument();
+    });
+
+    /** 왕복 경로에서 같은 노드를 두 번 지난다. 두 번째 통과를 또 경계로 삼으면 다리가 늘어난다. */
+    it('같은 노드를 다시 지나도 다리를 한 번만 나눈다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 500, mapY: 0 },
+          { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 500, mapY: 0 },
+        ],
+        waypointNodeIds: [2],
+      });
+
+      // 먼 다리가 먼저 그려진다.
+      expect(routeSegments()).toEqual(['500,0 1000,0 500,0', '0,0 500,0']);
+    });
   });
 
   /** 너무 짧은 구간에는 놓지 않는다. 마커에 가려 방향은 읽히지 않고 어수선함만 남는다. */

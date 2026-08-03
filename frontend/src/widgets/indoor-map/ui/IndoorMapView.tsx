@@ -39,6 +39,8 @@ interface IndoorMapViewProps {
   destinationLabel?: string | null;
   /** 경로가 지나는 노드. 경로 응답의 pathNodes를 그대로 받는다. */
   pathNodes?: readonly RoutePathNode[];
+  /** 경유지 노드. 경로에 실어 보낸 순서 그대로 넘긴다 — 다리별 색과 번호 핀에 쓰인다. */
+  waypointNodeIds?: readonly number[];
   /**
    * 지도에 표시할 시설 유형. 넘기지 않으면 **아무 시설도 그리지 않는다.**
    *
@@ -129,6 +131,7 @@ export function IndoorMapView({
   destination,
   destinationLabel,
   pathNodes,
+  waypointNodeIds,
   facilityType,
   showAllFacilities = false,
   selectedFacilityId,
@@ -329,6 +332,7 @@ export function IndoorMapView({
           destination={mockable(destination, MOCK_DESTINATION, useMockData)}
           destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
+          waypointNodeIds={waypointNodeIds}
           facilities={facilities}
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
@@ -383,6 +387,7 @@ function MapOverlay({
   destination,
   destinationLabel,
   pathNodes,
+  waypointNodeIds,
   facilities,
   selectedFacilityId,
   onSelectFacility,
@@ -396,6 +401,7 @@ function MapOverlay({
   destination: IndoorPoint | null;
   destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
+  waypointNodeIds?: readonly number[];
   facilities?: readonly Facility[];
   selectedFacilityId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
@@ -426,6 +432,7 @@ function MapOverlay({
       destination={destination}
       destinationLabel={destinationLabel}
       pathNodes={pathNodes}
+      waypointNodeIds={waypointNodeIds}
       facilities={facilities}
       selectedFacilityId={selectedFacilityId}
       onSelectFacility={onSelectFacility}

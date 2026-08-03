@@ -25,6 +25,29 @@
   stroke-linejoin: round;
 }
 
+/* 경유지가 있을 때 다리마다 다른 명도.
+   **지금 걷는 다리가 가장 진하다.** 남은 길은 맥락이고 지금 갈 길이 지시다.
+   색을 여러 가지로 나누지 않는 이유는 `legToneClass`에 적어 두었다. */
+.routeNear {
+  stroke: var(--color-route-near);
+}
+
+.routeFar {
+  stroke: var(--color-route-far);
+}
+
+/* 경유지 번호 핀. 목적지와 같은 계열의 진한 색을 쓰되 숫자로 구분한다. */
+.waypointPin {
+  fill: var(--color-route-near);
+  /* 원본 마커들과 같은 순백 테두리. 연한 도면 위에서도 핀이 떨어져 나온다. */
+  stroke: #fff;
+}
+
+.waypointOrder {
+  font-weight: 800;
+  fill: #fff;
+}
+
 /* 본선 아래 한 겹. 도면의 벽·해칭 선에서 경로를 떼어 놓는다. */
 .routeCasing {
   fill: none;
@@ -102,9 +125,11 @@
    색은 경로와 같은 계열이다. 내 위치와 갈 길은 한 이야기이고, 시설(민트)과 갈라야 하는 쪽은
    그 둘이 함께다. */
 
-/* 살아 있는 위치임을 알리는 맥박. 원본과 같은 주기로 퍼진다. */
+/* 살아 있는 위치임을 알리는 맥박. 원본과 같은 주기로 퍼진다.
+   원본보다 진하다. 경로선과 같은 계열이어서 점만으로는 선 위에 얹힌 굵은 점으로 읽히는데,
+   퍼지는 맥박은 선이 절대 하지 않는 움직임이라 색을 바꾸지 않고도 둘이 갈린다. */
 .currentHalo {
-  fill: color-mix(in srgb, var(--color-route) 40%, transparent);
+  fill: color-mix(in srgb, var(--color-route) 62%, transparent);
   transform-box: fill-box;
   transform-origin: center;
   animation: current-pulse 2s ease-out infinite;
@@ -140,13 +165,15 @@
   stop-opacity: 0;
 }
 
+/* 시작을 진하게, 사라지는 지점을 뒤로 미룬다. 원본은 주기의 70%에서 이미 투명해져 절반 넘게
+   아무것도 없는 상태였고, 그 사이에는 점만 남아 다시 선의 일부로 보였다. */
 @keyframes current-pulse {
   0% {
-    opacity: 0.55;
+    opacity: 0.85;
     transform: scale(0.7);
   }
 
-  70% {
+  82% {
     opacity: 0;
     transform: scale(1.9);
   }

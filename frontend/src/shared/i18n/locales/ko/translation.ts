@@ -37,6 +37,7 @@ export const ko = {
         currentLocation: '현재 위치',
         destination: '목적지',
         route: '이동 경로',
+        waypoint: '경유 {{order}}',
       },
     },
   },

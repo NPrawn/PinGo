@@ -628,6 +628,8 @@ export function NavigationPage() {
                      선이 그려지지 않는다 — 예전에는 이 자리를 목업이 채워, 사용자가 가지도
                      않을 B3 승강장 → 3번출구 경로가 늘 그려져 있었다. */
                   pathNodes={routePathNodesOf(routeResult)}
+                  /* 다리별 색과 번호 핀에 쓰인다. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
+                  waypointNodeIds={waypointNodeIds}
                   facilityType={effectiveType}
                   /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼져
                      아무 시설도 그리지 않는다. */

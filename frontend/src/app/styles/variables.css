@@ -35,6 +35,14 @@
   --color-route-veil: #ffd0d8;
   --color-route-deep: #c9455e;
 
+  /* 경유지가 있을 때 다리마다 쓰는 명도 단계.
+     **지금 걷는 구간이 가장 진하다.** 남은 길은 맥락이고 지금 갈 길이 지시다 — 목적지로 갈수록
+     진해지게 두면 강조가 거꾸로 걸린다.
+     한 색의 명도로만 나누는 이유는 지도에 이미 민트(시설)와 레드(경로)가 있어서다 —
+     여기에 다른 색을 더하면 무엇이 무엇인지 다시 구분되지 않는다. */
+  --color-route-near: #d94e6a;
+  --color-route-far: #ffb8c2;
+
   /* Surfaces */
   --color-background: #e6f0e9;
   --color-cream: #eff6f0;

@@ -39,6 +39,13 @@ interface IndoorMapOverlayProps {
   destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
   /**
+   * 경유지 노드. **경로에 실어 보낸 순서 그대로** 넘긴다.
+   *
+   * 경로선을 다리로 나누고 각 경유지에 번호를 붙이는 데 쓴다. 겹치는 복도에서 어느 쪽이 먼저인지
+   * 알려주는 것이 이 번호이고, 헤더의 `경유 1`과 짝이 맞는다.
+   */
+  waypointNodeIds?: readonly number[];
+  /**
    * 지도에 표시할 시설. 표시 층에 속한 것만 그린다.
    *
    * **호출부가 이미 걸러서 넘긴다.** 역 하나의 시설이 층당 30여 개인데 안내 화면의 지도는
@@ -87,6 +94,7 @@ export function IndoorMapOverlay({
   destination,
   destinationLabel,
   pathNodes,
+  waypointNodeIds,
   facilities,
   selectedFacilityId,
   onSelectFacility,
@@ -121,6 +129,8 @@ export function IndoorMapOverlay({
   const labelHaloWidth = LABEL_HALO_WIDTH * sizeUnit;
   const routeWidth = ROUTE_WIDTH * sizeUnit;
   const routeCasingWidth = ROUTE_CASING_WIDTH * sizeUnit;
+  const waypointRadius = WAYPOINT_RADIUS * sizeUnit;
+  const waypointFontSize = WAYPOINT_FONT_SIZE * sizeUnit;
   const directionSpacing = DIRECTION_SPACING * sizeUnit;
   const directionArm = DIRECTION_ARM * sizeUnit;
   const directionWidth = DIRECTION_WIDTH * sizeUnit;
@@ -135,7 +145,18 @@ export function IndoorMapOverlay({
   const upright = (point: PixelPoint): string | undefined =>
     mapRotationDeg === 0 ? undefined : `rotate(${-mapRotationDeg} ${point.px} ${point.py})`;
 
-  const routeSegments = floorSegments(pathNodes ?? [], floorId, project);
+  const waypoints = waypointNodeIds ?? [];
+  const routeSegments = floorSegments(pathNodes ?? [], floorId, project, waypoints);
+  const paintOrder = farthestLegFirst(routeSegments);
+  const legCount = waypoints.length + 1;
+  /** 이 층에 보이는 경유지와 그 번호. 헤더의 `경유 N`과 같은 번호다. */
+  const waypointPins = waypoints.flatMap((nodeId, index) => {
+    const node = (pathNodes ?? []).find((item) => item.nodeId === nodeId);
+    if (!node || node.floorId !== floorId) return [];
+    const point = project(node.mapX, node.mapY);
+
+    return point ? [{ point, order: index + 1 }] : [];
+  });
   const currentPoint = pointOnFloor(currentLocation, floorId, project);
   const destinationPoint = pointOnFloor(destination, floorId, project);
   const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project);
@@ -143,6 +164,7 @@ export function IndoorMapOverlay({
   // 그릴 것이 하나도 없으면 오버레이 자체를 만들지 않는다.
   if (
     routeSegments.length === 0 &&
+    waypointPins.length === 0 &&
     currentPoint === null &&
     destinationPoint === null &&
     facilityPins.length === 0
@@ -162,27 +184,30 @@ export function IndoorMapOverlay({
         <g role="img" aria-label={t('indoorMap.overlay.route')}>
           {/* 바깥 테두리를 모든 구간에 먼저 깔고 본선을 그 위에 얹는다. 구간마다 번갈아 그리면
               구간이 만나는 자리에서 뒷 구간의 테두리가 앞 구간의 본선을 덮는다. */}
-          {routeSegments.map((points, index) => (
+          {paintOrder.map((segment, index) => (
             <polyline
               key={index}
               className={styles.routeCasing}
               strokeWidth={routeCasingWidth}
-              points={points.map((point) => `${point.px},${point.py}`).join(' ')}
+              points={segment.points.map((point) => `${point.px},${point.py}`).join(' ')}
               // 배경에서 떼어 놓기 위한 장식이다. 경로 자체는 아래 본선이 나타낸다.
               aria-hidden
             />
           ))}
-          {routeSegments.map((points, index) => (
+          {paintOrder.map((segment, index) => (
             <polyline
               key={index}
-              className={styles.route}
+              className={[styles.route, legToneClass(segment.leg, legCount)]
+                .filter(Boolean)
+                .join(' ')}
               strokeWidth={routeWidth}
-              points={points.map((point) => `${point.px},${point.py}`).join(' ')}
+              points={segment.points.map((point) => `${point.px},${point.py}`).join(' ')}
             />
           ))}
-          {/* 진행 방향. 지도가 돌아가도 함께 돌아야 한다 — 가리키는 것이 방향 자체다. */}
-          {routeSegments.flatMap((points, segmentIndex) =>
-            directionMarks(points, directionSpacing).map((mark, markIndex) => (
+          {/* 진행 방향. 지도가 돌아가도 함께 돌아야 한다 — 가리키는 것이 방향 자체다.
+              선과 같은 순서로 그려 현재 다리의 화살표가 맨 위에 남는다. */}
+          {paintOrder.flatMap((segment, segmentIndex) =>
+            directionMarks(segment.points, directionSpacing).map((mark, markIndex) => (
               <path
                 key={`${segmentIndex}-${markIndex}`}
                 className={styles.routeDirection}
@@ -194,6 +219,41 @@ export function IndoorMapOverlay({
           )}
         </g>
       )}
+
+      {/*
+        경유지 번호.
+
+        겹치는 복도에서 어느 쪽을 먼저 지나는지 알려주는 것이 이 번호다. 색만으로는 같은 자리를
+        두 번 지날 때 위에 그려진 다리 하나만 보이지만, 번호는 지점에 붙어 있어 가려지지 않는다.
+
+        번호는 지도가 돌아도 세워 둔다 — 읽는 요소다.
+      */}
+      {waypointPins.map(({ point, order }) => (
+        <g
+          key={order}
+          role="img"
+          aria-label={t('indoorMap.overlay.waypoint', { order })}
+          transform={upright(point)}
+        >
+          <circle
+            className={styles.waypointPin}
+            cx={point.px}
+            cy={point.py}
+            r={waypointRadius}
+            strokeWidth={borderWidth}
+          />
+          <text
+            className={styles.waypointOrder}
+            x={point.px}
+            y={point.py}
+            fontSize={waypointFontSize}
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
+            {order}
+          </text>
+        </g>
+      ))}
 
       {/* 시설은 경로·현재위치보다 아래에 둔다. 안내에 필요한 표시가 시설에 가리면 안 된다. */}
       {facilityPins.map(({ facility, point }) => {
@@ -339,6 +399,14 @@ const MARKER_RADIUS = 40;
 const HALO_SCALE = 1.375;
 const DESTINATION_RADIUS = 35;
 
+/**
+ * 경유지 번호 핀. 목적지 점보다 조금 크다 — 안에 숫자가 들어가야 읽힌다.
+ *
+ * 숫자는 지름의 60% 정도가 원 안에서 꽉 차 보이지 않으면서 읽히는 크기다.
+ */
+const WAYPOINT_RADIUS = 52;
+const WAYPOINT_FONT_SIZE = WAYPOINT_RADIUS * 1.2;
+
 /** 목적지 이름. 점 위에 얹되 겹치지 않을 만큼 띄운다. */
 const LABEL_FONT_SIZE = 44;
 const LABEL_GAP = 14;
@@ -461,6 +529,12 @@ function beamPath({ px, py }: PixelPoint, length: number): string {
   ].join(' ');
 }
 
+/** 한 번에 그리는 경로 조각. `leg`은 몇 번째 다리인지다(0이 출발 → 첫 경유지). */
+interface RouteSegment {
+  points: PixelPoint[];
+  leg: number;
+}
+
 /**
  * 경로를 "표시 층에 연속으로 속한 구간"들로 나눈다.
  *
@@ -472,32 +546,84 @@ function beamPath({ px, py }: PixelPoint, length: number): string {
  * 다른 층 노드는 구간을 끊지만, 변환할 수 없는 좌표는 끊지 않고 건너뛴다.
  * 좌표를 모르는 것과 이 층에서 이어져 있지 않은 것은 다르다 — 앞뒤 노드는 여전히
  * 그 지점을 지나 연결돼 있으므로, 직선으로 잇는 편이 근사이되 없는 연결을 만들지는 않는다.
+ *
+ * **경유지에서도 끊는다.** 색이 다리마다 달라지므로 경계가 필요하다. 경유지 노드는 앞 다리의
+ * 끝이면서 뒤 다리의 시작이라 두 구간이 같은 점을 공유한다 — 한쪽에만 넣으면 그 자리에 틈이
+ * 생긴다.
+ *
+ * 경유지 판정은 순서대로 한다. 왕복 경로에서 같은 노드를 두 번 지날 수 있는데, 두 번째 통과를
+ * 또 경계로 삼으면 다리가 실제보다 많아진다.
  */
 function floorSegments(
   nodes: readonly RoutePathNode[],
   floorId: number,
   project: (mapX: number, mapY: number) => PixelPoint | null,
-): PixelPoint[][] {
-  const segments: PixelPoint[][] = [];
-  let current: PixelPoint[] | null = null;
+  waypointNodeIds: readonly number[] = [],
+): RouteSegment[] {
+  const segments: RouteSegment[] = [];
+  let current: RouteSegment | null = null;
+  let leg = 0;
+  let pending = 0;
 
   for (const node of nodes) {
-    if (node.floorId !== floorId) {
-      current = null;
-      continue;
-    }
-    const point = project(node.mapX, node.mapY);
-    if (point === null) continue;
+    const endsLeg = pending < waypointNodeIds.length && node.nodeId === waypointNodeIds[pending];
+    const point = node.floorId === floorId ? project(node.mapX, node.mapY) : null;
 
-    if (current === null) {
-      current = [];
-      segments.push(current);
+    if (point === null) {
+      // 이 층에 없는 노드는 구간을 끊는다. 좌표만 모르는 노드는 앞뒤를 그대로 잇는다.
+      if (node.floorId !== floorId) current = null;
+    } else {
+      if (current === null) {
+        current = { points: [], leg };
+        segments.push(current);
+      }
+      current.points.push(point);
     }
-    current.push(point);
+
+    if (endsLeg) {
+      leg += 1;
+      pending += 1;
+      // 경유지가 이 층에 보이면 그 점에서 다음 다리를 시작해 선을 이어 준다.
+      current = point === null ? null : { points: [point], leg };
+      if (current) segments.push(current);
+    }
   }
 
   // 점이 하나뿐인 구간은 이을 선이 없다.
-  return segments.filter((segment) => segment.length >= 2);
+  return segments.filter((segment) => segment.points.length >= 2);
+}
+
+/**
+ * 경유지가 있을 때 다리마다 다른 색을 입힌다.
+ *
+ * **지금 걷는 다리가 가장 진하다.** 남은 길은 맥락이고 지금 갈 길이 지시다. 목적지로 갈수록
+ * 진해지게 두면 강조가 거꾸로 걸려, 아직 갈 일 없는 구간이 화면에서 가장 눈에 띈다.
+ *
+ * 색을 여러 가지로 나누지 않고 **한 색의 명도 단계**로 둔다. 지도에는 이미 민트(시설)와
+ * 파스텔 레드(경로)가 있어서 주황·파랑을 더하면 무엇이 무엇인지 다시 알 수 없게 된다.
+ * 명도 차이는 색을 구분하기 어려운 사용자에게도 남는다.
+ *
+ * 경유지가 없으면(다리 하나) 기본 색 그대로다 — 단계를 매길 순서가 없다.
+ * 가운데 다리도 기본 색이다. 처음과 끝만 갈라도 순서는 충분히 읽힌다.
+ */
+function legToneClass(leg: number, legCount: number): string | undefined {
+  if (legCount <= 1) return undefined;
+  if (leg === 0) return styles.routeNear;
+  if (leg === legCount - 1) return styles.routeFar;
+
+  return undefined;
+}
+
+/**
+ * 그리는 순서. **먼 다리를 먼저, 지금 걷는 다리를 마지막에** 그린다.
+ *
+ * 같은 복도를 두 번 지나면 나중에 그린 것이 위에 남는다. 순서를 그대로 두면 연한 먼 다리가
+ * 진한 현재 다리를 덮어, 정작 지금 필요한 화살표가 사라진다.
+ *
+ * 층 구간 순서는 유지한다 — 같은 다리 안에서는 그린 순서가 보이는 결과를 바꾸지 않는다.
+ */
+function farthestLegFirst(segments: readonly RouteSegment[]): RouteSegment[] {
+  return [...segments].sort((left, right) => right.leg - left.leg);
 }
 
 /** 표시 층에 속한 시설만 픽셀 좌표와 함께 남긴다. 좌표를 변환할 수 없는 시설은 건너뛴다. */
