@@ -67,7 +67,16 @@ pipeline {
                     dir('frontend') {
                         sh '''
                             npm ci
-                            npm run build
+                            export VITE_API_BASE_URL=""
+			    export VITE_WS_BASE_URL="wss://jenkins.example.invalid"
+			    export VITE_APP_ENV="production"
+
+			    echo "Frontend build env:"
+			    printenv | grep '^VITE_'
+
+			    npm run build
+
+			    grep -R "wss://jenkins.example.invalid" dist/assets >/dev/null
 
                             if npm run | grep -q " lint"; then
                               npm run lint
