@@ -33,10 +33,22 @@ if (import.meta.env.DEV) {
   onINP((metric) => console.log(`[web-vitals] INP ${Math.round(metric.value)}ms`));
 }
 
-// 항목 1 — 인터랙션(버튼 클릭 등) 응답 100ms. 항목 2 — 애니메이션·스크롤 프레임 16ms.
+// 항목 1 — 인터랙션(버튼 클릭 등) 응답 100ms.
 // (관찰 함수 내부에서 개발 빌드 여부를 확인하므로 여기서는 그대로 호출한다.)
 observeInteractionTiming();
-observeFrameTiming();
+
+/**
+ * 항목 2 — 애니메이션·스크롤 프레임 16ms.
+ *
+ * 상시로 켜 두면 관찰 자체(매 프레임 rAF 콜백)가 메인 스레드를 붙잡아 측정을 왜곡하고,
+ * 아무 조작이 없는 유휴 상태에서도 루프가 계속 돈다. 그래서 앱을 켜자마자 자동으로 켜지
+ * 않고, 개발 빌드에서만 devtools 콘솔에 켜고 끄는 스위치를 노출해 둔다 — 스크롤·애니메이션
+ * 프레임을 실제로 확인하고 싶을 때 `__startFrameTiming()`을 부르고, 그 반환값을 다시
+ * 부르면 끈다.
+ */
+if (import.meta.env.DEV) {
+  Object.assign(window, { __startFrameTiming: observeFrameTiming });
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

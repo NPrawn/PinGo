@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SATISFACTION_LABELS, useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
@@ -20,20 +20,28 @@ export function ConsultEndedPage() {
   const satisfaction = useConsultStore((state) => state.satisfaction);
   const rate = useConsultStore((state) => state.rate);
   const clearConsultation = useConsultStore((state) => state.clearConsultation);
+  const consultationId = useConsultStore((state) => state.consultationId);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const [rated, setRated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
-   * 평가 API에 쓸 상담 ID를 화면에 들어오는 시점에 붙잡아 둔다.
+   * 평가 API에 쓸 상담 ID를 화면에 들어오는 시점 값으로 고정해 둔다.
    *
    * store의 `consultationId`는 아래에서 마운트하자마자 지운다 — 상담자가 먼저 끊었을 때도
    * 사용자 쪽 정리가 곧바로 끝나야 하고, 이 화면에 왔다가 별점을 남기지 않고 나가도(뒤로
    * 가기 등) 이미 끝난 상담의 방 번호가 sessionStorage에 남아 있으면 안 되기 때문이다.
    * 그런데 store를 그대로 지우면 뒤이어 별을 누를 때 매길 대상이 없어져 평가 API가 아예
-   * 호출되지 않는다. 그래서 지우기 전 값을 여기 따로 담아 둔다.
+   * 호출되지 않는다.
+   *
+   * `useState`의 초기값 인자는 최초 렌더에서 한 번만 쓰이고 이후 리렌더에서는 무시된다 —
+   * 렌더는 항상 effect보다 먼저 실행되므로, 아래 effect가 store를 비우기 전인 이 시점의
+   * `consultationId`를 그대로 고정할 수 있다. (store를 unmount 시점에 비우고 그동안
+   * 구독값을 그대로 쓰는 방식도 검토했지만, 개발 모드 StrictMode가 mount 직후 이 화면의
+   * effect를 한 번 더 정리·재실행하면서 별을 누르기도 전에 store가 비어, 로컬 개발 중
+   * 평가 API가 호출되지 않는 문제가 있어 이 방식을 유지한다.)
    */
-  const consultationIdRef = useRef(useConsultStore.getState().consultationId);
+  const [ratingConsultationId] = useState(consultationId);
 
   /**
    * 상담이 끝났으니 공유하던 화면과 마이크를 놓아 주고, 상담 정보도 곧바로 비운다.
@@ -60,9 +68,8 @@ export function ConsultEndedPage() {
     // 서버 응답을 기다리는 동안에도 고른 별은 바로 보여 준다.
     rate(score);
 
-    const consultationId = consultationIdRef.current;
     // 상담 정보가 남아 있지 않으면 서버에 매길 대상이 없다. 화면 흐름만 이어 간다.
-    if (!consultationId || !userSessionId) {
+    if (!ratingConsultationId || !userSessionId) {
       setRated(true);
       return;
     }
@@ -70,7 +77,7 @@ export function ConsultEndedPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await rateConsultation(consultationId, userSessionId, score);
+      await rateConsultation(ratingConsultationId, userSessionId, score);
       setRated(true);
     } catch (cause) {
       // 이미 평가한 상담이라면 점수는 남아 있다. 실패로 알릴 일이 아니다.
