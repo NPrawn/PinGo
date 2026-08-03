@@ -334,6 +334,28 @@
   color: rgb(255 255 255 / 55%);
 }
 
+/*
+  상담원이 지금 말하고 있는 원문. 아직 옮기기 전이라는 것이 한눈에 보여야 한다.
+  55% 회색으로 두면 확정된 원문과 구분되지 않아, 글자가 바뀌고 있다는 것을 알아채기 어렵다.
+*/
+.captionLive {
+  color: rgb(255 255 255 / 88%);
+}
+
+/* 상대 쪽 자막이 죽었다는 경고. 조용한 것과 고장난 것은 화면에서 똑같아 보인다. */
+.translationAlert {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #ffd9d9;
+  background: rgb(220 70 70 / 22%);
+  border-radius: 8px;
+}
+
 .lower {
   display: flex;
   flex: 1;

@@ -128,27 +128,21 @@ export function ConsultPermissionPage() {
    */
   const [cameraConsent, setCameraConsent] = useState(true);
 
-  /** 자동 준비가 실패했을 때 사용자가 직접 다시 시도하는 경로. */
-  const prepareSession = async () => {
-    setPreparingSession(true);
-    setErrorMessage('');
-    const ready = await ensureUserSession(i18n.language);
-    setPreparingSession(false);
-    if (!ready) setErrorMessage('상담 연결을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-  };
-
   useEffect(() => {
     if (issue == null) {
       void navigate(USER_ROUTES.CONSULT_REQUEST, { replace: true });
     }
   }, [issue, navigate]);
 
-  const requestConsultation = async (videoConsent: boolean) => {
+  const requestConsultation = async (
+    readyUserSessionId = userSessionId,
+    videoConsent = cameraConsent,
+  ) => {
     if (issue == null) {
       void navigate(USER_ROUTES.CONSULT_REQUEST, { replace: true });
       return;
     }
-    if (!userSessionId) {
+    if (!readyUserSessionId) {
       return;
     }
     // 상담은 역 단위로 배정된다. 등록되지 않은 역이면 보낼 상담자가 없다.
@@ -163,7 +157,7 @@ export function ConsultPermissionPage() {
       const completeDestination =
         destinationId != null && destinationType ? { destinationId, destinationType } : {};
       const consultation = await createConsultation({
-        userSessionId,
+        userSessionId: readyUserSessionId,
         stationId,
         problemType: PROBLEM_TYPES[issue],
         currentNodeId: currentNodeId ?? undefined,
@@ -198,7 +192,7 @@ export function ConsultPermissionPage() {
     }
   };
 
-  const verifyPermissionsAndConnect = async () => {
+  const verifyPermissionsAndConnect = async (readyUserSessionId = userSessionId) => {
     if (requestingPermissions || submitting) return;
 
     setRequestingPermissions(true);
@@ -238,7 +232,7 @@ export function ConsultPermissionPage() {
 
       setReminderOpen(false);
       // 실제로 확보한 영상만 동의한 것으로 기록한다. 켜 두었어도 실패했으면 보내지 않는다.
-      await requestConsultation(camera !== null);
+      await requestConsultation(readyUserSessionId, camera !== null);
     } catch {
       setShared({ mic: false, cam: false });
       setErrorMessage('상담하려면 마이크를 허용해 주세요.');
@@ -246,6 +240,26 @@ export function ConsultPermissionPage() {
     } finally {
       setRequestingPermissions(false);
     }
+  };
+
+  /** 세션이 없거나 백엔드가 잠시 끊겼어도 한 번의 클릭으로 준비부터 권한 요청까지 잇는다. */
+  const prepareAndConnect = async () => {
+    if (preparingSession || requestingPermissions || submitting) return;
+
+    let readyUserSessionId = userSessionId;
+    if (!readyUserSessionId) {
+      setPreparingSession(true);
+      setErrorMessage('');
+      readyUserSessionId = await ensureUserSession(i18n.language);
+      setPreparingSession(false);
+    }
+
+    if (!readyUserSessionId) {
+      setErrorMessage('상담 연결을 준비하지 못했습니다. 백엔드 연결을 확인한 뒤 다시 시도해 주세요.');
+      return;
+    }
+
+    await verifyPermissionsAndConnect(readyUserSessionId);
   };
 
   return (
@@ -306,7 +320,7 @@ export function ConsultPermissionPage() {
       {errorMessage && <p role="alert">{errorMessage}</p>}
       {/* 세션 준비가 실패해도 버튼이 잠기지 않게, 준비를 다시 시도하는 버튼으로 바꾼다. */}
       <Button
-        onClick={() => (userSessionId ? void verifyPermissionsAndConnect() : void prepareSession())}
+        onClick={() => void prepareAndConnect()}
         disabled={preparingSession || requestingPermissions || submitting}
       >
         {!userSessionId

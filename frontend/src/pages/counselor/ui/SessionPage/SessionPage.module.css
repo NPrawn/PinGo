@@ -346,6 +346,11 @@
   color: #8b8b96;
 }
 
+/* 사용자가 지금 말하고 있는 원문. 확정된 원문과 같은 회색이면 글자가 바뀌는 것을 못 알아챈다. */
+.sourceLineLive {
+  color: #cfcfd8;
+}
+
 /* 음성 인식이 멈췄다는 경고. 상담 중에 알아야 되돌릴 수 있다. */
 .notesAlert {
   display: flex;
@@ -645,4 +650,20 @@
   50% {
     transform: translateX(120%);
   }
+}
+
+/* 종료가 서버에 닿지 않았다는 경고. 놓치면 상담이 진행 중으로 남는다. */
+.endAlert {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  padding: 9px 11px;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #8a1f1f;
+  background: #fdeaea;
+  border: 1px solid #f3c6c6;
+  border-radius: 9px;
 }

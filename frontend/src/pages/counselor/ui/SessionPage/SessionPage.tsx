@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   consultationProblemLabel,
@@ -11,11 +11,17 @@ import {
 } from '@/entities/consult';
 import { FACILITY_MAP_FILTERS, type Facility } from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
-import { useCaptionTranslation, useConsultSignaling } from '@/features/consult-signaling';
+import {
+  describeRemoteCaptionTrouble,
+  useCaptionTranslation,
+  useConsultSignaling,
+  useTranslatedSpeech,
+} from '@/features/consult-signaling';
 import type { ConsultDataEvent, ConsultEventBody, MapSyncPayload } from '@/shared/types';
 import { useScreenDraw } from '@/features/shared-screen-draw';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import {
+  ApiError,
   endConsultation,
   getCounselorConsultation,
   getCounselorConsultations,
@@ -42,9 +48,17 @@ export function SessionPage() {
   const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
   const consultationId = useConsultStore((state) => state.consultationId);
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const queryClient = useQueryClient();
   const [tokenError, setTokenError] = useState<string | null>(null);
   /** 상담자가 직접 종료를 진행 중인지. 종료 감시와 겹쳐 화면이 두 번 넘어가지 않게 한다. */
   const [ending, setEnding] = useState(false);
+  /**
+   * 종료가 서버에 받아들여지지 않은 이유.
+   *
+   * 이걸 보여 주지 않으면 상담자는 끝냈다고 믿고 자리를 뜨는데, 서버에는 상담이 그대로
+   * 남아 다음 요청을 받지 못한다.
+   */
+  const [endError, setEndError] = useState<string | null>(null);
   /**
    * 사용자가 보내온 지도 상태.
    *
@@ -63,12 +77,14 @@ export function SessionPage() {
     error,
     localCaption,
     remoteCaption,
-    remoteFinalCaption,
+    remoteCaptionFinal,
+    remoteCaptionError,
     captionsSupported,
     captionError,
     restartCaptions,
     transcript,
     sendConsultEvent,
+    tokenRejected,
   } = useConsultSignaling(signalingRoomId, 'COUNSELOR', signalingAccessToken, handleDataEvent);
 
   /**
@@ -77,7 +93,19 @@ export function SessionPage() {
    * 상담자 콘솔은 한국어로 쓰인다. 사용자가 다른 언어로 말하면 상담자는 자막을 읽고도
    * 무슨 말인지 알 수 없어, 실시간 자막이 있으나 마나가 된다.
    */
-  const translatedUserCaption = useCaptionTranslation(consultationId, remoteFinalCaption, 'ko');
+  const translatedUserCaption = useCaptionTranslation(consultationId, remoteCaption, 'ko');
+  useTranslatedSpeech(translatedUserCaption, 'ko-KR', remoteCaptionFinal);
+  /**
+   * 옮긴 문장은 큰 줄에, 지금 들어오는 원문은 아래 줄에 흘려보낸다.
+   *
+   * 번역은 말이 끝난 문장에만 걸리므로, 옮긴 문장만 띄우면 사용자가 말하는 내내 화면이
+   * 지난 문장에서 멈춰 있다. 상담원은 사용자가 말하는 중인지 끝난 것인지 알 수 없다.
+   */
+  const userCaptionPrimary = translatedUserCaption || remoteCaption;
+  const userCaptionSource =
+    remoteCaption && remoteCaption !== userCaptionPrimary ? remoteCaption : '';
+  /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
+  const userCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '사용자');
 
   /** 그린 선을 사용자 화면에도 그대로 보낸다(명세 7장). */
   const drawEmitter = useMemo(
@@ -176,6 +204,18 @@ export function SessionPage() {
    * 새로고침하면 signaling 토큰이 남지 않는다(짧은 만료 시간). 방은 알고 있으므로
    * 상세 조회로 토큰만 다시 받아 WebSocket 접속이 401로 거절되지 않게 한다.
    */
+  /**
+   * 거절당한 토큰을 버린다. 아래 복구 effect 가 곧바로 새 토큰을 받아 온다.
+   *
+   * 토큰은 10분이면 만료되는데 상담은 그보다 오래간다. 예전에는 한 번 받은 토큰을 상담이
+   * 끝날 때까지 그대로 썼기 때문에, 연결을 다시 맺어야 하는 순간 handshake 가 401 로
+   * 거절되고 그대로 끝이었다 — 화면은 `연결 상태: signaling` 에서 멈췄다.
+   */
+  useEffect(() => {
+    if (!tokenRejected || !signalingRoomId) return;
+    setSignalingRoom(signalingRoomId, null);
+  }, [setSignalingRoom, signalingRoomId, tokenRejected]);
+
   useEffect(() => {
     if (!consultationId || !signalingRoomId || signalingAccessToken) return;
 
@@ -242,27 +282,60 @@ export function SessionPage() {
     void leave();
   }, [closedByUser, complete, consultationId, ending, navigate, selected, transcript]);
 
-  /** Marks the request done so the queue shows it as completed, then leaves. */
+  /**
+   * 상담을 끝내고 목록으로 돌아간다.
+   *
+   * 종료를 서버가 받아들였을 때만 화면을 넘긴다. 예전에는 실패를 통째로 삼키고 그대로
+   * 나가 버려서, 상담자는 끝냈다고 믿는데 서버에는 계속 `IN_PROGRESS` 로 남았다. 그 상담은
+   * 요청 목록에서 사라지지 않고, 상담자 상태도 '상담 중'에 묶여 다음 요청을 받지 못했다.
+   * 무엇이 잘못됐는지 화면 어디에도 나오지 않아 원인을 짚을 수도 없었다.
+   */
   const endCall = async () => {
-    setEnding(true);
-    if (consultationId) {
-      const ended = await endConsultation(consultationId).then(
-        () => true,
-        () => false,
+    if (!consultationId) {
+      setEndError(
+        '상담 정보를 찾을 수 없어 종료를 서버에 알리지 못했습니다. 상담 요청 목록에서 다시 들어와 주세요.',
       );
-      /**
-       * 전문은 상담이 `ENDED`가 된 뒤에만 받는다. 종료가 실패했다면 보내도 거절되므로 건너뛴다.
-       *
-       * 저장에 실패해도 종료 흐름은 막지 않는다. 요약은 부가 기능이고, 실패하면 상담 내역
-       * 상세에 '저장된 요약이 없습니다'로 드러난다.
-       *
-       * TODO: 출발지·안내한 출구·경로 유형은 상담 화면이 아직 실제 값을 들고 있지 않아
-       * 보내지 않는다. 지도 연동이 끝나면 함께 싣는다.
-       */
-      if (ended && transcript.length > 0) {
-        await submitConsultationTranscript(consultationId, { transcript }).catch(() => undefined);
-      }
+      return;
     }
+
+    setEnding(true);
+    setEndError(null);
+
+    try {
+      await endConsultation(consultationId);
+    } catch (cause) {
+      /**
+       * 여기서 나가면 안 된다. 서버는 아직 이 상담을 진행 중으로 알고 있어서, 화면만
+       * 넘어가면 목록에 그대로 남은 상담을 상담자가 다시 끝낼 방법이 없다.
+       */
+      setEnding(false);
+      setEndError(
+        cause instanceof ApiError
+          ? `상담을 종료하지 못했습니다. ${cause.message} 상담은 아직 진행 중입니다.`
+          : '상담을 종료하지 못했습니다. 네트워크를 확인하고 다시 눌러 주세요. 상담은 아직 진행 중입니다.',
+      );
+      return;
+    }
+
+    /**
+     * 전문은 상담이 `ENDED`가 된 뒤에만 받는다.
+     *
+     * 저장에 실패해도 종료 흐름은 막지 않는다. 요약은 부가 기능이고, 실패하면 상담 내역
+     * 상세에 '저장된 요약이 없습니다'로 드러난다.
+     *
+     * TODO: 출발지·안내한 출구·경로 유형은 상담 화면이 아직 실제 값을 들고 있지 않아
+     * 보내지 않는다. 지도 연동이 끝나면 함께 싣는다.
+     */
+    if (transcript.length > 0) {
+      await submitConsultationTranscript(consultationId, { transcript }).catch(() => undefined);
+    }
+
+    /**
+     * 목록을 서버에서 다시 읽게 한다. 캐시에 남은 옛 목록에는 방금 끝낸 상담이 그대로
+     * 있어서, 목록으로 돌아간 순간 아직 진행 중인 것처럼 보인다.
+     */
+    void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
+    void queryClient.invalidateQueries({ queryKey: ['counselor-me'] });
     complete(selected);
     void navigate(COUNSELOR_ROUTES.REQUESTS);
   };
@@ -337,10 +410,26 @@ export function SessionPage() {
                 )}
               </div>
             </div>
-            <Button size="sm" className={styles.endCall} onClick={() => void endCall()}>
-              상담 종료
+            <Button
+              size="sm"
+              className={styles.endCall}
+              disabled={ending}
+              onClick={() => void endCall()}
+            >
+              {ending ? '종료하는 중…' : '상담 종료'}
             </Button>
           </div>
+
+          {/*
+            종료가 서버에 닿지 않았다는 사실. 이걸 감추면 상담자는 끝냈다고 믿고 자리를
+            뜨는데, 서버에는 상담이 그대로 남아 다음 요청을 받지 못한다.
+          */}
+          {endError && (
+            <div className={styles.endAlert} role="alert">
+              <Icon name="warning" size={13} />
+              <span>{endError}</span>
+            </div>
+          )}
 
           <div className={styles.syncBar}>
             {synced ? (
@@ -524,6 +613,17 @@ export function SessionPage() {
                 </button>
               </div>
             )}
+            {/*
+              사용자 쪽 자막이 죽은 경우. 이쪽에서 손쓸 수 있는 일이 아니라 다시 시도 버튼을
+              붙이지 않는다. 대신 사용자가 조용한 것이 아니라는 사실은 알아야 한다 — 모르면
+              상담원은 대답을 기다리며 계속 침묵하게 된다.
+            */}
+            {userCaptionNotice && (
+              <div className={styles.notesAlert} role="alert">
+                <Icon name="warning" size={12} />
+                <span>{userCaptionNotice}</span>
+              </div>
+            )}
             <div className={styles.notesBody}>
               {/* 확정된 말은 순서대로 쌓아 둔다. 상담자가 앞의 내용을 되짚어 볼 수 있어야 한다. */}
               {transcript.map((segment) => (
@@ -547,14 +647,20 @@ export function SessionPage() {
                   작게 붙인다 — 출구 번호나 역 이름은 원문으로 맞춰 봐야 할 때가 있다.
                 */}
                 <span className={styles.line}>
-                  {translatedUserCaption ||
-                    remoteCaption ||
+                  {userCaptionPrimary ||
                     (captionsSupported
                       ? '사용자가 말하면 이 자리에 표시됩니다.'
                       : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                 </span>
-                {translatedUserCaption && remoteFinalCaption !== translatedUserCaption && (
-                  <span className={styles.sourceLine}>{remoteFinalCaption}</span>
+                {/* 사용자가 말하는 중에는 이 줄이 한 마디씩 흘러간다. 위 줄은 말이 끝나야 바뀐다. */}
+                {userCaptionSource && (
+                  <span
+                    className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    {userCaptionSource}
+                  </span>
                 )}
               </div>
               <div>

@@ -47,7 +47,11 @@ function excludePrototypeFromBuild(): Plugin {
  */
 function devApiTarget(mode: string): string {
   const fileEnv = loadEnv(mode, process.cwd(), 'VITE_');
-  return process.env.VITE_DEV_API_TARGET ?? fileEnv.VITE_DEV_API_TARGET ?? 'http://localhost:8080';
+  return (
+    process.env.VITE_DEV_API_TARGET ??
+    fileEnv.VITE_DEV_API_TARGET ??
+    'https://jenkins.example.invalid'
+  );
 }
 
 /**
