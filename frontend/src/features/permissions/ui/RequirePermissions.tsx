@@ -3,6 +3,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { usePermissionStore } from '@/entities/permission';
 import { USER_ROUTES } from '@/shared/config';
 import { hasKnownPermissionState, revokedKindsOf } from '../model/permission.query';
+import { getStoredRequiredPermissionState } from '../model/permission.storage';
 import { useBrowserPermissionStates } from '../model/permission.watch';
 
 /**
@@ -25,16 +26,31 @@ export function RequirePermissions() {
    *
    * 상담·설정 화면이 이 값을 읽어 "허용됨"을 표시한다. 갱신하지 않으면 이미 꺼진 권한을
    * 켜져 있다고 말하게 된다.
+   *
+   * 조회할 수 없는 브라우저에서는 지난 요청의 기록으로 채운다. 그냥 두면 전역 상태가 초기값
+   * (전부 거부)에 머무는데, Zustand 는 새로고침하면 비므로 Safari 사용자는 권한을 멀쩡히
+   * 허용해 두고도 다음 화면에서 거부한 사람으로 취급된다. 지난 기록은 지금 이 순간의 사실이
+   * 아니지만, 아무 근거 없는 초기값보다는 실제에 가깝다.
    */
   useEffect(() => {
-    if (!hasKnownPermissionState(states)) {
+    if (hasKnownPermissionState(states)) {
+      sync({
+        loc: states.location === 'granted',
+        cam: states.camera === 'granted',
+        mic: states.microphone === 'granted',
+      });
+      return;
+    }
+
+    const stored = getStoredRequiredPermissionState();
+    if (!stored) {
       return;
     }
 
     sync({
-      loc: states.location === 'granted',
-      cam: states.camera === 'granted',
-      mic: states.microphone === 'granted',
+      loc: stored.location === 'granted',
+      cam: stored.camera === 'granted',
+      mic: stored.microphone === 'granted',
     });
   }, [states, sync]);
 

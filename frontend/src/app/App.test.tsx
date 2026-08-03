@@ -305,6 +305,35 @@ describe('user routes', () => {
     await waitFor(() => expect(usePermissionStore.getState().granted.cam).toBe(false));
   });
 
+  /**
+   * 권한을 조회할 수 없는 브라우저(Safari 등)에서 전역 상태가 비어 있던 문제.
+   *
+   * 전역 상태는 Zustand 라 새로고침하면 초기값(전부 거부)으로 돌아간다. 조회가 안 되면
+   * 가드가 그 값을 갱신하지 못해, 온보딩에서 권한을 멀쩡히 허용한 사용자가 거부한 사람으로
+   * 남는다. 지난 요청의 기록은 지금 이 순간의 사실은 아니지만 초기값보다는 실제에 가깝다.
+   */
+  it('falls back to the stored answer when permissions cannot be queried', async () => {
+    window.sessionStorage.setItem(
+      'pingo.requiredPermissions',
+      JSON.stringify({
+        canUseService: true,
+        location: 'granted',
+        camera: 'granted',
+        microphone: 'granted',
+        savedAt: '2026-08-03T00:00:00.000Z',
+      }),
+    );
+
+    // `navigator.permissions` 를 세우지 않는다 — 조회할 수 없는 브라우저다.
+    await renderSection('/user/station');
+
+    await waitFor(() =>
+      expect(usePermissionStore.getState().granted).toEqual({ loc: true, cam: true, mic: true }),
+    );
+    // 모르는 것을 없는 것으로 치면 안 된다. 화면은 그대로 열려 있어야 한다.
+    expect(screen.getByRole('heading', { name: '오늘은 어디로 가시나요?' })).toBeInTheDocument();
+  });
+
   it('keeps the flow open while every permission is still granted', async () => {
     stubPermissionStates({ geolocation: 'granted', camera: 'granted', microphone: 'granted' });
 
