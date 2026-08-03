@@ -2,7 +2,8 @@ export { useConsultSignaling } from './model/useConsultSignaling';
 export { useCaptionTranslation } from './model/useCaptionTranslation';
 export {
   captureConsultCamera,
-  captureConsultMedia,
+  captureConsultMicrophone,
+  composeConsultMedia,
   holdConsultCamera,
   holdConsultMedia,
   peekConsultCamera,

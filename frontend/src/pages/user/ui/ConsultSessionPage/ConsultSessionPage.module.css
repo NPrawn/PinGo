@@ -77,19 +77,6 @@
   pointer-events: none;
 }
 
-/* 화면 공유가 카메라로 물러났을 때만 나타난다. 종료 버튼과 헷갈리지 않게 색을 나눈다. */
-.shareScreen {
-  padding: 4px 10px;
-  margin-right: 6px;
-  font: inherit;
-  font-weight: 700;
-  color: #0f2c22;
-  cursor: pointer;
-  background: var(--color-mint);
-  border: none;
-  border-radius: 7px;
-}
-
 .endCall {
   padding: 4px 10px;
   font: inherit;

@@ -14,6 +14,20 @@ export {
   toStoredRequiredPermissionState,
 } from './model/permission.storage';
 
+export {
+  deniedKindsOf,
+  grantedKindsOf,
+  hasKnownPermissionState,
+  promptableKindsOf,
+  queryPermissionStates,
+  revokedKindsOf,
+  watchPermissionStates,
+} from './model/permission.query';
+
+export { useBrowserPermissionStates, usePermissionsRevoked } from './model/permission.watch';
+
+export { RequirePermissions } from './ui/RequirePermissions';
+
 export { usePermissionRequest } from './model/permission.hook';
 
 export type {
@@ -30,6 +44,8 @@ export type {
 } from './model/permission.service';
 
 export type { StoredRequiredPermissionState } from './model/permission.storage';
+
+export type { BrowserPermissionState, BrowserPermissionStates } from './model/permission.query';
 
 export type {
   PermissionRequestPhase,

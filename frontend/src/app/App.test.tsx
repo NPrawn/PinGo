@@ -70,9 +70,29 @@ function stubPermissionEnvironment({
   });
 }
 
+/**
+ * Permissions API를 흉내낸다. 브라우저가 권한을 어떻게 기억하고 있는지를 정한다.
+ *
+ * 이것을 세우지 않으면 조회가 실패해 상태를 알 수 없는 브라우저(Safari 등)가 된다. 그때는
+ * 아무것도 막지 않는 것이 정상이므로, 차단 동작을 확인하려면 반드시 세워야 한다.
+ */
+function stubPermissionStates(states: Record<string, 'granted' | 'prompt' | 'denied'>) {
+  Object.defineProperty(navigator, 'permissions', {
+    configurable: true,
+    value: {
+      query: vi.fn(({ name }: { name: string }) =>
+        states[name]
+          ? Promise.resolve({ state: states[name], onchange: null })
+          : Promise.reject(new TypeError(`unsupported permission: ${name}`)),
+      ),
+    },
+  });
+}
+
 afterEach(() => {
   Reflect.deleteProperty(navigator, 'geolocation');
   Reflect.deleteProperty(navigator, 'mediaDevices');
+  Reflect.deleteProperty(navigator, 'permissions');
   Reflect.deleteProperty(window, 'isSecureContext');
   window.sessionStorage.clear();
   // 언어 전환 테스트가 영어로 바꿔 둔 것을 되돌린다. 남으면 뒤 테스트가 영어 라벨을 만난다.
@@ -246,9 +266,14 @@ describe('user routes', () => {
     expect(screen.getByRole('button', { name: '권한 허용하고 시작하기' })).toBeEnabled();
   });
 
-  it('marks location refused and leaves camera and microphone unasked', async () => {
-    // A refused location short-circuits the flow, so the other two prompts
-    // never open and their rows stay empty.
+  /**
+   * 위치를 거부해도 카메라·마이크는 마저 묻는다.
+   *
+   * 예전에는 위치에서 멈춰 나머지 두 줄이 `미요청`으로 남았다. 세 권한이 모두 있어야
+   * 진입할 수 있으므로 사용자는 어차피 전부 처리해야 하는데, 무엇이 남았는지 한 번에 알 수
+   * 없으니 같은 화면을 여러 번 통과하게 된다.
+   */
+  it('marks location refused and still asks for camera and microphone', async () => {
     stubPermissionEnvironment({ location: 'denied', media: 'granted' });
     await renderSection('/user/permission');
 
@@ -257,8 +282,101 @@ describe('user routes', () => {
     await screen.findByRole('dialog', { name: '모든 권한이 필요해요' });
     const rows = screen.getAllByRole('listitem');
     expect(within(rows[0]).getByText('거부됨')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('미요청')).toBeInTheDocument();
-    expect(within(rows[2]).getByText('미요청')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('허용됨')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('허용됨')).toBeInTheDocument();
+  });
+
+  /**
+   * 권한 화면을 통과한 뒤 브라우저 설정에서 권한을 꺼도 서비스가 그대로 돌아가던 문제.
+   *
+   * 세 권한을 모두 요구하기로 한 이상, 도중에 사라진 권한도 처음부터 없었던 것과 같게 다뤄야
+   * 한다. 카메라가 꺼진 채 촬영 화면이 열리거나 마이크 없이 상담이 연결되면 안 된다.
+   */
+  it('sends the user back when a permission is revoked mid-flow', async () => {
+    usePermissionStore.setState({ granted: { loc: true, cam: true, mic: true } });
+    stubPermissionStates({ geolocation: 'granted', camera: 'denied', microphone: 'granted' });
+
+    await renderSection('/user/station');
+
+    expect(
+      await screen.findByRole('heading', { name: /이용에 필요한 권한을/ }),
+    ).toBeInTheDocument();
+    // 공유 상태도 실제 권한을 따라가야 한다. 상담·설정 화면이 이 값을 읽는다.
+    await waitFor(() => expect(usePermissionStore.getState().granted.cam).toBe(false));
+  });
+
+  /**
+   * 권한을 조회할 수 없는 브라우저(Safari 등)에서 전역 상태가 비어 있던 문제.
+   *
+   * 전역 상태는 Zustand 라 새로고침하면 초기값(전부 거부)으로 돌아간다. 조회가 안 되면
+   * 가드가 그 값을 갱신하지 못해, 온보딩에서 권한을 멀쩡히 허용한 사용자가 거부한 사람으로
+   * 남는다. 지난 요청의 기록은 지금 이 순간의 사실은 아니지만 초기값보다는 실제에 가깝다.
+   */
+  it('falls back to the stored answer when permissions cannot be queried', async () => {
+    window.sessionStorage.setItem(
+      'pingo.requiredPermissions',
+      JSON.stringify({
+        canUseService: true,
+        location: 'granted',
+        camera: 'granted',
+        microphone: 'granted',
+        savedAt: '2026-08-03T00:00:00.000Z',
+      }),
+    );
+
+    // `navigator.permissions` 를 세우지 않는다 — 조회할 수 없는 브라우저다.
+    await renderSection('/user/station');
+
+    await waitFor(() =>
+      expect(usePermissionStore.getState().granted).toEqual({ loc: true, cam: true, mic: true }),
+    );
+    // 모르는 것을 없는 것으로 치면 안 된다. 화면은 그대로 열려 있어야 한다.
+    expect(screen.getByRole('heading', { name: '오늘은 어디로 가시나요?' })).toBeInTheDocument();
+  });
+
+  it('keeps the flow open while every permission is still granted', async () => {
+    stubPermissionStates({ geolocation: 'granted', camera: 'granted', microphone: 'granted' });
+
+    await renderSection('/user/station');
+
+    expect(
+      await screen.findByRole('heading', { name: '오늘은 어디로 가시나요?' }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * 설정 화면에서 권한을 풀어도 돌아가야 한다.
+   *
+   * 권한 카드가 상태를 보여 주기만 하게 바뀐 뒤로 그 화면에서 할 수 있는 일이 없다. 복구
+   * 안내와 다시 갖춰졌을 때의 자동 진행은 권한 화면에 있으므로 거기로 보낸다.
+   */
+  it('sends the user back when a permission is revoked on the settings screen', async () => {
+    stubPermissionStates({ geolocation: 'granted', camera: 'prompt', microphone: 'granted' });
+
+    await renderSection('/user/settings');
+
+    expect(
+      await screen.findByRole('heading', { name: /이용에 필요한 권한을/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the settings screen while every permission is still granted', async () => {
+    stubPermissionStates({ geolocation: 'granted', camera: 'granted', microphone: 'granted' });
+
+    await renderSection('/user/settings');
+
+    expect(await screen.findByRole('heading', { name: '설정' })).toBeInTheDocument();
+    // 권한은 여기서 바꿀 수 없다. 상태만 읽는다.
+    expect(screen.getAllByText('허용됨')).toHaveLength(3);
+  });
+
+  /** 조회할 수 없는 브라우저에서 모르는 것을 없는 것으로 치면 멀쩡한 사용자까지 막힌다. */
+  it('does not block when the browser cannot report permission state', async () => {
+    await renderSection('/user/station');
+
+    expect(
+      await screen.findByRole('heading', { name: '오늘은 어디로 가시나요?' }),
+    ).toBeInTheDocument();
   });
 
   it('reveals origin, destination, and final confirmation one step at a time', async () => {
