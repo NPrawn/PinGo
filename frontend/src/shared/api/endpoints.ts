@@ -35,6 +35,9 @@ export const ENDPOINTS = {
   vps: {
     localize: '/api/vps/localize',
   },
+  webrtc: {
+    iceServers: '/api/webrtc/ice-servers',
+  },
   routes: {
     // 8.1 경로 옵션 조회. 조회지만 요청 본문이 필요해 POST다.
     indoorOptions: '/api/routes/indoor/options',
@@ -50,6 +53,14 @@ export const ENDPOINTS = {
       `/api/consultations/${consultationId}/waiting-events`,
     fallbackEvents: (consultationId: string) =>
       `/api/consultations/${consultationId}/fallback-events`,
+    // DataChannel 이 열리지 않았을 때 상담 이벤트가 지나는 우회로.
+    dataChannelEvents: (consultationId: string) =>
+      `/api/consultations/${consultationId}/data-channel-events`,
+    // 실시간 자막 한 줄을 상대 언어로 옮긴다.
+    translate: (consultationId: string) => `/api/consultations/${consultationId}/translate`,
+    transcript: (consultationId: string) => `/api/consultations/${consultationId}/transcript`,
+    summary: (consultationId: string) => `/api/consultations/${consultationId}/summary`,
+    rating: (consultationId: string) => `/api/consultations/${consultationId}/rating`,
   },
   admin: {
     stations: '/api/admin/stations',

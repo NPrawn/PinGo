@@ -228,6 +228,39 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/consultations/{consultationId}/transcript': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** 상담 전문 저장 */
+    post: operations['submitTranscript'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/consultations/{consultationId}/rating': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['rate'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/auth/signup': {
     parameters: {
       query?: never;
@@ -761,6 +794,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/consultations/{consultationId}/summary': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 상담 요약 조회 */
+    get: operations['getSummary'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/auth/check-login-id': {
     parameters: {
       query?: never;
@@ -885,55 +935,6 @@ export interface components {
       message?: string;
       data?: components['schemas']['LocalizationResponse'];
     };
-    /** @description 캐노니컬 수평면의 2D 단위벡터. 길이 1 로 정규화돼 있다. */
-    PlanarDirectionResponse: {
-      /**
-       * @description 캐노니컬 X 성분
-       * @example 0.93
-       */
-      x?: number;
-      /**
-       * @description 캐노니컬 Y 성분
-       * @example -0.36
-       */
-      y?: number;
-    };
-    /** @description 위치 인식으로 확정한 실내 위치. 캐노니컬 미터 좌표이며 지도에 그대로 표시한다. */
-    LocalizedPositionResponse: {
-      /**
-       * Format: int64
-       * @description 층 ID
-       * @example 2
-       */
-      floorId?: number;
-      /**
-       * @description 층 코드
-       * @example B2
-       */
-      floorCode?: string;
-      /**
-       * @description 캐노니컬 X (m)
-       * @example -0.975
-       */
-      mapX?: number;
-      /**
-       * @description 캐노니컬 Y (m)
-       * @example 27.717
-       */
-      mapY?: number;
-      /**
-       * @description 캐노니컬 Z (m). 해당 층의 기준 높이이며 위치추정으로 얻은 값이 아니다.
-       * @example 0.0
-       */
-      mapZ?: number;
-      /** @description 앵커 시점 단말이 향한 방향. 캐노니컬 수평면 2D 단위벡터다. AI 가 회전을 주지 않으면 null 이다. */
-      forwardMap?: components['schemas']['PlanarDirectionResponse'] | null;
-      /**
-       * @description 위치 정확도(m). 해당 층 좌표 정합의 leave-one-out 평균이다.
-       * @example 0.497
-       */
-      accuracyM?: number;
-    };
     LocalizationResponse: {
       /**
        * @description 위치추정 요청 추적 ID
@@ -961,19 +962,24 @@ export interface components {
        * @example YS-2026-07-23.1
        */
       mapVersion?: string;
-      /** @description 확정된 실내 위치. 위치를 확정하지 못했거나 해당 층의 좌표 정합이 없으면 null 이다. */
-      position?: components['schemas']['LocalizedPositionResponse'] | null;
+      /**
+       * @description 확정한 실내 위치. 캐노니컬 미터 좌표이며 지도에 점으로 찍는다.
+       *     위치를 확정하지 못했거나 해당 층의 좌표 정합이 없으면 null 이다.
+       */
+      position?: components['schemas']['LocalizedPositionResponse'];
       /**
        * Format: int64
-       * @description 경로 탐색의 시작점 노드 ID. position 에서 가장 가까운 노드다. 위치를 확정하지 못하면 null 이다.
+       * @description 경로 탐색을 시작할 노드 ID. position 에서 가장 가까운 노드이며
+       *     POST /api/routes/indoor 의 startNodeId 로 그대로 넣으면 된다.
+       *     위치를 확정하지 못하면 null 이다.
        * @example 123
        */
-      startNodeId?: number | null;
+      startNodeId?: number;
       /**
-       * @description 경로 시작 노드의 표시 이름. 시설에 붙어 있으면 시설명이다.
+       * @description 경로 시작 노드의 표시 이름. 시설이 붙어 있으면 시설명이다.
        * @example B2-B3 엘리베이터 A
        */
-      startNodeLabel?: string | null;
+      startNodeLabel?: string;
       fallbackOptions?: (
         | 'retry_capture'
         | 'select_landmark'
@@ -990,6 +996,66 @@ export interface components {
        * @example 2310
        */
       processingTimeMs?: number;
+    };
+    /** @description 위치 인식으로 확정한 실내 위치. 캐노니컬 미터 좌표이며 지도에 그대로 표시한다. */
+    LocalizedPositionResponse: {
+      /**
+       * Format: int64
+       * @description 층 ID
+       * @example 2
+       */
+      floorId?: number;
+      /**
+       * @description 층 코드
+       * @example B2
+       */
+      floorCode?: string;
+      /**
+       * @description 캐노니컬 X (m)
+       * @example -0.975
+       */
+      mapX?: number;
+      /**
+       * @description 캐노니컬 Y (m)
+       * @example 27.717
+       */
+      mapY?: number;
+      /**
+       * @description 캐노니컬 Z (m). 해당 층의 기준 높이이며 위치추정으로 얻은 값이 아니다.
+       * @example 0
+       */
+      mapZ?: number;
+      /**
+       * @description 앵커 시점 단말이 향한 방향. 캐노니컬 수평면 2D 단위벡터다(FE 스펙 8.5).
+       *
+       *     FE 는 같은 순간의 WebXR 전방(forwardXr)을 스스로 알고 있고, 이 값과의 각도 차가
+       *     XR↔지도 회전이다. 그게 있어야 WebXR 이동량을 지도 위 이동으로 바꿀 수 있다.
+       *
+       *     AI 가 회전을 주지 않거나 카메라가 바닥·천장을 정면으로 볼 때는 null 이다.
+       *     방향이 틀려도 오류가 나지 않고 마커만 엉뚱하게 움직이므로, null 이면
+       *     WebXR 정렬을 시작하지 않는 편이 안전하다.
+       */
+      forwardMap?: components['schemas']['PlanarDirectionResponse'];
+      /**
+       * @description 위치 정확도(m). GPS 정확도 원처럼 쓴다.
+       *     해당 층 좌표 정합의 leave-one-out 평균이며 기준점 위에서 잰 in-sample 잔차가 아니다.
+       *     현재 값은 B2 0.497 · B3 1.095.
+       * @example 0.497
+       */
+      accuracyM?: number;
+    };
+    /** @description 캐노니컬 수평면의 2D 단위벡터. 길이 1 로 정규화돼 있다. */
+    PlanarDirectionResponse: {
+      /**
+       * @description 캐노니컬 X 성분
+       * @example 0.93
+       */
+      x?: number;
+      /**
+       * @description 캐노니컬 Y 성분
+       * @example -0.36
+       */
+      y?: number;
     };
     UserSessionCreateRequest: {
       /** @enum {string} */
@@ -1016,6 +1082,8 @@ export interface components {
       /** Format: int64 */
       targetNodeId: number;
       routeType: string;
+      /** @enum {string} */
+      language?: 'ko' | 'en' | 'ja' | 'zh';
     };
     ApiResponseRouteResponse: {
       success?: boolean;
@@ -1030,12 +1098,14 @@ export interface components {
       floorId?: number;
       mapX?: number;
       mapY?: number;
+      mapZ?: number;
     };
     RouteResponse: {
       routeType?: string;
       displayName?: string;
       available?: boolean;
       unavailableReason?: string;
+      unavailableMessage?: string;
       /** Format: int64 */
       startNodeId?: number;
       /** Format: int64 */
@@ -1066,6 +1136,8 @@ export interface components {
       startNodeId: number;
       /** Format: int64 */
       targetNodeId: number;
+      /** @enum {string} */
+      language?: 'ko' | 'en' | 'ja' | 'zh';
     };
     ApiResponseListRouteOptionResponse: {
       success?: boolean;
@@ -1078,9 +1150,11 @@ export interface components {
       displayName?: string;
       available?: boolean;
       unavailableReason?: string;
+      unavailableMessage?: string;
       totalDistanceM?: number;
       /** Format: int32 */
       estimatedTimeSec?: number;
+      hasStairsOrEscalator?: boolean;
     };
     ExitArrivalCheckRequest: {
       /**
@@ -1230,10 +1304,6 @@ export interface components {
       stationId: number;
       destinationLatitude: number;
       destinationLongitude: number;
-      /**
-       * @description 엘리베이터로 갈 수 있는 출구만 후보로 둘지. 비우면 전체 출구에서 고른다.
-       *     엘리베이터 우선 경로의 도착 출구를 고를 때 쓴다.
-       */
       accessibleOnly?: boolean;
     };
     ApiResponseNearestExitResponse: {
@@ -1338,7 +1408,16 @@ export interface components {
     };
     ConsultationDataChannelEventRequest: {
       /** @enum {string} */
-      type: 'ARROW_POINTED' | 'GUIDE_MESSAGE_SENT' | 'DESTINATION_CHANGE_REQUESTED';
+      type:
+        | 'ARROW_POINTED'
+        | 'GUIDE_MESSAGE_SENT'
+        | 'DESTINATION_CHANGE_REQUESTED'
+        | 'DRAW_STROKE_START'
+        | 'DRAW_STROKE_MOVE'
+        | 'DRAW_STROKE_END'
+        | 'DRAW_CLEAR'
+        | 'MAP_SYNC'
+        | 'CURRENT_LOCATION_CORRECTED';
       payload?: components['schemas']['JsonNode'];
     };
     JsonNode: {
@@ -1348,8 +1427,7 @@ export interface components {
       float?: boolean;
       number?: boolean;
       container?: boolean;
-      floatingPointNumber?: boolean;
-      integralNumber?: boolean;
+      string?: boolean;
       /** @enum {string} */
       nodeType?:
         | 'ARRAY'
@@ -1361,22 +1439,67 @@ export interface components {
         | 'OBJECT'
         | 'POJO'
         | 'STRING';
-      string?: boolean;
-      object?: boolean;
+      integralNumber?: boolean;
+      short?: boolean;
       valueNode?: boolean;
       int?: boolean;
-      binary?: boolean;
+      bigDecimal?: boolean;
+      missingNode?: boolean;
+      object?: boolean;
       pojo?: boolean;
       double?: boolean;
-      bigDecimal?: boolean;
+      bigInteger?: boolean;
       /** @deprecated */
       textual?: boolean;
-      long?: boolean;
       boolean?: boolean;
-      missingNode?: boolean;
-      short?: boolean;
-      bigInteger?: boolean;
+      binary?: boolean;
+      long?: boolean;
+      floatingPointNumber?: boolean;
       embeddedValue?: boolean;
+    };
+    ConsultationTranscriptRequest: {
+      transcript?: components['schemas']['TranscriptSegmentRequest'][];
+      startLocationLabel?: string;
+      /** Format: int64 */
+      guidedExitFacilityId?: number;
+      guidedExitLabel?: string;
+      routeType?: string;
+    };
+    TranscriptSegmentRequest: {
+      /** Format: int32 */
+      seq: number;
+      /** @enum {string} */
+      speaker: 'USER' | 'COUNSELOR';
+      content: string;
+    };
+    ApiResponseConsultationSummaryStatusResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['ConsultationSummaryStatusResponse'];
+    };
+    ConsultationSummaryStatusResponse: {
+      consultationId?: string;
+      /** @enum {string} */
+      status?: 'PENDING' | 'COMPLETED' | 'FAILED';
+    };
+    ConsultationRatingRequest: {
+      userSessionId: string;
+      /** Format: int32 */
+      score: number;
+    };
+    ApiResponseResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['Response'];
+    };
+    Response: {
+      consultationId?: string;
+      /** Format: int32 */
+      score?: number;
+      /** Format: date-time */
+      ratedAt?: string;
     };
     SignupRequest: {
       loginId: string;
@@ -1442,6 +1565,12 @@ export interface components {
       floorName?: string;
       /** Format: int32 */
       floorOrder: number;
+      /**
+       * @description 층의 캐노니컬 기준 높이(m). 역삼역은 B1=5 · B2=0 · B3=-5.
+       *     클라이언트가 층 전환을 ΔY 로 판정하는 데 쓰므로 되도록 넣는다.
+       * @example 0
+       */
+      nominalZ?: number;
     };
     ApiResponseFloorIdResponse: {
       success?: boolean;
@@ -1462,6 +1591,13 @@ export interface components {
       name?: string;
       mapX: number;
       mapY: number;
+      /**
+       * @description 캐노니컬 높이(m). 층 바닥이 기준이고 역삼역은 B1=5 · B2=0 · B3=-5.
+       *     비워 두면 위치 인식의 노드 스냅이 이 노드를 바닥에 있는 것으로 보므로,
+       *     같은 층 안에서 높이가 갈리는 구간(역삼역 B0.5, z=7.5)에서는 되도록 넣는다.
+       * @example 0
+       */
+      mapZ?: number;
       isLandmark?: boolean;
     };
     ApiResponseRouteNodeIdResponse: {
@@ -1674,6 +1810,12 @@ export interface components {
       floorName?: string;
       /** Format: int32 */
       floorOrder?: number;
+      /**
+       * @description 층의 캐노니컬 기준 높이(m). 층 바닥 기준이며 역삼역은 B1=5 · B2=0 · B3=-5.
+       *     클라이언트가 층 전환을 판정하는 데 쓴다.
+       * @example 0
+       */
+      nominalZ?: number;
     };
     StationDetailResponse: {
       /** Format: int64 */
@@ -1690,6 +1832,13 @@ export interface components {
       name?: string;
       mapX: number;
       mapY: number;
+      /**
+       * @description 캐노니컬 높이(m). 층 바닥이 기준이고 역삼역은 B1=5 · B2=0 · B3=-5.
+       *     비워 두면 위치 인식의 노드 스냅이 이 노드를 바닥에 있는 것으로 보므로,
+       *     같은 층 안에서 높이가 갈리는 구간(역삼역 B0.5, z=7.5)에서는 되도록 넣는다.
+       * @example 0
+       */
+      mapZ?: number;
       isLandmark?: boolean;
     };
     ApiResponseRouteNodeResponse: {
@@ -1709,6 +1858,11 @@ export interface components {
       name?: string;
       mapX?: number;
       mapY?: number;
+      /**
+       * @description 캐노니컬 높이(m). 층 바닥 기준이며 역삼역은 B1=5 · B2=0 · B3=-5
+       * @example 0
+       */
+      mapZ?: number;
       isLandmark?: boolean;
     };
     RouteEdgeUpdateRequest: {
@@ -1775,6 +1929,12 @@ export interface components {
       floorName?: string;
       /** Format: int32 */
       floorOrder: number;
+      /**
+       * @description 층의 캐노니컬 기준 높이(m). 역삼역은 B1=5 · B2=0 · B3=-5.
+       *     클라이언트가 층 전환을 ΔY 로 판정하는 데 쓰므로 되도록 넣는다.
+       * @example 0
+       */
+      nominalZ?: number;
     };
     ApiResponseFloorResponse: {
       success?: boolean;
@@ -1865,6 +2025,13 @@ export interface components {
       originPxY?: number;
       frameAngleDeg?: number;
       version?: string;
+      /**
+       * @description 층의 캐노니컬 기준 높이(m). 층 바닥 기준이며 역삼역은 B1=5 · B2=0 · B3=-5.
+       *     클라이언트가 WebXR 의 앵커 대비 ΔY 와 비교해 층 전환을 판정하는 데 쓴다.
+       *     같은 층 안에서 높이가 갈리는 구간(역삼역 B0.5)은 이 값으로 구분할 수 없다.
+       * @example 0
+       */
+      nominalZ?: number;
     };
     ApiResponseListFacilityResponse: {
       success?: boolean;
@@ -2053,6 +2220,40 @@ export interface components {
     SseEmitter: {
       /** Format: int64 */
       timeout?: number;
+    };
+    ApiResponseConsultationSummaryResponse: {
+      success?: boolean;
+      code?: string;
+      message?: string;
+      data?: components['schemas']['ConsultationSummaryResponse'];
+    };
+    ConsultationSummaryResponse: {
+      consultationId?: string;
+      /** @enum {string} */
+      status?: 'PENDING' | 'COMPLETED' | 'FAILED';
+      counselorName?: string;
+      /** Format: date-time */
+      endedAt?: string;
+      /** @enum {string} */
+      language?: 'ko' | 'en' | 'ja' | 'zh';
+      summaryText?: string;
+      startLocationLabel?: string;
+      /** Format: int64 */
+      guidedExitFacilityId?: number;
+      guidedExitLabel?: string;
+      routeType?: string;
+      transcript?: components['schemas']['TranscriptSegmentResponse'][];
+      /** Format: date-time */
+      createdAt?: string;
+      /** Format: date-time */
+      completedAt?: string;
+    };
+    TranscriptSegmentResponse: {
+      /** Format: int32 */
+      seq?: number;
+      /** @enum {string} */
+      speaker?: 'USER' | 'COUNSELOR';
+      content?: string;
     };
     ApiResponseBoolean: {
       success?: boolean;
@@ -2552,6 +2753,58 @@ export interface operations {
            *     }
            */
           '*/*': unknown;
+        };
+      };
+    };
+  };
+  submitTranscript: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConsultationTranscriptRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseConsultationSummaryStatusResponse'];
+        };
+      };
+    };
+  };
+  rate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConsultationRatingRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseResponse'];
         };
       };
     };
@@ -3903,6 +4156,28 @@ export interface operations {
         };
         content: {
           'text/event-stream': components['schemas']['SseEmitter'];
+        };
+      };
+    };
+  };
+  getSummary: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        consultationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseConsultationSummaryResponse'];
         };
       };
     };
