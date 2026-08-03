@@ -1015,7 +1015,9 @@ multipart/form-data
 
 `position`은 **지도에 점으로 찍는 값**이다. 캐노니컬 미터 좌표(§5.1)이며 노드에 붙이지 않은 날 좌표다. 경로 노드는 20~30m 간격의 경유점이라 거기에 스냅해서 표시하면 실제 위치와 최대 10m 어긋난다.
 
-`startNodeId`는 **경로 탐색 진입점**이다. `POST /api/routes/indoor/options`와 `/indoor`가 `startNodeId`를 요구하므로, `position`에서 가장 가까운 노드를 골라 함께 내려준다. 클라이언트는 그대로 넣어 쓰면 된다. 가장 가까운 노드가 몇 미터 떨어져 있어도 경로 결과는 거의 달라지지 않는다.
+`startNodeId`는 **경로 탐색 진입점**이다. `POST /api/routes/indoor/options`와 `/indoor`가 `startNodeId`를 요구하므로, `position`에서 가장 가까운 노드를 골라 함께 내려준다. 클라이언트는 그대로 넣어 쓰면 된다.
+
+**다만 `position.mapX`·`mapY`도 함께 보내는 편이 낫다.** 여기서 고르는 노드는 목적지를 모르는 상태에서 거리만 보고 뽑은 것이라 목적지 반대쪽일 수 있고, 그러면 사용자가 뒤로 걷게 된다. 경로 API에 좌표를 실어 보내면 서버가 목적지까지의 총 거리로 다시 고른다. 자세한 것은 `POST /api/routes/indoor/options`의 `currentMapX` 설명에 있다.
 
 `accuracyM`은 위치 정확도(m)이며 GPS 정확도 원처럼 쓰면 된다. **leave-one-out 평균**이다 — 기준점 위에서 잰 in-sample 잔차(B2 0.423 · B3 0.594)는 그 기준점으로 맞춘 값이라 낙관적이어서, 일반화 오차 쪽을 싣는다. 현재 값은 **B2 0.497 · B3 1.095**다.
 
@@ -1284,9 +1286,17 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "startNodeId": 15,
   "targetNodeId": 44,
   "waypointNodeIds": [22, 31],
-  "language": "en"
+  "language": "en",
+  "currentMapX": -34.897,
+  "currentMapY": 23.328
 }
 ```
+
+> **`currentMapX`·`currentMapY`** — 위치추정이 준 사용자의 실제 좌표(`position.mapX`·`mapY`)다. **선택이며 둘 다 있어야 쓰인다.** 보내면 서버가 진입 노드를 목적지까지의 총 거리가 가장 짧은 것으로 다시 고른다. 보내지 않으면 `startNodeId`를 그대로 쓴다.
+>
+> `startNodeId`는 위치추정 시점에 정해지는데 그때는 목적지를 모르므로 **가장 가까운 노드**가 뽑힌다. 그 노드가 목적지 반대쪽이면 사용자를 뒤로 걷게 만든다. 역삼역 B3에서 3번 출구로 갈 때 실제로 그랬다 — 가장 가까운 노드로 가면 총 146.7m, 목적지 쪽 노드로 가면 134.4m로 12.3m 차이가 났다.
+>
+> 층은 `startNodeId`의 층을 쓴다. 후보는 그 층 노드로 한정한다.
 
 #### routeType 기준
 
@@ -1351,9 +1361,15 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
   "targetNodeId": 44,
   "waypointNodeIds": [22, 31],
   "routeType": "elevator_only",
-  "language": "en"
+  "language": "en",
+  "currentMapX": -34.897,
+  "currentMapY": 23.328
 }
 ```
+
+> **`currentMapX`·`currentMapY`** — 옵션 조회와 같다. **옵션 조회에서 보냈다면 여기서도 같은 값을 보내야** 옵션에서 본 거리와 상세 경로가 일치한다. 한쪽만 보내면 진입 노드가 달라져 총 거리가 어긋난다.
+>
+> 응답의 `startNodeId`는 **서버가 실제로 쓴 진입 노드**다. 좌표를 보내 다시 골랐다면 요청에 넣은 값과 다를 수 있다.
 
 #### Response
 
@@ -1378,7 +1394,9 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
         "distanceM": 30,
         "estimatedTimeSec": 45,
         "moveType": "walkway",
-        "instruction": "30m 직진하세요."
+        "instruction": "30m 직진하세요.",
+        "turn": "straight",
+        "floorDelta": null
       }
     ],
     "pathNodes": [
@@ -1395,7 +1413,23 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 }
 ```
 
-도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. 경유지 요청에서는 어느 한 구간이라도 도달할 수 없으면 전체 경로를 이용 불가로 본다. `unavailableMessage`에는 같은 사유를 요청 언어로 쓴 문구가 들어간다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다. 방향(좌/우) 안내는 좌표 기반 계산이 필요하여 현재 범위에서 제외한다.
+도달할 수 없으면 `available=false`와 `unavailableReason`을 채우고 `steps`·`pathNodes`는 빈 배열로 반환한다. 경유지 요청에서는 어느 한 구간이라도 도달할 수 없으면 전체 경로를 이용 불가로 본다. `unavailableMessage`에는 같은 사유를 요청 언어로 쓴 문구가 들어간다. `mapX`·`mapY`는 실내 도면 렌더링용이며 경로 탐색 가중치에는 사용하지 않는다.
+
+#### 단계별 안내 — `instruction`과 `turn`·`floorDelta`
+
+**같은 것을 두 가지로 준다.** `instruction`을 그대로 화면에 써도 되고, `turn`·`floorDelta`를 보고 자기 문구와 아이콘을 만들어도 된다. 문장만 주면 언어가 서버에 묶여 `ja`·`zh`를 넣을 수 없고, 구조만 주면 지금 문장을 쓰고 있는 클라이언트가 깨진다.
+
+| 필드 | 값 | 설명 |
+| --- | --- | --- |
+| `instruction` | 문장 | `language`에 따라 한국어 또는 영어. `ja`·`zh`는 영어로 내려간다 |
+| `turn` | `straight` · `left` · `right` · `around` | 이전 구간에서 이 구간으로 꺾이는 방향. **첫 단계이거나 구간이 너무 짧아 판단할 수 없으면 `null`이다** — `straight`와 구분된다 |
+| `floorDelta` | 정수 | 오르내리는 층수. **위로 가면 양수.** 층 이동이 아니거나 층을 알 수 없으면 `null`. 같은 층 안의 계단이면 `0` |
+
+`floorDelta`가 `0`인 경우는 역삼역 B1 개찰구 위 중간층으로 오르내리는 계단이다. 별도 층이 아니라 `floorId`가 B1이면서 `map_z=7.5`인 노드로 돼 있어 층 순서가 같다.
+
+회전은 30도까지 직진, 150도를 넘으면 되돌아가는 것으로 본다. 경로 노드가 통로의 굽이를 따라 놓여 있어 걷는 사람이 회전이라고 느끼지 않는 완만한 꺾임이 많고, 그런 곳마다 안내가 나오면 오히려 헷갈린다.
+
+**첫 단계에는 회전이 없다.** 사용자가 어느 방향을 보고 있는지는 위치추정 응답의 `position.forwardMap`에 있으나 이 요청에는 없다.
 
 `mapZ`는 그 노드의 캐노니컬 높이(m)다. **같은 층 안에서 높이가 갈리는 구간을 구분하는 데 쓴다** — 역삼역 B0.5 중간층은 별도 층이 아니라 `floorId`가 B1이면서 `map_z=7.5`인 노드 6개로 돼 있어, 이 값이 없으면 바닥 구간과 중간층 구간이 도면 위 같은 평면에 겹쳐 그려진다. **관리자가 높이를 넣지 않은 노드는 `null`이다.**
 
