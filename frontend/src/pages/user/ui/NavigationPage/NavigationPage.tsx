@@ -216,6 +216,21 @@ export function NavigationPage() {
   const displayedFloorCode = floorCodeOf(floorMaps, displayedFloorId);
 
   /**
+   * 내가 있는 층으로 되돌린다. 지도의 `내 위치` 버튼이 부른다.
+   *
+   * 고른 층을 지우면 표시 층이 다시 현재 위치를 따라간다(`displayedFloorId`). 다른 화면이 보는
+   * 층 상태도 층 버튼을 누를 때와 똑같이 맞춘다 — 여기서 빠뜨리면 지도만 내려오고 나머지
+   * 화면은 아까 보던 층에 남는다.
+   */
+  const returnToMyFloor = () => {
+    setPickedFloorCode(null);
+    setSelectedFacility(null);
+
+    const code = floorCodeOf(floorMaps, followedFloorId);
+    if (code) setFloor(code as FloorId);
+  };
+
+  /**
    * 목적지 마커. **이름과 좌표가 같은 곳을 가리켜야 한다.**
    *
    * 이전에는 좌표가 목업 상수(3번출구 엘리베이터)이고 이름은 경로 옵션 화면에서 온 문자열
@@ -587,6 +602,9 @@ export function NavigationPage() {
                   /* 길안내 화면이므로 시점이 내 위치를 따라간다. 밀거나 확대하면 풀리고
                      `내 위치` 버튼으로 돌아온다. */
                   followCamera
+                  /* 층은 이 화면이 들고 있다. 시점만 되돌리면 다른 층을 보던 사용자는 그 층
+                     지도가 자기 좌표로 옮겨진 것만 보고, 마커는 다른 층이라 그려지지 않는다. */
+                  onRecenter={returnToMyFloor}
                   /* 실제 시설 좌표를 넘긴다. 목업 목적지를 쓰지 않는다 — 좌표와 이름이
                      다른 곳을 가리키던 원인이다. 다른 층의 목적지는 오버레이가 걸러낸다. */
                   destination={

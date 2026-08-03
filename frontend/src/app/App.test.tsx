@@ -604,6 +604,41 @@ describe('user routes', () => {
   });
 
   /**
+   * `내 위치` 버튼과 층. (S15P11A206-83)
+   *
+   * 예전에는 시점만 되돌렸다. 층은 화면이 들고 있어서 다른 층을 보던 사용자는 그 층 지도가
+   * 자기 좌표로 옮겨진 것만 보고, 마커는 다른 층이라 그려지지 않았다 — 내 위치로 가는 버튼을
+   * 눌렀는데 내 위치가 화면에 없었다.
+   *
+   * 지도를 밀지 않고 층만 넘긴 경우에는 추종이 켜져 있어 버튼 자체가 나타나지도 않았다.
+   */
+  it('다른 층에서 내 위치 버튼을 누르면 내가 있는 층으로 돌아온다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B1' }));
+    expect(within(floorGroup).getByRole('button', { name: 'B1' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // 지도를 밀지 않았어도 다른 층이면 돌아갈 곳을 제시해야 한다.
+    fireEvent.click(await screen.findByRole('button', { name: '내 위치' }));
+
+    // 내 층은 B2다(`currentFloorId: 1`). 시점만이 아니라 층까지 돌아와야 마커가 보인다.
+    expect(within(floorGroup).getByRole('button', { name: 'B2' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(floorGroup).getByRole('button', { name: 'B1' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  /**
    * 목적지 마커. (S15P11A206-79)
    *
    * 이름과 좌표가 같은 곳을 가리켜야 한다. 목업 좌표(3번출구 엘리베이터)에 경로 옵션 화면의

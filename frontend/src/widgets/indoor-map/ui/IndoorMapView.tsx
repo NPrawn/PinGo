@@ -69,6 +69,14 @@ interface IndoorMapViewProps {
    */
   followCamera?: boolean;
   /**
+   * `내 위치` 버튼을 눌렀을 때. 시점 복귀는 위젯이 하고, **층 되돌리기는 여기서** 한다.
+   *
+   * 표시 층은 화면이 들고 있다(안내 화면의 층 버튼). 위젯이 시점만 되돌리면 다른 층을 보던
+   * 사용자는 그 층 지도가 자기 좌표로 옮겨진 것만 보게 되고, 정작 마커는 다른 층이라 그려지지
+   * 않는다. 내 위치로 가는 버튼을 눌렀는데 내 위치가 화면에 없는 상태가 된다.
+   */
+  onRecenter?: () => void;
+  /**
    * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
    * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
    *
@@ -126,6 +134,7 @@ export function IndoorMapView({
   selectedFacilityId,
   onSelectFacility,
   followCamera = false,
+  onRecenter,
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
@@ -133,8 +142,8 @@ export function IndoorMapView({
   /**
    * 시점 추종의 목표. 현재 위치를 표시 캔버스 좌표로 옮긴 값이다.
    *
-   * 층 판정은 하지 않는다 — 다른 층에 있으면 그 층 지도를 보고 있는 것이므로 따라갈 이유가
-   * 없고, 아래에서 표시 층과 다르면 목표를 비운다.
+   * 층 판정은 하지 않는다. 세 층이 같은 기준 캔버스에 얹혀 있어(`planPlacementOf`) 좌표만으로
+   * 목표가 정해지고, 층이 다른지는 `onOtherFloor`가 따로 판단해 복귀 버튼으로 알린다.
    */
   const followTarget =
     followCamera && currentLocation
@@ -232,6 +241,14 @@ export function IndoorMapView({
   const imageAlt = t('indoorMap.imageAlt', { floorCode: floorMap.floorCode });
 
   /**
+   * 내가 있는 층이 아닌 곳을 보고 있는지.
+   *
+   * 이때는 오버레이가 내 위치 마커를 그리지 않는다(다른 층 좌표라 걸러진다). 시점만 되돌려 봐야
+   * 아무것도 나타나지 않으므로, 복귀 버튼을 띄워 층까지 함께 되돌릴 수 있게 한다.
+   */
+  const onOtherFloor = currentLocation != null && currentLocation.floorId !== floorMap.floorId;
+
+  /**
    * 모든 층의 도면을 한 번에 올려 두고 표시 층만 드러낸다.
    *
    * 층을 바꿀 때 그림이 순간적으로 갈아치워지면 튀어 보인다. 실제로 바뀌는 것은 층 구조라
@@ -322,14 +339,23 @@ export function IndoorMapView({
           mapRotationDeg={mapView.rotation}
         />
       </div>
-      {/* 추종 중일 때는 버튼이 필요 없다. 손으로 둘러본 뒤에만 돌아갈 곳을 제시한다.
+      {/* 추종 중이고 내 층을 보고 있으면 버튼이 필요 없다. 손으로 둘러보거나 다른 층으로 넘어간
+          뒤에만 돌아갈 곳을 제시한다.
+
+          **층만 넘긴 경우에도 보여야 한다.** 지도를 밀지 않았으면 추종은 그대로 켜져 있어서,
+          예전에는 다른 층에서 버튼이 아예 나타나지 않았다. 내 층으로 돌아올 방법이 층 버튼을
+          직접 다시 누르는 것뿐이었고, 어느 층에 있었는지는 화면에 적혀 있지 않다.
+
           글자 대신 아이콘으로 둔다 — 지도를 가리는 면적이 줄고, 내비게이션의 통례다.
           이름은 화면에 보이지 않으므로 aria-label로만 남긴다. */}
-      {(followTarget ? !mapFollowing : mapTransformed) && (
+      {(followTarget ? !mapFollowing || onOtherFloor : mapTransformed) && (
         <button
           type="button"
           className={styles.resetView}
-          onClick={resetMapView}
+          onClick={() => {
+            resetMapView();
+            onRecenter?.();
+          }}
           aria-label={t(followTarget ? 'indoorMap.recenter' : 'indoorMap.resetView')}
         >
           <Icon name={followTarget ? 'target' : 'refresh'} size={18} />
