@@ -78,6 +78,29 @@ describe('DestinationSearch', () => {
     vi.clearAllMocks();
   });
 
+  it('빈 검색어로 Enter를 눌러도 빠른 목적지 화면을 유지한다', () => {
+    renderSearch();
+
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '목적지 검색' }), {
+      key: 'Enter',
+    });
+
+    expect(searchMocks.useDestinationSearch).toHaveBeenLastCalledWith(1, '', false);
+    expect(screen.queryByText(/검색 결과/)).toBeNull();
+  });
+
+  it('검색 결과에서 빠른 목적지 목록으로 돌아갈 수 있다', () => {
+    renderSearch();
+    const input = screen.getByRole('textbox', { name: '목적지 검색' });
+
+    fireEvent.change(input, { target: { value: '역삼' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: '빠른 목적지로 돌아가기' }));
+
+    expect(input).toHaveValue('');
+    expect(searchMocks.useDestinationSearch).toHaveBeenLastCalledWith(1, '', false);
+  });
+
   /**
    * 목적지 하나를 고르면 도착 노드를 구하는 동안 여러 요청이 오간다. 그 사이에 다른 항목을
    * 누를 수 있으면 두 흐름이 스토어를 번갈아 덮어써 이름과 도착 노드가 어긋난다.
@@ -92,6 +115,9 @@ describe('DestinationSearch', () => {
     );
 
     renderSearch();
+    fireEvent.change(screen.getByRole('textbox', { name: '목적지 검색' }), {
+      target: { value: '편의점' },
+    });
     fireEvent.click(screen.getByRole('button', { name: '검색' }));
 
     const first = await screen.findByRole('button', { name: /코엑스몰/ });
@@ -119,6 +145,9 @@ describe('DestinationSearch', () => {
     apiMocks.getFacility.mockResolvedValue({ linkedNodeId: 325 });
 
     renderSearch();
+    fireEvent.change(screen.getByRole('textbox', { name: '목적지 검색' }), {
+      target: { value: '편의점' },
+    });
     fireEvent.click(screen.getByRole('button', { name: '검색' }));
 
     fireEvent.click(await screen.findByRole('button', { name: /코엑스몰/ }));

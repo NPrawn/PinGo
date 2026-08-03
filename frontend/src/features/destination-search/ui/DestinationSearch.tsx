@@ -65,6 +65,21 @@ export function DestinationSearch({
   const destinationSearch = useDestinationSearch(stationId, query, searched);
   const results = destinationSearch.data ?? [];
 
+  const submitSearch = () => {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      setSearched(false);
+      return;
+    }
+    setQuery(normalizedQuery);
+    setSearched(true);
+  };
+
+  const showQuickDestinations = () => {
+    setQuery('');
+    setSearched(false);
+  };
+
   const choose = async (poi: Poi) => {
     // 처리 중에는 새 선택을 받지 않는다. 화면도 함께 막지만 이중으로 지킨다.
     if (choosing !== null) return;
@@ -171,7 +186,10 @@ export function DestinationSearch({
             setSearched(false);
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') setSearched(true);
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submitSearch();
+            }
           }}
         />
         <span className={styles.searchIcon}>
@@ -189,14 +207,19 @@ export function DestinationSearch({
             <path d="M20 20l-3.6-3.6" />
           </svg>
         </span>
-        <button type="button" className={styles.searchSubmit} onClick={() => setSearched(true)}>
+        <button type="button" className={styles.searchSubmit} onClick={submitSearch}>
           검색
         </button>
       </div>
 
       {searched ? (
         <>
-          <Kicker className={styles.resultsKicker}>검색 결과 · &quot;{query}&quot;</Kicker>
+          <div className={styles.resultsHead}>
+            <Kicker className={styles.resultsKicker}>검색 결과 · &quot;{query}&quot;</Kicker>
+            <button type="button" className={styles.quickReturn} onClick={showQuickDestinations}>
+              빠른 목적지로 돌아가기
+            </button>
+          </div>
           <div className={styles.results}>
             {results.map((poi, index) => {
               const busy = choosing === poi.name;

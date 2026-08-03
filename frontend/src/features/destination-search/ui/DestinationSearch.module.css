@@ -115,7 +115,27 @@
 
 .resultsKicker {
   flex: none;
+  margin: 0;
+}
+
+.resultsHead {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
   margin: 28px 0 8px;
+}
+
+.quickReturn {
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 750;
+  color: var(--color-mint-darker);
+  cursor: pointer;
+  background: var(--color-mint-light);
+  border: 0;
+  border-radius: var(--radius-pill);
 }
 
 /* 부모(단계 카드)가 세로 flex 일 때 결과 목록이 남은 높이만 쓰도록 잇는 고리. */
