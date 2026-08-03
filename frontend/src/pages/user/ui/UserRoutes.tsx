@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useUserSessionBootstrap } from '@/entities/user-session';
+import { RequirePermissions } from '@/features/permissions';
 import { USER_ROUTES } from '@/shared/config';
 import { ArrivalPage } from './ArrivalPage/ArrivalPage';
 import { BackstagePage } from './BackstagePage/BackstagePage';
@@ -44,46 +45,58 @@ export function UserRoutes() {
       <Route path={rel(USER_ROUTES.SPLASH)} element={<SplashPage />} />
       <Route path={rel(USER_ROUTES.LANGUAGE)} element={<LanguagePage />} />
       <Route path={rel(USER_ROUTES.PERMISSION)} element={<PermissionPage />} />
-      <Route path={rel(USER_ROUTES.STATION)} element={<StationPage />} />
 
-      {/* Location capture and recognition */}
-      <Route path={rel(USER_ROUTES.CAPTURE_GUIDE)} element={<CaptureGuidePage />} />
-      <Route path={rel(USER_ROUTES.CAPTURE_PORTRAIT)} element={<CapturePortraitPage />} />
-      <Route
-        path={rel(USER_ROUTES.ANALYZING)}
-        element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
-      />
       {/*
-        위치 인식은 카메라 촬영만 쓴다. 실패하면 촬영 화면이 시트를 띄워 재촬영·상담으로
-        보내므로, 지도에서 직접 고르는 화면(locate/manual)과 실패 전용 화면(locate/failed)은
-        두지 않는다. 예전 링크는 촬영 화면으로 돌린다.
+        여기서부터는 세 권한이 살아 있어야 한다.
+
+        권한 화면을 통과한 뒤 브라우저 설정에서 권한을 꺼도 그대로 이용되던 문제 때문에 둔다.
+        도중에 사라진 권한은 처음부터 없었던 것과 같게 다뤄, 권한 화면으로 돌려보낸다.
+
+        설정·오프라인 화면은 밖에 둔다. 권한이 없을 때 사용자가 상황을 확인하러 가는 곳이라,
+        거기까지 막으면 되돌아올 방법을 안내할 자리가 없어진다.
       */}
-      <Route
-        path="locate/failed"
-        element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
-      />
-      <Route
-        path="locate/manual"
-        element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
-      />
-      <Route path={rel(USER_ROUTES.LOCATE_SUCCESS)} element={<LocateSuccessPage />} />
+      <Route element={<RequirePermissions />}>
+        <Route path={rel(USER_ROUTES.STATION)} element={<StationPage />} />
 
-      {/* Destination and routing */}
-      <Route path="destination/*" element={<Navigate to={USER_ROUTES.STATION} replace />} />
-      <Route path={rel(USER_ROUTES.ROUTE_OPTIONS)} element={<RouteOptionsPage />} />
-      <Route path={rel(USER_ROUTES.NAVIGATION)} element={<NavigationPage />} />
-      <Route path={rel(USER_ROUTES.BACKSTAGE)} element={<BackstagePage />} />
-      <Route path={rel(USER_ROUTES.NAVIGATION_REROUTE)} element={<ReroutePage />} />
-      <Route path={rel(USER_ROUTES.ARRIVAL)} element={<ArrivalPage />} />
-      {/* 역 밖 도보 안내는 다루지 않는다. 안내는 출입구에서 끝난다. */}
-      <Route path="external-map" element={<Navigate to={USER_ROUTES.STATION} replace />} />
+        {/* Location capture and recognition */}
+        <Route path={rel(USER_ROUTES.CAPTURE_GUIDE)} element={<CaptureGuidePage />} />
+        <Route path={rel(USER_ROUTES.CAPTURE_PORTRAIT)} element={<CapturePortraitPage />} />
+        <Route
+          path={rel(USER_ROUTES.ANALYZING)}
+          element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
+        />
+        {/*
+          위치 인식은 카메라 촬영만 쓴다. 실패하면 촬영 화면이 시트를 띄워 재촬영·상담으로
+          보내므로, 지도에서 직접 고르는 화면(locate/manual)과 실패 전용 화면(locate/failed)은
+          두지 않는다. 예전 링크는 촬영 화면으로 돌린다.
+        */}
+        <Route
+          path="locate/failed"
+          element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
+        />
+        <Route
+          path="locate/manual"
+          element={<Navigate to={USER_ROUTES.CAPTURE_PORTRAIT} replace />}
+        />
+        <Route path={rel(USER_ROUTES.LOCATE_SUCCESS)} element={<LocateSuccessPage />} />
 
-      {/* Consultation */}
-      <Route path={rel(USER_ROUTES.CONSULT_REQUEST)} element={<ConsultRequestPage />} />
-      <Route path={rel(USER_ROUTES.CONSULT_PERMISSION)} element={<ConsultPermissionPage />} />
-      <Route path={rel(USER_ROUTES.CONSULT_WAITING)} element={<ConsultWaitingPage />} />
-      <Route path={rel(USER_ROUTES.CONSULT_SESSION)} element={<ConsultSessionPage />} />
-      <Route path={rel(USER_ROUTES.CONSULT_ENDED)} element={<ConsultEndedPage />} />
+        {/* Destination and routing */}
+        <Route path="destination/*" element={<Navigate to={USER_ROUTES.STATION} replace />} />
+        <Route path={rel(USER_ROUTES.ROUTE_OPTIONS)} element={<RouteOptionsPage />} />
+        <Route path={rel(USER_ROUTES.NAVIGATION)} element={<NavigationPage />} />
+        <Route path={rel(USER_ROUTES.BACKSTAGE)} element={<BackstagePage />} />
+        <Route path={rel(USER_ROUTES.NAVIGATION_REROUTE)} element={<ReroutePage />} />
+        <Route path={rel(USER_ROUTES.ARRIVAL)} element={<ArrivalPage />} />
+        {/* 역 밖 도보 안내는 다루지 않는다. 안내는 출입구에서 끝난다. */}
+        <Route path="external-map" element={<Navigate to={USER_ROUTES.STATION} replace />} />
+
+        {/* Consultation */}
+        <Route path={rel(USER_ROUTES.CONSULT_REQUEST)} element={<ConsultRequestPage />} />
+        <Route path={rel(USER_ROUTES.CONSULT_PERMISSION)} element={<ConsultPermissionPage />} />
+        <Route path={rel(USER_ROUTES.CONSULT_WAITING)} element={<ConsultWaitingPage />} />
+        <Route path={rel(USER_ROUTES.CONSULT_SESSION)} element={<ConsultSessionPage />} />
+        <Route path={rel(USER_ROUTES.CONSULT_ENDED)} element={<ConsultEndedPage />} />
+      </Route>
 
       {/* Settings and exceptions */}
       <Route path={rel(USER_ROUTES.SETTINGS)} element={<SettingsPage />} />

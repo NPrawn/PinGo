@@ -23,6 +23,8 @@ export {
   watchPermissionStates,
 } from './model/permission.query';
 
+export { RequirePermissions } from './ui/RequirePermissions';
+
 export { usePermissionRequest } from './model/permission.hook';
 
 export type {
