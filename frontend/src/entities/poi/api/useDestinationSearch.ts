@@ -26,15 +26,15 @@ function toIcon(category?: string): IconName {
 export function useDestinationSearch(stationId: number | null, keyword: string, enabled: boolean) {
   const normalizedKeyword = keyword.trim();
   /**
-   * 검색 언어. 예전에는 `'ko'`로 박혀 있어서, 영어를 고른 사용자도 한국어로 검색됐다.
-   * 서버가 이 값을 실제로 받아 쓴다(`searchDestinations`). (S15P11A206-339)
+   * 표시할 이름을 고르는 데만 쓴다. 요청에도 조회 키에도 싣지 않는다 — 사유는
+   * `queryKeys.stationSearch`에 적어 두었다. (S15P11A206-339)
    */
   const language = useApiLanguage();
 
   return useQuery({
-    queryKey: queryKeys.destinationSearch(stationId ?? 0, normalizedKeyword, language),
+    queryKey: queryKeys.destinationSearch(stationId ?? 0, normalizedKeyword),
     queryFn: async (): Promise<Poi[]> => {
-      const destinations = await searchDestinations(stationId!, normalizedKeyword, language);
+      const destinations = await searchDestinations(stationId!, normalizedKeyword);
 
       return destinations.map((destination) => ({
         id: destination.destinationId,

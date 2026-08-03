@@ -1,13 +1,21 @@
 export const queryKeys = {
   all: ['pingo'] as const,
-  stationSearch: (keyword: string, language: string) =>
-    ['pingo', 'stations', 'search', keyword, language] as const,
+  /**
+   * 역 검색. **언어를 키에 넣지 않는다.**
+   *
+   * 서버가 `nameKo`·`nameEn` 을 모두 보고 검색하고(`StationRepository.searchActiveByKeyword`)
+   * 두 이름을 함께 내려주므로, 언어가 바뀌어도 서버가 줄 내용이 같다. 키에 넣으면 언어를 바꿀
+   * 때마다 같은 결과를 다시 받는다. 표시할 이름은 받은 뒤에 고른다(`localizedNameOf`).
+   * (S15P11A206-339)
+   */
+  stationSearch: (keyword: string) => ['pingo', 'stations', 'search', keyword] as const,
   /** 검색어 없이 조회하는 등록된 역 목록. 검색 결과와 캐시를 섞지 않도록 키를 따로 둔다. */
-  registeredStations: (language: string) => ['pingo', 'stations', 'registered', language] as const,
+  registeredStations: () => ['pingo', 'stations', 'registered'] as const,
   nearbyStations: (latitude: number, longitude: number) =>
     ['pingo', 'stations', 'nearby', latitude, longitude] as const,
-  destinationSearch: (stationId: number, keyword: string, language: string) =>
-    ['pingo', 'destinations', stationId, keyword, language] as const,
+  /** 목적지 검색. 역 검색과 같은 이유로 언어를 키에 넣지 않는다(`stationSearch`). */
+  destinationSearch: (stationId: number, keyword: string) =>
+    ['pingo', 'destinations', stationId, keyword] as const,
   stationFloorMaps: (stationId: number) => ['pingo', 'stations', stationId, 'maps'] as const,
   /**
    * 시설 목록. 필터가 키에 들어가야 층·유형별 응답이 서로를 덮지 않는다.

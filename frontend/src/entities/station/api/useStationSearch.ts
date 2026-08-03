@@ -20,15 +20,17 @@ function formatDistance(distanceM?: number) {
 export function useStationSearch(keyword: string, enabled: boolean) {
   const normalizedKeyword = keyword.trim();
   /**
-   * 검색 언어. 예전에는 `'ko'`로 박혀 있어서, 영어를 고른 사용자도 한국어로 검색됐다.
-   * 서버가 이 값을 실제로 받아 쓴다(`searchStations`). (S15P11A206-339)
+   * 표시할 이름을 고르는 데만 쓴다. **요청에도 조회 키에도 싣지 않는다.**
+   *
+   * 서버가 두 이름 컬럼을 모두 보고 검색하므로 언어는 검색 결과를 바꾸지 않는다. 예전에는
+   * `'ko'`로 박아 두고 서버에 보냈는데, 서버는 그 값을 쓰지도 않았다. (S15P11A206-339)
    */
   const language = useApiLanguage();
 
   return useQuery({
-    queryKey: queryKeys.stationSearch(normalizedKeyword, language),
+    queryKey: queryKeys.stationSearch(normalizedKeyword),
     queryFn: async (): Promise<Station[]> => {
-      const stations = await searchStations(normalizedKeyword, language);
+      const stations = await searchStations(normalizedKeyword);
       return stations.map((station) => ({
         stationId: station.stationId ?? null,
         name: stationName(language, station.nameKo, station.nameEn),
@@ -52,9 +54,9 @@ export function useRegisteredStations(enabled: boolean) {
   const language = useApiLanguage();
 
   return useQuery({
-    queryKey: queryKeys.registeredStations(language),
+    queryKey: queryKeys.registeredStations(),
     queryFn: async (): Promise<Station[]> => {
-      const stations = await searchStations(undefined, language);
+      const stations = await searchStations(undefined);
       return stations.map((station) => ({
         stationId: station.stationId ?? null,
         name: stationName(language, station.nameKo, station.nameEn),

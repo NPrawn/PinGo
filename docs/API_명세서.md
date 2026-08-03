@@ -493,7 +493,7 @@ GPS 좌표를 기준으로 주변 역 후보를 조회한다.
 | 이름     | 타입   | 필수 | 설명                                  |
 | -------- | ------ | ---- | ------------------------------------- |
 | keyword  | string | N    | 검색어. 생략 시 등록된 역 전체 반환   |
-| language | string | N    | ko, en                                |
+| language | string | N    | ko, en. **검색 결과를 바꾸지 않는다** — 두 이름 컬럼을 모두 보고 검색하며 이름도 둘 다 내려준다 |
 
 #### Response
 
@@ -667,7 +667,7 @@ function pixelToMeter(px, py, frame) {
 | ------------ | ------ | ---- | -------------- |
 | floorId      | number | N    | 특정 층 필터   |
 | facilityType | string | N    | 시설 유형 필터 |
-| language     | string | N    | ko, en         |
+| language     | string | N    | ko, en. **응답을 바꾸지 않는다** — 이름을 둘 다 내려준다 |
 
 #### Response
 
@@ -843,7 +843,7 @@ B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
 | --------- | ------ | ---- | --------------------------------------- |
 | stationId | number | Y    | 역 ID                                   |
 | keyword   | string | Y    | 검색어 (공백·누락 시 `INVALID_REQUEST`) |
-| language  | string | N    | ko, en                                  |
+| language  | string | N    | ko, en. **검색 결과를 바꾸지 않는다** — 두 이름 컬럼을 모두 보고 검색한다 |
 
 #### Response
 
@@ -883,7 +883,7 @@ B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
 | 이름     | 타입   | 필수 | 설명          |
 | -------- | ------ | ---- | ------------- |
 | category | string | N    | 장소 카테고리 |
-| language | string | N    | ko, en        |
+| language | string | N    | ko, en. **응답을 바꾸지 않는다** |
 
 #### Response
 
@@ -1274,7 +1274,14 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ### POST `/api/routes/indoor/options`
 
-> **`language`** — 이용 불가 사유 문구(`unavailableMessage`)의 언어다. `ko`·`en`·`ja`·`zh` 중 하나이며 생략하면 `en`이다. 이 요청에는 세션 ID가 없어 서버가 사용자의 언어를 알 수 없으므로 클라이언트가 실어 보낸다. 목적지 검색·편의시설·역 검색 API가 쓰는 `language`와 같은 값이다. **현재 문구는 한국어와 영어만 있고 `ja`·`zh`는 영어로 내려간다**(FR-U-001 범위). 아래 `POST /api/routes/indoor`도 같다.
+> **`language`** — 이용 불가 사유 문구(`unavailableMessage`)의 언어다. `ko`·`en`·`ja`·`zh` 중 하나이며 생략하면 `en`이다. 이 요청에는 세션 ID가 없어 서버가 사용자의 언어를 알 수 없으므로 클라이언트가 실어 보낸다. 목적지 검색·편의시설·역 검색 API의 `language`와 **형식이 같은 값**이지만, **경로 API에서만 응답이 실제로 달라진다** — 아래 표 참고. **현재 문구는 한국어와 영어만 있고 `ja`·`zh`는 영어로 내려간다**(FR-U-001 범위). 아래 `POST /api/routes/indoor`도 같다.
+>
+> | API | `language`가 응답을 바꾸는가 |
+> | --- | --- |
+> | 경로 옵션·경로 생성 | **예.** 서버가 `instruction`·`unavailableMessage` 문장을 이 언어로 조립한다 |
+> | 역 검색 · 목적지 검색 · 시설 목록 · 주변 장소 | **아니오.** 이름을 `nameKo`·`nameEn`으로 **둘 다** 내려주고, 검색도 두 컬럼을 모두 본다 |
+>
+> 그래서 이름을 쓰는 API는 **조회 키에 언어를 넣을 필요가 없다.** 언어를 바꿔도 서버가 줄 내용이 같으므로 받은 것을 그대로 두고 표시할 이름만 고르면 된다. 키에 넣으면 언어를 바꿀 때마다 같은 결과를 다시 받는다. (S15P11A206-339)
 
 출발 노드에서 도착 노드까지 가능한 경로 옵션을 조회한다. 도착지는 실내 노드 ID(`targetNodeId`)로 직접 지정하며, 외부 목적지 검색·출구 추천은 이 API 범위 밖이다. `waypointNodeIds`가 있으면 배열 순서대로 모든 경유지를 지난 뒤 도착지까지 이동하는 경로를 계산한다. 응답은 옵션별 요약이며 상세 `steps`·`pathNodes`는 포함하지 않는다.
 
