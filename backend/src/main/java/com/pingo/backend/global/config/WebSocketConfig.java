@@ -5,6 +5,7 @@ import com.pingo.backend.signaling.auth.SignalingHandshakeInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
@@ -48,6 +49,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
      * 버퍼는 세션마다 미리 잡히므로 무작정 키우지 않는다. SDP 는 이 크기에 한참 못 미친다.
      */
     @Bean
+    @Lazy
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
         container.setMaxTextMessageBufferSize(maxTextMessageBufferSize);
