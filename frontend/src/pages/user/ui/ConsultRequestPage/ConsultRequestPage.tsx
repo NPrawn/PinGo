@@ -4,6 +4,8 @@ import { CONSULT_ISSUES, useConsultStore } from '@/entities/consult';
 import { USER_ROUTES } from '@/shared/config';
 import {
   BackLink,
+  Blob,
+  BlobHero,
   Button,
   Icon,
   Icon3d,
@@ -83,23 +85,34 @@ export function ConsultRequestPage() {
       {reminderOpen && (
         <Sheet
           placement="center"
-          label="문제 유형을 선택해주세요"
+          label="문제 유형을 선택해 주세요"
           onDismiss={() => setReminderOpen(false)}
         >
-          <div className={styles.panel}>
-            <div className={styles.mark}>
+          <BlobHero className={styles.warningHero}>
+            <Blob tone="coral" slot="main" style={{ width: 76, height: 76 }} />
+            <Blob
+              tone="lilac"
+              slot="a"
+              style={{ top: '6%', right: '26%', width: 26, height: 26 }}
+            />
+            <Blob
+              tone="sky"
+              slot="c"
+              style={{ bottom: '10%', left: '26%', width: 20, height: 20 }}
+            />
+            <div className={styles.warningHeroIcon}>
               <Icon name="warning" size={28} />
             </div>
-            <h2 className={styles.heading}>문제 유형을 선택해주세요</h2>
-            <p className={styles.body}>
-              상담원이 상황을 빠르게 파악할 수 있도록
-              <br />
-              <b>하나 이상의 문제 유형</b>을 선택한 뒤 요청해주세요.
-            </p>
-            <Button className={styles.confirm} onClick={() => setReminderOpen(false)}>
-              확인
-            </Button>
-          </div>
+          </BlobHero>
+          <h2 className={styles.heading}>문제 유형을 선택해 주세요</h2>
+          <p className={styles.reminderBody}>
+            <b>하나 이상의 문제 유형</b>을 선택한 뒤
+            <br />
+            상담을 요청해 주세요.
+          </p>
+          <Button className={styles.confirm} onClick={() => setReminderOpen(false)}>
+            확인
+          </Button>
         </Sheet>
       )}
     </PhoneFrame>
