@@ -20,7 +20,7 @@ export function LocateSuccessPage() {
   const camera = useCameraPreview();
 
   return (
-    <PhoneFrame layout="flush" bodyClassName={styles.body} statusBarClassName={styles.statusBar}>
+    <PhoneFrame layout="flush" bodyClassName={styles.body}>
       <>
         <section className={styles.camera} aria-label="후면 카메라 화면">
           <div className={styles.topBar}>

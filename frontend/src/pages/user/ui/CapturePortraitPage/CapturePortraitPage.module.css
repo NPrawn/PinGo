@@ -3,13 +3,6 @@
   background: #0a1b16;
 }
 
-.statusBar {
-  position: relative;
-  z-index: 3;
-  color: #f4fbf5;
-  background: #061310;
-}
-
 .topBar {
   position: relative;
   z-index: 4;

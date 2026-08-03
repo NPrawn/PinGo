@@ -5,11 +5,6 @@
   position: relative;
 }
 
-.statusBar {
-  position: relative;
-  z-index: 1;
-}
-
 .backdrop {
   position: absolute;
   inset: 0;

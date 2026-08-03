@@ -19,7 +19,6 @@ export function ReroutePage() {
       dark
       layout="flush"
       bodyClassName={styles.body}
-      statusBarClassName={styles.statusBar}
     >
       <>
         <div className={styles.backdrop} aria-hidden>

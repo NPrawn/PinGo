@@ -239,7 +239,6 @@ export function CapturePortraitPage() {
     <PhoneFrame
       layout="flush"
       bodyClassName={styles.body}
-      statusBarClassName={styles.statusBar}
       overlay={
         noticeOpen ? (
           <Sheet placement="center" label="현재 위치를 찾지 못했어요">

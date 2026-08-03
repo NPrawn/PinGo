@@ -99,33 +99,13 @@
     inset 0 1.5px 0 rgb(255 255 255 / 8%);
 }
 
-/* Prototype `.sb` — the notch/status bar. */
-.statusBar {
-  display: flex;
+/* Preserve the former status-bar height without rendering mock device indicators. */
+.statusBarSpace {
   flex: none;
-  align-items: center;
-  justify-content: space-between;
   height: 46px;
-  padding: 0 22px;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--color-ink);
 }
 
-.dark .statusBar {
-  color: var(--color-paper);
-}
-
-.statusBarRight {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  font-size: 12px;
-  opacity: 0.9;
-}
-
-/* Prototype `.body` — the scroll area under the status bar. */
+/* Prototype `.body` — the phone shell's scroll area. */
 .body {
   display: flex;
   flex: 1;

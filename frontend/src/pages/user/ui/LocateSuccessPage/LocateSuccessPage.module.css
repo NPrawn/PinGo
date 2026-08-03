@@ -3,13 +3,6 @@
   background: #071712;
 }
 
-.statusBar {
-  position: relative;
-  z-index: 5;
-  color: #f4fbf5;
-  background: #061310;
-}
-
 .camera {
   position: relative;
   flex: 1 1 50%;
