@@ -15,11 +15,15 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('@/shared/api', () => apiMocks);
 
 /** 검색 결과는 훅을 그대로 대신한다. 이 테스트가 볼 것은 선택 이후의 흐름이다. */
-const searchMocks = vi.hoisted(() => ({ useDestinationSearch: vi.fn() }));
+const searchMocks = vi.hoisted(() => ({
+  useDestinationSearch: vi.fn(),
+  resolveDestination: vi.fn(),
+}));
 
 vi.mock('@/entities/poi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/poi')>()),
   useDestinationSearch: searchMocks.useDestinationSearch,
+  resolveDestination: searchMocks.resolveDestination,
 }));
 
 const RESULTS = [
@@ -67,6 +71,7 @@ describe('DestinationSearch', () => {
       isPending: false,
       isError: false,
     });
+    searchMocks.resolveDestination.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -122,5 +127,35 @@ describe('DestinationSearch', () => {
       expect(screen.getByRole('button', { name: /GS25 역삼역점/ })).toBeEnabled(),
     );
     expect(screen.queryByText('경로를 준비하고 있어요…')).toBeNull();
+  });
+
+  it('빠른 목적지는 화면 진입 때 조회하지 않고 선택한 장소만 조회한다', async () => {
+    searchMocks.resolveDestination.mockResolvedValue({
+      name: '올리브영 역삼중앙점',
+      icon: 'cosmetics',
+      meta: '생활 > 화장품',
+      kind: 'place',
+      destinationType: 'external_place',
+      latitude: 37.5,
+      longitude: 127.03,
+    });
+    apiMocks.findNearestExit.mockResolvedValue({ exitFacilityId: 25 });
+    apiMocks.getFacility.mockResolvedValue({ linkedNodeId: 325 });
+
+    renderSearch();
+
+    expect(searchMocks.resolveDestination).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /올리브영 역삼중앙점/ }));
+
+    await waitFor(() =>
+      expect(searchMocks.resolveDestination).toHaveBeenCalledWith(1, '올리브영 역삼중앙점'),
+    );
+    expect(apiMocks.findNearestExit).toHaveBeenCalledWith({
+      stationId: 1,
+      destinationLatitude: 37.5,
+      destinationLongitude: 127.03,
+    });
+    expect(useNavigationStore.getState().destination).toBe('올리브영 역삼중앙점');
   });
 });
