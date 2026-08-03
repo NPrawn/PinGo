@@ -15,16 +15,20 @@ import com.pingo.backend.route.dto.response.RouteStep;
 import com.pingo.backend.route.repository.RouteEdgeRepository;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.route.service.RouteFinder.GraphEdge;
+import com.pingo.backend.route.service.RouteFinder.InboundSearch;
 import com.pingo.backend.route.service.RouteFinder.RoutePath;
 import com.pingo.backend.route.service.RouteFinder.Segment;
+import com.pingo.backend.station.domain.StationFloor;
+import com.pingo.backend.station.repository.StationFloorRepository;
 import com.pingo.backend.station.repository.StationRepository;
+import com.pingo.backend.usersession.domain.Language;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -42,18 +46,24 @@ public class IndoorRouteService {
     private final RouteNodeRepository routeNodeRepository;
     private final RouteEdgeRepository routeEdgeRepository;
     private final StationRepository stationRepository;
+    private final StationFloorRepository stationFloorRepository;
     private final RouteFinder routeFinder;
+    private final RouteInstructionWriter instructionWriter;
 
     /**
      * 출발 노드에서 도착 노드까지의 경로 옵션(빠른 경로·엘리베이터 이용 경로)을 요약으로 조회한다.
      */
     public List<RouteOptionResponse> getRouteOptions(RouteOptionsRequest request) {
-        List<Long> stopNodeIds = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
-        RouteGraphData data = loadGraph(request.stationId(), stopNodeIds);
+        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        RouteGraphData data = loadGraph(request.stationId(), requested);
 
         List<RouteOptionResponse> options = new ArrayList<>();
         for (RouteType routeType : RouteType.values()) {
-            RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType);
+            InboundSearch toFirstStop = searchToFirstStop(
+                    requested, data, routeType, request.currentMapX(), request.currentMapY());
+            List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop,
+                    request.currentMapX(), request.currentMapY());
+            RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType, toFirstStop);
             if (path.isReachable()) {
                 options.add(RouteOptionResponse.available(
                         routeType, path.totalDistanceM(), path.totalTimeSec(), hasStairsOrEscalator(path)));
@@ -71,9 +81,13 @@ public class IndoorRouteService {
         RouteType routeType = RouteType.fromCode(request.routeType())
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNSUPPORTED_ROUTE_TYPE));
 
-        List<Long> stopNodeIds = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
-        RouteGraphData data = loadGraph(request.stationId(), stopNodeIds);
-        RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType);
+        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        RouteGraphData data = loadGraph(request.stationId(), requested);
+        InboundSearch toFirstStop = searchToFirstStop(
+                requested, data, routeType, request.currentMapX(), request.currentMapY());
+        List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop,
+                request.currentMapX(), request.currentMapY());
+        RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType, toFirstStop);
 
         if (!path.isReachable()) {
             return RouteResponse.unavailable(
@@ -81,11 +95,11 @@ public class IndoorRouteService {
                     reasonFor(routeType), request.language());
         }
 
-        List<RouteStep> steps = toSteps(path.segments());
+        List<RouteStep> steps = toSteps(path.segments(), data, request.language());
         List<RoutePathNode> pathNodes = toPathNodes(path.nodeIds(), data.nodes());
         return RouteResponse.available(
                 routeType,
-                request.startNodeId(),
+                stopNodeIds.get(0),
                 request.targetNodeId(),
                 path.totalDistanceM(),
                 path.totalTimeSec(),
@@ -102,14 +116,31 @@ public class IndoorRouteService {
         return stopNodeIds;
     }
 
-    private RoutePath findThroughStops(List<GraphEdge> edges, List<Long> stopNodeIds, RouteType routeType) {
+    /**
+     * 첫 구간의 경로는 이미 구해 둔 것을 쓴다.
+     *
+     * <p>진입 노드를 고르려고 {@link RouteFinder#searchInbound} 를 이미 돌렸고, 그 결과에 고른
+     * 노드에서 첫 경유지(또는 목적지)까지의 경로가 들어 있다. 다시 탐색하면 경로 유형마다
+     * 다익스트라를 두 번 돌게 된다.
+     *
+     * <p>{@code toFirstStop} 이 {@code null} 이면 — 좌표를 받지 않아 진입 노드를 다시 고르지
+     * 않은 경우다 — 예전처럼 구간마다 탐색한다.
+     */
+    private RoutePath findThroughStops(
+            List<GraphEdge> edges,
+            List<Long> stopNodeIds,
+            RouteType routeType,
+            InboundSearch toFirstStop
+    ) {
         List<Long> nodeIds = new ArrayList<>();
         List<Segment> segments = new ArrayList<>();
         BigDecimal totalDistanceM = BigDecimal.ZERO;
         Integer totalTimeSec = 0;
 
         for (int i = 0; i < stopNodeIds.size() - 1; i++) {
-            RoutePath path = routeFinder.find(edges, stopNodeIds.get(i), stopNodeIds.get(i + 1), routeType);
+            RoutePath path = i == 0 && toFirstStop != null
+                    ? toFirstStop.pathFrom(stopNodeIds.get(0))
+                    : routeFinder.find(edges, stopNodeIds.get(i), stopNodeIds.get(i + 1), routeType);
             if (!path.isReachable()) {
                 return RoutePath.unreachable();
             }
@@ -147,14 +178,111 @@ public class IndoorRouteService {
                 ))
                 .toList();
 
-        return new RouteGraphData(nodes, edges);
+        Map<Long, Integer> floorOrders = stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(stationId)
+                .stream()
+                .collect(Collectors.toMap(StationFloor::getId, StationFloor::getFloorOrder));
+
+        return new RouteGraphData(nodes, edges, floorOrders);
     }
 
-    private List<RouteStep> toSteps(List<Segment> segments) {
+    /**
+     * 사용자의 실제 좌표를 알면 진입 노드를 다시 고른다.
+     *
+     * <p>진입 노드는 위치 인식 시점에 정해지는데, 그때는 목적지를 모르므로 거리만 보고 가장
+     * 가까운 노드를 고른다({@code IndoorPositionResolver}). 그래서 목적지 반대쪽 노드가 뽑히면
+     * 사용자를 뒤로 걷게 만든다. 역삼역 B3 에서 3번 출구로 갈 때 실제로 그랬다.
+     *
+     * <pre>
+     *   현재 위치 (-34.90, 23.33)
+     *   가장 가까운 노드 203  6.2m (목적지 반대쪽)  →  6.2 + 140.53 = 146.7m
+     *   계단 6 노드     234  9.9m (목적지 쪽)      →  9.9 + 124.53 = 134.4m
+     * </pre>
+     *
+     * <p>첫 경유지(또는 목적지)에서 역방향으로 한 번 훑어 모든 노드까지의 거리를 구하고, 거기에
+     * 사용자 좌표에서 그 노드까지의 직선 거리를 더해 가장 작은 것을 고른다. 경로 유형마다 도달
+     * 가능한 노드가 다르므로 유형별로 따로 고른다.
+     *
+     * <p><b>같은 층만 후보로 둔다.</b> 층 이동은 계단·엘리베이터를 타야 하는데 직선 거리는
+     * 그것을 모른다. 층은 요청에 온 {@code startNodeId} 의 층을 쓴다.
+     *
+     * <p><b>직선 거리라 벽을 모른다.</b> 직선으로 가깝지만 실제로는 벽 너머인 노드가 뽑힐 수
+     * 있다. 지금 {@code IndoorPositionResolver} 도 같은 한계를 갖고 있어 일관은 하다. 제대로
+     * 하려면 노드가 아니라 간선 위의 점에 투영해야 하고, 그것은 그래프 모델을 바꾸는 일이다.
+     *
+     * <p>탐색 결과가 없거나 후보를 찾지 못하면 요청에 온 진입 노드를 그대로 쓴다. 선택 필드라
+     * 클라이언트가 늦게 반영해도 동작이 바뀌지 않아야 한다.
+     */
+    private List<Long> withChosenEntry(
+            List<Long> stopNodeIds,
+            RouteGraphData data,
+            InboundSearch toFirstStop,
+            BigDecimal currentMapX,
+            BigDecimal currentMapY
+    ) {
+        if (toFirstStop == null || currentMapX == null || currentMapY == null) {
+            return stopNodeIds;
+        }
+
+        Long requestedEntry = stopNodeIds.get(0);
+        RouteNode requestedNode = data.nodes().get(requestedEntry);
+        if (requestedNode == null) {
+            return stopNodeIds;
+        }
+
+        double x = currentMapX.doubleValue();
+        double y = currentMapY.doubleValue();
+        Long chosen = data.nodes().values().stream()
+                .filter(node -> node.getFloorId().equals(requestedNode.getFloorId()))
+                .filter(node -> toFirstStop.reaches(node.getId()))
+                .min(Comparator.comparingDouble(node ->
+                        straightDistance(x, y, node) + toFirstStop.distanceFrom(node.getId()).doubleValue()))
+                .map(RouteNode::getId)
+                .orElse(requestedEntry);
+
+        if (chosen.equals(requestedEntry)) {
+            return stopNodeIds;
+        }
+
+        List<Long> replaced = new ArrayList<>(stopNodeIds);
+        replaced.set(0, chosen);
+        return replaced;
+    }
+
+    /**
+     * 첫 경유지(또는 목적지)까지의 역방향 탐색. 진입 노드 선택과 첫 구간 경로에 함께 쓴다.
+     *
+     * <p>좌표가 없으면 진입 노드를 다시 고를 이유가 없으므로 탐색하지 않는다. 그때는
+     * {@link #findThroughStops} 가 예전처럼 구간마다 탐색한다.
+     *
+     * <p><b>{@code stopNodeIds} 는 항상 2 이상이다.</b> {@link #stopNodeIds} 가 출발지와
+     * 목적지를 반드시 넣고 둘 다 {@code @NotNull} 이라 그렇다. 그래도 확인한다 — 이 전제가
+     * 코드에 드러나 있지 않고, 나중에 다른 데서 부르면 조용히 깨진다.
+     */
+    private InboundSearch searchToFirstStop(
+            List<Long> stopNodeIds,
+            RouteGraphData data,
+            RouteType routeType,
+            BigDecimal currentMapX,
+            BigDecimal currentMapY
+    ) {
+        if (currentMapX == null || currentMapY == null || stopNodeIds.size() < 2) {
+            return null;
+        }
+        return routeFinder.searchInbound(data.edges(), stopNodeIds.get(1), routeType);
+    }
+
+    private double straightDistance(double x, double y, RouteNode node) {
+        return Math.hypot(node.getMapX().doubleValue() - x, node.getMapY().doubleValue() - y);
+    }
+
+    private List<RouteStep> toSteps(List<Segment> segments, RouteGraphData data, Language language) {
         List<RouteStep> steps = new ArrayList<>();
+        Segment previous = null;
         int order = 1;
         for (Segment segment : segments) {
             RouteMoveType moveType = segment.moveType();
+            RouteInstructionWriter.Guidance guidance =
+                    instructionWriter.write(previous, segment, data.nodes(), data.floorOrders(), language);
             steps.add(new RouteStep(
                     order++,
                     segment.fromNodeId(),
@@ -162,8 +290,11 @@ public class IndoorRouteService {
                     segment.distanceM(),
                     segment.estimatedTimeSec(),
                     moveType == null ? null : moveType.getCode(),
-                    buildInstruction(moveType, segment.distanceM())
+                    guidance.instruction(),
+                    guidance.turn(),
+                    guidance.floorDelta()
             ));
+            previous = segment;
         }
         return steps;
     }
@@ -173,23 +304,6 @@ public class IndoorRouteService {
                 .map(nodes::get)
                 .map(RoutePathNode::from)
                 .toList();
-    }
-
-    private String buildInstruction(RouteMoveType moveType, BigDecimal distanceM) {
-        if (moveType == null) {
-            return String.format("%s 이동하세요.", formatDistance(distanceM));
-        }
-        return switch (moveType) {
-            case WALKWAY -> String.format("%s 직진하세요.", formatDistance(distanceM));
-            case STAIR -> "계단을 이용해 이동하세요.";
-            case ESCALATOR -> "에스컬레이터를 이용해 이동하세요.";
-            case ELEVATOR -> "엘리베이터를 이용해 이동하세요.";
-            case GATE -> "개찰구를 통과하세요.";
-        };
-    }
-
-    private String formatDistance(BigDecimal distanceM) {
-        return distanceM.setScale(0, RoundingMode.HALF_UP).toPlainString() + "m";
     }
 
     /**
@@ -222,6 +336,11 @@ public class IndoorRouteService {
         }
     }
 
-    private record RouteGraphData(Map<Long, RouteNode> nodes, List<GraphEdge> edges) {
+    private record RouteGraphData(
+            Map<Long, RouteNode> nodes,
+            List<GraphEdge> edges,
+            /** 층 ID 에서 {@code floor_order} 로. 층 이동 안내가 몇 층인지 셀 때 쓴다. */
+            Map<Long, Integer> floorOrders
+    ) {
     }
 }

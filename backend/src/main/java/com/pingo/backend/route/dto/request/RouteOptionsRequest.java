@@ -4,6 +4,7 @@ import com.pingo.backend.usersession.domain.Language;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -13,6 +14,12 @@ import java.util.List;
  * <p>{@code language} 는 이용 불가 사유 문구({@code unavailableMessage})의 언어다. 이 요청에는
  * 세션 ID 가 없어 서버가 사용자의 언어를 알 방법이 없으므로 클라이언트가 실어 보낸다. 목적지 검색·
  * 편의시설·역 검색 API 가 쓰는 {@code language} 와 같은 값이다.
+ *
+ * <p>{@code currentMapX}·{@code currentMapY} 는 위치 인식이 준 사용자의 실제 좌표다. 선택이며,
+ * 있으면 진입 노드를 목적지까지의 총 거리가 가장 짧은 것으로 다시 고른다. 자세한 이유는
+ * {@link com.pingo.backend.route.service.IndoorRouteService#chooseEntryNode} 에 적었다.
+ * 층은 {@code startNodeId} 의 층을 쓴다 — 그 노드가 위치 인식이 사용자 층에서 고른 것이라
+ * 층을 따로 받으면 어긋날 여지만 생긴다.
  */
 public record RouteOptionsRequest(
         @NotNull
@@ -28,7 +35,12 @@ public record RouteOptionsRequest(
         List<@NotNull Long> waypointNodeIds,
 
         /** 생략하면 {@link Language#DEFAULT}. */
-        Language language
+        Language language,
+
+        /** 사용자의 실제 캐노니컬 좌표. 선택. 짝으로 있어야 쓰인다. */
+        BigDecimal currentMapX,
+
+        BigDecimal currentMapY
 ) {
 
     public RouteOptionsRequest {

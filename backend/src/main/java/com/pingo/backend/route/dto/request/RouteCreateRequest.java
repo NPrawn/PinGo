@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -32,7 +33,17 @@ public record RouteCreateRequest(
         String routeType,
 
         /** 생략하면 {@link Language#DEFAULT}. */
-        Language language
+        Language language,
+
+        /**
+         * 사용자의 실제 캐노니컬 좌표. 선택. 짝으로 있어야 쓰인다.
+         *
+         * <p>있으면 진입 노드를 목적지까지의 총 거리가 가장 짧은 것으로 다시 고른다.
+         * 옵션 조회와 같은 값을 보내야 옵션에서 본 거리와 상세 경로가 일치한다.
+         */
+        BigDecimal currentMapX,
+
+        BigDecimal currentMapY
 ) {
 
     public RouteCreateRequest {
