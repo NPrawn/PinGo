@@ -47,6 +47,14 @@ interface IndoorMapViewProps {
    * 덮는다. 유형을 하나 고르면 많아도 13개(계단)라 겹치지 않는다 — FR-U-006의 점진적 공개다.
    */
   facilityType?: string | null;
+  /**
+   * `facilityType`이 없을 때 **표시 층의 시설을 모두** 그린다. 기본은 아무것도 그리지 않는다.
+   *
+   * 안내 화면이 이걸 켠다. 무엇이 어디에 있는지 먼저 보여 준 다음 유형으로 좁히는 흐름이라,
+   * 아무것도 없는 지도에서 시작하지 않는다. 대신 위 밀도 계산이 그대로 적용되므로 마커가
+   * 서로 겹친다 — 훑어보는 용도이고, 고르려면 유형을 켜야 한다.
+   */
+  showAllFacilities?: boolean;
   /** 이름을 함께 보여줄 시설. */
   selectedFacilityId?: number | null;
   /** 시설 마커를 눌렀을 때. */
@@ -114,6 +122,7 @@ export function IndoorMapView({
   destinationLabel,
   pathNodes,
   facilityType,
+  showAllFacilities = false,
   selectedFacilityId,
   onSelectFacility,
   followCamera = false,
@@ -171,16 +180,29 @@ export function IndoorMapView({
   const query = useStationFloorMaps(stationId, { enabled: !useMockData });
 
   /**
-   * 유형을 고르기 전에는 조회하지 않는다. 그릴 것이 없는데 77건을 받아 둘 이유가 없다.
+   * 그릴 것이 없으면 조회하지 않는다. 유형도 고르지 않고 전부 보여 주지도 않는 화면에서
+   * 77건을 받아 둘 이유가 없다.
+   *
+   * 층으로 좁히지 않는다. 역 하나의 시설은 수십 건이라 한 번에 받아도 부담이 없고, 층마다
+   * 좁히면 층을 오갈 때마다 다시 받는다(`useStationFacilities`). 다른 층 것은 오버레이가
+   * 걸러 낸다.
    *
    * 목업 모드에서도 조회한다 — 시설은 실제 API에만 있고 목업이 없다. 역삼역은 목업 floorId와
    * 실제 floorId가 우연히 같아(B2=1·B3=2·B1=3) 목업 도면 위에도 제 위치에 얹힌다. 목업이
    * 제거되면(297) 이 우연에 의존하지 않는다.
    */
+  const wantsFacilities = facilityType != null || showAllFacilities;
   const facilityQuery = useStationFacilities(stationId, {
     facilityType: facilityType ?? undefined,
-    enabled: facilityType != null,
+    enabled: wantsFacilities,
   });
+  /**
+   * 조회를 꺼도 캐시에 남은 목록은 그대로 돌아온다.
+   *
+   * 같은 키를 다른 화면이 이미 받아 두었으면 `enabled: false`가 데이터를 비워 주지 않는다.
+   * 그리지 않기로 한 상태에서 마커가 남지 않도록 여기서 한 번 더 끊는다.
+   */
+  const facilities = wantsFacilities ? facilityQuery.data : undefined;
 
   if (!useMockData) {
     if (query.isPending) {
@@ -290,7 +312,7 @@ export function IndoorMapView({
           destination={mockable(destination, MOCK_DESTINATION, useMockData)}
           destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
-          facilities={facilityQuery.data}
+          facilities={facilities}
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
           /* 지도가 커져도 마커는 화면상 크기를 유지한다. 확대는 도면을 크게 보려는 조작이고,

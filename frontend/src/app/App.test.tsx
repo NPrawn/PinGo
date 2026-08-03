@@ -479,6 +479,94 @@ describe('user routes', () => {
   });
 
   /**
+   * 경로선. (S15P11A206-83 / FR-U-010)
+   *
+   * 예전에는 화면이 `pathNodes`를 넘기지 않아 위젯이 목업(B3 승강장 → 3번출구 엘리베이터)으로
+   * 채웠다. 사용자가 어디로 가든 늘 같은 선이 그려져 있었고, 그것이 실제 안내 경로처럼 보였다.
+   *
+   * 응답의 경로는 B3에 두 노드, B2에 한 노드를 지난다. 한 점만으로는 선이 되지 않으므로 B2에는
+   * 그려지지 않는 것이 맞다.
+   */
+  it('안내 경로는 응답의 노드를 따라 그린다', async () => {
+    useNavigationStore.setState({ currentNodeId: 205, targetNodeId: 325 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B3' }));
+
+    expect(await screen.findByRole('img', { name: '이동 경로' })).toBeInTheDocument();
+  });
+
+  /** 경로를 모르면 아무것도 그리지 않는다. 목업으로 대신하면 가지 않을 길을 안내하게 된다. */
+  it('경로를 조회할 수 없으면 경로선을 그리지 않는다', async () => {
+    useNavigationStore.setState({ currentNodeId: null, targetNodeId: null });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B3' }));
+
+    await screen.findByRole('group', { name: '시설 필터' });
+    expect(screen.queryByRole('img', { name: '이동 경로' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * 시설 필터. (S15P11A206-83)
+   *
+   * 진입하면 그 층 시설을 모두 보여 주고, 칩은 그 층에 실제로 있는 유형만 둔다. 눌러서 아무것도
+   * 나오지 않는 것을 확인해야만 없다는 걸 알 수 있는 칩은 두지 않는다.
+   */
+  it('시설 칩은 표시 층에 있는 유형만 두고 기본은 전부 보여준다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    const filterGroup = await screen.findByRole('group', { name: '시설 필터' });
+    const floorGroup = screen.getByRole('group', { name: '층 선택' });
+
+    // B2에는 승차권 충전기와 엘리베이터가 있다. 유형을 고르기 전에도 지도에 떠 있어야 한다.
+    expect(await screen.findByRole('button', { name: '승차권 충전' })).toBeInTheDocument();
+    expect(
+      within(filterGroup).getByRole('button', { name: '승차권 충전 필터 적용' }),
+    ).toBeInTheDocument();
+
+    // B1에는 출구뿐이다. 승차권 충전 칩이 남아 있으면 안 된다.
+    fireEvent.click(within(floorGroup).getByRole('button', { name: 'B1' }));
+
+    await waitFor(() =>
+      expect(
+        within(filterGroup).queryByRole('button', { name: '승차권 충전 필터 적용' }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(within(filterGroup).getByRole('button', { name: '출구 필터 적용' })).toBeInTheDocument();
+  });
+
+  /**
+   * 전부 감추기.
+   *
+   * 유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 켠 뒤 되돌릴 수 없으면 누르기
+   * 망설이게 되므로, 같은 버튼이 다시 보이기까지 맡는다.
+   */
+  it('시설 아이콘을 한 번에 감추고 다시 보일 수 있다', async () => {
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    expect(await screen.findByRole('button', { name: '승차권 충전' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '시설 아이콘 모두 숨기기' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: '승차권 충전' })).not.toBeInTheDocument(),
+    );
+    // 안내에 필요한 표시는 남는다. 시설만 감추는 버튼이다.
+    expect(screen.getByRole('img', { name: '현재 위치' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '시설 아이콘 다시 보기' }));
+
+    expect(await screen.findByRole('button', { name: '승차권 충전' })).toBeInTheDocument();
+  });
+
+  /**
    * 목적지 마커. (S15P11A206-79)
    *
    * 이름과 좌표가 같은 곳을 가리켜야 한다. 목업 좌표(3번출구 엘리베이터)에 경로 옵션 화면의
@@ -741,9 +829,11 @@ describe('user routes', () => {
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
 
     /**
-     * 시설 마커는 유형 필터를 켠 뒤에 나타난다. 기본으로 전부 그리지 않는 이유는 밀도다 —
-     * 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가 시설 36개를 모두 그리면 마커가
-     * 서로를 덮는다(FR-U-006 점진적 공개). 좌표는 시설 조회 응답에서 온다.
+     * 유형을 켜면 그 유형만 남는다. 좌표는 시설 조회 응답에서 온다.
+     *
+     * 진입 시에는 그 층 시설이 모두 떠 있고(S15P11A206-83), 하나를 고르려면 유형을 켜야 한다 —
+     * 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가 36개를 모두 그리면 마커가 서로를
+     * 덮기 때문이다.
      */
     fireEvent.click(screen.getByRole('button', { name: '승차권 충전 필터 적용' }));
     fireEvent.click(await screen.findByRole('button', { name: '승차권 충전' }));

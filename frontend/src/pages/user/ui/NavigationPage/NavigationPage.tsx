@@ -8,7 +8,7 @@ import {
   type Facility,
 } from '@/entities/facility';
 import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
-import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
+import { routePathNodesOf, useNavigationStore, type IndoorPoint } from '@/entities/navigation';
 import { routeUnavailableText } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
@@ -26,19 +26,21 @@ import styles from './NavigationPage.module.css';
 /**
  * 지도 위 시설 필터.
  *
- * **기본은 아무것도 켜지 않는다.** 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가
- * 1m가 1.2px이고, 그 층 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px이 되어 서로를
- * 덮는다. 유형 하나를 켜면 많아도 13개(계단)라 겹치지 않는다 — FR-U-006의 점진적 공개다.
+ * **기본은 표시 층의 시설을 모두 켠다.** 무엇이 어디에 있는지 먼저 보여 준 다음 유형으로
+ * 좁히는 흐름이다. 아무것도 없는 지도에서 시작하면 사용자는 칩을 눌러 보기 전까지 이 지도가
+ * 무엇을 알려 줄 수 있는지 알 수 없다.
+ *
+ * 대신 겹친다. 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가 1m가 1.2px이고, 그 층
+ * 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px이다. 훑어보는 용도이고, 하나를 고르려면
+ * 유형을 켜야 한다 — 그러면 많아도 13개(계단)라 겹치지 않는다.
  *
  * 이름과 아이콘은 프로토타입(`#s-nav`)의 칩 다섯 개에서 출발했고, 각 칩이 실제
- * `facilityType`을 켜도록 연결했다.
+ * `facilityType`을 켜도록 연결했다. 에스컬레이터·계단은 역삼역에서 가장 많은 두 유형인데
+ * (B1 기준 각각 10개·13개) 칩이 없어 지도에 한 번도 뜨지 않아 뒤에 붙였다.
  *
- * **에스컬레이터와 계단을 뒤에 붙였다.** 역삼역에서 가장 많은 두 유형인데(B1 기준 각각
- * 10개·13개) 칩이 없어 지도에 한 번도 뜨지 않았다. 층을 오르내리는 통로라 길안내에서 오히려
- * 자주 찾는 것들이다. 밀도는 문제되지 않는다 — 위 계산의 상한이 바로 계단 13개다.
- *
- * TODO: `platform`은 역삼역에 등록된 시설이 없어 눌러도 표시할 것이 없다. 승강장 시설이
- * 시드되면 그대로 동작한다(백엔드 요청 예정).
+ * **표시 층에 없는 유형은 칩도 두지 않는다.** 역삼역 B3에는 승차권 충전기가 없는데 칩이 늘
+ * 떠 있으면, 눌러서 아무것도 나오지 않는 것을 확인해야만 없다는 것을 알 수 있다. `platform`
+ * 처럼 아직 시드되지 않은 유형도 같은 규칙으로 자연히 사라진다.
  */
 const MAP_FILTERS = FACILITY_MAP_FILTERS;
 
@@ -112,8 +114,17 @@ export function NavigationPage() {
   const [initialTarget] = useState(() => ({ nodeId: targetNodeId, label: targetExitLabel }));
   const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
-  /** 켜 둔 시설 유형(`facilityType`). null이면 시설을 그리지 않는다. */
-  const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
+  /**
+   * 지도에 그릴 시설.
+   *
+   * - `all` — 표시 층의 시설 전부. 진입 시 기본값이다.
+   * - `none` — 아무것도 그리지 않는다. 경로와 내 위치만 보려는 상태다.
+   * - 그 외 — 그 `facilityType`만.
+   *
+   * 셋을 한 값에 담는다. `facilityType` 코드에 `all`·`none`이 없어(FACILITY_MAP_FILTERS)
+   * 섞이지 않고, 상태 두 개로 나누면 "숨김인데 유형도 켜져 있는" 조합이 생긴다.
+   */
+  const [facilityView, setFacilityView] = useState<string>('all');
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
   /** 선택한 경로의 상세 안내. 출발·도착 노드가 모두 있어야 조회할 수 있다. */
@@ -214,6 +225,42 @@ export function NavigationPage() {
   const [pickedDestination, setPickedDestination] = useState<Facility | null>(null);
   const destinationFacility =
     pickedDestination ?? matchExitByName(exitsQuery.data ?? [], activeDestination);
+
+  /**
+   * 표시 층에 실제로 있는 시설 유형. 칩을 이걸로 추린다.
+   *
+   * 역 전체를 한 번 받아 층은 여기서 거른다. 지도 위젯이 유형 없이 그릴 때 쓰는 조회와 같은
+   * 키라 요청은 한 번만 나가고, 층을 오갈 때 다시 받지 않아 칩이 깜빡이지 않는다.
+   */
+  const facilitiesQuery = useStationFacilities(stationId ?? 0);
+  const facilitiesLoaded = facilitiesQuery.data !== undefined;
+  const floorFacilityTypes = new Set(
+    (facilitiesQuery.data ?? [])
+      .filter((facility) => facility.floorId === displayedFloorId)
+      .map((facility) => facility.facilityType),
+  );
+  const availableFilters = MAP_FILTERS.filter((filter) =>
+    floorFacilityTypes.has(filter.facilityType),
+  );
+
+  /**
+   * 실제로 적용할 표시 상태. 켜 둔 유형이 표시 층에 없으면 전체 표시로 친다.
+   *
+   * 고른 값 자체는 지우지 않는다. 계단을 켜 둔 채 계단이 없는 층을 잠깐 들렀다 돌아오면 다시
+   * 계단이 켜진다 — 층을 넘길 때마다 고른 것이 사라지면 매번 다시 눌러야 한다.
+   *
+   * 숨김은 층과 무관하므로 그대로 둔다. 첫 조회가 끝나기 전에도 판단하지 않는다 — 빈 목록을
+   * "그 층에 없다"로 읽으면 안 된다.
+   */
+  const effectiveView =
+    facilityView !== 'all' &&
+    facilityView !== 'none' &&
+    facilitiesLoaded &&
+    !floorFacilityTypes.has(facilityView)
+      ? 'all'
+      : facilityView;
+  /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
+  const effectiveType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
 
   /**
    * 안내 카드 문구.
@@ -495,10 +542,11 @@ export function NavigationPage() {
                   현재 위치 마커는 이 컴포넌트가 그린다 — 296 훅이 준 캐노니컬 미터 좌표를
                   넘기면 프레임 변환(meterToPixel)은 그쪽이 한다. 여기서 좌표를 가공하지 않는다.
 
-                  표시 층은 현재 위치를 따라간다. 사용자가 버튼으로 층을 바꾸는 기능은 280이다.
+                  표시 층은 현재 위치를 따라가고, 층 버튼이 바꾼다.
 
-                  TODO: useMockData를 끄면 실제 층 지도 API를 쓴다. 지금은 도면 이미지가
-                  업로드되지 않아(mapUrl이 null) 목업 도면으로 마커 움직임을 확인한다. */}
+                  목업을 끊었다. 도면 이미지는 목업·실제 모두 mapUrl이 null이라 같은 번들
+                  평면도로 떨어지므로 보이는 그림은 그대로이고, 좌표 프레임만 응답의 것을
+                  쓴다. 이 화면이 목업에 기대던 마지막 하나가 경로선이었다. */}
               <div className={styles.mapCanvas}>
                 <IndoorMapView
                   stationId={stationId ?? 0}
@@ -522,15 +570,21 @@ export function NavigationPage() {
                   /* 이름은 응답의 것을 쓴다. 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
                      시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
                   destinationLabel={
-                    (facilityFilter == null || facilityFilter === 'exit') &&
+                    (effectiveType == null || effectiveType === 'exit') &&
                     destinationFacility !== null
                       ? destinationFacility.nameKo
                       : null
                   }
-                  facilityType={facilityFilter}
+                  /* 실제로 안내 중인 경로를 그린다. 조회 전이거나 실패하면 빈 배열이라
+                     선이 그려지지 않는다 — 예전에는 이 자리를 목업이 채워, 사용자가 가지도
+                     않을 B3 승강장 → 3번출구 경로가 늘 그려져 있었다. */
+                  pathNodes={routePathNodesOf(routeResult)}
+                  facilityType={effectiveType}
+                  /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼져
+                     아무 시설도 그리지 않는다. */
+                  showAllFacilities={effectiveView === 'all'}
                   selectedFacilityId={selectedFacility?.facilityId}
                   onSelectFacility={setSelectedFacility}
-                  useMockData
                 />
               </div>
 
@@ -589,9 +643,10 @@ export function NavigationPage() {
                 })}
               </div>
 
+              {/* 표시 층에 있는 유형만 둔다. 눌러서 아무것도 안 나오는 칩은 두지 않는다. */}
               <div className={styles.facilityFilters} role="group" aria-label="시설 필터">
-                {MAP_FILTERS.map((filter) => {
-                  const active = facilityFilter === filter.facilityType;
+                {availableFilters.map((filter) => {
+                  const active = effectiveView === filter.facilityType;
 
                   return (
                     <button
@@ -604,7 +659,8 @@ export function NavigationPage() {
                       aria-pressed={active}
                       title={filter.name}
                       onClick={() => {
-                        setFacilityFilter(active ? null : filter.facilityType);
+                        // 켜 둔 것을 다시 누르면 전체 표시로 돌아간다.
+                        setFacilityView(active ? 'all' : filter.facilityType);
                         // 다른 유형으로 넘어가면 이전에 고른 시설의 이름표가 남지 않게 한다.
                         setSelectedFacility(null);
                       }}
@@ -613,6 +669,36 @@ export function NavigationPage() {
                     </button>
                   );
                 })}
+
+                {/*
+                  전부 감추기.
+
+                  유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 다시 누르면 전체
+                  표시로 돌아온다 — 켠 뒤 되돌릴 방법이 없으면 감추기를 누르기 망설이게 된다.
+
+                  목적지·내 위치·경로는 그대로 둔다. 안내에 필요한 표시까지 사라지면 지도가
+                  길을 알려 주지 못한다.
+                */}
+                <button
+                  type="button"
+                  className={[
+                    styles.facilityFilter,
+                    effectiveView === 'none' && styles.facilityFilterOn,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  aria-label={
+                    effectiveView === 'none' ? '시설 아이콘 다시 보기' : '시설 아이콘 모두 숨기기'
+                  }
+                  aria-pressed={effectiveView === 'none'}
+                  title={effectiveView === 'none' ? '시설 아이콘 다시 보기' : '시설 아이콘 숨기기'}
+                  onClick={() => {
+                    setFacilityView(effectiveView === 'none' ? 'all' : 'none');
+                    setSelectedFacility(null);
+                  }}
+                >
+                  <Icon name={effectiveView === 'none' ? 'eye' : 'eye-off'} size={14} />
+                </button>
               </div>
 
               {/* 현재 위치·방향·목적지·시설은 모두 IndoorMapView가 실제 좌표로 그린다.
