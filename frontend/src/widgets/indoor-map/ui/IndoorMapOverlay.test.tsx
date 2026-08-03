@@ -49,11 +49,26 @@ function renderOverlay(props: {
 }
 
 /** 경로 구간별 points 문자열. 구간이 나뉘면 원소가 여러 개다. */
+/**
+ * 경로 본선의 좌표. 아래 깔리는 테두리(`aria-hidden`)는 세지 않는다.
+ *
+ * 구간마다 폴리라인이 둘 그려진다 — 도면의 벽·해칭 선에서 경로를 떼어 놓는 테두리와, 그 위의
+ * 본선이다. 경로가 어디를 지나는지는 본선 하나로 결정된다.
+ */
 function routeSegments(): string[] {
   const group = screen.getByRole('img', { name: '이동 경로' });
-  return Array.from(group.querySelectorAll('polyline')).map(
+  return Array.from(group.querySelectorAll('polyline:not([aria-hidden])')).map(
     (line) => line.getAttribute('points') ?? '',
   );
+}
+
+/** 진행 방향 화살촉의 회전각. 경로가 향하는 쪽을 가리켜야 한다. */
+function directionAngles(): number[] {
+  const group = screen.getByRole('img', { name: '이동 경로' });
+  return Array.from(group.querySelectorAll('path')).map((mark) => {
+    const rotate = /rotate\((-?[\d.]+)\)/.exec(mark.getAttribute('transform') ?? '');
+    return Number(rotate?.[1]);
+  });
 }
 
 describe('IndoorMapOverlay', () => {
@@ -204,6 +219,56 @@ describe('IndoorMapOverlay', () => {
     });
 
     expect(routeSegments()).toEqual(['10,20 30,40 50,60']);
+  });
+
+  /**
+   * 진행 방향.
+   *
+   * 선만으로는 어느 쪽으로 걸어야 하는지 알 수 없다. 층을 넘나드는 구간에서는 선이 끊겨
+   * 출발점·도착점도 함께 사라지므로, 이 층에서의 방향은 선 위에 직접 적혀 있어야 한다.
+   */
+  it('경로 위에 진행 방향을 일정 간격으로 얹는다', () => {
+    renderOverlay({
+      pathNodes: [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 2000, mapY: 0 },
+      ],
+    });
+
+    const angles = directionAngles();
+
+    // 오른쪽으로 곧게 가는 경로다. 화살촉도 모두 그쪽을 가리킨다(0도).
+    expect(angles).not.toHaveLength(0);
+    angles.forEach((angle) => expect(angle).toBeCloseTo(0));
+  });
+
+  /** 방향이 꺾이면 화살촉도 그 구간의 방향을 따른다. 노드마다가 아니라 거리마다 놓인다. */
+  it('꺾이는 구간에서는 그 구간의 방향을 가리킨다', () => {
+    renderOverlay({
+      pathNodes: [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+        { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 1000 },
+      ],
+    });
+
+    const angles = directionAngles();
+
+    // 오른쪽(0도)으로 가다 아래(90도)로 꺾인다. 이미지 좌표계는 y가 아래로 증가한다.
+    expect(angles).toContain(0);
+    expect(angles).toContain(90);
+  });
+
+  /** 너무 짧은 구간에는 놓지 않는다. 마커에 가려 방향은 읽히지 않고 어수선함만 남는다. */
+  it('간격의 절반보다 짧은 구간에는 방향을 놓지 않는다', () => {
+    renderOverlay({
+      pathNodes: [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 10, mapY: 0 },
+      ],
+    });
+
+    expect(directionAngles()).toHaveLength(0);
   });
 
   it('원본 이미지 크기를 viewBox로 삼는다', () => {

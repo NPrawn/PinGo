@@ -120,7 +120,16 @@ export function IndoorMapOverlay({
   const pinBorderWidth = PIN_BORDER_WIDTH * sizeUnit;
   const labelHaloWidth = LABEL_HALO_WIDTH * sizeUnit;
   const routeWidth = ROUTE_WIDTH * sizeUnit;
-  const routeDash = `${ROUTE_DASH[0] * sizeUnit} ${ROUTE_DASH[1] * sizeUnit}`;
+  const routeCasingWidth = ROUTE_CASING_WIDTH * sizeUnit;
+  const directionSpacing = DIRECTION_SPACING * sizeUnit;
+  const directionArm = DIRECTION_ARM * sizeUnit;
+  const directionWidth = DIRECTION_WIDTH * sizeUnit;
+  /** 오른쪽(0도)을 향하는 화살촉. 방향은 `transform`의 회전이 맡는다. */
+  const chevron = [
+    `M ${-directionArm} ${-directionArm * DIRECTION_SPREAD}`,
+    'L 0 0',
+    `L ${-directionArm} ${directionArm * DIRECTION_SPREAD}`,
+  ].join(' ');
 
   /** 지도가 돌아간 만큼 되돌린다. 읽는 요소는 항상 화면에 바로 서 있어야 한다. */
   const upright = (point: PixelPoint): string | undefined =>
@@ -151,15 +160,38 @@ export function IndoorMapOverlay({
       {routeSegments.length > 0 && (
         // 구간이 여러 개여도 사용자에게는 하나의 경로다. 라벨은 묶음에 한 번만 붙인다.
         <g role="img" aria-label={t('indoorMap.overlay.route')}>
+          {/* 바깥 테두리를 모든 구간에 먼저 깔고 본선을 그 위에 얹는다. 구간마다 번갈아 그리면
+              구간이 만나는 자리에서 뒷 구간의 테두리가 앞 구간의 본선을 덮는다. */}
+          {routeSegments.map((points, index) => (
+            <polyline
+              key={index}
+              className={styles.routeCasing}
+              strokeWidth={routeCasingWidth}
+              points={points.map((point) => `${point.px},${point.py}`).join(' ')}
+              // 배경에서 떼어 놓기 위한 장식이다. 경로 자체는 아래 본선이 나타낸다.
+              aria-hidden
+            />
+          ))}
           {routeSegments.map((points, index) => (
             <polyline
               key={index}
               className={styles.route}
               strokeWidth={routeWidth}
-              strokeDasharray={routeDash}
               points={points.map((point) => `${point.px},${point.py}`).join(' ')}
             />
           ))}
+          {/* 진행 방향. 지도가 돌아가도 함께 돌아야 한다 — 가리키는 것이 방향 자체다. */}
+          {routeSegments.flatMap((points, segmentIndex) =>
+            directionMarks(points, directionSpacing).map((mark, markIndex) => (
+              <path
+                key={`${segmentIndex}-${markIndex}`}
+                className={styles.routeDirection}
+                strokeWidth={directionWidth}
+                d={chevron}
+                transform={`translate(${mark.px} ${mark.py}) rotate(${mark.angleDeg})`}
+              />
+            )),
+          )}
         </g>
       )}
 
@@ -322,7 +354,82 @@ const BORDER_WIDTH = 15;
 const PIN_BORDER_WIDTH = 10;
 const LABEL_HALO_WIDTH = 25;
 const ROUTE_WIDTH = 25;
-const ROUTE_DASH: readonly [number, number] = [5, 55];
+
+/**
+ * 경로선 바깥 테두리.
+ *
+ * 도면에는 벽·해칭 선이 빽빽해서, 선 하나만 그으면 그중 하나로 묻힌다. 연한 색으로 한 겹
+ * 넓게 깔고 그 위에 본선을 얹으면 배경에서 떨어져 나온다. 지도 앱들이 경로에 쓰는 방식이다.
+ */
+const ROUTE_CASING_WIDTH = ROUTE_WIDTH + 18;
+
+/**
+ * 진행 방향 표시.
+ *
+ * 선만으로는 어느 쪽으로 가야 하는지 알 수 없다. 출발점과 도착점을 알아도 층을 넘나드는
+ * 구간에서는 선이 끊겨, 이 층에서 어느 방향으로 걸어야 하는지가 사라진다.
+ *
+ * 노드마다 두지 않고 **일정 거리마다** 둔다. 그래프의 노드 간격은 복도 구조에 따라 3m에서
+ * 30m까지 벌어지는데, 노드에 붙이면 촘촘한 구간에서 화살표가 서로 겹치고 긴 직선에서는
+ * 하나도 없다.
+ *
+ * 크기는 선 두께에 맞춰 잡았다. 팔 길이가 두께의 1.2배쯤이면 선 위에 얹혀도 뭉치지 않는다.
+ */
+const DIRECTION_SPACING = 260;
+const DIRECTION_ARM = 30;
+const DIRECTION_WIDTH = 12;
+
+/** 화살촉 벌어짐. 0.72는 약 55도로, 좁으면 뾰족해 보이고 넓으면 방향이 둔해진다. */
+const DIRECTION_SPREAD = 0.72;
+
+interface DirectionMark {
+  px: number;
+  py: number;
+  angleDeg: number;
+}
+
+/**
+ * 경로 위에 일정 간격으로 놓을 방향 표시의 위치와 각도.
+ *
+ * 첫 표시를 간격의 절반만큼 띄우고 끝에서도 그만큼 남긴다. 끝에 붙이면 현재 위치·목적지 마커에
+ * 가려 방향은 읽히지 않고 어수선함만 남는다.
+ */
+function directionMarks(points: readonly PixelPoint[], spacing: number): DirectionMark[] {
+  if (points.length < 2 || spacing <= 0) return [];
+
+  const segments = points
+    .slice(1)
+    .map((end, index) => {
+      const start = points[index];
+      const dx = end.px - start.px;
+      const dy = end.py - start.py;
+
+      return { start, dx, dy, length: Math.hypot(dx, dy) };
+    })
+    .filter((segment) => segment.length > 0);
+
+  const marks: DirectionMark[] = [];
+  let travelled = 0;
+  let next = spacing / 2;
+
+  for (const segment of segments) {
+    const angleDeg = (Math.atan2(segment.dy, segment.dx) * 180) / Math.PI;
+
+    while (next <= travelled + segment.length) {
+      const ratio = (next - travelled) / segment.length;
+      marks.push({
+        px: segment.start.px + segment.dx * ratio,
+        py: segment.start.py + segment.dy * ratio,
+        angleDeg,
+      });
+      next += spacing;
+    }
+
+    travelled += segment.length;
+  }
+
+  return marks;
+}
 
 /**
  * 시설 마커 반지름. 프로토타입 `.facpin`의 아이콘 원이 26px이므로 같은 크기가 되도록 잡았다.
