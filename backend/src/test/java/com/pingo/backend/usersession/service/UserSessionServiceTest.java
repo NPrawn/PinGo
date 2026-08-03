@@ -72,13 +72,13 @@ public class UserSessionServiceTest {
     }
 
     @Test
-    void expiresAt은_생성_시점_기준_1시간_뒤로_설정된다() {
+    void expiresAt은_생성_시점_기준_6시간_뒤로_설정된다() {
         LocalDateTime before = LocalDateTime.now();
         UserSessionCreateResponse response = userSessionService.create(Language.KO);
         LocalDateTime after = LocalDateTime.now();
 
-        assertTrue(response.expiresAt().isAfter(before.plusHours(1).minusSeconds(5)));
-        assertTrue(response.expiresAt().isBefore(after.plusHours(1).plusSeconds(5)));
+        assertTrue(response.expiresAt().isAfter(before.plusHours(6).minusSeconds(5)));
+        assertTrue(response.expiresAt().isBefore(after.plusHours(6).plusSeconds(5)));
     }
 
     // ---------- 조회 ----------
@@ -216,7 +216,7 @@ public class UserSessionServiceTest {
 
         UserSession after = userSessionRepository.findById(userSessionId).orElseThrow();
         assertTrue(after.getLastActiveAt().isAfter(firstLastActiveAt));
-        assertTrue(after.getExpiresAt().isAfter(firstExpiresAt));
+        assertEquals(firstExpiresAt, after.getExpiresAt());
     }
 
     // ---------- 종료 ----------

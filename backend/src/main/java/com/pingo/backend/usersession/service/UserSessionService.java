@@ -62,7 +62,7 @@ public class UserSessionService {
         if(request.lastGpsLatitude() != null && request.lastGpsLongitude() != null){
             session.updateGpsLocation(request.lastGpsLatitude(), request.lastGpsLongitude());
         }
-        session.renewActivity();
+        session.recordActivity();
         return UserSessionResponse.from(session);
     }
 

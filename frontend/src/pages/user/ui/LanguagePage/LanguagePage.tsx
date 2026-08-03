@@ -1,11 +1,30 @@
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { ensureUserSession } from '@/entities/user-session';
 import { USER_ROUTES } from '@/shared/config';
-import { Blob, BlobHero, ButtonLink, LivePill, Spring, Sub, Title } from '@/shared/ui';
+import { Blob, BlobHero, Button, LivePill, Spring, Sub, Title } from '@/shared/ui';
 import { LanguageSelect } from '@/features/language-select';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './LanguagePage.module.css';
 
 /** Screen 02 (FR-U-001) — language selection. */
 export function LanguagePage() {
+  const { i18n } = useTranslation();
+  const navigate = useNavigate();
+  const [isStarting, setIsStarting] = useState(false);
+
+  const startSession = async () => {
+    if (isStarting) return;
+    setIsStarting(true);
+    const userSessionId = await ensureUserSession(i18n.language);
+    if (userSessionId) {
+      navigate(USER_ROUTES.PERMISSION);
+      return;
+    }
+    setIsStarting(false);
+  };
+
   return (
     <PhoneFrame layout="hero">
       <LivePill>STATION FINDER</LivePill>
@@ -32,7 +51,9 @@ export function LanguagePage() {
       <LanguageSelect />
 
       <Spring />
-      <ButtonLink to={USER_ROUTES.PERMISSION}>계속하기 · Continue</ButtonLink>
+      <Button disabled={isStarting} onClick={() => void startSession()}>
+        계속하기 · Continue
+      </Button>
     </PhoneFrame>
   );
 }
