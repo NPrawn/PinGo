@@ -8,6 +8,7 @@ import {
 import type { Station } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
 import { updateUserSession } from '@/shared/api';
+import { readRecentLocation, saveLocation } from '@/shared/lib/location-cache';
 import { Blob, Field, Kicker, SelectRow } from '@/shared/ui';
 import type { BlobTone } from '@/shared/ui';
 import styles from './StationSearch.module.css';
@@ -50,10 +51,7 @@ export function StationSearch({ onSelect }: StationSearchProps) {
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
-  const [coordinates, setCoordinates] = useState<{
-    latitude: number;
-    longitude: number;
-  }>();
+  const [coordinates, setCoordinates] = useState(() => readRecentLocation());
 
   const stationSearch = useStationSearch(query, searched);
   const nearbySearch = useNearbyStations(coordinates?.latitude, coordinates?.longitude);
@@ -75,12 +73,18 @@ export function StationSearch({ onSelect }: StationSearchProps) {
   const hasUnavailableResult = results.some((item) => item.serviceReady === false);
 
   useEffect(() => {
-    navigator.geolocation?.getCurrentPosition((position) => {
-      setCoordinates({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
-    });
+    navigator.geolocation?.getCurrentPosition(
+      (position) => {
+        saveLocation(position);
+        setCoordinates({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          capturedAt: position.timestamp || Date.now(),
+        });
+      },
+      undefined,
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
+    );
   }, []);
 
   const renderRow = (item: Station, tone: BlobTone) => {

@@ -36,16 +36,14 @@
   display: block;
   font-size: 30px;
   line-height: 1;
-  filter: drop-shadow(0 5px 5px rgb(34 91 69 / 24%))
-    drop-shadow(0 -1px 0 rgb(255 255 255 / 90%));
+  filter: drop-shadow(0 5px 5px rgb(34 91 69 / 24%)) drop-shadow(0 -1px 0 rgb(255 255 255 / 90%));
   transition:
     filter 180ms ease,
     transform 180ms ease;
 }
 
 .settingsLink:hover .settingsEmoji {
-  filter: drop-shadow(0 7px 6px rgb(34 91 69 / 30%))
-    drop-shadow(0 -1px 0 rgb(255 255 255 / 100%));
+  filter: drop-shadow(0 7px 6px rgb(34 91 69 / 30%)) drop-shadow(0 -1px 0 rgb(255 255 255 / 100%));
   transform: translateY(-1px) rotate(8deg);
 }
 
@@ -66,8 +64,7 @@
   padding: 17px 18px 16px;
   margin-top: 10px;
   overflow: hidden;
-  background:
-    linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(240 250 244 / 76%));
+  background: linear-gradient(135deg, rgb(255 255 255 / 86%), rgb(240 250 244 / 76%));
   border: 1px solid rgb(255 255 255 / 92%);
   border-radius: 22px;
   box-shadow:
@@ -82,8 +79,12 @@
   width: 126px;
   height: 126px;
   pointer-events: none;
-  background:
-    radial-gradient(circle at 36% 38%, rgb(127 239 195 / 58%), rgb(60 216 160 / 12%) 52%, transparent 70%);
+  background: radial-gradient(
+    circle at 36% 38%,
+    rgb(127 239 195 / 58%),
+    rgb(60 216 160 / 12%) 52%,
+    transparent 70%
+  );
   border-radius: 50%;
 }
 
@@ -231,6 +232,12 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+/* GPS 결과가 도착하기 전후에도 출발지 카드의 외곽 높이를 동일하게 유지한다. */
+.originSection {
+  flex: 0 0 358px;
+  height: 358px;
 }
 
 .sectionEntering {
