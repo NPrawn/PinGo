@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useNavigationStore } from '@/entities/navigation';
+import { usePermissionStore } from '@/entities/permission';
 import { useStationStore } from '@/entities/station';
 import { ensureUserSession, useUserSessionStore } from '@/entities/user-session';
 import {
@@ -104,6 +105,7 @@ export function ConsultPermissionPage() {
   const stationId = useStationStore((state) => state.stationId);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
+  const locationConsent = usePermissionStore((state) => state.granted.loc);
   const destinationId = useNavigationStore((state) => state.destinationId);
   const destinationType = useNavigationStore((state) => state.destinationType);
   const [reminderOpen, setReminderOpen] = useState(false);
@@ -163,15 +165,17 @@ export function ConsultPermissionPage() {
         currentNodeId: currentNodeId ?? undefined,
         ...completeDestination,
         /*
-          사용자가 고른 값을 그대로 보낸다. 예전에는 둘 다 `true`로 박아 두어, 아무것도
-          고르지 않은 사용자가 전부 동의한 것으로 기록됐다.
+          카메라는 사용자의 선택과 실제 확보 결과를 그대로 보낸다. 예전에는
+          `videoConsent: true`로 박아 두어 카메라를 끈 사용자도 동의한 것으로 기록됐다.
 
-          TODO: 위치 공유 동의는 보낼 자리가 없다. `ConsultationCreateRequest`에
-          `locationConsent`가 없어 화면에서 고지만 하고 있다. 백엔드 계약이 열리면 여기에
-          함께 싣는다(비기능_요구사항_명세서 NFR-PR-001).
+          마이크는 상담에 필요한 필수 항목이라 선택 UI가 없고, 요청 시점에는 확보가 끝난
+          상태이므로 `audioConsent: true`로 기록한다.
+
+          위치 공유 동의는 온보딩에서 확인한 브라우저 권한 상태를 함께 기록한다.
         */
         videoConsent,
         audioConsent: true,
+        locationConsent,
       });
 
       if (!consultation.consultationId) {

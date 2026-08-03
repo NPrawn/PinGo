@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
-import { useUserSessionStore } from '@/entities/user-session';
+import { queueCurrentNodeSync, useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
-import { localize, updateUserSession } from '@/shared/api';
+import { localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
 import {
@@ -125,13 +125,15 @@ export function CapturePortraitPage() {
         // 좌표 정합이 없는 층(역삼역 B1)은 status가 map_not_ready로 내려온다. (S15P11A206-128)
         const position = result.position;
 
-        if (disposed || timedOutRef.current) return;
+        if (disposed) return;
         if (
           result.resultStatus === 'success' &&
           result.startNodeId != null &&
           position?.floorId != null
         ) {
           localized = true;
+          timedOutRef.current = false;
+          setTimeoutOpen(false);
           setCurrentLocation({
             nodeId: result.startNodeId,
             floorId: position.floorId,
@@ -148,7 +150,7 @@ export function CapturePortraitPage() {
           ) {
             setFloor(floorCode);
           }
-          await updateUserSession(userSessionId, { currentNodeId: result.startNodeId });
+          queueCurrentNodeSync(result.startNodeId);
           navigate(USER_ROUTES.LOCATE_SUCCESS, { replace: true });
           return;
         }

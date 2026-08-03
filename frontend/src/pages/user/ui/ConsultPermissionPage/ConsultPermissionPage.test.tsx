@@ -111,6 +111,7 @@ describe('ConsultPermissionPage', () => {
         currentNodeId: 107,
         videoConsent: true,
         audioConsent: true,
+        locationConsent: true,
       }),
     );
     const request = apiMocks.createConsultation.mock.calls[0]?.[0];

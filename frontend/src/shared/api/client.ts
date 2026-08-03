@@ -58,3 +58,32 @@ apiClient.interceptors.response.use(
     );
   },
 );
+
+/**
+ * 항목 3 — 내부 어드민성 API 응답(상담 목록 등).
+ *
+ * 200~300ms면 이상적, 500ms~1s는 참을 만하고, 1s를 넘기면 로딩 표시 없이는 답답하다
+ * (NN/g 기준). 세 구간을 그대로 로그 등급으로 옮긴다 — 1s를 넘긴 요청이 있다면 그 화면에
+ * 로딩 스피너가 있는지부터 확인해야 한다.
+ */
+const API_IDEAL_MS = 300;
+const API_TOLERABLE_MS = 1000;
+
+// 배포 환경 사용자에게는 콘솔 로그를 보여주지 않는다. 개발 빌드에서만 요청 시간을 잰다.
+if (import.meta.env.DEV) {
+  apiClient.interceptors.request.use((config) => {
+    (config as typeof config & { _t0?: number })._t0 = performance.now();
+    return config;
+  });
+  apiClient.interceptors.response.use((response) => {
+    const t0 = (response.config as typeof response.config & { _t0?: number })._t0;
+    if (t0) {
+      const ms = performance.now() - t0;
+      const label = `[api] ${response.config.method?.toUpperCase()} ${response.config.url} ${Math.round(ms)}ms`;
+      if (ms > API_TOLERABLE_MS) console.warn(`${label} (1s 초과 · 로딩 표시 필요)`);
+      else if (ms > API_IDEAL_MS) console.info(`${label} (참을 만함 · 이상적 구간은 ${API_IDEAL_MS}ms)`);
+      else console.debug(label);
+    }
+    return response;
+  });
+}

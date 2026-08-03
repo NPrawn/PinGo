@@ -85,4 +85,16 @@ describe('ConsultEndedPage', () => {
     expect(await screen.findByText('역 선택 화면')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  /**
+   * 상담자가 먼저 끊었을 때는 사용자가 별점을 남기지 않을 수도 있다. 그래도 이 화면에
+   * 들어온 시점에 방 번호가 곧바로 비워져야 sessionStorage에 끝난 상담이 남지 않는다.
+   * (평가 자체는 비워지기 전에 붙잡아 둔 ID로 여전히 매길 수 있다 — 위 테스트로 확인됨.)
+   */
+  it('별점을 남기지 않아도 화면에 들어오면 곧바로 상담 정보를 비운다', () => {
+    renderPage();
+
+    expect(useConsultStore.getState().consultationId).toBeNull();
+    expect(useConsultStore.getState().signalingRoomId).toBeNull();
+  });
 });

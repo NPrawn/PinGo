@@ -35,6 +35,7 @@
     "react-i18next": "^17.0.11",
     "react-router-dom": "^7.18.1",
     "three": "^0.185.1",
+    "web-vitals": "^6.0.1",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },

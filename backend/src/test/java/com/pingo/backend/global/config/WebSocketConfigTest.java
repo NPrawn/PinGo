@@ -2,11 +2,13 @@ package com.pingo.backend.global.config;
 
 import com.pingo.backend.signaling.auth.SignalingHandshakeInterceptor;
 import com.pingo.backend.signaling.handler.SignalingWebSocketHandler;
+import org.apache.catalina.Context;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.boot.tomcat.TomcatContextCustomizer;
+import org.springframework.boot.tomcat.servlet.TomcatServletWebServerFactory;
+import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistration;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
-import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
 import java.util.List;
 
@@ -48,6 +50,12 @@ class WebSocketConfigTest {
      *
      * 컨테이너 기본값 8KB 는 WebRTC 의 offer 를 담지 못한다. 넘치면 컨테이너가 연결을
      * 1009 로 닫아 버려, 협상이 시작되는 바로 그 순간 signaling 이 끊긴다.
+     *
+     * `ServletServerContainerFactoryBean`으로 직접 검증하지 않는다 — 그 Bean은 실제 내장
+     * 톰캣이 떠야만 존재하는 `ServerContainer` 속성을 요구해서, `@SpringBootTest`의
+     * MockServletContext 환경(이 프로젝트의 다른 통합 테스트 대부분이 쓰는 방식)에서
+     * 컨텍스트 전체를 못 띄운다. 대신 톰캣이 실제로 읽는 context init-param을 커스터마이저가
+     * 심어 두는지를 검증한다.
      */
     @Test
     void webSocketContainerHoldsWholeSdpMessage() {
@@ -58,10 +66,16 @@ class WebSocketConfigTest {
                 65536
         );
 
-        ServletServerContainerFactoryBean container = config.createWebSocketContainer();
+        WebServerFactoryCustomizer<TomcatServletWebServerFactory> customizer =
+                config.websocketBufferSizeCustomizer();
+        TomcatServletWebServerFactory factory = new TomcatServletWebServerFactory();
+        customizer.customize(factory);
 
-        assertThat(container.getObject()).isNull();
-        assertThat(ReflectionTestUtils.getField(container, "maxTextMessageBufferSize"))
-                .isEqualTo(65536);
+        Context context = mock(Context.class);
+        for (TomcatContextCustomizer contextCustomizer : factory.getContextCustomizers()) {
+            contextCustomizer.customize(context);
+        }
+
+        verify(context).addParameter("org.apache.tomcat.websocket.textBufferSize", "65536");
     }
 }
