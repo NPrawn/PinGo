@@ -244,7 +244,15 @@ describe('CapturePortraitPage', () => {
       });
       expect(screen.queryByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeNull();
     } finally {
+<<<<<<< Updated upstream
       useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
+=======
+      useUserSessionStore.setState({
+        userSessionId: null,
+        expiresAt: undefined,
+        pendingCurrentNodeId: undefined,
+      });
+>>>>>>> Stashed changes
       useStationStore.setState({ floor: '1F' });
       useNavigationStore.setState({ currentNodeId: null, currentFloorId: null });
       cameraMocks.capture.mockReset();

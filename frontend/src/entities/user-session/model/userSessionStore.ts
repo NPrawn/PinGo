@@ -5,6 +5,7 @@ const STORAGE_KEY = 'pingo.user-session';
 type StoredSession = {
   userSessionId: string;
   expiresAt?: string;
+  pendingCurrentNodeId?: number;
 };
 
 function readStoredSession(): StoredSession | null {
@@ -19,7 +20,10 @@ function readStoredSession(): StoredSession | null {
 type UserSessionStore = {
   userSessionId: string | null;
   expiresAt?: string;
+  pendingCurrentNodeId?: number;
   setSession: (session: StoredSession) => void;
+  setPendingCurrentNodeId: (currentNodeId: number) => void;
+  clearPendingCurrentNodeId: (currentNodeId: number) => void;
   clearSession: () => void;
 };
 
@@ -28,12 +32,35 @@ const storedSession = readStoredSession();
 export const useUserSessionStore = create<UserSessionStore>((set) => ({
   userSessionId: storedSession?.userSessionId ?? null,
   expiresAt: storedSession?.expiresAt,
+  pendingCurrentNodeId: storedSession?.pendingCurrentNodeId,
   setSession: (session) => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    set(session);
+    set({ ...session, pendingCurrentNodeId: undefined });
   },
+  setPendingCurrentNodeId: (pendingCurrentNodeId) =>
+    set((state) => {
+      if (!state.userSessionId) return state;
+      const next = {
+        userSessionId: state.userSessionId,
+        expiresAt: state.expiresAt,
+        pendingCurrentNodeId,
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    }),
+  clearPendingCurrentNodeId: (currentNodeId) =>
+    set((state) => {
+      if (state.pendingCurrentNodeId !== currentNodeId) return state;
+      const next = {
+        userSessionId: state.userSessionId,
+        expiresAt: state.expiresAt,
+        pendingCurrentNodeId: undefined,
+      };
+      if (next.userSessionId) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    }),
   clearSession: () => {
     sessionStorage.removeItem(STORAGE_KEY);
-    set({ userSessionId: null, expiresAt: undefined });
+    set({ userSessionId: null, expiresAt: undefined, pendingCurrentNodeId: undefined });
   },
 }));

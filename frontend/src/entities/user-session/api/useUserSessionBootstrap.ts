@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ensureUserSession } from './ensureUserSession';
+import { syncPendingCurrentNode } from './syncCurrentNode';
 
 const RETRY_LIMIT = 3;
 const RETRY_DELAY_MS = 2000;
@@ -14,11 +15,22 @@ export function useUserSessionBootstrap(language: string) {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    const retryPendingSync = () => void syncPendingCurrentNode();
+    window.addEventListener('online', retryPendingSync);
+    return () => window.removeEventListener('online', retryPendingSync);
+  }, []);
+
+  useEffect(() => {
     let disposed = false;
     let retryTimer: number | undefined;
 
     void ensureUserSession(language).then((userSessionId) => {
-      if (disposed || userSessionId || attempt >= RETRY_LIMIT) return;
+      if (disposed) return;
+      if (userSessionId) {
+        void syncPendingCurrentNode();
+        return;
+      }
+      if (attempt >= RETRY_LIMIT) return;
       retryTimer = window.setTimeout(
         () => setAttempt((current) => current + 1),
         RETRY_DELAY_MS * (attempt + 1),
