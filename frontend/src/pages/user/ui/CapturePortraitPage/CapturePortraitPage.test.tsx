@@ -21,18 +21,26 @@ vi.mock('@/shared/api', () => apiMocks);
  */
 const cameraMocks = vi.hoisted(() => ({
   capture: vi.fn(),
-  status: { value: 'live' as string },
   videoRef: { current: { videoWidth: 640, videoHeight: 480 } as HTMLVideoElement },
+  preview: null as unknown as {
+    videoRef: { current: HTMLVideoElement };
+    stream: null;
+    status: 'live';
+    isLive: true;
+    capture: ReturnType<typeof vi.fn>;
+  },
 }));
 
+cameraMocks.preview = {
+  videoRef: cameraMocks.videoRef,
+  stream: null,
+  status: 'live',
+  isLive: true,
+  capture: cameraMocks.capture,
+};
+
 vi.mock('@/widgets/camera-preview', () => ({
-  useCameraPreview: () => ({
-    videoRef: cameraMocks.videoRef,
-    stream: null,
-    status: cameraMocks.status.value,
-    isLive: cameraMocks.status.value === 'live',
-    capture: cameraMocks.capture,
-  }),
+  useCameraPreview: () => cameraMocks.preview,
   CameraFeed: () => null,
   CameraFallbackNotice: () => null,
   stopCamera: vi.fn(),
@@ -185,6 +193,56 @@ describe('CapturePortraitPage', () => {
       expect(useStationStore.getState().floor).toBe('B2');
       expect(useNavigationStore.getState().currentNodeId).toBe(123);
       expect(apiMocks.localize.mock.calls[0]?.[1]).not.toHaveProperty('mapVersion');
+    } finally {
+      useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
+      useStationStore.setState({ floor: '1F' });
+      useNavigationStore.setState({ currentNodeId: null, currentFloorId: null });
+      cameraMocks.capture.mockReset();
+      apiMocks.localize.mockReset();
+      apiMocks.updateUserSession.mockReset();
+      vi.useRealTimers();
+    }
+  });
+
+  it('accepts the first success even when the response crosses an elapsed-time render', async () => {
+    vi.useFakeTimers();
+    cameraMocks.capture.mockResolvedValue(new Blob(['frame'], { type: 'image/jpeg' }));
+    apiMocks.localize.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          window.setTimeout(
+            () =>
+              resolve({
+                resultStatus: 'success',
+                startNodeId: 203,
+                startNodeLabel: 'B3_R003',
+                position: { floorId: 2, floorCode: 'B3', mapX: -33.257, mapY: 23.012 },
+              }),
+            1100,
+          );
+        }),
+    );
+    apiMocks.updateUserSession.mockResolvedValue({});
+    useUserSessionStore.setState({ userSessionId: 'session-1' });
+    useStationStore.setState({ floor: '1F' });
+
+    try {
+      render(
+        <MemoryRouter>
+          <CapturePortraitPage />
+        </MemoryRouter>,
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1101);
+      });
+
+      expect(useStationStore.getState().floor).toBe('B3');
+      expect(useNavigationStore.getState().currentNodeId).toBe(203);
+      expect(apiMocks.updateUserSession).toHaveBeenCalledWith('session-1', {
+        currentNodeId: 203,
+      });
+      expect(screen.queryByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeNull();
     } finally {
       useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
       useStationStore.setState({ floor: '1F' });
