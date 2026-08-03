@@ -194,6 +194,7 @@ class IceServerAccessValidatorTest {
                 "place",
                 3L,
                 true,
+                true,
                 true
         );
     }

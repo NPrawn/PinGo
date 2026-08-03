@@ -15,6 +15,7 @@ public record ConsultationDetailResponse(
         String destinationLabel,
         boolean videoConsent,
         boolean audioConsent,
+        boolean locationConsent,
         LocalDateTime requestedAt,
         String signalingRoomId,
         String signalingAccessToken
@@ -29,6 +30,7 @@ public record ConsultationDetailResponse(
                 null, // [TODO] OO: 위와 동일
                 session.isVideoConsent(),
                 session.isAudioConsent(),
+                session.isLocationConsent(),
                 session.getRequestedAt(),
                 session.getSignalingRoomId(),
                 signalingAccessToken

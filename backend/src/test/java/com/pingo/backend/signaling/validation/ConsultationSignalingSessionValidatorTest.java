@@ -271,6 +271,7 @@ class ConsultationSignalingSessionValidatorTest {
                 "place",
                 3L,
                 true,
+                true,
                 true
         );
     }

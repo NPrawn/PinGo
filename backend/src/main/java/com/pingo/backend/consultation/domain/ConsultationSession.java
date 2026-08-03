@@ -44,6 +44,9 @@ public class ConsultationSession {
     @Column(nullable = false)
     private boolean audioConsent;
 
+    @Column(nullable = false)
+    private boolean locationConsent;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime requestedAt;
 
@@ -58,7 +61,7 @@ public class ConsultationSession {
 
     public static ConsultationSession create(String userSessionId, Long stationId, ProblemType problemType,
                                              Long currentNodeId, String destinationType, Long destinationId,
-                                             boolean videoConsent, boolean audioConsent){
+                                             boolean videoConsent, boolean audioConsent, boolean locationConsent){
         ConsultationSession session = new ConsultationSession();
         session.consultationId = generateId();
         session.userSessionId = userSessionId;
@@ -70,6 +73,7 @@ public class ConsultationSession {
         session.destinationId = destinationId;
         session.videoConsent = videoConsent;
         session.audioConsent = audioConsent;
+        session.locationConsent = locationConsent;
         session.requestedAt = LocalDateTime.now();
         return session;
     }
