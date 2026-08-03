@@ -1,20 +1,15 @@
 import { createUserSession, getUserSession } from '@/shared/api';
+import { apiLanguageOf, type ApiLanguage } from '@/shared/i18n';
 import { useUserSessionStore } from '../model/userSessionStore';
 
-export type UserSessionLanguage = 'ko' | 'en' | 'ja' | 'zh';
-
-const SUPPORTED: readonly string[] = ['ko', 'en', 'ja', 'zh'];
+/** @deprecated `ApiLanguage`를 쓴다. 같은 타입을 두 곳에서 정의하지 않기 위해 별칭으로 남긴다. */
+export type UserSessionLanguage = ApiLanguage;
 
 /** 동시에 여러 화면이 세션을 요청해도 생성은 한 번만 한다. */
 let creationPromise: Promise<string | null> | undefined;
 
 function isUsable(expiresAt?: string) {
   return !expiresAt || new Date(expiresAt).getTime() > Date.now();
-}
-
-function normalizeLanguage(language: string): UserSessionLanguage {
-  const base = language.slice(0, 2).toLowerCase();
-  return (SUPPORTED.includes(base) ? base : 'ko') as UserSessionLanguage;
 }
 
 /**
@@ -38,7 +33,7 @@ export async function ensureUserSession(language: string): Promise<string | null
     clearSession();
   }
 
-  creationPromise ??= createUserSession({ language: normalizeLanguage(language) })
+  creationPromise ??= createUserSession({ language: apiLanguageOf(language) })
     .then((session) => {
       if (!session.userSessionId) return null;
       setSession({ userSessionId: session.userSessionId, expiresAt: session.expiresAt });
