@@ -20,6 +20,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { useApiLanguage } from '@/shared/i18n';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
 import { stopCamera } from '@/widgets/camera-preview';
@@ -165,6 +166,14 @@ export function NavigationPage() {
    */
   const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
   const origin = SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null;
+  /**
+   * 세부 안내 문장을 쓸 언어.
+   *
+   * `instruction`은 서버가 조립하는 문장이라(`RouteInstructionWriter`) 이 값이 곧 안내 언어다.
+   * 보내지 않으면 백엔드가 `Language.DEFAULT`(=EN)로 떨어져, 한국어를 골라도 "Go straight"가
+   * 나온다. 조회 키에도 넣어야 언어를 바꿀 때 새로 받는다. (S15P11A206-339)
+   */
+  const language = useApiLanguage();
   const routeQuery = useQuery({
     queryKey: [
       'indoor-route',
@@ -177,6 +186,7 @@ export function NavigationPage() {
          출발 노드가 그대로인 채 좌표만 바뀐 경우 옛 경로가 그대로 보인다. */
       origin?.currentMapX ?? null,
       origin?.currentMapY ?? null,
+      language,
     ],
     queryFn: () =>
       createIndoorRoute({
@@ -185,6 +195,7 @@ export function NavigationPage() {
         targetNodeId: targetNodeId!,
         waypointNodeIds,
         routeType: route,
+        language,
         ...(origin ?? {}),
       }),
     enabled: stationId != null && currentNodeId != null && targetNodeId != null,

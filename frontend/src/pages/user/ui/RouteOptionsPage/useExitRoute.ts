@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 // 경로 조회는 `entities/route`를 쓴다. `shared/api`의 생성 타입과 달리 응답 필드가 모두 있다.
 import { getIndoorRouteOptions, type RouteOption, type RouteOrigin } from '@/entities/route';
 import { ApiError, findNearestExit, getFacility } from '@/shared/api';
+import { useApiLanguage } from '@/shared/i18n';
 import type { RouteType } from '@/shared/types';
 
 /** 조건에 맞는 출구가 없을 때 서버가 주는 코드. 통신 실패가 아니라 정상 결과다. */
@@ -63,6 +64,8 @@ function formatExitLabel(exitNumber: string | undefined, fallbackName: string | 
 export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
   const { stationId, startNodeId, destinationLatitude, destinationLongitude, origin } = params;
   const accessibleOnly = routeType === 'elevator_only';
+  /** 카드에 적히는 이용 불가 사유 문구를 서버가 이 언어로 쓴다. (`useApiLanguage`) */
+  const language = useApiLanguage();
   const ready =
     stationId != null &&
     startNodeId != null &&
@@ -81,6 +84,9 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
          키에 없으면 재인식으로 좌표만 바뀐 경우 옛 거리가 카드에 남는다. */
       origin?.currentMapX ?? null,
       origin?.currentMapY ?? null,
+      /* 언어도 응답을 바꾼다 — 서버가 이용 불가 사유 문구를 이 언어로 쓴다. 키에 없으면
+         언어를 바꿨는데 카드에 이전 언어 문구가 그대로 남는다. */
+      language,
     ],
     queryFn: async (): Promise<ExitRoute | null> => {
       /**
@@ -108,6 +114,7 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
         stationId: stationId!,
         startNodeId: startNodeId!,
         targetNodeId: facility.linkedNodeId,
+        language,
         ...(origin ?? {}),
       });
 

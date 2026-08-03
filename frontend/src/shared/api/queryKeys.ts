@@ -31,11 +31,17 @@ export const queryKeys = {
    * 좌표도 결과를 바꾼다 — 서버가 그 값으로 진입 노드를 다시 고르므로 총 거리가 달라진다.
    * 키에 없으면 재인식으로 좌표만 바뀐 경우에 옛 응답이 그대로 재사용된다. 값이 없는 경우와
    * 구분되도록 null로 채운다. 잦은 재요청을 막으려면 넣기 전에 반올림한다(`routeOriginOf`).
+   *
+   * **언어도 들어간다.** 이용 불가 사유 문구(`unavailableMessage`)를 서버가 요청 언어로 쓴다.
+   * 이름처럼 두 언어를 함께 받는 값이 아니라 **서버가 조립하는 문장**이라, 언어가 바뀌면 응답
+   * 자체가 달라진다. 키에 없으면 언어를 바꿨는데 이전 언어의 문구가 그대로 보인다.
+   * (S15P11A206-339)
    */
   indoorRouteOptions: (
     stationId: number,
     startNodeId: number,
     targetNodeId: number,
+    language: string,
     currentMapX?: number | null,
     currentMapY?: number | null,
   ) =>
@@ -47,6 +53,7 @@ export const queryKeys = {
       stationId,
       startNodeId,
       targetNodeId,
+      language,
       currentMapX ?? null,
       currentMapY ?? null,
     ] as const,

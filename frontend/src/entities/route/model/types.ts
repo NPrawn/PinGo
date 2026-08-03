@@ -1,3 +1,4 @@
+import type { ApiLanguage } from '@/shared/i18n';
 import type { RouteType, RouteUnavailableReason } from '@/shared/types';
 
 /**
@@ -43,6 +44,14 @@ export interface RouteOptionsQuery {
   startNodeId: number;
   /** 도착 실내 노드. 외부 목적지 검색·출구 추천은 이 API 범위 밖이다. */
   targetNodeId: number;
+  /**
+   * 이용 불가 사유 문구(`unavailableMessage`)를 쓸 언어.
+   *
+   * **선택이 아니라 필수로 둔다.** 백엔드에서는 선택 필드이고 없으면 `Language.DEFAULT`(=EN)로
+   * 떨어지는데, 그렇게 조용히 영어가 되는 것이 이 일감에서 고친 버그다. 타입으로 막아 두면
+   * 다음에 호출부가 늘어날 때 컴파일이 먼저 알려 준다. (S15P11A206-339)
+   */
+  language: ApiLanguage;
   /**
    * 사용자의 실제 캐노니컬 좌표. 선택이며 **짝으로 있어야** 쓰인다. (`routeOriginOf`)
    *
