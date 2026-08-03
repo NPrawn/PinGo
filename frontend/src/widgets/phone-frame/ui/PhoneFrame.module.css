@@ -47,6 +47,9 @@
 
 /* Prototype `.phone` — base rules merged with the refine-layer override. */
 .phone {
+  --camera-region-ratio: 52%;
+  --content-region-ratio: 48%;
+
   position: relative;
   z-index: 1;
   display: flex;

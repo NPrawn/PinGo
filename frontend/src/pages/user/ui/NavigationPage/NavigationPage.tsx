@@ -300,6 +300,9 @@ export function NavigationPage() {
     <PhoneFrame
       dark
       layout="flush"
+      bodyClassName={styles.body}
+      phoneClassName={styles.phone}
+      reserveTopSpace={false}
       overlay={
         /**
          * 세션 안내가 시설 시트보다 앞선다. 세션을 열기 전에는 다른 조작을 받을 필요가 없고,

@@ -20,6 +20,10 @@ type PhoneFrameProps = {
    * body, because the shell is the positioned ancestor — same as the prototype.
    */
   bodyClassName?: string;
+  /** Extra class on the phone shell, used by camera-backed screens. */
+  phoneClassName?: string;
+  /** Keep the empty area formerly occupied by the mock device status bar. */
+  reserveTopSpace?: boolean;
   /** Content layered over the whole shell, e.g. modals and toasts. */
   overlay?: ReactNode;
 };
@@ -41,12 +45,16 @@ export function PhoneFrame({
   dark,
   layout = 'default',
   bodyClassName,
+  phoneClassName,
+  reserveTopSpace = true,
   overlay,
 }: PhoneFrameProps) {
   return (
     <div className={styles.stage}>
-      <div className={[styles.phone, dark && styles.dark].filter(Boolean).join(' ')}>
-        <div className={styles.statusBarSpace} aria-hidden />
+      <div
+        className={[styles.phone, dark && styles.dark, phoneClassName].filter(Boolean).join(' ')}
+      >
+        {reserveTopSpace && <div className={styles.statusBarSpace} aria-hidden />}
         <div
           className={[styles.body, layoutClass[layout], bodyClassName].filter(Boolean).join(' ')}
         >
