@@ -121,6 +121,53 @@ public class RouteFinder {
         return reconstruct(startNodeId, targetNodeId, distance, arrivedBy);
     }
 
+    /**
+     * 한 노드에서 도달 가능한 모든 노드까지의 최단거리.
+     *
+     * <p>진입 노드를 고를 때 쓴다. 목적지에서 한 번 돌리면 그것이 곧 각 노드에서 목적지까지의
+     * 거리다 — {@link #buildAdjacency}가 양방향 간선을 양쪽 모두 넣으므로 역방향 그래프를 따로
+     * 만들 필요가 없다. 단방향 간선이 섞이면 방향이 뒤집히지만, 역삼역 간선 205개는 모두
+     * 양방향이라 지금은 차이가 없다.
+     *
+     * <p>{@link #find} 와 달리 목적지에서 멈추지 않고 큐가 빌 때까지 돈다. 도달할 수 없는
+     * 노드는 결과에 없다. 그래서 {@code elevator_only} 로 못 가는 노드는 자연히 후보에서 빠진다.
+     */
+    public Map<Long, BigDecimal> distancesFrom(List<GraphEdge> edges, long originNodeId, RouteType routeType) {
+        Map<Long, List<Segment>> adjacency = buildAdjacency(edges, routeType);
+
+        Map<Long, BigDecimal> distance = new HashMap<>();
+        Set<Long> settled = new HashSet<>();
+        PriorityQueue<QueueEntry> queue = new PriorityQueue<>(Comparator.comparing(QueueEntry::distance));
+
+        distance.put(originNodeId, BigDecimal.ZERO);
+        queue.add(new QueueEntry(originNodeId, BigDecimal.ZERO));
+
+        while (!queue.isEmpty()) {
+            QueueEntry current = queue.poll();
+            long node = current.nodeId();
+            if (!settled.add(node)) {
+                continue;
+            }
+
+            BigDecimal currentDistance = distance.get(node);
+            for (Segment segment : adjacency.getOrDefault(node, List.of())) {
+                long next = segment.toNodeId();
+                if (settled.contains(next)) {
+                    continue;
+                }
+
+                BigDecimal candidate = currentDistance.add(segment.distanceM());
+                BigDecimal known = distance.get(next);
+                if (known == null || candidate.compareTo(known) < 0) {
+                    distance.put(next, candidate);
+                    queue.add(new QueueEntry(next, candidate));
+                }
+            }
+        }
+
+        return distance;
+    }
+
     private Map<Long, List<Segment>> buildAdjacency(List<GraphEdge> edges, RouteType routeType) {
         Map<Long, List<Segment>> adjacency = new HashMap<>();
         for (GraphEdge edge : edges) {

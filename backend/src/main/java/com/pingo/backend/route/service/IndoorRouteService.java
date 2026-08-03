@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -48,11 +49,13 @@ public class IndoorRouteService {
      * 출발 노드에서 도착 노드까지의 경로 옵션(빠른 경로·엘리베이터 이용 경로)을 요약으로 조회한다.
      */
     public List<RouteOptionResponse> getRouteOptions(RouteOptionsRequest request) {
-        List<Long> stopNodeIds = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
-        RouteGraphData data = loadGraph(request.stationId(), stopNodeIds);
+        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        RouteGraphData data = loadGraph(request.stationId(), requested);
 
         List<RouteOptionResponse> options = new ArrayList<>();
         for (RouteType routeType : RouteType.values()) {
+            List<Long> stopNodeIds = withChosenEntry(
+                    requested, data, routeType, request.currentMapX(), request.currentMapY());
             RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType);
             if (path.isReachable()) {
                 options.add(RouteOptionResponse.available(
@@ -71,8 +74,10 @@ public class IndoorRouteService {
         RouteType routeType = RouteType.fromCode(request.routeType())
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNSUPPORTED_ROUTE_TYPE));
 
-        List<Long> stopNodeIds = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
-        RouteGraphData data = loadGraph(request.stationId(), stopNodeIds);
+        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        RouteGraphData data = loadGraph(request.stationId(), requested);
+        List<Long> stopNodeIds = withChosenEntry(
+                requested, data, routeType, request.currentMapX(), request.currentMapY());
         RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType);
 
         if (!path.isReachable()) {
@@ -85,7 +90,7 @@ public class IndoorRouteService {
         List<RoutePathNode> pathNodes = toPathNodes(path.nodeIds(), data.nodes());
         return RouteResponse.available(
                 routeType,
-                request.startNodeId(),
+                stopNodeIds.get(0),
                 request.targetNodeId(),
                 path.totalDistanceM(),
                 path.totalTimeSec(),
@@ -148,6 +153,80 @@ public class IndoorRouteService {
                 .toList();
 
         return new RouteGraphData(nodes, edges);
+    }
+
+    /**
+     * 사용자의 실제 좌표를 알면 진입 노드를 다시 고른다.
+     *
+     * <p>진입 노드는 위치 인식 시점에 정해지는데, 그때는 목적지를 모르므로 거리만 보고 가장
+     * 가까운 노드를 고른다({@code IndoorPositionResolver}). 그래서 목적지 반대쪽 노드가 뽑히면
+     * 사용자를 뒤로 걷게 만든다. 역삼역 B3 에서 3번 출구로 갈 때 실제로 그랬다.
+     *
+     * <pre>
+     *   현재 위치 (-34.90, 23.33)
+     *   가장 가까운 노드 203  6.2m (목적지 반대쪽)  →  6.2 + 140.53 = 146.7m
+     *   계단 6 노드     234  9.9m (목적지 쪽)      →  9.9 + 124.53 = 134.4m
+     * </pre>
+     *
+     * <p>목적지에서 한 번 다익스트라를 돌려 모든 노드까지의 거리를 구하고, 거기에 사용자
+     * 좌표에서 그 노드까지의 직선 거리를 더해 가장 작은 것을 고른다. 가상의 출발점을 그 층 모든
+     * 노드에 직선 간선으로 이어 붙이고 다익스트라를 돌리는 것과 같은 답이며, 그래프를 건드리지
+     * 않는다. 경로 유형마다 도달 가능한 노드가 다르므로 유형별로 따로 고른다.
+     *
+     * <p><b>같은 층만 후보로 둔다.</b> 층 이동은 계단·엘리베이터를 타야 하는데 직선 거리는
+     * 그것을 모른다. 층은 요청에 온 {@code startNodeId} 의 층을 쓴다.
+     *
+     * <p><b>직선 거리라 벽을 모른다.</b> 직선으로 가깝지만 실제로는 벽 너머인 노드가 뽑힐 수
+     * 있다. 지금 {@code IndoorPositionResolver} 도 같은 한계를 갖고 있어 일관은 하다. 제대로
+     * 하려면 노드가 아니라 간선 위의 점에 투영해야 하고, 그것은 그래프 모델을 바꾸는 일이다.
+     *
+     * <p>좌표가 없거나 후보를 찾지 못하면 요청에 온 진입 노드를 그대로 쓴다. 선택 필드라
+     * 클라이언트가 늦게 반영해도 동작이 바뀌지 않아야 한다.
+     */
+    private List<Long> withChosenEntry(
+            List<Long> stopNodeIds,
+            RouteGraphData data,
+            RouteType routeType,
+            BigDecimal currentMapX,
+            BigDecimal currentMapY
+    ) {
+        if (currentMapX == null || currentMapY == null) {
+            return stopNodeIds;
+        }
+
+        Long requestedEntry = stopNodeIds.get(0);
+        RouteNode requestedNode = data.nodes().get(requestedEntry);
+        if (requestedNode == null) {
+            return stopNodeIds;
+        }
+
+        Long firstStop = stopNodeIds.get(1);
+        Map<Long, BigDecimal> toFirstStop = routeFinder.distancesFrom(data.edges(), firstStop, routeType);
+        if (toFirstStop.isEmpty()) {
+            return stopNodeIds;
+        }
+
+        double x = currentMapX.doubleValue();
+        double y = currentMapY.doubleValue();
+        Long chosen = data.nodes().values().stream()
+                .filter(node -> node.getFloorId().equals(requestedNode.getFloorId()))
+                .filter(node -> toFirstStop.containsKey(node.getId()))
+                .min(Comparator.comparingDouble(node ->
+                        straightDistance(x, y, node) + toFirstStop.get(node.getId()).doubleValue()))
+                .map(RouteNode::getId)
+                .orElse(requestedEntry);
+
+        if (chosen.equals(requestedEntry)) {
+            return stopNodeIds;
+        }
+
+        List<Long> replaced = new ArrayList<>(stopNodeIds);
+        replaced.set(0, chosen);
+        return replaced;
+    }
+
+    private double straightDistance(double x, double y, RouteNode node) {
+        return Math.hypot(node.getMapX().doubleValue() - x, node.getMapY().doubleValue() - y);
     }
 
     private List<RouteStep> toSteps(List<Segment> segments) {
