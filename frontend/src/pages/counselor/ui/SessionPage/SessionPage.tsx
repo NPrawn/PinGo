@@ -42,6 +42,7 @@ export function SessionPage() {
   const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
   const consultationId = useConsultStore((state) => state.consultationId);
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
+  const clearConsultation = useConsultStore((state) => state.clearConsultation);
   const [tokenError, setTokenError] = useState<string | null>(null);
   /** 상담자가 직접 종료를 진행 중인지. 종료 감시와 겹쳐 화면이 두 번 넘어가지 않게 한다. */
   const [ending, setEnding] = useState(false);
@@ -236,11 +237,21 @@ export function SessionPage() {
         await submitConsultationTranscript(consultationId, { transcript }).catch(() => undefined);
       }
       complete(selected);
+      clearConsultation();
       void navigate(COUNSELOR_ROUTES.REQUESTS);
     };
 
     void leave();
-  }, [closedByUser, complete, consultationId, ending, navigate, selected, transcript]);
+  }, [
+    closedByUser,
+    complete,
+    consultationId,
+    ending,
+    navigate,
+    selected,
+    transcript,
+    clearConsultation,
+  ]);
 
   /** Marks the request done so the queue shows it as completed, then leaves. */
   const endCall = async () => {
@@ -264,6 +275,7 @@ export function SessionPage() {
       }
     }
     complete(selected);
+    clearConsultation();
     void navigate(COUNSELOR_ROUTES.REQUESTS);
   };
 
