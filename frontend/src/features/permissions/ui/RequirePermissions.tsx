@@ -1,15 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { usePermissionStore } from '@/entities/permission';
 import { USER_ROUTES } from '@/shared/config';
-import {
-  hasKnownPermissionState,
-  queryPermissionStates,
-  revokedKindsOf,
-  watchPermissionStates,
-  UNKNOWN_PERMISSION_STATES,
-  type BrowserPermissionStates,
-} from '../model/permission.query';
+import { hasKnownPermissionState, revokedKindsOf } from '../model/permission.query';
+import { useBrowserPermissionStates } from '../model/permission.watch';
 
 /**
  * 권한이 살아 있는 동안에만 안쪽 화면을 보여 준다.
@@ -23,25 +17,8 @@ import {
  * 치면 권한이 멀쩡한 사용자까지 되돌려 보내게 된다.
  */
 export function RequirePermissions() {
-  const [states, setStates] = useState<BrowserPermissionStates>(UNKNOWN_PERMISSION_STATES);
+  const states = useBrowserPermissionStates();
   const sync = usePermissionStore((state) => state.sync);
-
-  useEffect(() => {
-    let disposed = false;
-    const apply = (next: BrowserPermissionStates) => {
-      if (!disposed) {
-        setStates(next);
-      }
-    };
-
-    void queryPermissionStates().then(apply);
-    const unwatch = watchPermissionStates(apply);
-
-    return () => {
-      disposed = true;
-      unwatch();
-    };
-  }, []);
 
   /**
    * 공유 상태를 실제 권한에 맞춘다.
