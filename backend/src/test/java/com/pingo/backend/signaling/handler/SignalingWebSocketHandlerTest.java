@@ -33,6 +33,7 @@ import static org.mockito.Mockito.when;
 
 class SignalingWebSocketHandlerTest {
 
+    private static final int MAX_TEXT_MESSAGE_BUFFER_SIZE = 1_048_576;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     private SignalingRoomRegistry signalingRoomRegistry;
@@ -47,7 +48,12 @@ class SignalingWebSocketHandlerTest {
         when(signalingSessionValidator.validateJoin(any(), any(), any()))
                 .thenReturn(SignalingSessionValidationResult.VALID);
 
-        handler = new SignalingWebSocketHandler(signalingRoomRegistry, validator, signalingSessionValidator);
+        handler = new SignalingWebSocketHandler(
+                signalingRoomRegistry,
+                validator,
+                signalingSessionValidator,
+                MAX_TEXT_MESSAGE_BUFFER_SIZE
+        );
     }
 
     @Test
@@ -97,6 +103,15 @@ class SignalingWebSocketHandlerTest {
         handler.afterConnectionClosed(webSocketSession, CloseStatus.NORMAL);
 
         verify(signalingRoomRegistry).remove(webSocketSession);
+    }
+
+    @Test
+    void afterConnectionEstablishedAppliesConfiguredTextMessageSizeLimit() {
+        WebSocketSession webSocketSession = webSocketSession("ws-user");
+
+        handler.afterConnectionEstablished(webSocketSession);
+
+        verify(webSocketSession).setTextMessageSizeLimit(MAX_TEXT_MESSAGE_BUFFER_SIZE);
     }
 
     @Test

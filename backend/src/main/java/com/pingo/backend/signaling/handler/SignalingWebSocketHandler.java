@@ -14,8 +14,8 @@ import com.pingo.backend.signaling.validation.SignalingSessionValidationResult;
 import com.pingo.backend.signaling.validation.SignalingSessionValidator;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -28,17 +28,33 @@ import java.util.Set;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     private final SignalingRoomRegistry signalingRoomRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final Validator validator;
     private final SignalingSessionValidator signalingSessionValidator;
+    private final int maxTextMessageBufferSize;
+
+    public SignalingWebSocketHandler(
+            SignalingRoomRegistry signalingRoomRegistry,
+            Validator validator,
+            SignalingSessionValidator signalingSessionValidator,
+            @Value("${signaling.websocket.max-text-message-buffer-size}") int maxTextMessageBufferSize
+    ) {
+        this.signalingRoomRegistry = signalingRoomRegistry;
+        this.validator = validator;
+        this.signalingSessionValidator = signalingSessionValidator;
+        this.maxTextMessageBufferSize = maxTextMessageBufferSize;
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        log.info("WebSocket connected. sessionId={}", session.getId());
+        session.setTextMessageSizeLimit(maxTextMessageBufferSize);
+
+        log.info("WebSocket connected. sessionId={}, textMessageSizeLimit={}",
+                session.getId(),
+                session.getTextMessageSizeLimit());
     }
 
     @Override
