@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys, searchDestinations } from '@/shared/api';
+import { localizedNameOf, useApiLanguage } from '@/shared/i18n';
 import type { IconName } from '@/shared/ui';
 import type { Poi, PoiKind } from '../model/types';
 
@@ -24,7 +25,11 @@ function toIcon(category?: string): IconName {
  */
 export function useDestinationSearch(stationId: number | null, keyword: string, enabled: boolean) {
   const normalizedKeyword = keyword.trim();
-  const language = 'ko';
+  /**
+   * 검색 언어. 예전에는 `'ko'`로 박혀 있어서, 영어를 고른 사용자도 한국어로 검색됐다.
+   * 서버가 이 값을 실제로 받아 쓴다(`searchDestinations`). (S15P11A206-339)
+   */
+  const language = useApiLanguage();
 
   return useQuery({
     queryKey: queryKeys.destinationSearch(stationId ?? 0, normalizedKeyword, language),
@@ -33,7 +38,9 @@ export function useDestinationSearch(stationId: number | null, keyword: string, 
 
       return destinations.map((destination) => ({
         id: destination.destinationId,
-        name: destination.nameKo ?? destination.nameEn ?? '이름 없는 목적지',
+        /* 서버가 두 언어 이름을 함께 주므로 조회 키가 아니라 여기서 고른다(`localizedNameOf`). */
+        name:
+          localizedNameOf(language, destination.nameKo, destination.nameEn) ?? '이름 없는 목적지',
         icon: toIcon(destination.category),
         meta: destination.category ?? destination.destinationType ?? '',
         kind: toKind(destination.destinationType),
