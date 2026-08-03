@@ -20,6 +20,11 @@ import {
 } from './consultMedia';
 import { createConsultEventFallback } from './consultEventFallback';
 import type { ConsultEventFallback } from './consultEventFallback';
+import {
+  flushConsultPhaseReport,
+  markConsultPhase,
+  startRtcStatsMonitor,
+} from '@/shared/lib/perf';
 
 /** 서버가 한 번에 받는 전문 조각 수와 조각당 길이. 넘기면 400으로 거절된다. */
 const MAX_TRANSCRIPT_SEGMENTS = 500;
@@ -272,9 +277,12 @@ export function useConsultSignaling(
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
+    markConsultPhase('ICE 서버 조회 시작');   // LOGGING
+
     void getIceServers(accessToken)
       .then((response) => {
         if (!cancelled) setRtcConfig(toRtcConfiguration(response));
+        markConsultPhase('ICE 서버 조회 완료');   // 추가
       })
       .catch(() => {
         // 설정을 못 받았다고 상담을 포기할 수는 없다. 빌드 값으로라도 시도한다.
@@ -318,6 +326,8 @@ export function useConsultSignaling(
     // 메시지 처리가 서로 끼어들지 않게 한 줄로 세운다. OFFER를 적용하는 동안
     // 다음 메시지가 먼저 처리되면 candidate가 SDP보다 앞질러 버린다.
     let handling: Promise<void> = Promise.resolve();
+    /** 연결 품질(RTT·지터·손실) 모니터를 끄는 함수. connected 가 된 뒤에만 채워진다. */
+    let stopRtcStatsMonitor: (() => void) | undefined;
     /** 상대 SDP가 적용되기 전에 도착한 candidate. 지금 넣으면 addIceCandidate가 실패한다. */
     const pendingRemoteCandidates: RTCIceCandidateInit[] = [];
     /** 상대가 아직 없을 때 보낸 candidate는 서버가 버리므로 offer를 다시 보낼 때 함께 재전송한다. */
@@ -387,6 +397,7 @@ export function useConsultSignaling(
     } else {
       peer.ondatachannel = (event) => attachDataChannel(event.channel);
     }
+    markConsultPhase('signaling 소켓 생성');   // 추가
     const wsBase = env.VITE_WS_BASE_URL.replace(/\/$/, '');
     const socket = new WebSocket(`${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`);
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
@@ -639,7 +650,8 @@ export function useConsultSignaling(
 
       if (peer.signalingState === 'have-local-offer' && peer.localDescription) {
         send('OFFER', peer.localDescription.toJSON());
-        localCandidates.forEach((candidate) => send('ICE_CANDIDATE', candidate));
+        markConsultPhase('OFFER 재전송');   // 추가
+       localCandidates.forEach((candidate) => send('ICE_CANDIDATE', candidate));
         return;
       }
       if (peer.signalingState !== 'stable') return;
@@ -647,6 +659,7 @@ export function useConsultSignaling(
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
       send('OFFER', offer);
+      markConsultPhase('OFFER 최초 전송');   // 추가
     };
 
     /**
@@ -680,6 +693,8 @@ export function useConsultSignaling(
       if (disposed) return;
       setStatus(peer.connectionState);
       if (peer.connectionState === 'connected') {
+        markConsultPhase('연결 완료(connected)');   // 추가
+        flushConsultPhaseReport(); // 추가 — 여기서 표로 출력
         if (offerTimer) window.clearInterval(offerTimer);
         if (recoverTimer) window.clearTimeout(recoverTimer);
         recoverTimer = undefined;
@@ -689,6 +704,9 @@ export function useConsultSignaling(
         // 재접속으로 연결됐다면 이전 시도의 실패 안내는 더 이상 사실이 아니다.
         setError(null);
         setReconnecting(false);
+        // 항목 5·6 — 이제부터 실제 통화 품질(편도 지연·지터·패킷 손실)을 잴 수 있다.
+        // 재연결로 다시 'connected' 가 되어도 하나만 돌리면 되므로 이미 있으면 새로 켜지 않는다.
+        stopRtcStatsMonitor ??= startRtcStatsMonitor(peer);
       }
       if (peer.connectionState === 'failed') {
         publishMediaFailure('VIDEO_FAILED', 'peer_connection_failed');
@@ -788,6 +806,7 @@ export function useConsultSignaling(
 
     socket.onopen = async () => {
       socketOpened = true;
+      markConsultPhase('소켓 open, JOIN 전송');   // 추가
       setStatus('signaling');
       // 접속에 성공했으므로 지난 시도의 실패 안내는 더 이상 사실이 아니다.
       setError(null);
@@ -800,7 +819,9 @@ export function useConsultSignaling(
          * 멈춰 있다. 예전에는 그 뒤에 offer 를 만들었기 때문에, 장치 하나가 상담 전체를
          * 세워 버렸다 — `연결 상태: signaling` 에서 더 나아가지 못하던 것이 이것이다.
          */
+        markConsultPhase('미디어 캡처 시작');   // 추가
         const stream = await withTimeout(captureLocalStream(), MEDIA_CAPTURE_TIMEOUT_MS);
+        markConsultPhase('미디어 캡처 완료');   // 추가
         /**
          * 기다리는 사이에 화면을 벗어났으면 여기서 직접 끈다.
          *
@@ -827,6 +848,7 @@ export function useConsultSignaling(
           .forEach((track) => track.addEventListener('ended', () => setScreenShareBlocked(true)));
       } catch (cause) {
         const timedOut = cause instanceof Error && cause.message === 'media_capture_timeout';
+        markConsultPhase(timedOut ? '미디어 캡처 타임아웃(8초)' : '미디어 캡처 실패');   // 추가
         if (!disposed) {
           setMediaError(
             timedOut
@@ -851,6 +873,7 @@ export function useConsultSignaling(
        * 남아 무엇이 잘못됐는지 알 수 없었다.
        */
       markMediaReady();
+      markConsultPhase('협상 시작');   // 추가
       await startNegotiation();
     };
 
@@ -894,6 +917,7 @@ export function useConsultSignaling(
         await peer.setLocalDescription(answer);
         answeredOfferSdp = offer.sdp ?? '';
         send('ANSWER', answer);
+        markConsultPhase('ANSWER 전송');   // 추가
         return;
       }
       if (message.type === 'ANSWER' && role === 'COUNSELOR') {
@@ -993,6 +1017,7 @@ export function useConsultSignaling(
       if (offerTimer) window.clearInterval(offerTimer);
       if (recoverTimer) window.clearTimeout(recoverTimer);
       if (captionWatchdog) window.clearTimeout(captionWatchdog);
+      stopRtcStatsMonitor?.();
       /**
        * 다시 맺는 중이면 자리를 비운다고 알리지 않는다.
        *
