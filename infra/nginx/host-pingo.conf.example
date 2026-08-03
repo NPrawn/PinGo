@@ -16,6 +16,7 @@ server {
 
     ssl_certificate CHANGE_ME_TLS_CERT_FULLCHAIN_PATH;
     ssl_certificate_key CHANGE_ME_TLS_CERT_PRIVATE_KEY_PATH;
+    client_max_body_size 12m;
 
     location / {
         proxy_pass http://127.0.0.1:CHANGE_ME_CONTAINER_NGINX_PORT;
