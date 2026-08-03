@@ -389,7 +389,7 @@ describe('user routes', () => {
     expect(screen.queryByRole('heading', { name: '목적지 선택' })).toBeNull();
 
     fireEvent.click(await screen.findByRole('button', { name: /역삼역.*실내 안내 가능/ }));
-    useNavigationStore.setState({ waypoints: ['화장실'] });
+    useNavigationStore.setState({ waypoints: [{ nodeId: 130, nameKo: '화장실' }] });
 
     expect(screen.getAllByText('출발지')).not.toHaveLength(0);
     expect(screen.getByText('역삼역')).toBeInTheDocument();
@@ -509,6 +509,43 @@ describe('user routes', () => {
 
     await screen.findByRole('group', { name: '시설 필터' });
     expect(screen.queryByRole('img', { name: '이동 경로' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * 경유지. (S15P11A206-83 / FR-U-010)
+   *
+   * 예전에는 이름만 저장하고 요청에도 조회 키에도 싣지 않았다. 경유지를 추가하면 헤더에 칩이
+   * 붙고 안내 카드가 "경로 업데이트 완료"로 바뀌었지만, 서버는 그 사실을 몰랐고 지도의 선은
+   * 하나도 바뀌지 않았다.
+   */
+  it('경유지를 추가하면 그 노드를 실어 경로를 다시 계산한다', async () => {
+    const routeRequests: { waypointNodeIds?: number[] }[] = [];
+    server.use(
+      http.post('*/api/routes/indoor', async ({ request }) => {
+        routeRequests.push((await request.json()) as { waypointNodeIds?: number[] });
+        return HttpResponse.json({ success: true, data: {}, message: null });
+      }),
+    );
+
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    // 첫 조회에는 경유지가 없다.
+    await waitFor(() => expect(routeRequests).not.toHaveLength(0));
+    expect(routeRequests[0]?.waypointNodeIds).toEqual([]);
+
+    fireEvent.click(await screen.findByRole('button', { name: '승차권 충전' }));
+    fireEvent.click(await screen.findByRole('button', { name: '경유지로 추가' }));
+
+    // 시설의 linkedNodeId 가 그대로 실린다. 이름으로 되찾지 않는다.
+    await waitFor(() => expect(routeRequests.at(-1)?.waypointNodeIds).toEqual([121]));
+    expect(useNavigationStore.getState().waypoints).toEqual([
+      { nodeId: 121, nameKo: '승차권 충전' },
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: '승차권 충전 경유지 삭제' }));
+
+    await waitFor(() => expect(routeRequests.at(-1)?.waypointNodeIds).toEqual([]));
   });
 
   /**
@@ -805,7 +842,10 @@ describe('user routes', () => {
       route: 'elevator_only',
       // 경로 옵션 화면에서 엘리베이터 우선을 고르면 그 유형의 출구가 여기 남는다.
       targetExitLabel: '2번 출입구',
-      waypoints: ['화장실', '승차권 충전'],
+      waypoints: [
+        { nodeId: 130, nameKo: '화장실' },
+        { nodeId: 121, nameKo: '승차권 충전' },
+      ],
     });
     await renderSection('/user/navigation');
 
@@ -854,14 +894,20 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: '엘리베이터' }));
     fireEvent.click(await screen.findByRole('button', { name: '새 목적지로 설정' }));
     expect(useNavigationStore.getState().destination).toBe('엘리베이터');
-    expect(useNavigationStore.getState().waypoints).toEqual(['화장실', '승차권 충전']);
+    expect(useNavigationStore.getState().waypoints.map((waypoint) => waypoint.nameKo)).toEqual([
+      '화장실',
+      '승차권 충전',
+    ]);
     expect(within(routeHeader).getByText('엘리베이터')).toBeInTheDocument();
     expect(within(routeHeader).queryByText('2번 출입구')).toBeNull();
     expect(within(routeHeader).getByText('화장실')).toBeInTheDocument();
     expect(within(routeHeader).getByText('승차권 충전')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '목적지를 2번 출입구로 되돌리기' }));
     expect(useNavigationStore.getState().destination).toBe('GS25 역삼역점');
-    expect(useNavigationStore.getState().waypoints).toEqual(['화장실', '승차권 충전']);
+    expect(useNavigationStore.getState().waypoints.map((waypoint) => waypoint.nameKo)).toEqual([
+      '화장실',
+      '승차권 충전',
+    ]);
     expect(within(routeHeader).getByText('2번 출입구')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '목적지를 2번 출입구로 되돌리기' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '화장실 경유지 삭제' }));
@@ -875,14 +921,12 @@ describe('user routes', () => {
      * 예전에는 경로를 모를 때도 `직진 25m`·`개찰구를 지나 에스컬레이터 방향으로 이동`을
      * 그대로 띄웠다. 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
      */
-    /**
-     * 안내 문구는 경로 응답의 첫 구간에서 온다.
-     *
-     * 예전에는 경로를 모를 때도 `직진 25m`·`개찰구를 지나 에스컬레이터 방향으로 이동`을
-     * 그대로 띄웠다. 사용자는 그것을 실제 안내로 읽고 그 방향으로 걷는다.
-     */
     expect(await screen.findByText('개찰구 방향으로 25m 직진하세요')).toBeInTheDocument();
-    expect(screen.getByText('다음 안내 · 경로 업데이트 완료')).toBeInTheDocument();
+    /*
+      다시 계산이 끝나면 거리 표시로 돌아온다. 예전에는 경유지를 한 번 건드리면 안내가 끝날
+      때까지 `경로 업데이트 완료`에 머물러, 다음 지점까지 몇 미터인지가 영영 사라졌다.
+    */
+    expect(await screen.findByText('다음 안내 · 25m')).toBeInTheDocument();
     expect(screen.getByText('총 224m · 약 5분')).toBeInTheDocument();
   });
 

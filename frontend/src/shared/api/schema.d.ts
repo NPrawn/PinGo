@@ -1076,6 +1076,8 @@ export interface components {
       startNodeId: number;
       /** Format: int64 */
       targetNodeId: number;
+      /** 경유 노드. 최대 10개(백엔드 `@Size(max = 10)`). 생략하면 빈 목록이다. */
+      waypointNodeIds?: number[];
       routeType: string;
       /** @enum {string} */
       language?: 'ko' | 'en' | 'ja' | 'zh';

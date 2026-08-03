@@ -127,14 +127,22 @@ export function NavigationPage() {
   const [facilityView, setFacilityView] = useState<string>('all');
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
-  /** 선택한 경로의 상세 안내. 출발·도착 노드가 모두 있어야 조회할 수 있다. */
+  /**
+   * 선택한 경로의 상세 안내. 출발·도착 노드가 모두 있어야 조회할 수 있다.
+   *
+   * **경유지가 키에 들어간다.** 예전에는 빠져 있어서, 경유지를 추가해도 같은 키의 응답을 그대로
+   * 재사용했다. 요청에도 실리지 않았으니 서버는 애초에 최단 경로만 알고 있었고, 화면만
+   * "경로 업데이트 완료"라고 적혀 있었다.
+   */
+  const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
   const routeQuery = useQuery({
-    queryKey: ['indoor-route', stationId, currentNodeId, targetNodeId, route],
+    queryKey: ['indoor-route', stationId, currentNodeId, targetNodeId, route, waypointNodeIds],
     queryFn: () =>
       createIndoorRoute({
         stationId: stationId!,
         startNodeId: currentNodeId!,
         targetNodeId: targetNodeId!,
+        waypointNodeIds,
         routeType: route,
       }),
     enabled: stationId != null && currentNodeId != null && targetNodeId != null,
@@ -305,11 +313,15 @@ export function NavigationPage() {
     if (routeResult && routeResult.available === false) {
       return {
         eyebrow: '다음 안내 · -',
-        title: '이 경로로는 갈 수 없어요',
+        // 경유지를 넣은 뒤 막혔다면 원인은 그쪽일 가능성이 크다. 무엇을 되돌리면 되는지 알린다.
+        title: waypoints.length > 0 ? '경유지를 지나는 길이 없어요' : '이 경로로는 갈 수 없어요',
         meta:
           routeUnavailableText(
             (routeResult.unavailableReason ?? null) as RouteUnavailableReason | null,
-          ) ?? '다른 경로를 선택해 주세요.',
+          ) ??
+          (waypoints.length > 0
+            ? '경유지를 지우면 원래 경로로 안내해 드려요.'
+            : '다른 경로를 선택해 주세요.'),
       };
     }
     if (!firstStep) {
@@ -323,9 +335,14 @@ export function NavigationPage() {
     const totalDistance = Math.round(routeResult?.totalDistanceM ?? 0);
     const totalMinutes = Math.max(1, Math.ceil((routeResult?.estimatedTimeSec ?? 0) / 60));
     return {
-      eyebrow: recalculated
-        ? '다음 안내 · 경로 업데이트 완료'
-        : `다음 안내 · ${Math.round(firstStep.distanceM ?? 0)}m`,
+      /*
+        다시 계산하는 동안에만 그렇게 적는다. 예전에는 한 번 경유지를 건드리면 안내가 끝날
+        때까지 `경로 업데이트 완료`에 머물러, 다음 지점까지 몇 미터인지가 영영 사라졌다.
+      */
+      eyebrow:
+        recalculated && routeQuery.isFetching
+          ? '다음 안내 · 경로 다시 계산 중'
+          : `다음 안내 · ${Math.round(firstStep.distanceM ?? 0)}m`,
       title: firstStep.instruction ?? '경로를 따라 이동하세요',
       meta: `총 ${totalDistance}m · 약 ${totalMinutes}분`,
     };
@@ -333,11 +350,18 @@ export function NavigationPage() {
 
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
-    ? waypoints.includes(selectedFacility.nameKo)
+    ? waypoints.some((waypoint) => waypoint.nodeId === selectedFacility.linkedNodeId)
     : false;
   const selectedFacilityIsDestination = selectedFacility
     ? selectedFacility.nameKo === activeDestination
     : false;
+  /**
+   * 노드를 모르는 시설은 경유지가 될 수 없다.
+   *
+   * 경로는 노드로만 계산된다. 이름만 들고 추가하면 요청에 실을 것이 없어, 예전처럼 화면에만
+   * 칩이 붙고 경로는 그대로인 상태로 돌아간다.
+   */
+  const selectedFacilityRoutable = selectedFacility?.linkedNodeId != null;
 
   useEffect(() => {
     if (routeResult) setRouteResult(routeResult);
@@ -390,11 +414,16 @@ export function NavigationPage() {
                 disabled={
                   waypoints.length >= 2 ||
                   selectedFacilityIsWaypoint ||
-                  selectedFacilityIsDestination
+                  selectedFacilityIsDestination ||
+                  !selectedFacilityRoutable
                 }
                 onClick={() => {
                   if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  addWaypoint(selectedFacility.nameKo);
+                  if (selectedFacility.linkedNodeId == null) return;
+                  addWaypoint({
+                    nodeId: selectedFacility.linkedNodeId,
+                    nameKo: selectedFacility.nameKo,
+                  });
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -403,9 +432,11 @@ export function NavigationPage() {
                   ? '현재 목적지는 추가 불가'
                   : selectedFacilityIsWaypoint
                     ? '이미 추가된 경유지'
-                    : waypoints.length >= 2
-                      ? '경유지 2개 추가 완료'
-                      : '경유지로 추가'}
+                    : !selectedFacilityRoutable
+                      ? '경유지로 지정할 수 없는 곳'
+                      : waypoints.length >= 2
+                        ? '경유지 2개 추가 완료'
+                        : '경유지로 추가'}
               </Button>
               <Button
                 variant="secondary"
@@ -464,7 +495,7 @@ export function NavigationPage() {
               <strong>{currentLocationLabel ?? station}</strong>
             </div>
             {waypoints.map((waypoint, index) => (
-              <Fragment key={waypoint}>
+              <Fragment key={waypoint.nodeId}>
                 <span className={styles.routeArrow} aria-hidden>
                   <Icon name="arrow-right" size={16} />
                 </span>
@@ -473,11 +504,11 @@ export function NavigationPage() {
                     type="button"
                     className={styles.removeWaypoint}
                     onClick={() => {
-                      removeWaypoint(waypoint);
+                      removeWaypoint(waypoint.nodeId);
                       setRecalculated(true);
                     }}
-                    aria-label={`${waypoint} 경유지 삭제`}
-                    title={`${waypoint} 경유지 삭제`}
+                    aria-label={`${waypoint.nameKo} 경유지 삭제`}
+                    title={`${waypoint.nameKo} 경유지 삭제`}
                   >
                     ×
                   </button>
@@ -485,7 +516,7 @@ export function NavigationPage() {
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
                     <small>경유 {index + 1}</small>
                   </span>
-                  <strong title={waypoint}>{waypoint}</strong>
+                  <strong title={waypoint.nameKo}>{waypoint.nameKo}</strong>
                 </div>
               </Fragment>
             ))}
@@ -727,11 +758,11 @@ export function NavigationPage() {
                   </div>
                 ))}
                 {waypoints.map((waypoint) => (
-                  <div key={waypoint} className={styles.step}>
+                  <div key={waypoint.nodeId} className={styles.step}>
                     <span className={styles.stepIcon}>
                       <Icon name="pin" size={14} />
                     </span>
-                    <b>{waypoint}</b>
+                    <b>{waypoint.nameKo}</b>
                     <span>추가 경유지</span>
                   </div>
                 ))}
