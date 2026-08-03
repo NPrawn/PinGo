@@ -28,6 +28,11 @@ function descendingOptions(values: readonly number[]) {
   return [...new Set(values)].sort((a, b) => b - a);
 }
 
+function consultationTimestamp(value: string) {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 /** 요약이 아직 없는 상담은 몇 번을 물어도 404다. 그 응답만 재시도에서 뺀다. */
 function isMissingSummary(error: unknown) {
   return error instanceof ApiError && error.status === 404;
@@ -204,11 +209,13 @@ export function HistoryPage() {
           const requestedAt = new Date(item.requestedAt);
           return {
             ...item,
+            requestedAtTimestamp: consultationTimestamp(item.requestedAt),
             year: requestedAt.getFullYear(),
             month: requestedAt.getMonth() + 1,
             day: requestedAt.getDate(),
           };
-        }),
+        })
+        .sort((a, b) => b.requestedAtTimestamp - a.requestedAtTimestamp),
     [historyQuery.data],
   );
 
