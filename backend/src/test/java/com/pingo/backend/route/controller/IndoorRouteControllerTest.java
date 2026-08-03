@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -108,5 +109,46 @@ class IndoorRouteControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("경유지가 10개를 초과하면 400과 INVALID_REQUEST를 반환한다")
+    void createRouteRejectsTooManyWaypoints() throws Exception {
+        mockMvc.perform(post("/api/routes/indoor")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "stationId":1,
+                                  "startNodeId":1,
+                                  "targetNodeId":4,
+                                  "waypointNodeIds":[10,11,12,13,14,15,16,17,18,19,20],
+                                  "routeType":"fastest"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+        verifyNoInteractions(indoorRouteService);
+    }
+
+    @Test
+    @DisplayName("경유지 목록에 null이 있으면 400과 INVALID_REQUEST를 반환한다")
+    void getRouteOptionsRejectsNullWaypoint() throws Exception {
+        mockMvc.perform(post("/api/routes/indoor/options")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "stationId":1,
+                                  "startNodeId":1,
+                                  "targetNodeId":4,
+                                  "waypointNodeIds":[2,null,3]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+        verifyNoInteractions(indoorRouteService);
     }
 }
