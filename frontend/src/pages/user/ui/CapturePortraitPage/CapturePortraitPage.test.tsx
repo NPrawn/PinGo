@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { useNavigationStore } from '@/entities/navigation';
+import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
 import { CapturePortraitPage } from './CapturePortraitPage';
 
@@ -152,6 +154,44 @@ describe('CapturePortraitPage', () => {
       useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
       cameraMocks.capture.mockReset();
       vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses the localized position floorCode without loading floor maps first', async () => {
+    vi.useFakeTimers();
+    cameraMocks.capture.mockResolvedValue(new Blob(['frame'], { type: 'image/jpeg' }));
+    apiMocks.localize.mockResolvedValue({
+      resultStatus: 'success',
+      startNodeId: 123,
+      startNodeLabel: 'B2 엘리베이터',
+      position: { floorId: 1, floorCode: 'B2', mapX: -0.975, mapY: 27.717 },
+    });
+    apiMocks.updateUserSession.mockResolvedValue({});
+    useUserSessionStore.setState({ userSessionId: 'session-1' });
+    useStationStore.setState({ floor: '1F' });
+
+    try {
+      render(
+        <MemoryRouter>
+          <CapturePortraitPage />
+        </MemoryRouter>,
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      expect(useStationStore.getState().floor).toBe('B2');
+      expect(useNavigationStore.getState().currentNodeId).toBe(123);
+      expect(apiMocks.localize.mock.calls[0]?.[1]).not.toHaveProperty('mapVersion');
+    } finally {
+      useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
+      useStationStore.setState({ floor: '1F' });
+      useNavigationStore.setState({ currentNodeId: null, currentFloorId: null });
+      cameraMocks.capture.mockReset();
+      apiMocks.localize.mockReset();
+      apiMocks.updateUserSession.mockReset();
       vi.useRealTimers();
     }
   });

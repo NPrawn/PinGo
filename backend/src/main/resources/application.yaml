@@ -53,6 +53,7 @@ ai:
     internal-token: ${AI_LOCALIZATION_INTERNAL_TOKEN:}
     connect-timeout-ms: ${AI_LOCALIZATION_CONNECT_TIMEOUT_MS:300}
     read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
+    # 과도기 설정: vps_map의 활성 버전 정책과 운영 API가 정해지면 DB 조회로 이관한다.
     station-map-sets:
       1: ${AI_LOCALIZATION_STATION_1_MAP_SET_VERSION:YS-MULTI-2026-07-24.1}
 

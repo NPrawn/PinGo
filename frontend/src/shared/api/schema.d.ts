@@ -1004,7 +1004,7 @@ export interface components {
        * @description 층 코드
        * @example B2
        */
-      floorCode?: string;
+      floorCode: string;
       /**
        * @description 캐노니컬 X (m)
        * @example -0.975
