@@ -32,4 +32,8 @@ export const queryKeys = {
     ['pingo', 'routes', 'indoor', 'options', stationId, startNodeId, targetNodeId] as const,
   consultationSummary: (consultationId: string) =>
     ['pingo', 'consultations', consultationId, 'summary'] as const,
+  /** 담당 역의 상담 목록(대기~종료 전 상태 모두 포함). Requests/History 화면이 공유한다. */
+  counselorConsultations: () => ['pingo', 'counselors', 'me', 'consultations'] as const,
+  /** 로그인한 상담자 본인 정보. */
+  counselorMe: () => ['pingo', 'counselors', 'me'] as const,
 } as const;

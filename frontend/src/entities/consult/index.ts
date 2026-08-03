@@ -23,3 +23,4 @@ export {
   destinationTypeLabel,
   waitedLabel,
 } from './model/format';
+export { useCounselorConsultations } from './model/useCounselorConsultation';

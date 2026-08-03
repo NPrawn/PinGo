@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   consultationDateTimeLabel,
@@ -8,13 +8,14 @@ import {
   consultationStatusLabel,
   destinationTypeLabel,
   useConsultStore,
+  useCounselorConsultations,
   waitedLabel,
 } from '@/entities/consult';
 import {
   acceptConsultation,
   ApiError,
   getCounselorConsultation,
-  getCounselorConsultations,
+  queryKeys
 } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { Button, Icon } from '@/shared/ui';
@@ -71,11 +72,7 @@ export function RequestsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
 
-  const queueQuery = useQuery({
-    queryKey: ['counselor-consultations'],
-    queryFn: () => getCounselorConsultations(),
-    refetchInterval: 5000,
-  });
+  const queueQuery = useCounselorConsultations();
   // 서버는 요청 시각 순으로 주므로, 상태별로만 다시 묶는다. sort는 안정 정렬이라
   // 같은 상태 안에서는 오래 기다린 요청이 위에 남는다.
   const requests = useMemo(
@@ -94,9 +91,9 @@ export function RequestsPage() {
       if (!response.consultationId || !response.signalingRoomId) return;
       setConsultation(response.consultationId);
       setSignalingRoom(response.signalingRoomId, response.signalingAccessToken);
-      void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.counselorConsultations() });
       // 수락하면 서버가 상담자를 '상담 중'으로 바꾸므로 헤더 상태도 다시 읽는다.
-      void queryClient.invalidateQueries({ queryKey: ['counselor-me'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.counselorMe() });
       void navigate(COUNSELOR_ROUTES.CONNECTING);
     },
     // 상담 상태가 '상담 가능'이 아니면 서버가 거절하므로 그 이유를 그대로 보여준다.
