@@ -36,6 +36,18 @@ const TIMEOUT_HINT =
   '브라우저 권한 팝업에서 [허용]을 눌러 주세요. 팝업이 보이지 않으면 주소창 오른쪽 카메라 아이콘을 눌러 허용할 수 있어요. 그래도 안 되면 이 사이트를 열어 둔 다른 탭을 모두 닫아 주세요.';
 
 /**
+ * 다른 곳이 카메라·마이크를 쓰고 있어 열지 못한 경우.
+ *
+ * 거부당한 것이 아니다. 권한은 멀쩡한데 장치를 잡을 수 없을 뿐이라, "허용해 주세요"라고 하면
+ * 사용자는 이미 허용된 설정만 들여다보게 된다.
+ */
+const DEVICE_BUSY_HINT =
+  '카메라나 마이크를 다른 앱 또는 다른 탭이 사용하고 있어요. 그곳을 닫은 뒤 다시 시도해 주세요.';
+
+/** 브라우저마다 이름이 다르다. 어느 쪽이든 "거부"가 아니라 "지금은 못 연다"는 뜻이다. */
+const DEVICE_BUSY_ERRORS = ['NotReadableError', 'AbortError', 'TrackStartError'];
+
+/**
  * Only a granted permission fills its circle. Denied, unsupported and error all
  * keep the user out of the service, so they read the same on screen.
  */
@@ -170,9 +182,13 @@ export function PermissionPage() {
 
     const result = await requestPermissions();
 
-    // 응답이 없어 시간이 다 된 경우. 권한 설정을 바꿔도 풀리지 않아 따로 안내한다.
-    if (result.camera.error?.name === 'TimeoutError') {
+    // 권한 설정을 바꿔도 풀리지 않는 실패들. 사용자가 할 일이 설정 화면 밖에 있다.
+    const failure = result.camera.error?.name;
+
+    if (failure === 'TimeoutError') {
       setHint(TIMEOUT_HINT);
+    } else if (failure && DEVICE_BUSY_ERRORS.includes(failure)) {
+      setHint(DEVICE_BUSY_HINT);
     }
 
     // Navigating or opening a dialog only makes sense while the user is still
@@ -216,7 +232,14 @@ export function PermissionPage() {
           사이트 설정에서 허용으로 바꾸면 이 화면이 자동으로 넘어가요.
         </p>
       )}
-      {hint && (
+      {/*
+        차단 안내가 있으면 요청 실패 안내는 접는다.
+
+        둘은 서로 다른 시점의 이야기다 — 차단은 지금 브라우저가 말하는 사실이고, 실패 안내는
+        마지막 요청이 남긴 흔적이다. 나란히 두면 "차단됐다"와 "다른 앱이 쓰는 중이다"가 한
+        화면에 같이 떠서, 사용자는 둘 중 무엇을 해야 하는지 알 수 없다. 지금 사실인 쪽을 남긴다.
+      */}
+      {blockedKeys.length === 0 && hint && (
         <p className={styles.hint} role="alert">
           {hint}
         </p>

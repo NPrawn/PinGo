@@ -156,6 +156,11 @@ export function deniedKindsOf(states: BrowserPermissionStates): PermissionKind[]
   return PERMISSION_KINDS.filter((kind) => states[kind] === 'denied');
 }
 
+/** 이미 허용돼 있어 물어볼 필요가 없는 권한. 확인하겠다고 장치를 다시 잡으면 오히려 실패한다. */
+export function grantedKindsOf(states: BrowserPermissionStates): PermissionKind[] {
+  return PERMISSION_KINDS.filter((kind) => states[kind] === 'granted');
+}
+
 /** 요청하면 팝업이 뜨는 권한. 하나라도 있으면 [모두 허용하기]가 실제로 무언가를 한다. */
 export function promptableKindsOf(states: BrowserPermissionStates): PermissionKind[] {
   return PERMISSION_KINDS.filter((kind) => states[kind] === 'prompt' || states[kind] === 'unknown');

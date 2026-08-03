@@ -187,6 +187,102 @@ describe('PermissionPage', () => {
   });
 
   /**
+   * 이미 허용된 권한을 확인하겠다고 다시 잡으면, 앞 화면이 카메라를 놓지 않은 사이에
+   * `NotReadableError` 로 실패해 방금 허용한 권한이 거부됨으로 그려진다. 새로고침해야
+   * 넘어가던 원인이라, 물어볼 것이 없으면 장치를 건드리지 않는다.
+   */
+  it('이미 허용된 권한은 장치를 다시 잡지 않고 넘어간다', async () => {
+    const { getUserMedia } = stubGrantingBrowser();
+    stubPermissionStates({ geolocation: 'granted', camera: 'granted', microphone: 'granted' });
+
+    renderPage();
+
+    expect(await screen.findByText('역 선택 화면')).toBeInTheDocument();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 요청 실패가 곧 권한 없음은 아니다.
+   *
+   * 다른 화면이 카메라를 아직 쥐고 있으면 권한이 멀쩡해도 요청이 실패한다. 그 결과를 그대로
+   * 두면 허용된 권한이 거부됨으로 굳어, 새로고침하기 전까지 화면이 넘어가지 않는다.
+   */
+  it('요청이 실패해도 브라우저가 허용이라고 하면 거부 표시를 정정한다', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn((success: (position: GeolocationPosition) => void) =>
+          success(fakePosition),
+        ),
+      },
+    });
+
+    const { statuses } = stubPermissionStates({
+      geolocation: 'granted',
+      camera: 'prompt',
+      microphone: 'prompt',
+    });
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        // 브라우저는 허용으로 기록했지만 장치를 잡지 못해 요청은 실패한다.
+        getUserMedia: vi.fn(() => {
+          statuses.get('camera')!.state = 'granted';
+          statuses.get('microphone')!.state = 'granted';
+
+          return Promise.reject(
+            Object.assign(new Error('device in use'), { name: 'NotReadableError' }),
+          );
+        }),
+      },
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '권한 허용하고 시작하기' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '권한 허용하고 시작하기' }));
+
+    expect(await screen.findByText('역 선택 화면')).toBeInTheDocument();
+  });
+
+  /** 거부가 아니라 장치를 쓸 수 없는 것이다. 허용을 조르면 사용자가 할 수 있는 일이 없다. */
+  it('다른 곳이 카메라를 쓰고 있으면 거부가 아니라 사용 중으로 안내한다', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn((success: (position: GeolocationPosition) => void) =>
+          success(fakePosition),
+        ),
+      },
+    });
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error('device in use'), { name: 'NotReadableError' }),
+          ),
+      },
+    });
+    stubPermissionStates({ geolocation: 'prompt', camera: 'prompt', microphone: 'prompt' });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '권한 허용하고 시작하기' }));
+
+    // 화면과 대화상자 양쪽에 같은 이유가 적힌다. 대화상자를 닫아도 이유가 남는다.
+    expect(
+      await screen.findAllByText(/카메라나 마이크를 다른 앱 또는 다른 탭이 사용하고 있어요/),
+    ).toHaveLength(2);
+    // 거부로 읽히면 안 된다. 사용자가 설정에서 할 수 있는 일이 없다.
+    expect(screen.queryByText('브라우저에서 권한을 켜 주세요')).not.toBeInTheDocument();
+  });
+
+  /**
    * 저장값은 지난 요청의 기록이라, 그 뒤 사용자가 설정에서 권한을 껐어도 그대로 남는다.
    * 새로고침해도 옛 상태가 보이던 원인이다.
    */

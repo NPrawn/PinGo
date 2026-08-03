@@ -385,6 +385,42 @@ describe('requestRequiredPermissions', () => {
   });
 
   /**
+   * 물어볼 것이 없는데 장치를 건드리면 오히려 실패한다. 앞 화면의 카메라 미리보기나 XR 세션이
+   * 카메라를 쥐고 있으면 확인용 `getUserMedia` 가 `NotReadableError` 로 떨어져, 방금 허용한
+   * 권한이 거부됨으로 그려진다.
+   */
+  it('grantedKinds에 든 권한은 요청하지 않고 곧바로 granted로 확정한다', async () => {
+    const getCurrentPosition = vi.fn((success: GeoSuccess) => success(fakePosition));
+    setGeolocation({ getCurrentPosition });
+
+    const getUserMedia = vi.fn();
+    setMediaDevices({ getUserMedia });
+
+    const result = await requestRequiredPermissions({
+      grantedKinds: ['location', 'camera', 'microphone'],
+    });
+
+    expect(result.canUseService).toBe(true);
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it('마이크만 이미 허용돼 있으면 카메라만 따로 요청한다', async () => {
+    const getCurrentPosition = vi.fn((success: GeoSuccess) => success(fakePosition));
+    setGeolocation({ getCurrentPosition });
+
+    const { stream } = createFakeStream();
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    setMediaDevices({ getUserMedia });
+
+    const result = await requestRequiredPermissions({ grantedKinds: ['microphone'] });
+
+    expect(result.canUseService).toBe(true);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledWith({ video: true });
+  });
+
+  /**
    * 한쪽만 막혔을 때 `{video, audio}` 로 함께 부르면 막힌 쪽 때문에 요청 전체가 실패해서,
    * 나머지 한쪽이 허용 가능한지조차 알 수 없다.
    */

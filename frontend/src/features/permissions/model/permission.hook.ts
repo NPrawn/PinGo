@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   deniedKindsOf,
+  grantedKindsOf,
   hasKnownPermissionState,
   promptableKindsOf,
   queryPermissionStates,
@@ -296,6 +297,7 @@ export function usePermissionRequest(): UsePermissionRequestValue {
         return settle(
           await requestRequiredPermissions({
             deniedKinds: deniedKindsOf(browserStatesRef.current),
+            grantedKinds: grantedKindsOf(browserStatesRef.current),
             onProgress: (progress) => {
               Object.assign(confirmed, progress);
 
@@ -316,24 +318,34 @@ export function usePermissionRequest(): UsePermissionRequestValue {
       }
     };
 
-    /**
-     * 요청이 끝나도 다시 조회하지 않는다.
-     *
-     * 어느 쪽이 막혔는지 가려내려고 한 번 넣었다가 뺐다. 조회는 방금 받아 낸 허용을
-     * 되돌릴 수 있기 때문이다 — 크롬의 "이번만 허용"은 요청이 성공해도 `prompt`로 남아서,
-     * 그 값을 그대로 반영하면 방금 켜진 권한이 미요청으로 되돌아간다.
-     *
-     * 잃는 것도 없다. 실제로 상태가 바뀌었다면 구독이 알려 주고, 이미 막힌 권한은
-     * `deniedKinds`로 걸러 각각 따로 요청하므로 결과가 뭉뚱그려지지 않는다.
-     */
     const pending = run().finally(() => {
       inFlightRef.current = null;
+    });
+
+    /**
+     * 실패했을 때만 브라우저에 다시 물어본다.
+     *
+     * **성공 뒤에는 묻지 않는다.** 크롬의 "이번만 허용"은 요청이 성공해도 `prompt`로 남아서,
+     * 그 값을 반영하면 방금 받아 낸 허용이 미요청으로 되돌아간다.
+     *
+     * **실패 뒤에는 반드시 묻는다.** 요청 실패가 곧 권한 없음은 아니다. 다른 화면이 카메라를
+     * 아직 쥐고 있으면 권한이 멀쩡해도 `NotReadableError`로 떨어지는데, 그 결과를 그대로 두면
+     * 허용된 권한이 거부됨으로 굳어 화면이 영영 넘어가지 않는다. 조회는 장치를 건드리지 않고
+     * 사실을 알려 준다.
+     *
+     * `finally`가 먼저 걸려 있어 이 시점에는 진행 중 표시가 이미 풀려 있다. 그래야 조회 결과가
+     * 화면 상태까지 갱신한다.
+     */
+    void pending.then((settled) => {
+      if (!settled.canUseService) {
+        void queryPermissionStates().then(applyBrowserStates);
+      }
     });
 
     inFlightRef.current = pending;
 
     return pending;
-  }, []);
+  }, [applyBrowserStates]);
 
   const reset = useCallback(() => {
     clearStoredRequiredPermissionState();
