@@ -11,9 +11,12 @@ import com.pingo.backend.route.dto.request.RouteOptionsRequest;
 import com.pingo.backend.route.dto.response.RouteOptionResponse;
 import com.pingo.backend.route.dto.response.RoutePathNode;
 import com.pingo.backend.route.dto.response.RouteResponse;
+import com.pingo.backend.route.dto.response.RouteStep;
 import com.pingo.backend.route.repository.RouteEdgeRepository;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.station.domain.Station;
+import com.pingo.backend.station.domain.StationFloor;
+import com.pingo.backend.station.repository.StationFloorRepository;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.Language;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,12 +49,20 @@ class IndoorRouteServiceTest {
     @Mock
     private StationRepository stationRepository;
 
+    @Mock
+    private StationFloorRepository stationFloorRepository;
+
     private IndoorRouteService indoorRouteService;
 
     @BeforeEach
     void setUp() {
         indoorRouteService = new IndoorRouteService(
-                routeNodeRepository, routeEdgeRepository, stationRepository, new RouteFinder());
+                routeNodeRepository,
+                routeEdgeRepository,
+                stationRepository,
+                stationFloorRepository,
+                new RouteFinder(),
+                new RouteInstructionWriter());
     }
 
     @Test
@@ -364,6 +376,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L,
                 edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
                 edge(1L, 3L, 4L, 20, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
 
         RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
                 1L, 2L, 4L, null, "fastest", Language.KO,
@@ -372,6 +385,7 @@ class IndoorRouteServiceTest {
         assertThat(response.startNodeId()).isEqualTo(3L);
         assertThat(response.totalDistanceM()).isEqualByComparingTo("20");
     }
+
     @Test
     @DisplayName("현재 좌표가 없으면 요청에 온 진입 노드를 그대로 쓴다")
     void keepsRequestedEntryNodeWithoutPosition() {
@@ -380,6 +394,7 @@ class IndoorRouteServiceTest {
         givenEdges(1L,
                 edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
                 edge(1L, 3L, 4L, 20, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
 
         RouteResponse response = indoorRouteService.createRoute(
                 createRequest(1L, 2L, 4L, null, "fastest", Language.KO));
@@ -387,6 +402,7 @@ class IndoorRouteServiceTest {
         assertThat(response.startNodeId()).isEqualTo(2L);
         assertThat(response.totalDistanceM()).isEqualByComparingTo("30");
     }
+
     /**
      * {@code elevator_only} 는 계단 간선을 쓰지 않으므로 그 간선으로만 목적지에 닿는 노드는
      * 진입점 후보가 될 수 없다. 후보에서 빠지지 않으면 도달 불가한 노드에서 출발하게 된다.
@@ -401,12 +417,51 @@ class IndoorRouteServiceTest {
                 edge(1L, 3L, 4L, 20, RouteMoveType.WALKWAY),
                 // 5는 사용자와 가장 가깝지만 계단으로만 목적지에 닿는다
                 edge(1L, 5L, 4L, 1, RouteMoveType.STAIR));
+        givenFloors(1L, new long[] {1L});
 
         RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
                 1L, 2L, 4L, null, "elevator_only", Language.KO,
                 new BigDecimal("6.0"), new BigDecimal("0.0")));
 
         assertThat(response.startNodeId()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("상세 경로 안내에 회전과 층 이동 방향이 실린다")
+    void writesTurnAndFloorDirection() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 10, 0), nodeAt(3L, 10, 12), nodeAtFloor(4L, 2L, 10, 12));
+        givenEdges(1L,
+                edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 3L, 12, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 5, RouteMoveType.STAIR));
+        givenFloors(1L, new long[] {1L, 2L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 4L, null, "fastest", Language.KO));
+
+        assertThat(response.steps())
+                .extracting(RouteStep::instruction)
+                .containsExactly(
+                        "10m 직진하세요.",
+                        "오른쪽으로 돌아 12m 이동하세요.",
+                        "계단으로 한 층 내려가세요.");
+    }
+
+    @Test
+    @DisplayName("언어가 한국어가 아니면 안내가 영어로 나온다")
+    void writesEnglishInstructions() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 10, 0));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 2L, null, "fastest", Language.EN));
+
+        assertThat(response.steps())
+                .extracting(RouteStep::instruction)
+                .containsExactly("Go straight for 10m.");
     }
 
     /** 현재 좌표 없이 보내는 요청. 좌표는 선택이라 대부분의 시나리오가 이 형태다. */
@@ -462,6 +517,18 @@ class IndoorRouteServiceTest {
         return node;
     }
 
+    /** 층 순서는 위층이 작다. 넘긴 순서대로 1부터 매긴다. */
+    private void givenFloors(long stationId, long[] floorIds) {
+        List<StationFloor> floors = new ArrayList<>();
+        long[] ids = floorIds;
+        for (int i = 0; i < ids.length; i++) {
+            StationFloor floor = StationFloor.create(
+                    station(stationId), "B" + (i + 1), "지하" + (i + 1) + "층", i + 1, null);
+            ReflectionTestUtils.setField(floor, "id", ids[i]);
+            floors.add(floor);
+        }
+        when(stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(stationId)).thenReturn(floors);
+    }
 
     private RouteEdge edge(long stationId, long fromNodeId, long toNodeId, long distanceM, RouteMoveType moveType) {
         return edge(stationId, fromNodeId, toNodeId, distanceM, moveType, true);

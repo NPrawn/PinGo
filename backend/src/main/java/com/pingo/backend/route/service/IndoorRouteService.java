@@ -17,13 +17,15 @@ import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.route.service.RouteFinder.GraphEdge;
 import com.pingo.backend.route.service.RouteFinder.RoutePath;
 import com.pingo.backend.route.service.RouteFinder.Segment;
+import com.pingo.backend.station.domain.StationFloor;
+import com.pingo.backend.station.repository.StationFloorRepository;
 import com.pingo.backend.station.repository.StationRepository;
+import com.pingo.backend.usersession.domain.Language;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -43,7 +45,9 @@ public class IndoorRouteService {
     private final RouteNodeRepository routeNodeRepository;
     private final RouteEdgeRepository routeEdgeRepository;
     private final StationRepository stationRepository;
+    private final StationFloorRepository stationFloorRepository;
     private final RouteFinder routeFinder;
+    private final RouteInstructionWriter instructionWriter;
 
     /**
      * 출발 노드에서 도착 노드까지의 경로 옵션(빠른 경로·엘리베이터 이용 경로)을 요약으로 조회한다.
@@ -86,7 +90,7 @@ public class IndoorRouteService {
                     reasonFor(routeType), request.language());
         }
 
-        List<RouteStep> steps = toSteps(path.segments());
+        List<RouteStep> steps = toSteps(path.segments(), data, request.language());
         List<RoutePathNode> pathNodes = toPathNodes(path.nodeIds(), data.nodes());
         return RouteResponse.available(
                 routeType,
@@ -152,7 +156,11 @@ public class IndoorRouteService {
                 ))
                 .toList();
 
-        return new RouteGraphData(nodes, edges);
+        Map<Long, Integer> floorOrders = stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(stationId)
+                .stream()
+                .collect(Collectors.toMap(StationFloor::getId, StationFloor::getFloorOrder));
+
+        return new RouteGraphData(nodes, edges, floorOrders);
     }
 
     /**
@@ -169,9 +177,8 @@ public class IndoorRouteService {
      * </pre>
      *
      * <p>목적지에서 한 번 다익스트라를 돌려 모든 노드까지의 거리를 구하고, 거기에 사용자
-     * 좌표에서 그 노드까지의 직선 거리를 더해 가장 작은 것을 고른다. 가상의 출발점을 그 층 모든
-     * 노드에 직선 간선으로 이어 붙이고 다익스트라를 돌리는 것과 같은 답이며, 그래프를 건드리지
-     * 않는다. 경로 유형마다 도달 가능한 노드가 다르므로 유형별로 따로 고른다.
+     * 좌표에서 그 노드까지의 직선 거리를 더해 가장 작은 것을 고른다. 경로 유형마다 도달 가능한
+     * 노드가 다르므로 유형별로 따로 고른다.
      *
      * <p><b>같은 층만 후보로 둔다.</b> 층 이동은 계단·엘리베이터를 타야 하는데 직선 거리는
      * 그것을 모른다. 층은 요청에 온 {@code startNodeId} 의 층을 쓴다.
@@ -229,11 +236,14 @@ public class IndoorRouteService {
         return Math.hypot(node.getMapX().doubleValue() - x, node.getMapY().doubleValue() - y);
     }
 
-    private List<RouteStep> toSteps(List<Segment> segments) {
+    private List<RouteStep> toSteps(List<Segment> segments, RouteGraphData data, Language language) {
         List<RouteStep> steps = new ArrayList<>();
+        Segment previous = null;
         int order = 1;
         for (Segment segment : segments) {
             RouteMoveType moveType = segment.moveType();
+            RouteInstructionWriter.Guidance guidance =
+                    instructionWriter.write(previous, segment, data.nodes(), data.floorOrders(), language);
             steps.add(new RouteStep(
                     order++,
                     segment.fromNodeId(),
@@ -241,8 +251,11 @@ public class IndoorRouteService {
                     segment.distanceM(),
                     segment.estimatedTimeSec(),
                     moveType == null ? null : moveType.getCode(),
-                    buildInstruction(moveType, segment.distanceM())
+                    guidance.instruction(),
+                    guidance.turn(),
+                    guidance.floorDelta()
             ));
+            previous = segment;
         }
         return steps;
     }
@@ -252,23 +265,6 @@ public class IndoorRouteService {
                 .map(nodes::get)
                 .map(RoutePathNode::from)
                 .toList();
-    }
-
-    private String buildInstruction(RouteMoveType moveType, BigDecimal distanceM) {
-        if (moveType == null) {
-            return String.format("%s 이동하세요.", formatDistance(distanceM));
-        }
-        return switch (moveType) {
-            case WALKWAY -> String.format("%s 직진하세요.", formatDistance(distanceM));
-            case STAIR -> "계단을 이용해 이동하세요.";
-            case ESCALATOR -> "에스컬레이터를 이용해 이동하세요.";
-            case ELEVATOR -> "엘리베이터를 이용해 이동하세요.";
-            case GATE -> "개찰구를 통과하세요.";
-        };
-    }
-
-    private String formatDistance(BigDecimal distanceM) {
-        return distanceM.setScale(0, RoundingMode.HALF_UP).toPlainString() + "m";
     }
 
     /**
@@ -301,6 +297,11 @@ public class IndoorRouteService {
         }
     }
 
-    private record RouteGraphData(Map<Long, RouteNode> nodes, List<GraphEdge> edges) {
+    private record RouteGraphData(
+            Map<Long, RouteNode> nodes,
+            List<GraphEdge> edges,
+            /** 층 ID 에서 {@code floor_order} 로. 층 이동 안내가 몇 층인지 셀 때 쓴다. */
+            Map<Long, Integer> floorOrders
+    ) {
     }
 }
