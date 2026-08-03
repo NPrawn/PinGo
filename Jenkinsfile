@@ -105,8 +105,10 @@ pipeline {
 
                         sudo install -m 644 backend/build/libs/backend-0.0.1-SNAPSHOT.jar "${BACKEND_RELEASE_JAR}"
                         sudo install -d "/etc/systemd/system/${BACKEND_SERVICE_NAME}.service.d"
-                        printf '[Service]\nEnvironment="AI_LOCALIZATION_BASE_URL=%s"\n' "${AI_LOCALIZATION_BASE_URL}" | \
-                          sudo tee "/etc/systemd/system/${BACKEND_SERVICE_NAME}.service.d/10-ai-localization.conf" >/dev/null
+                        AI_LOCALIZATION_DROP_IN="$(mktemp)"
+                        printf '[Service]\nEnvironment="AI_LOCALIZATION_BASE_URL=%s"\n' "${AI_LOCALIZATION_BASE_URL}" > "${AI_LOCALIZATION_DROP_IN}"
+                        sudo install -m 644 "${AI_LOCALIZATION_DROP_IN}" "/etc/systemd/system/${BACKEND_SERVICE_NAME}.service.d/10-ai-localization.conf"
+                        rm -f "${AI_LOCALIZATION_DROP_IN}"
                         sudo systemctl daemon-reload
                         sudo systemctl restart "${BACKEND_SERVICE_NAME}"
 
