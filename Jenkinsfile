@@ -13,6 +13,7 @@ pipeline {
         BACKEND_BACKUP_JAR = '/opt/pingo/backend/releases/pingo-backend.previous.jar'
         BACKEND_SERVICE_NAME = 'pingo-backend'
         BACKEND_HEALTH_URL = 'http://127.0.0.1:8080/api/health'
+        AI_LOCALIZATION_BASE_URL = 'http://192.0.2.10:8000'
         FRONTEND_RELEASE_DIR = '/opt/pingo/frontend/releases/current'
         FRONTEND_BACKUP_DIR = '/opt/pingo/frontend/releases/previous'
         FRONTEND_HEALTH_URL = 'https://jenkins.example.invalid/'
@@ -103,6 +104,10 @@ pipeline {
                         fi
 
                         sudo install -m 644 backend/build/libs/backend-0.0.1-SNAPSHOT.jar "${BACKEND_RELEASE_JAR}"
+                        sudo install -d "/etc/systemd/system/${BACKEND_SERVICE_NAME}.service.d"
+                        printf '[Service]\nEnvironment="AI_LOCALIZATION_BASE_URL=%s"\n' "${AI_LOCALIZATION_BASE_URL}" | \
+                          sudo tee "/etc/systemd/system/${BACKEND_SERVICE_NAME}.service.d/10-ai-localization.conf" >/dev/null
+                        sudo systemctl daemon-reload
                         sudo systemctl restart "${BACKEND_SERVICE_NAME}"
 
                         for i in $(seq 1 30); do
