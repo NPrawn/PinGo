@@ -4,7 +4,6 @@ import { useUserSessionStore } from '@/entities/user-session';
 import { CapturePortraitPage } from './CapturePortraitPage';
 
 const apiMocks = vi.hoisted(() => ({
-  getStationMaps: vi.fn(),
   localize: vi.fn(),
   updateUserSession: vi.fn(),
 }));
@@ -35,6 +34,7 @@ vi.mock('@/widgets/camera-preview', () => ({
   CameraFeed: () => null,
   CameraFallbackNotice: () => null,
   stopCamera: vi.fn(),
+  vpsFrameDimensions: (width: number, height: number) => ({ width, height }),
 }));
 
 describe('CapturePortraitPage', () => {
@@ -113,7 +113,6 @@ describe('CapturePortraitPage', () => {
     vi.useFakeTimers();
 
     cameraMocks.capture.mockResolvedValue(new Blob(['frame'], { type: 'image/jpeg' }));
-    apiMocks.getStationMaps.mockResolvedValue([{ version: 'map-v1' }]);
     apiMocks.localize.mockResolvedValue({ resultStatus: 'no_match', position: null });
     useUserSessionStore.setState({ userSessionId: 'session-1' });
 
@@ -134,6 +133,7 @@ describe('CapturePortraitPage', () => {
 
       // 카메라가 준비되면 곧바로 첫 장을 보낸다. 첫 1초를 흘려보내지 않는다.
       expect(apiMocks.localize.mock.calls.length).toBeGreaterThanOrEqual(1);
+      expect(apiMocks.localize.mock.calls[0]?.[1]).not.toHaveProperty('mapVersion');
       expect(screen.queryByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeNull();
       const earlyCalls = apiMocks.localize.mock.calls.length;
 
