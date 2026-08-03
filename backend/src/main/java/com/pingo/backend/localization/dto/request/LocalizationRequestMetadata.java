@@ -15,10 +15,6 @@ public record LocalizationRequestMetadata(
         @NotNull
         Long stationId,
 
-        @Schema(description = "AI 맵 버전", example = "YS-2026-07-23.1")
-        @NotBlank
-        String mapVersion,
-
         @Schema(description = "단말 방위각", example = "126.8")
         Double heading,
 

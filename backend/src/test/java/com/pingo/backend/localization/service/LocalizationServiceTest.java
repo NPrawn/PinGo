@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.anyDouble;
 
 import com.pingo.backend.localization.client.AiLocalizationClient;
 import com.pingo.backend.localization.client.AiLocalizationClientErrorType;
 import com.pingo.backend.localization.client.AiLocalizationClientException;
+import com.pingo.backend.localization.client.AiLocalizationProperties;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
 import com.pingo.backend.localization.client.dto.AiLocalizationStatus;
 import com.pingo.backend.localization.client.dto.AiTimingResponse;
@@ -46,7 +48,8 @@ class LocalizationServiceTest {
                 new LocalizationFallbackPolicy(),
                 new AiLocalizationRequestMapper(),
                 new ColmapToCanonicalMapper(new VpsAnchoringProperties(Map.of())),
-                positionResolver
+                positionResolver,
+                properties()
         );
     }
 
@@ -281,7 +284,8 @@ class LocalizationServiceTest {
                 new LocalizationFallbackPolicy(),
                 new AiLocalizationRequestMapper(),
                 new ColmapToCanonicalMapper(new VpsAnchoringProperties(Map.of("B2", b2))),
-                positionResolver);
+                positionResolver,
+                properties());
     }
 
     private AiLocalizationResponse localizedOnB2() {
@@ -333,10 +337,36 @@ class LocalizationServiceTest {
         return new LocalizationRequestMetadata(
                 "usr_sess_01JABC",
                 1L,
-                "YS-2026-07-23.1",
                 null,
                 null,
                 null
+        );
+    }
+
+    @Test
+    void localizeReturnsMapNotReadyWithoutCallingAiForUnconfiguredStation() {
+        LocalizationRequestMetadata metadata = new LocalizationRequestMetadata(
+                "usr_sess_01JABC",
+                999L,
+                null,
+                null,
+                null
+        );
+
+        var response = localizationService.localize("loc-1", image(), metadata);
+
+        assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.MAP_NOT_READY);
+        assertThat(response.mapVersion()).isNull();
+        verifyNoInteractions(aiLocalizationClient);
+    }
+
+    private AiLocalizationProperties properties() {
+        return new AiLocalizationProperties(
+                "http://ai.test",
+                "secret-token",
+                300,
+                6000,
+                Map.of(1L, "YS-2026-07-23.1")
         );
     }
 }

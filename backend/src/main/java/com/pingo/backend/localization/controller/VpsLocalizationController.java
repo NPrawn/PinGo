@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,7 +30,7 @@ public class VpsLocalizationController {
 
     private final LocalizationService localizationService;
 
-    @PostMapping("/localize")
+    @PostMapping(value = "/localize", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @SecurityRequirements
     @Operation(
             summary = "카메라 이미지 기반 위치추정",

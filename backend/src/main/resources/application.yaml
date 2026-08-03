@@ -53,6 +53,8 @@ ai:
     internal-token: ${AI_LOCALIZATION_INTERNAL_TOKEN:}
     connect-timeout-ms: ${AI_LOCALIZATION_CONNECT_TIMEOUT_MS:300}
     read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
+    station-map-sets:
+      1: ${AI_LOCALIZATION_STATION_1_MAP_SET_VERSION:YS-MULTI-2026-07-24.1}
 
 kakao:
   local:
