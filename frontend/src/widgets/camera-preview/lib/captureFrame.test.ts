@@ -44,9 +44,19 @@ describe('captureFrame', () => {
     await expect(captureFrame(fakeVideo(1280, 720))).resolves.toBe(blob);
 
     expect(created).toHaveLength(1);
-    expect(created[0].width).toBe(1280);
-    expect(created[0].height).toBe(720);
-    expect(context.drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1280, 720);
+    expect(created[0].width).toBe(768);
+    expect(created[0].height).toBe(432);
+    expect(context.drawImage).toHaveBeenCalledWith(
+      expect.anything(),
+      0,
+      0,
+      1280,
+      720,
+      0,
+      0,
+      768,
+      432,
+    );
     // 사진이라 JPEG이다. PNG로 뜨면 같은 화면이 몇 배 커진다.
     expect(toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.9);
   });

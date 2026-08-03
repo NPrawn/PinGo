@@ -910,11 +910,6 @@ export interface components {
        */
       stationId: number;
       /**
-       * @description AI 맵 버전
-       * @example YS-2026-07-23.1
-       */
-      mapVersion: string;
-      /**
        * Format: double
        * @description 단말 방위각
        * @example 126.8
@@ -1009,7 +1004,7 @@ export interface components {
        * @description 층 코드
        * @example B2
        */
-      floorCode?: string;
+      floorCode: string;
       /**
        * @description 캐노니컬 X (m)
        * @example -0.975
@@ -2374,7 +2369,7 @@ export interface operations {
     };
     requestBody?: {
       content: {
-        'application/json': {
+        'multipart/form-data': {
           /** Format: binary */
           image: string;
           metadata: components['schemas']['LocalizationRequestMetadata'];

@@ -4,6 +4,15 @@
  */
 const MIME = 'image/jpeg';
 const QUALITY = 0.9;
+export const VPS_FRAME_SIZE = 768;
+
+export function vpsFrameDimensions(width: number, height: number) {
+  const scale = Math.min(1, VPS_FRAME_SIZE / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
 
 /**
  * 미리보기의 현재 프레임을 이미지로 뜬다.
@@ -19,13 +28,24 @@ export async function captureFrame(video: HTMLVideoElement | null): Promise<Blob
   if (!video || video.videoWidth === 0 || video.videoHeight === 0) return null;
 
   const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  const output = vpsFrameDimensions(video.videoWidth, video.videoHeight);
+  canvas.width = output.width;
+  canvas.height = output.height;
 
   const context = canvas.getContext('2d');
   if (!context) return null;
 
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  context.drawImage(
+    video,
+    0,
+    0,
+    video.videoWidth,
+    video.videoHeight,
+    0,
+    0,
+    output.width,
+    output.height,
+  );
 
   return new Promise<Blob | null>((resolve) => {
     canvas.toBlob((blob) => resolve(blob), MIME, QUALITY);

@@ -71,11 +71,12 @@ python tools/build_retrieval_index.py
 
 ```bash
 python tools/build_serving_map.py \
-  --map-version YS-2026-07-23.1 \
+  --map-version YS-B2-2026-07-23.1 \
+  --floor B2 \
   --global-descriptors pipeline_output/global_descriptors.h5
 ```
 
-생성된 `runtime_maps/YS-2026-07-23.1/` 디렉터리는 하나의 불변 단위로
+생성된 `runtime_maps/YS-B2-2026-07-23.1/` 디렉터리는 하나의 불변 단위로
 업로드한다. Manifest의 파일 크기와 SHA-256 checksum이 모두 일치하고 sparse
 model, reference feature, global descriptor의 이미지 이름이 일치해야 로딩된다.
 `build_serving_map.py`는 원본 전체 DB에서 기준 feature 테이블만 내보내므로
