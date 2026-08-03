@@ -104,6 +104,7 @@ def build(
     pipeline_output: Path,
     output_root: Path,
     map_version: str,
+    floor: str,
     global_descriptors: Path,
 ) -> Path:
     report = inspect(pipeline_output)
@@ -157,6 +158,7 @@ def build(
         manifest = {
             "schemaVersion": MANIFEST_SCHEMA_VERSION,
             "mapVersion": map_version,
+            "floor": floor,
             "createdAt": datetime.now(timezone.utc).isoformat(),
             "sourceMap": report["source"]["mapDirectory"],
             "versions": {
@@ -204,6 +206,7 @@ def main() -> int:
     parser.add_argument("--pipeline-output", type=Path, default=AI_ROOT / "pipeline_output")
     parser.add_argument("--output-root", type=Path, default=AI_ROOT / "runtime_maps")
     parser.add_argument("--map-version", required=True)
+    parser.add_argument("--floor", required=True)
     parser.add_argument("--global-descriptors", type=Path, required=True)
     args = parser.parse_args()
 
@@ -211,6 +214,7 @@ def main() -> int:
         args.pipeline_output.resolve(),
         args.output_root.resolve(),
         args.map_version,
+        args.floor,
         args.global_descriptors.resolve(),
     )
     print(destination)
