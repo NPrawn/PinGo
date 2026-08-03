@@ -38,7 +38,14 @@ export const useConsultStore = create<ConsultStore>()(
       signalingAccessToken: null,
       selectIssue: (issue) => set({ issue }),
       rate: (satisfaction) => set({ satisfaction }),
-      setConsultation: (consultationId) => set({ consultationId }),
+      /**
+       * satisfaction도 함께 비운다.
+       *
+       * 이전 상담에서 매긴 별점이 여기 그대로 남아 있으면, 이번 상담이 끝났을 때 아직
+       * 아무것도 누르지 않았는데도 종료 화면에 그 별점이 채워진 채로 보인다. 이 값을 지울
+       * 유일한 다른 통로인 `reset()`은 실제 코드 어디에서도 불리지 않는다.
+       */
+      setConsultation: (consultationId) => set({ consultationId, satisfaction: 0 }),
       setSignalingRoom: (signalingRoomId, signalingAccessToken = null) =>
         set({ signalingRoomId, signalingAccessToken }),
       clearConsultation: () =>
