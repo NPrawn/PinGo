@@ -107,6 +107,92 @@ const locationOptions: PositionOptions = {
 };
 
 /**
+ * 카메라·마이크 요청을 기다리는 한도.
+ *
+ * `getUserMedia`는 사용자가 팝업에 답할 때까지 기다리는 것이 정상이라 원래는 시간 제한이
+ * 없다. 그런데 앞선 요청이 끝나지 않았거나 다른 탭이 장치를 물고 있으면 팝업도 뜨지 않고
+ * 영영 응답하지 않는다. 그 경우 화면은 "권한 요청 중"에서 빠져나올 방법이 없다.
+ *
+ * 사용자가 팝업을 읽고 누르는 시간은 충분히 주되, 답이 없는 상태로 갇히지는 않게 한다.
+ */
+const MEDIA_REQUEST_TIMEOUT_MS = 45000;
+
+class MediaRequestTimeoutError extends Error {
+  constructor() {
+    super('Camera and microphone request timed out.');
+    this.name = 'TimeoutError';
+  }
+}
+
+/**
+ * 아직 답을 받지 못한 `getUserMedia` 요청. 요청 조건별로 하나만 둔다.
+ *
+ * **`getUserMedia`는 취소할 수 없다.** 아래 `withTimeout`이 시간이 다 됐다고 거절해도
+ * 브라우저 쪽 요청은 그대로 살아 사용자의 답을 기다린다. 그걸 모르고 새로 부르면 새 요청이
+ * 앞의 것 뒤에 줄을 서서 팝업조차 뜨지 않고, 다시 시도할수록 답 없는 요청만 쌓인다.
+ * 화면은 "권한 요청 중"과 "응답이 없어요"를 오가며 영영 넘어가지 못한다.
+ *
+ * 그래서 새로 부르는 대신 기다리는 중인 요청에 붙는다. 사용자가 뒤늦게 팝업에 답하면
+ * 그 답이 재시도에도 그대로 전달된다.
+ */
+const pendingMediaRequests = new Map<string, Promise<MediaStream>>();
+
+/** 기다리는 중인 요청이 있으면 그것을 쓰고, 없을 때만 새로 연다. */
+function openMediaStream(constraints: MediaStreamConstraints): Promise<MediaStream> {
+  const key = JSON.stringify(constraints);
+  const waiting = pendingMediaRequests.get(key);
+
+  if (waiting) {
+    return waiting;
+  }
+
+  const request = navigator.mediaDevices.getUserMedia(constraints);
+
+  pendingMediaRequests.set(key, request);
+
+  // 성공이든 실패든 자리를 비운다. 끝난 요청까지 재사용하면 다음 시도가 늘 같은 답을 받는다.
+  const release = () => {
+    pendingMediaRequests.delete(key);
+  };
+
+  request.then(release, release);
+
+  return request;
+}
+
+/**
+ * 시간이 다 된 뒤에 열린 스트림을 정리한다.
+ *
+ * 사용자가 한참 뒤에 팝업에 답하면 아무도 기다리지 않는 카메라가 켜진 채 남는다.
+ */
+function discardLateStream(request: Promise<MediaStream>): void {
+  request.then(stopMediaStream, () => {
+    // 늦게 도착한 실패는 이미 시간 초과로 처리했으므로 버린다.
+  });
+}
+
+/** 응답이 없으면 거절이 아니라 오류로 끝낸다. 사용자가 거부한 것과는 다른 상황이다. */
+function withTimeout<T>(request: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new MediaRequestTimeoutError()),
+      MEDIA_REQUEST_TIMEOUT_MS,
+    );
+
+    request.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+}
+
+/**
  * 일반 Error 객체를 앱에서 쓰기 쉬운 PermissionError 형태로 변환한다.
  */
 function toPermissionError(error: unknown): PermissionError {
@@ -296,16 +382,15 @@ export async function requestMediaPermissions(): Promise<MediaPermissionsResult>
     };
   }
 
+  /**
+   * 카메라와 마이크를 동시에 요청한다.
+   *
+   * 성공하면 카메라와 마이크 모두 granted로 본다.
+   */
+  const request = openMediaStream({ video: true, audio: true });
+
   try {
-    /**
-     * 카메라와 마이크를 동시에 요청한다.
-     *
-     * 성공하면 카메라와 마이크 모두 granted로 본다.
-     */
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
+    const stream = await withTimeout(request);
 
     return {
       camera: {
@@ -324,6 +409,10 @@ export async function requestMediaPermissions(): Promise<MediaPermissionsResult>
      */
     const permissionError = toPermissionError(error);
     const status: PermissionStatus = isPermissionDenied(permissionError) ? 'denied' : 'error';
+
+    if (permissionError.name === 'TimeoutError') {
+      discardLateStream(request);
+    }
 
     return {
       camera: {
@@ -383,8 +472,10 @@ async function requestSingleMediaPermission(
     };
   }
 
+  const request = openMediaStream(constraints);
+
   try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const stream = await withTimeout(request);
 
     return {
       kind,
@@ -393,6 +484,10 @@ async function requestSingleMediaPermission(
     };
   } catch (error) {
     const permissionError = toPermissionError(error);
+
+    if (permissionError.name === 'TimeoutError') {
+      discardLateStream(request);
+    }
 
     return {
       kind,
