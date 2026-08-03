@@ -29,6 +29,7 @@ function renderOverlay(props: {
   pathNodes?: readonly RoutePathNode[];
   waypointNodeIds?: readonly number[];
   activeLeg?: number | null;
+  connectCurrentToRoute?: boolean;
   project?: (mapX: number, mapY: number) => PixelPoint | null;
 }) {
   return render(
@@ -48,8 +49,27 @@ function renderOverlay(props: {
       pathNodes={props.pathNodes}
       waypointNodeIds={props.waypointNodeIds}
       activeLeg={props.activeLeg}
+      connectCurrentToRoute={props.connectCurrentToRoute}
     />,
   );
+}
+
+/**
+ * 내 점에서 경로까지 이어 준 선. 테두리(`aria-hidden`)는 세지 않는다.
+ *
+ * `[x1, y1, x2, y2]`로 돌려준다. 그리지 않았으면 null이다.
+ */
+function connectorLine(): [number, number, number, number] | null {
+  const group = screen.queryByRole('img', { name: '이동 경로' });
+  const line = group?.querySelector('line:not([aria-hidden])');
+  if (!line) return null;
+
+  return (['x1', 'y1', 'x2', 'y2'] as const).map((name) => Number(line.getAttribute(name))) as [
+    number,
+    number,
+    number,
+    number,
+  ];
 }
 
 /** 경로 구간별 points 문자열. 구간이 나뉘면 원소가 여러 개다. */
@@ -235,6 +255,134 @@ describe('IndoorMapOverlay', () => {
     });
 
     expect(routeSegments()).toEqual(['10,20 30,40 50,60']);
+  });
+
+  /**
+   * 내 점과 경로 사이의 빈 자리. (S15P11A206-83 / 리뷰 대응)
+   *
+   * 경로선은 그래프 노드에서 시작하고 내 점은 실제 좌표에 있어 둘이 몇 미터 떨어져 보인다.
+   * 서버가 목적지 기준으로 진입 노드를 다시 골라도(S15P11A206-337) 이 간격은 남는다.
+   */
+  describe('현재 위치와 경로 잇기', () => {
+    /** 오른쪽으로 곧게 가는 경로. y=0 위에 있다. */
+    const straight: RoutePathNode[] = [
+      { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+      { nodeId: 2, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+    ];
+
+    it('켜지 않으면 잇지 않는다', () => {
+      renderOverlay({
+        pathNodes: straight,
+        currentLocation: { floorId: FLOOR_B2, mapX: 0, mapY: 300 },
+      });
+
+      expect(connectorLine()).toBeNull();
+    });
+
+    /**
+     * **경로의 첫 점이 아니라 가장 가까운 점에 잇는다.**
+     *
+     * 첫 점에 이으면 조금이라도 걸어간 뒤에는 뒤로 향하는 선이 그려져, 이미 지나온 곳으로
+     * 돌아가라는 것처럼 보인다.
+     */
+    it('경로에서 가장 가까운 점에 잇는다', () => {
+      renderOverlay({
+        pathNodes: straight,
+        // 경로를 절반쯤 걸어와 통로에서 300 벗어난 자리.
+        currentLocation: { floorId: FLOOR_B2, mapX: 500, mapY: 300 },
+        connectCurrentToRoute: true,
+      });
+
+      // 첫 점 (0,0)이 아니라 발밑의 (500,0)으로 이어야 한다.
+      expect(connectorLine()).toEqual([500, 300, 500, 0]);
+    });
+
+    /** 선분 밖으로는 나가지 않는다. 경로가 끝난 뒤에는 마지막 점에 붙는다. */
+    it('경로 끝을 지나면 마지막 점에 잇는다', () => {
+      renderOverlay({
+        pathNodes: straight,
+        currentLocation: { floorId: FLOOR_B2, mapX: 1500, mapY: 0 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(connectorLine()).toEqual([1500, 0, 1000, 0]);
+    });
+
+    /** 그만한 길이는 현재 위치 점 안에 묻혀 보이지 않는다. 요소만 하나 늘어난다. */
+    it('점 안에 묻히는 길이는 그리지 않는다', () => {
+      renderOverlay({
+        pathNodes: straight,
+        // 경로 위에서 1만큼 벗어난 자리. 마커 반지름보다 훨씬 짧다.
+        currentLocation: { floorId: FLOOR_B2, mapX: 500, mapY: 1 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(connectorLine()).toBeNull();
+    });
+
+    /**
+     * **그 층에 경로 노드가 하나뿐인 경우.** (S15P11A206-337 반영 뒤 실제로 생겼다)
+     *
+     * 서버가 진입 노드를 목적지 기준으로 다시 고르면서 계단·엘리베이터 노드를 집으면, 그 층의
+     * 경로가 그 노드 하나로 끝난다. 선으로 그릴 구간이 없어 지도가 텅 비었다 — 사용자가 서 있는
+     * 층인데 아무 안내도 없었다. 이 선이 그 층의 안내 전부가 된다.
+     */
+    it('그 층에 경로 노드가 하나뿐이면 그 노드에 잇는다', () => {
+      renderOverlay({
+        pathNodes: [
+          // B3에는 계단 진입 노드 하나뿐이고, 그 다음은 B2다.
+          { nodeId: 234, floorId: FLOOR_B3, mapX: 200, mapY: 0 },
+          { nodeId: 235, floorId: FLOOR_B2, mapX: 200, mapY: 0 },
+          { nodeId: 236, floorId: FLOOR_B2, mapX: 900, mapY: 0 },
+        ],
+        floorId: FLOOR_B3,
+        currentLocation: { floorId: FLOOR_B3, mapX: 0, mapY: 0 },
+        connectCurrentToRoute: true,
+      });
+
+      // 선으로 그릴 구간은 없다.
+      expect(routeSegments()).toEqual([]);
+      // 그래도 계단까지 이어 준다.
+      expect(connectorLine()).toEqual([0, 0, 200, 0]);
+    });
+
+    /** 다른 층의 경로에는 이을 수 없다. 이 층에 그려진 선이 없다. */
+    it('경로가 다른 층에만 있으면 잇지 않는다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B3, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B3, mapX: 1000, mapY: 0 },
+        ],
+        currentLocation: { floorId: FLOOR_B2, mapX: 500, mapY: 300 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(connectorLine()).toBeNull();
+    });
+
+    /**
+     * 이은 선도 다리의 명도를 따른다. 지금 걷는 다리와 다른 색으로 그리면 그 구간만 따로
+     * 판단해야 하는 무언가로 보인다.
+     */
+    it('닿는 다리와 같은 명도로 그린다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 500, mapY: 0 },
+          { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+        ],
+        waypointNodeIds: [2],
+        // 첫 경유지를 지나 두 번째 다리를 걷고 있다.
+        activeLeg: 1,
+        currentLocation: { floorId: FLOOR_B2, mapX: 800, mapY: 300 },
+        connectCurrentToRoute: true,
+      });
+
+      const group = screen.getByRole('img', { name: '이동 경로' });
+      const connector = group.querySelector('line:not([aria-hidden])');
+
+      expect(connector?.getAttribute('class')).toContain('routeNear');
+    });
   });
 
   /**

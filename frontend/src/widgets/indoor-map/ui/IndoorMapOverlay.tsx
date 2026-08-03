@@ -56,6 +56,21 @@ interface IndoorMapOverlayProps {
    */
   activeLeg?: number | null;
   /**
+   * 현재 위치와 경로 사이의 빈 자리를 이을지. 기본은 잇지 않는다.
+   *
+   * 경로선은 노드에서 시작하고 내 점은 실제 좌표에 있어서 둘이 떨어져 보인다. 서버가 목적지
+   * 기준으로 진입 노드를 다시 고르면(S15P11A206-337) 그 간격이 수십 m가 될 수도 있다 — 그때는
+   * 이 선이 그 층 안내의 전부다.
+   *
+   * **거리로 자르지 않는다.** 멀다는 것은 곧 그만큼 걸어가야 한다는 뜻이고, 그리지 않으면 사용자는
+   * 자기 층에 경로가 없다고 읽는다. 이 선이 그래프에 없는 구간이라 도면상 벽을 지날 수는 있지만,
+   * 아무것도 없는 것보다는 방향을 아는 편이 낫다.
+   *
+   * 기본을 끔으로 두는 것은 안내 화면이 아닌 지도(둘러보기·상담 공유)에서는 이을 이유가 없기
+   * 때문이다. 그 화면들의 경로는 "이 역의 경로"이고 내 위치에서 출발하는 것이 아니다.
+   */
+  connectCurrentToRoute?: boolean;
+  /**
    * 지도에 표시할 시설. 표시 층에 속한 것만 그린다.
    *
    * **호출부가 이미 걸러서 넘긴다.** 역 하나의 시설이 층당 30여 개인데 안내 화면의 지도는
@@ -106,6 +121,7 @@ export function IndoorMapOverlay({
   pathNodes,
   waypointNodeIds,
   activeLeg = null,
+  connectCurrentToRoute = false,
   facilities,
   selectedFacilityId,
   onSelectFacility,
@@ -157,7 +173,15 @@ export function IndoorMapOverlay({
     mapRotationDeg === 0 ? undefined : `rotate(${-mapRotationDeg} ${point.px} ${point.py})`;
 
   const waypoints = waypointNodeIds ?? [];
-  const routeSegments = floorSegments(pathNodes ?? [], floorId, project, waypoints);
+  /**
+   * 점이 하나뿐인 구간도 남겨 둔다.
+   *
+   * 선으로는 그릴 수 없지만 **이어 줄 자리로는 쓴다.** 서버가 진입 노드를 목적지 기준으로 다시
+   * 고르면서 계단·엘리베이터 노드를 집으면(S15P11A206-337) 그 층에 경로 노드가 하나만 남는다.
+   * 버려 버리면 사용자가 서 있는 층에 아무것도 그려지지 않는다.
+   */
+  const allSegments = floorSegments(pathNodes ?? [], floorId, project, waypoints);
+  const routeSegments = allSegments.filter((segment) => segment.points.length >= 2);
   const paintOrder = activeLegLast(routeSegments, activeLeg);
   /** 이 층에 보이는 경유지와 그 번호. 헤더의 `경유 N`과 같은 번호다. */
   const waypointPins = waypoints.flatMap((nodeId, index) => {
@@ -168,6 +192,10 @@ export function IndoorMapOverlay({
     return point ? [{ point, order: index + 1 }] : [];
   });
   const currentPoint = pointOnFloor(currentLocation, floorId, project);
+  /** 내 점에서 경로까지 이어 줄 선. 이을 것이 없거나 점 안에 묻히는 길이면 null이다. */
+  const connector = connectCurrentToRoute
+    ? routeConnector(currentPoint, allSegments, markerRadius)
+    : null;
   const destinationPoint = pointOnFloor(destination, floorId, project);
   const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project);
 
@@ -189,7 +217,9 @@ export function IndoorMapOverlay({
       // 배경 이미지 위 장식 레이어다. 의미 정보는 각 마커의 aria-label이 담당한다.
       focusable="false"
     >
-      {routeSegments.length > 0 && (
+      {/* 이은 선만 있어도 그린다. 그 층에 경로 노드가 하나뿐이면 선으로 그릴 구간이 없는데,
+          이 조건이 구간만 보면 사용자가 서 있는 층에 아무 안내도 남지 않는다. */}
+      {(routeSegments.length > 0 || connector !== null) && (
         // 구간이 여러 개여도 사용자에게는 하나의 경로다. 라벨은 묶음에 한 번만 붙인다.
         <g role="img" aria-label={t('indoorMap.overlay.route')}>
           {/* 바깥 테두리를 모든 구간에 먼저 깔고 본선을 그 위에 얹는다. 구간마다 번갈아 그리면
@@ -204,6 +234,17 @@ export function IndoorMapOverlay({
               aria-hidden
             />
           ))}
+          {connector && (
+            <line
+              className={styles.routeCasing}
+              strokeWidth={routeCasingWidth}
+              x1={connector.from.px}
+              y1={connector.from.py}
+              x2={connector.to.px}
+              y2={connector.to.py}
+              aria-hidden
+            />
+          )}
           {paintOrder.map((segment, index) => (
             <polyline
               key={index}
@@ -214,6 +255,28 @@ export function IndoorMapOverlay({
               points={segment.points.map((point) => `${point.px},${point.py}`).join(' ')}
             />
           ))}
+          {/*
+            내 점에서 경로까지. **본선과 같은 두께·같은 색으로 그린다.**
+
+            경로선은 그래프 노드에서 시작하고 내 점은 실제 좌표에 있어 둘이 몇 미터 떨어져
+            보인다. 그 사이가 비어 있으면 경로가 내가 아닌 다른 곳에서 시작하는 것으로 읽힌다.
+
+            점선이나 다른 색으로 구분하지 않는다. 여기서 알려야 하는 것은 "이 선이 나에게서
+            시작한다"이고, 다르게 그리면 그 구간만 따로 판단해야 하는 무언가로 보인다.
+            이 선을 그릴지 말지는 호출부가 이미 판단했다.
+          */}
+          {connector && (
+            <line
+              className={[styles.route, legToneClass(connector.leg, activeLeg)]
+                .filter(Boolean)
+                .join(' ')}
+              strokeWidth={routeWidth}
+              x1={connector.from.px}
+              y1={connector.from.py}
+              x2={connector.to.px}
+              y2={connector.to.py}
+            />
+          )}
           {/* 진행 방향. 지도가 돌아가도 함께 돌아야 한다 — 가리키는 것이 방향 자체다.
               선과 같은 순서로 그려 현재 다리의 화살표가 맨 위에 남는다. */}
           {paintOrder.flatMap((segment, segmentIndex) =>
@@ -599,8 +662,14 @@ function floorSegments(
     }
   }
 
-  // 점이 하나뿐인 구간은 이을 선이 없다.
-  return segments.filter((segment) => segment.points.length >= 2);
+  /*
+    점이 하나뿐인 구간도 그대로 돌려준다.
+
+    선으로는 그릴 수 없지만 이어 줄 자리로는 쓴다. 여기서 걸러 버리면 그 층에 경로 노드가 하나뿐인
+    경우(서버가 계단·엘리베이터 노드를 진입 노드로 고른 경우)에 그 층 안내가 통째로 사라진다.
+    선을 그릴 구간만 필요한 쪽이 걸러 쓴다.
+  */
+  return segments;
 }
 
 /**
@@ -648,6 +717,69 @@ function activeLegLast(
 
   const rank = (leg: number) => (leg === activeLeg ? 2 : leg > activeLeg ? 1 : 0);
   return [...segments].sort((left, right) => rank(left.leg) - rank(right.leg));
+}
+
+/** 내 점에서 경로까지 이어 줄 선. `leg`은 닿는 구간의 다리로, 같은 명도로 그리기 위한 값이다. */
+interface RouteConnector {
+  from: PixelPoint;
+  to: PixelPoint;
+  leg: number;
+}
+
+/**
+ * 현재 위치에서 경로까지의 최단 연결.
+ *
+ * 경로의 **첫 점이 아니라 가장 가까운 점**에 잇는다. 첫 점에 이으면 조금이라도 걸어간 뒤에는
+ * 뒤로 향하는 선이 그려져, 이미 지나온 곳으로 돌아가라는 것처럼 보인다. 가장 가까운 점에 이으면
+ * 출발할 때는 진입 노드로, 걷는 중에는 발밑의 경로로 이어져 늘 앞을 향한다.
+ *
+ * **픽셀 좌표에서 계산해도 된다.** `project`가 회전·등비 확대·평행이동뿐이라 거리의 순서가
+ * 보존되므로, 미터에서 가장 가까운 점이 픽셀에서도 가장 가깝다. 이 위젯이 미터 프레임을 알지
+ * 못하게 두는 편이 좌표 계약이 바뀔 때 안전하다(`project` 주입과 같은 이유다).
+ *
+ * `minLength`보다 짧으면 그리지 않는다. 그만한 길이는 현재 위치 점 안에 묻혀 보이지 않는데,
+ * 요소만 하나 늘어난다.
+ */
+function routeConnector(
+  current: PixelPoint | null,
+  segments: readonly RouteSegment[],
+  minLength: number,
+): RouteConnector | null {
+  if (current === null) return null;
+
+  let best: { point: PixelPoint; leg: number; distance: number } | null = null;
+
+  for (const segment of segments) {
+    for (let index = 0; index < segment.points.length; index += 1) {
+      /* 첫 점은 이을 선분이 없으니 그 점 자체가 후보다. 점이 하나뿐인 구간이 여기 해당한다 —
+         그 층에 경로 노드가 하나만 남은 경우이고, 그때 이 선이 그 층의 안내 전부가 된다. */
+      const point =
+        index === 0
+          ? segment.points[0]
+          : nearestOnSegment(current, segment.points[index - 1], segment.points[index]);
+      const distance = Math.hypot(point.px - current.px, point.py - current.py);
+      if (best === null || distance < best.distance) {
+        best = { point, leg: segment.leg, distance };
+      }
+    }
+  }
+
+  if (best === null || best.distance < minLength) return null;
+
+  return { from: current, to: best.point, leg: best.leg };
+}
+
+/** 선분 위에서 주어진 점에 가장 가까운 지점. 선분 밖으로는 나가지 않는다(끝점으로 잘린다). */
+function nearestOnSegment(point: PixelPoint, start: PixelPoint, end: PixelPoint): PixelPoint {
+  const dx = end.px - start.px;
+  const dy = end.py - start.py;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return start;
+
+  const along = ((point.px - start.px) * dx + (point.py - start.py) * dy) / lengthSq;
+  const clamped = Math.min(1, Math.max(0, along));
+
+  return { px: start.px + dx * clamped, py: start.py + dy * clamped };
 }
 
 /** 표시 층에 속한 시설만 픽셀 좌표와 함께 남긴다. 좌표를 변환할 수 없는 시설은 건너뛴다. */

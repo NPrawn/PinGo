@@ -44,6 +44,16 @@ interface IndoorMapViewProps {
   /** 지금 걷고 있는 다리(0이 출발 → 첫 경유지). 다리별 명도를 정한다. */
   activeLeg?: number | null;
   /**
+   * 현재 위치와 경로 사이의 빈 자리를 이을지. 기본은 잇지 않는다.
+   *
+   * 경로선은 그래프 노드에서 시작하고 내 점은 실제 좌표에 있어 둘이 떨어져 보인다. 서버가 진입
+   * 노드를 다시 고르면 그 간격이 수십 m가 될 수 있고, 그 층에 남는 경로 노드가 하나뿐이면 이 선이
+   * 그 층 안내의 전부가 된다.
+   *
+   * 안내 화면에서만 켠다. 둘러보기·상담 공유 지도의 경로는 내 위치에서 출발하는 것이 아니다.
+   */
+  connectCurrentToRoute?: boolean;
+  /**
    * 지도에 표시할 시설 유형. 넘기지 않으면 **아무 시설도 그리지 않는다.**
    *
    * 기본을 비워 두는 이유는 밀도다. 역삼역 B2는 실제 240m 폭이 안내 화면에서 287px에 들어가
@@ -135,6 +145,7 @@ export function IndoorMapView({
   pathNodes,
   waypointNodeIds,
   activeLeg,
+  connectCurrentToRoute = false,
   facilityType,
   showAllFacilities = false,
   selectedFacilityId,
@@ -337,6 +348,7 @@ export function IndoorMapView({
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
           waypointNodeIds={waypointNodeIds}
           activeLeg={activeLeg}
+          connectCurrentToRoute={connectCurrentToRoute}
           facilities={facilities}
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
@@ -393,6 +405,7 @@ function MapOverlay({
   pathNodes,
   waypointNodeIds,
   activeLeg,
+  connectCurrentToRoute,
   facilities,
   selectedFacilityId,
   onSelectFacility,
@@ -409,6 +422,8 @@ function MapOverlay({
   waypointNodeIds?: readonly number[];
   /** 지금 걷고 있는 다리(0이 출발 → 첫 경유지). 다리별 명도를 정한다. */
   activeLeg?: number | null;
+  /** 현재 위치와 경로 사이를 이을지. 경로에서 벗어난 동안에는 켜지 않는다. */
+  connectCurrentToRoute?: boolean;
   facilities?: readonly Facility[];
   selectedFacilityId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
@@ -441,6 +456,7 @@ function MapOverlay({
       pathNodes={pathNodes}
       waypointNodeIds={waypointNodeIds}
       activeLeg={activeLeg}
+      connectCurrentToRoute={connectCurrentToRoute}
       facilities={facilities}
       selectedFacilityId={selectedFacilityId}
       onSelectFacility={onSelectFacility}

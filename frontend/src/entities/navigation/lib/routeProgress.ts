@@ -36,6 +36,12 @@ interface PathSegment {
   lengthM: number;
 }
 
+/** 경로상 한 노드와 그 지점까지의 거리(m). */
+interface PathPoint {
+  node: RoutePathNode;
+  atM: number;
+}
+
 /** 진행도 계산에 필요한 구간 정보. `RouteStep`에서 거리만 쓴다. */
 interface StepDistance {
   distanceM?: number;
@@ -74,7 +80,8 @@ export function routeProgressOf(options: {
     };
   }
 
-  const nearest = currentLocation ? nearestOnRoute(currentLocation, segments) : null;
+  const points = pathPoints(pathNodes);
+  const nearest = currentLocation ? nearestOnRoute(currentLocation, segments, points) : null;
   const offRoute = nearest === null || nearest.offsetM > OFF_ROUTE_M;
   /*
     되돌아가지 않는다.
@@ -89,9 +96,27 @@ export function routeProgressOf(options: {
     travelledM: advancedM,
     currentStepIndex: stepIndex,
     stepRemainingM: stepIndex === null ? null : Math.max(0, boundaries[stepIndex] - advancedM),
-    passedNodeIds: passedNodesAt(pathNodes, advancedM),
+    passedNodeIds: passedNodesAt(points, advancedM),
     offRoute,
   };
+}
+
+/** 각 노드가 경로상 몇 m 지점인지. 지난 노드 판정과 층에 구간이 없을 때의 후보에 함께 쓴다. */
+function pathPoints(nodes: readonly RoutePathNode[]): PathPoint[] {
+  const points: PathPoint[] = [];
+  let atM = 0;
+
+  for (let index = 0; index < nodes.length; index += 1) {
+    if (index > 0) {
+      const from = nodes[index - 1];
+      const to = nodes[index];
+      atM += Math.hypot(to.mapX - from.mapX, to.mapY - from.mapY);
+    }
+
+    points.push({ node: nodes[index], atM });
+  }
+
+  return points;
 }
 
 /** 노드를 이은 구간들. 누적 거리를 함께 들고 있어야 투영 결과를 경로 거리로 옮길 수 있다. */
@@ -120,10 +145,19 @@ function pathSegments(nodes: readonly RoutePathNode[]): PathSegment[] {
  *
  * 층이 다른 두 노드를 잇는 구간(엘리베이터·계단)은 어느 층에도 넣지 않는다. 수평 거리가 0이라
  * 투영해 봐야 얻을 것이 없고, 층을 옮기면 그 층 구간에 붙어 진행도가 자연히 넘어간다.
+ *
+ * **구간뿐 아니라 노드 자체도 후보로 둔다.** 그 층에 경로 노드가 하나뿐인 경우가 실제로 생긴다 —
+ * 서버가 진입 노드를 목적지 기준으로 다시 고르면서 계단·엘리베이터 노드를 집으면(S15P11A206-337)
+ * 그 층에서 이을 구간이 없다. 구간만 보면 그 층에 선 사용자가 늘 경로 이탈로 판정되어, 안내 카드도
+ * 상세 경로도 지도의 접근선도 전부 꺼진다. 실제로는 어디인지 말할 수 있다 — 그 노드까지의 거리다.
+ *
+ * 구간이 있는 층에서는 결과가 달라지지 않는다. 구간 안쪽 노드는 인접 구간에 투영해도 같은 값이
+ * 나오고(끝점으로 잘린다), 동률이면 구간 쪽을 남긴다.
  */
 function nearestOnRoute(
   location: IndoorPoint,
   segments: readonly PathSegment[],
+  points: readonly PathPoint[],
 ): { travelledM: number; offsetM: number } | null {
   let nearest: { travelledM: number; offsetM: number } | null = null;
 
@@ -133,6 +167,18 @@ function nearestOnRoute(
 
     const projected = projectOnSegment(location, segment);
     if (nearest === null || projected.offsetM < nearest.offsetM) nearest = projected;
+  }
+
+  for (const point of points) {
+    if (point.node.floorId !== location.floorId) continue;
+
+    const offsetM = Math.hypot(
+      location.mapX - point.node.mapX,
+      location.mapY - point.node.mapY,
+    );
+    if (nearest === null || offsetM < nearest.offsetM) {
+      nearest = { travelledM: point.atM, offsetM };
+    }
   }
 
   return nearest;
@@ -213,19 +259,8 @@ function stepIndexAt(boundaries: readonly number[], travelledM: number): number 
 }
 
 /** 진행 거리까지 지나온 노드. 출발 노드는 언제나 포함된다. */
-function passedNodesAt(nodes: readonly RoutePathNode[], travelledM: number): number[] {
-  const passed: number[] = [];
-  let cumulative = 0;
-
-  for (let index = 0; index < nodes.length; index += 1) {
-    if (index > 0) {
-      const from = nodes[index - 1];
-      const to = nodes[index];
-      cumulative += Math.hypot(to.mapX - from.mapX, to.mapY - from.mapY);
-    }
-
-    if (cumulative <= travelledM + NODE_PASS_TOLERANCE_M) passed.push(nodes[index].nodeId);
-  }
-
-  return passed;
+function passedNodesAt(points: readonly PathPoint[], travelledM: number): number[] {
+  return points
+    .filter((point) => point.atM <= travelledM + NODE_PASS_TOLERANCE_M)
+    .map((point) => point.node.nodeId);
 }

@@ -153,6 +153,57 @@ describe('routeProgressOf', () => {
     expect(progress.currentStepIndex).toBe(1);
   });
 
+  /**
+   * **그 층에 경로 노드가 하나뿐인 경우.** (S15P11A206-337 반영 뒤 실제로 생겼다)
+   *
+   * 서버가 진입 노드를 목적지 기준으로 다시 고르면서 계단·엘리베이터 노드를 집으면, 그 층의 경로가
+   * 그 노드 하나로 끝난다. 그러면 그 층에 투영할 구간이 없어 사용자가 늘 경로 이탈로 판정됐다 —
+   * 서 있는 층인데 안내 카드도 상세 경로 강조도 지도의 접근선도 전부 꺼졌다.
+   */
+  describe('층에 경로 노드가 하나뿐일 때', () => {
+    /** B3는 계단 진입 노드 하나로 끝나고, 그 다음은 B2다. */
+    const singleOnB3: RoutePathNode[] = [
+      { nodeId: 234, floorId: B3, mapX: 20, mapY: 0 },
+      { nodeId: 235, floorId: B2, mapX: 20, mapY: 0 },
+      { nodeId: 236, floorId: B2, mapX: 120, mapY: 0 },
+    ];
+
+    it('그 노드까지의 거리로 위치를 판정한다', () => {
+      const progress = routeProgressOf({
+        pathNodes: singleOnB3,
+        // 계단에서 10m 떨어져 있다. 이탈이 아니다.
+        currentLocation: { floorId: B3, mapX: 10, mapY: 0 },
+      });
+
+      expect(progress.offRoute).toBe(false);
+      // 그 노드가 경로 시작점이라 아직 0m다.
+      expect(progress.travelledM).toBeCloseTo(0);
+      expect(progress.passedNodeIds).toContain(234);
+    });
+
+    /** 이탈 판정 자체는 살아 있어야 한다. 노드가 하나뿐이라고 어디에 서 있어도 되는 것은 아니다. */
+    it('그 노드에서 멀면 이탈로 본다', () => {
+      const progress = routeProgressOf({
+        pathNodes: singleOnB3,
+        currentLocation: { floorId: B3, mapX: 200, mapY: 0 },
+      });
+
+      expect(progress.offRoute).toBe(true);
+    });
+
+    /** 구간이 있는 층에서는 결과가 달라지지 않는다. 노드 후보가 투영을 앞지르면 진행도가 튄다. */
+    it('구간이 있는 층에서는 투영 결과를 그대로 쓴다', () => {
+      const progress = routeProgressOf({
+        pathNodes: PATH,
+        steps: STEPS,
+        // 노드 1(0m)과 노드 2(100m) 사이. 가까운 노드는 노드 2지만 투영이 이긴다.
+        currentLocation: { floorId: B3, mapX: 60, mapY: 3 },
+      });
+
+      expect(progress.travelledM).toBeCloseTo(60);
+    });
+  });
+
   it('경로가 없으면 판정할 것이 없다', () => {
     const progress = routeProgressOf({
       pathNodes: [],
