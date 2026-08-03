@@ -165,8 +165,11 @@ export function ConsultPermissionPage() {
         currentNodeId: currentNodeId ?? undefined,
         ...completeDestination,
         /*
-          사용자가 고른 값을 그대로 보낸다. 예전에는 둘 다 `true`로 박아 두어, 아무것도
-          고르지 않은 사용자가 전부 동의한 것으로 기록됐다.
+          카메라는 사용자의 선택과 실제 확보 결과를 그대로 보낸다. 예전에는
+          `videoConsent: true`로 박아 두어 카메라를 끈 사용자도 동의한 것으로 기록됐다.
+
+          마이크는 상담에 필요한 필수 항목이라 선택 UI가 없고, 요청 시점에는 확보가 끝난
+          상태이므로 `audioConsent: true`로 기록한다.
 
           위치 공유 동의는 온보딩에서 확인한 브라우저 권한 상태를 함께 기록한다.
         */
