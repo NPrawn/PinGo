@@ -27,6 +27,9 @@ function renderOverlay(props: {
   onSelectFacility?: (facility: Facility) => void;
   viewScale?: number;
   pathNodes?: readonly RoutePathNode[];
+  waypointNodeIds?: readonly number[];
+  activeLeg?: number | null;
+  connectCurrentToRoute?: boolean;
   project?: (mapX: number, mapY: number) => PixelPoint | null;
 }) {
   return render(
@@ -44,16 +47,64 @@ function renderOverlay(props: {
       onSelectFacility={props.onSelectFacility}
       viewScale={props.viewScale}
       pathNodes={props.pathNodes}
+      waypointNodeIds={props.waypointNodeIds}
+      activeLeg={props.activeLeg}
+      connectCurrentToRoute={props.connectCurrentToRoute}
     />,
   );
 }
 
+/**
+ * 내 점에서 경로까지 이어 준 선. 테두리(`aria-hidden`)는 세지 않는다.
+ *
+ * `[x1, y1, x2, y2]`로 돌려준다. 그리지 않았으면 null이다.
+ */
+function connectorLine(): [number, number, number, number] | null {
+  const group = screen.queryByRole('img', { name: '이동 경로' });
+  const line = group?.querySelector('line:not([aria-hidden])');
+  if (!line) return null;
+
+  return (['x1', 'y1', 'x2', 'y2'] as const).map((name) => Number(line.getAttribute(name))) as [
+    number,
+    number,
+    number,
+    number,
+  ];
+}
+
 /** 경로 구간별 points 문자열. 구간이 나뉘면 원소가 여러 개다. */
+/**
+ * 경로 본선의 좌표. 아래 깔리는 테두리(`aria-hidden`)는 세지 않는다.
+ *
+ * 구간마다 폴리라인이 둘 그려진다 — 도면의 벽·해칭 선에서 경로를 떼어 놓는 테두리와, 그 위의
+ * 본선이다. 경로가 어디를 지나는지는 본선 하나로 결정된다.
+ */
 function routeSegments(): string[] {
   const group = screen.getByRole('img', { name: '이동 경로' });
-  return Array.from(group.querySelectorAll('polyline')).map(
+  return Array.from(group.querySelectorAll('polyline:not([aria-hidden])')).map(
     (line) => line.getAttribute('points') ?? '',
   );
+}
+
+/**
+ * 경로 본선의 stroke 색. 경유지가 있으면 다리마다 달라진다.
+ *
+ * CSS 모듈 클래스 이름을 그대로 본다 — 어느 단계가 걸렸는지는 클래스가 결정한다.
+ */
+function routeToneClasses(): string[] {
+  const group = screen.getByRole('img', { name: '이동 경로' });
+  return Array.from(group.querySelectorAll('polyline:not([aria-hidden])')).map(
+    (line) => line.getAttribute('class') ?? '',
+  );
+}
+
+/** 진행 방향 화살촉의 회전각. 경로가 향하는 쪽을 가리켜야 한다. */
+function directionAngles(): number[] {
+  const group = screen.getByRole('img', { name: '이동 경로' });
+  return Array.from(group.querySelectorAll('path')).map((mark) => {
+    const rotate = /rotate\((-?[\d.]+)\)/.exec(mark.getAttribute('transform') ?? '');
+    return Number(rotate?.[1]);
+  });
 }
 
 describe('IndoorMapOverlay', () => {
@@ -204,6 +255,293 @@ describe('IndoorMapOverlay', () => {
     });
 
     expect(routeSegments()).toEqual(['10,20 30,40 50,60']);
+  });
+
+  /**
+   * 내 점과 경로 사이의 빈 자리. (S15P11A206-83 / 리뷰 대응)
+   *
+   * 경로선은 그래프 노드에서 시작하고 내 점은 실제 좌표에 있어 둘이 몇 미터 떨어져 보인다.
+   * 서버가 목적지 기준으로 진입 노드를 다시 골라도(S15P11A206-337) 이 간격은 남는다.
+   */
+  describe('현재 위치와 경로 잇기', () => {
+    /** 오른쪽으로 곧게 가는 경로. y=0 위에 있다. */
+    const straight: RoutePathNode[] = [
+      { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+      { nodeId: 2, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+    ];
+
+    it('켜지 않으면 잇지 않는다', () => {
+      renderOverlay({
+        pathNodes: straight,
+        currentLocation: { floorId: FLOOR_B2, mapX: 0, mapY: 300 },
+      });
+
+      expect(connectorLine()).toBeNull();
+    });
+
+    /**
+     * **경로의 첫 점이 아니라 가장 가까운 점에 잇는다.**
+     *
+     * 첫 점에 이으면 조금이라도 걸어간 뒤에는 뒤로 향하는 선이 그려져, 이미 지나온 곳으로
+     * 돌아가라는 것처럼 보인다.
+     */
+    it('경로에서 가장 가까운 점에 잇는다', () => {
+      renderOverlay({
+        pathNodes: straight,
+        // 경로를 절반쯤 걸어와 통로에서 300 벗어난 자리.
+        currentLocation: { floorId: FLOOR_B2, mapX: 500, mapY: 300 },
+        connectCurrentToRoute: true,
+      });
+
+      // 첫 점 (0,0)이 아니라 발밑의 (500,0)으로 이어야 한다.
+      expect(connectorLine()).toEqual([500, 300, 500, 0]);
+    });
+
+    /** 선분 밖으로는 나가지 않는다. 경로가 끝난 뒤에는 마지막 점에 붙는다. */
+    it('경로 끝을 지나면 마지막 점에 잇는다', () => {
+      renderOverlay({
+        pathNodes: straight,
+        currentLocation: { floorId: FLOOR_B2, mapX: 1500, mapY: 0 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(connectorLine()).toEqual([1500, 0, 1000, 0]);
+    });
+
+    /** 그만한 길이는 현재 위치 점 안에 묻혀 보이지 않는다. 요소만 하나 늘어난다. */
+    it('점 안에 묻히는 길이는 그리지 않는다', () => {
+      renderOverlay({
+        pathNodes: straight,
+        // 경로 위에서 1만큼 벗어난 자리. 마커 반지름보다 훨씬 짧다.
+        currentLocation: { floorId: FLOOR_B2, mapX: 500, mapY: 1 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(connectorLine()).toBeNull();
+    });
+
+    /**
+     * **그 층에 경로 노드가 하나뿐인 경우.** (S15P11A206-337 반영 뒤 실제로 생겼다)
+     *
+     * 서버가 진입 노드를 목적지 기준으로 다시 고르면서 계단·엘리베이터 노드를 집으면, 그 층의
+     * 경로가 그 노드 하나로 끝난다. 선으로 그릴 구간이 없어 지도가 텅 비었다 — 사용자가 서 있는
+     * 층인데 아무 안내도 없었다. 이 선이 그 층의 안내 전부가 된다.
+     */
+    it('그 층에 경로 노드가 하나뿐이면 그 노드에 잇는다', () => {
+      renderOverlay({
+        pathNodes: [
+          // B3에는 계단 진입 노드 하나뿐이고, 그 다음은 B2다.
+          { nodeId: 234, floorId: FLOOR_B3, mapX: 200, mapY: 0 },
+          { nodeId: 235, floorId: FLOOR_B2, mapX: 200, mapY: 0 },
+          { nodeId: 236, floorId: FLOOR_B2, mapX: 900, mapY: 0 },
+        ],
+        floorId: FLOOR_B3,
+        currentLocation: { floorId: FLOOR_B3, mapX: 0, mapY: 0 },
+        connectCurrentToRoute: true,
+      });
+
+      // 선으로 그릴 구간은 없다.
+      expect(routeSegments()).toEqual([]);
+      // 그래도 계단까지 이어 준다.
+      expect(connectorLine()).toEqual([0, 0, 200, 0]);
+    });
+
+    /** 다른 층의 경로에는 이을 수 없다. 이 층에 그려진 선이 없다. */
+    it('경로가 다른 층에만 있으면 잇지 않는다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B3, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B3, mapX: 1000, mapY: 0 },
+        ],
+        currentLocation: { floorId: FLOOR_B2, mapX: 500, mapY: 300 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(connectorLine()).toBeNull();
+    });
+
+    /**
+     * 이은 선도 다리의 명도를 따른다. 지금 걷는 다리와 다른 색으로 그리면 그 구간만 따로
+     * 판단해야 하는 무언가로 보인다.
+     */
+    it('닿는 다리와 같은 명도로 그린다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 500, mapY: 0 },
+          { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+        ],
+        waypointNodeIds: [2],
+        // 첫 경유지를 지나 두 번째 다리를 걷고 있다.
+        activeLeg: 1,
+        currentLocation: { floorId: FLOOR_B2, mapX: 800, mapY: 300 },
+        connectCurrentToRoute: true,
+      });
+
+      const group = screen.getByRole('img', { name: '이동 경로' });
+      const connector = group.querySelector('line:not([aria-hidden])');
+
+      expect(connector?.getAttribute('class')).toContain('routeNear');
+    });
+  });
+
+  /**
+   * 진행 방향.
+   *
+   * 선만으로는 어느 쪽으로 걸어야 하는지 알 수 없다. 층을 넘나드는 구간에서는 선이 끊겨
+   * 출발점·도착점도 함께 사라지므로, 이 층에서의 방향은 선 위에 직접 적혀 있어야 한다.
+   */
+  it('경로 위에 진행 방향을 일정 간격으로 얹는다', () => {
+    renderOverlay({
+      pathNodes: [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 2000, mapY: 0 },
+      ],
+    });
+
+    const angles = directionAngles();
+
+    // 오른쪽으로 곧게 가는 경로다. 화살촉도 모두 그쪽을 가리킨다(0도).
+    expect(angles).not.toHaveLength(0);
+    angles.forEach((angle) => expect(angle).toBeCloseTo(0));
+  });
+
+  /** 방향이 꺾이면 화살촉도 그 구간의 방향을 따른다. 노드마다가 아니라 거리마다 놓인다. */
+  it('꺾이는 구간에서는 그 구간의 방향을 가리킨다', () => {
+    renderOverlay({
+      pathNodes: [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+        { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 1000 },
+      ],
+    });
+
+    const angles = directionAngles();
+
+    // 오른쪽(0도)으로 가다 아래(90도)로 꺾인다. 이미지 좌표계는 y가 아래로 증가한다.
+    expect(angles).toContain(0);
+    expect(angles).toContain(90);
+  });
+
+  /**
+   * 경유지가 있는 경로. (S15P11A206-83)
+   *
+   * 같은 복도를 두 번 지나면 어느 쪽이 먼저인지 알 수 없다. 다리마다 명도를 달리하고 경유지에
+   * 번호를 붙여 순서를 남긴다.
+   */
+  describe('경유지', () => {
+    const throughWaypoint = [
+      { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+      { nodeId: 2, floorId: FLOOR_B2, mapX: 500, mapY: 0 },
+      { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+    ];
+
+    /**
+     * 지금 걷는 다리가 가장 진하고, 그것을 마지막에 그린다.
+     *
+     * 같은 복도를 두 번 지나면 나중에 그린 것이 위에 남는다. 순서를 그대로 두면 연한 남은 다리가
+     * 진한 현재 다리를 덮어, 정작 지금 필요한 화살표가 사라진다.
+     */
+    it('첫 다리를 걷는 중이면 그 다리를 진하게 그리고 위에 얹는다', () => {
+      renderOverlay({ pathNodes: throughWaypoint, waypointNodeIds: [2], activeLeg: 0 });
+
+      // 경유지 노드는 두 다리가 공유한다. 한쪽에만 넣으면 그 자리에 틈이 생긴다.
+      // 남은 다리(500→1000)를 먼저, 지금 걷는 다리(0→500)를 마지막에 그린다.
+      expect(routeSegments()).toEqual(['500,0 1000,0', '0,0 500,0']);
+
+      const [far, near] = routeToneClasses();
+      expect(far).toContain('routeFar');
+      expect(near).toContain('routeNear');
+    });
+
+    /**
+     * 예전에는 첫 다리를 늘 진하게 칠했다. 첫 경유지를 지나 두 번째 구간을 걷고 있어도 이미
+     * 지나온 첫 구간이 가장 눈에 띄고 정작 갈 길이 연했다 — 의도와 반대로 동작했다.
+     */
+    it('경유지를 지나면 지나온 다리를 흐리게 하고 다음 다리를 진하게 한다', () => {
+      renderOverlay({ pathNodes: throughWaypoint, waypointNodeIds: [2], activeLeg: 1 });
+
+      // 지나온 다리를 아래에, 지금 걷는 다리를 위에 그린다.
+      expect(routeSegments()).toEqual(['0,0 500,0', '500,0 1000,0']);
+
+      const [passed, near] = routeToneClasses();
+      expect(passed).toContain('routePassed');
+      expect(near).toContain('routeNear');
+    });
+
+    /** 경로에서 벗어난 동안은 어느 다리를 걷는지 말할 근거가 없다. */
+    it('진행 중인 다리를 모르면 한 색으로 그린다', () => {
+      renderOverlay({ pathNodes: throughWaypoint, waypointNodeIds: [2] });
+
+      const classes = routeToneClasses();
+      classes.forEach((className) => {
+        expect(className).not.toContain('routeNear');
+        expect(className).not.toContain('routeFar');
+        expect(className).not.toContain('routePassed');
+      });
+    });
+
+    it('경유지가 없으면 한 색으로 그린다', () => {
+      renderOverlay({ pathNodes: throughWaypoint });
+
+      expect(routeSegments()).toEqual(['0,0 500,0 1000,0']);
+      expect(routeToneClasses()[0]).not.toContain('routeNear');
+      expect(routeToneClasses()[0]).not.toContain('routeFar');
+    });
+
+    it('경유지에 번호를 붙인다', () => {
+      renderOverlay({
+        pathNodes: [
+          ...throughWaypoint,
+          { nodeId: 4, floorId: FLOOR_B2, mapX: 1500, mapY: 0 },
+          { nodeId: 5, floorId: FLOOR_B2, mapX: 2000, mapY: 0 },
+        ],
+        waypointNodeIds: [2, 4],
+      });
+
+      expect(screen.getByRole('img', { name: '경유 1' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: '경유 2' })).toBeInTheDocument();
+    });
+
+    it('다른 층의 경유지는 번호를 그리지 않는다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B3, mapX: 500, mapY: 0 },
+          { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+        ],
+        waypointNodeIds: [2],
+      });
+
+      expect(screen.queryByRole('img', { name: '경유 1' })).not.toBeInTheDocument();
+    });
+
+    /** 왕복 경로에서 같은 노드를 두 번 지난다. 두 번째 통과를 또 경계로 삼으면 다리가 늘어난다. */
+    it('같은 노드를 다시 지나도 다리를 한 번만 나눈다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 500, mapY: 0 },
+          { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 500, mapY: 0 },
+        ],
+        waypointNodeIds: [2],
+      });
+
+      expect(routeSegments()).toEqual(['0,0 500,0', '500,0 1000,0 500,0']);
+    });
+  });
+
+  /** 너무 짧은 구간에는 놓지 않는다. 마커에 가려 방향은 읽히지 않고 어수선함만 남는다. */
+  it('간격의 절반보다 짧은 구간에는 방향을 놓지 않는다', () => {
+    renderOverlay({
+      pathNodes: [
+        { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: FLOOR_B2, mapX: 10, mapY: 0 },
+      ],
+    });
+
+    expect(directionAngles()).toHaveLength(0);
   });
 
   it('원본 이미지 크기를 viewBox로 삼는다', () => {

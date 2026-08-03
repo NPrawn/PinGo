@@ -8,8 +8,14 @@ import {
   type Facility,
 } from '@/entities/facility';
 import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
-import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
-import { routeUnavailableText } from '@/entities/route';
+import {
+  routeBearingOf,
+  routePathNodesOf,
+  routeProgressOf,
+  useNavigationStore,
+  type IndoorPoint,
+} from '@/entities/navigation';
+import { routeOriginOf, routeUnavailableText, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { createIndoorRoute } from '@/shared/api';
@@ -26,21 +32,36 @@ import styles from './NavigationPage.module.css';
 /**
  * 지도 위 시설 필터.
  *
- * **기본은 아무것도 켜지 않는다.** 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가
- * 1m가 1.2px이고, 그 층 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px이 되어 서로를
- * 덮는다. 유형 하나를 켜면 많아도 13개(계단)라 겹치지 않는다 — FR-U-006의 점진적 공개다.
+ * **기본은 표시 층의 시설을 모두 켠다.** 무엇이 어디에 있는지 먼저 보여 준 다음 유형으로
+ * 좁히는 흐름이다. 아무것도 없는 지도에서 시작하면 사용자는 칩을 눌러 보기 전까지 이 지도가
+ * 무엇을 알려 줄 수 있는지 알 수 없다.
+ *
+ * 대신 겹친다. 역삼역 B2는 실제 240m 폭이 이 지도에서 287px에 들어가 1m가 1.2px이고, 그 층
+ * 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px이다. 훑어보는 용도이고, 하나를 고르려면
+ * 유형을 켜야 한다 — 그러면 많아도 13개(계단)라 겹치지 않는다.
  *
  * 이름과 아이콘은 프로토타입(`#s-nav`)의 칩 다섯 개에서 출발했고, 각 칩이 실제
- * `facilityType`을 켜도록 연결했다.
+ * `facilityType`을 켜도록 연결했다. 에스컬레이터·계단은 역삼역에서 가장 많은 두 유형인데
+ * (B1 기준 각각 10개·13개) 칩이 없어 지도에 한 번도 뜨지 않아 뒤에 붙였다.
  *
- * **에스컬레이터와 계단을 뒤에 붙였다.** 역삼역에서 가장 많은 두 유형인데(B1 기준 각각
- * 10개·13개) 칩이 없어 지도에 한 번도 뜨지 않았다. 층을 오르내리는 통로라 길안내에서 오히려
- * 자주 찾는 것들이다. 밀도는 문제되지 않는다 — 위 계산의 상한이 바로 계단 13개다.
- *
- * TODO: `platform`은 역삼역에 등록된 시설이 없어 눌러도 표시할 것이 없다. 승강장 시설이
- * 시드되면 그대로 동작한다(백엔드 요청 예정).
+ * **표시 층에 없는 유형은 칩도 두지 않는다.** 역삼역 B3에는 승차권 충전기가 없는데 칩이 늘
+ * 떠 있으면, 눌러서 아무것도 나오지 않는 것을 확인해야만 없다는 것을 알 수 있다. `platform`
+ * 처럼 아직 시드되지 않은 유형도 같은 규칙으로 자연히 사라진다.
  */
 const MAP_FILTERS = FACILITY_MAP_FILTERS;
+
+/**
+ * 카메라 화면의 문구. 화살표가 가리키는 방향을 말로 한 번 더 적는다.
+ *
+ * 아래 안내 카드의 문구(`25m 직진하세요`)와 겹치지 않게 **방향만** 말한다. 거리는 카드가, 방향은
+ * 여기가 담당한다 — 같은 말을 두 곳에 쓰면 둘이 어긋날 여지만 생긴다.
+ */
+const CAM_CAPTIONS = {
+  straight: '정면 통로를 따라 직진하세요',
+  left: '왼쪽으로 도세요',
+  right: '오른쪽으로 도세요',
+  around: '뒤로 돌아가세요',
+} as const;
 
 /**
  * 화면이 들고 있는 출구 이름으로 실제 출구 시설을 찾는다.
@@ -77,6 +98,9 @@ export function NavigationPage() {
   const currentMapY = useNavigationStore((state) => state.currentMapY);
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const setRouteResult = useNavigationStore((state) => state.setRouteResult);
+  const progressKey = useNavigationStore((state) => state.progressKey);
+  const storedTravelledM = useNavigationStore((state) => state.travelledM);
+  const setRouteProgress = useNavigationStore((state) => state.setRouteProgress);
   const waypoints = useNavigationStore((state) => state.waypoints);
   const addWaypoint = useNavigationStore((state) => state.addWaypoint);
   const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
@@ -112,25 +136,61 @@ export function NavigationPage() {
   const [initialTarget] = useState(() => ({ nodeId: targetNodeId, label: targetExitLabel }));
   const initialDestination = useRef(destination);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
-  /** 켜 둔 시설 유형(`facilityType`). null이면 시설을 그리지 않는다. */
-  const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
+  /**
+   * 지도에 그릴 시설.
+   *
+   * - `all` — 표시 층의 시설 전부. 진입 시 기본값이다.
+   * - `none` — 아무것도 그리지 않는다. 경로와 내 위치만 보려는 상태다.
+   * - 그 외 — 그 `facilityType`만.
+   *
+   * 셋을 한 값에 담는다. `facilityType` 코드에 `all`·`none`이 없어(FACILITY_MAP_FILTERS)
+   * 섞이지 않고, 상태 두 개로 나누면 "숨김인데 유형도 켜져 있는" 조합이 생긴다.
+   */
+  const [facilityView, setFacilityView] = useState<string>('all');
   const [activeDestination, setActiveDestination] = useState(exit);
   const [recalculated, setRecalculated] = useState(false);
-  /** 선택한 경로의 상세 안내. 출발·도착 노드가 모두 있어야 조회할 수 있다. */
+  /**
+   * 선택한 경로의 상세 안내. 출발·도착 노드가 모두 있어야 조회할 수 있다.
+   *
+   * **경유지가 키에 들어간다.** 예전에는 빠져 있어서, 경유지를 추가해도 같은 키의 응답을 그대로
+   * 재사용했다. 요청에도 실리지 않았으니 서버는 애초에 최단 경로만 알고 있었고, 화면만
+   * "경로 업데이트 완료"라고 적혀 있었다.
+   *
+   * **사용자 좌표는 지금 보내지 않는다.** 보내면 서버가 진입 노드를 다시 고르는데, 그 기준이 직선
+   * 거리라 선로를 모른다 — B3 승강장에서 선로 건너편 계단이 뽑혀 관통하는 경로가 나왔다. 사유와
+   * 되돌리는 방법은 `SEND_CURRENT_POSITION`에 적어 두었다.
+   *
+   * 배선은 남겨 둔다. 좌표는 선택 필드라 `enabled`에 넣지 않는다 — 좌표 정합이 없는 층(역삼역 B1)
+   * 에서는 위치 인식이 좌표를 주지 못하는데, 조건에 넣으면 그 층에서 안내 자체를 받지 못한다.
+   */
+  const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
+  const origin = SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null;
   const routeQuery = useQuery({
-    queryKey: ['indoor-route', stationId, currentNodeId, targetNodeId, route],
+    queryKey: [
+      'indoor-route',
+      stationId,
+      currentNodeId,
+      targetNodeId,
+      route,
+      waypointNodeIds,
+      /* 좌표가 바뀌면 서버가 진입 노드를 다시 골라 다른 경로가 나온다. 키에 없으면 재인식으로
+         출발 노드가 그대로인 채 좌표만 바뀐 경우 옛 경로가 그대로 보인다. */
+      origin?.currentMapX ?? null,
+      origin?.currentMapY ?? null,
+    ],
     queryFn: () =>
       createIndoorRoute({
         stationId: stationId!,
         startNodeId: currentNodeId!,
         targetNodeId: targetNodeId!,
+        waypointNodeIds,
         routeType: route,
+        ...(origin ?? {}),
       }),
     enabled: stationId != null && currentNodeId != null && targetNodeId != null,
     retry: false,
   });
   const routeResult = routeQuery.data;
-  const firstStep = routeResult?.steps?.[0];
 
   /**
    * 안내 진입 시점의 확정 실내 위치. 위치 인식(FR-U-004)이 앵커링해 준 좌표다.
@@ -197,6 +257,109 @@ export function NavigationPage() {
   const displayedFloorCode = floorCodeOf(floorMaps, displayedFloorId);
 
   /**
+   * 내가 있는 층으로 되돌린다. 지도의 `내 위치` 버튼이 부른다.
+   *
+   * 고른 층을 지우면 표시 층이 다시 현재 위치를 따라간다(`displayedFloorId`). 다른 화면이 보는
+   * 층 상태도 층 버튼을 누를 때와 똑같이 맞춘다 — 여기서 빠뜨리면 지도만 내려오고 나머지
+   * 화면은 아까 보던 층에 남는다.
+   */
+  const returnToMyFloor = () => {
+    setPickedFloorCode(null);
+    setSelectedFacility(null);
+
+    const code = floorCodeOf(floorMaps, followedFloorId);
+    if (code) setFloor(code as FloorId);
+  };
+
+  /**
+   * 경로상 어디까지 왔는지. 안내 카드와 상세 경로가 이 값으로 현재 구간을 고른다.
+   *
+   * **진행 거리는 스토어에 둔다.** 뒤로 가지 않게 지금까지의 최대값을 들고 있어야 하는데, 렌더
+   * 중에 ref를 읽거나 쓰는 것은 막혀 있고(`react-hooks/refs`) effect에서 상태를 갱신하는 것도
+   * 막혀 있다(`set-state-in-effect`). 스토어 값은 렌더에서 그냥 읽으면 되므로 둘 다 피한다.
+   *
+   * 어느 경로의 진행도인지 열쇠로 함께 남긴다. 열쇠가 다르면 0부터 다시 센다 — 경로가 바뀔 때
+   * 따로 지우지 않아도 지난 진행도가 새 경로에 섞이지 않는다.
+   */
+  const routeKey = [
+    currentNodeId,
+    targetNodeId,
+    route,
+    waypointNodeIds.join(','),
+    /* 좌표도 경로를 바꾼다. 같은 출발 노드라도 좌표가 다르면 서버가 진입 노드를 다시 골라
+       다른 경로가 오므로, 열쇠에 없으면 지난 경로의 진행 거리를 새 경로에 그대로 얹는다. */
+    origin?.currentMapX ?? '',
+    origin?.currentMapY ?? '',
+  ].join('-');
+  const pathNodes = routePathNodesOf(routeResult);
+  const travelledM = progressKey === routeKey ? storedTravelledM : 0;
+  const progress = routeProgressOf({
+    pathNodes,
+    steps: routeResult?.steps,
+    currentLocation,
+    travelledM,
+  });
+
+  useEffect(() => {
+    if (progressKey !== routeKey || progress.travelledM > storedTravelledM) {
+      setRouteProgress(routeKey, progress.travelledM);
+    }
+  }, [progressKey, routeKey, progress.travelledM, storedTravelledM, setRouteProgress]);
+
+  /** 지금 안내할 구간. 예전에는 `steps[0]`에 고정돼 걸어도 안내가 넘어가지 않았다. */
+  const activeStep =
+    progress.currentStepIndex === null
+      ? undefined
+      : routeResult?.steps?.[progress.currentStepIndex];
+
+  /**
+   * 지금 걷고 있는 다리. **지나온 경유지 수가 곧 다리 번호다.**
+   *
+   * 지도가 이 값으로 다리마다 명도를 정한다 — 지나온 다리는 흐리게, 지금 다리는 진하게, 남은
+   * 다리는 연하게. 예전에는 첫 다리를 늘 진하게 칠해서, 첫 경유지를 지나도 이미 지나온 구간이
+   * 가장 눈에 띄고 정작 갈 길이 연했다.
+   *
+   * 경유지가 없으면 나눌 다리가 없고, 경로에서 벗어난 동안에는 어느 다리를 걷는지 말할 근거가
+   * 없다. 둘 다 null이며 지도는 한 색으로 그린다.
+   */
+  const activeLeg =
+    progress.offRoute || waypoints.length === 0
+      ? null
+      : waypointNodeIds.filter((nodeId) => progress.passedNodeIds.includes(nodeId)).length;
+
+  /**
+   * 카메라 화면의 큰 화살표가 가리킬 방향.
+   *
+   * **응답의 `steps[].turn`으로 대신할 수 없다.** 그 값은 앞 구간을 기준으로 한 네 방향이고
+   * (S15P11A206-337) 여기 필요한 것은 **내가 지금 보고 있는 쪽**을 기준으로 몇 도 벌어졌는지다.
+   * 서버는 사용자의 방향각을 모르므로 첫 단계의 `turn`은 아예 비어 있다. 그래서 경로 기하와 XR
+   * 방향각으로 직접 구한다 — 다음 지점이 내가 보는 쪽에서 몇 도 벌어져 있는지다.
+   *
+   * 모르면 null이고, 그때는 화살표와 문구를 아예 그리지 않는다. 예전에는 위를 향한 화살표와
+   * `정면 통로를 따라 직진하세요`가 **하드코딩**돼 있어, 좌회전해야 할 때도 계단을 타야 할 때도
+   * 정면으로 걸으라고 말했다. 아래 카드는 실제 안내를 하고 있었으므로 한 화면에서 두 안내가
+   * 서로 다른 말을 했다.
+   */
+  const bearing = routeBearingOf({
+    pathNodes,
+    currentLocation,
+    headingDeg,
+    travelledM: progress.travelledM,
+  });
+  /**
+   * 층을 오르내리는 구간에서는 수평 방향을 그리지 않는다. 엘리베이터 앞에서 화살표가 통로를
+   * 가리키면 그쪽으로 걷게 된다 — 가야 할 곳은 위층이다. 그 구간의 안내는 카드가 맡는다.
+   */
+  const verticalMove =
+    activeStep?.moveType === 'elevator' ||
+    activeStep?.moveType === 'stair' ||
+    activeStep?.moveType === 'escalator';
+  const camGuide =
+    progress.offRoute || verticalMove || bearing === null
+      ? null
+      : { relativeDeg: bearing.relativeDeg, caption: CAM_CAPTIONS[bearing.turn] };
+
+  /**
    * 목적지 마커. **이름과 좌표가 같은 곳을 가리켜야 한다.**
    *
    * 이전에는 좌표가 목업 상수(3번출구 엘리베이터)이고 이름은 경로 옵션 화면에서 온 문자열
@@ -214,6 +377,42 @@ export function NavigationPage() {
   const [pickedDestination, setPickedDestination] = useState<Facility | null>(null);
   const destinationFacility =
     pickedDestination ?? matchExitByName(exitsQuery.data ?? [], activeDestination);
+
+  /**
+   * 표시 층에 실제로 있는 시설 유형. 칩을 이걸로 추린다.
+   *
+   * 역 전체를 한 번 받아 층은 여기서 거른다. 지도 위젯이 유형 없이 그릴 때 쓰는 조회와 같은
+   * 키라 요청은 한 번만 나가고, 층을 오갈 때 다시 받지 않아 칩이 깜빡이지 않는다.
+   */
+  const facilitiesQuery = useStationFacilities(stationId ?? 0);
+  const facilitiesLoaded = facilitiesQuery.data !== undefined;
+  const floorFacilityTypes = new Set(
+    (facilitiesQuery.data ?? [])
+      .filter((facility) => facility.floorId === displayedFloorId)
+      .map((facility) => facility.facilityType),
+  );
+  const availableFilters = MAP_FILTERS.filter((filter) =>
+    floorFacilityTypes.has(filter.facilityType),
+  );
+
+  /**
+   * 실제로 적용할 표시 상태. 켜 둔 유형이 표시 층에 없으면 전체 표시로 친다.
+   *
+   * 고른 값 자체는 지우지 않는다. 계단을 켜 둔 채 계단이 없는 층을 잠깐 들렀다 돌아오면 다시
+   * 계단이 켜진다 — 층을 넘길 때마다 고른 것이 사라지면 매번 다시 눌러야 한다.
+   *
+   * 숨김은 층과 무관하므로 그대로 둔다. 첫 조회가 끝나기 전에도 판단하지 않는다 — 빈 목록을
+   * "그 층에 없다"로 읽으면 안 된다.
+   */
+  const effectiveView =
+    facilityView !== 'all' &&
+    facilityView !== 'none' &&
+    facilitiesLoaded &&
+    !floorFacilityTypes.has(facilityView)
+      ? 'all'
+      : facilityView;
+  /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
+  const effectiveType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
 
   /**
    * 안내 카드 문구.
@@ -258,14 +457,18 @@ export function NavigationPage() {
     if (routeResult && routeResult.available === false) {
       return {
         eyebrow: '다음 안내 · -',
-        title: '이 경로로는 갈 수 없어요',
+        // 경유지를 넣은 뒤 막혔다면 원인은 그쪽일 가능성이 크다. 무엇을 되돌리면 되는지 알린다.
+        title: waypoints.length > 0 ? '경유지를 지나는 길이 없어요' : '이 경로로는 갈 수 없어요',
         meta:
           routeUnavailableText(
             (routeResult.unavailableReason ?? null) as RouteUnavailableReason | null,
-          ) ?? '다른 경로를 선택해 주세요.',
+          ) ??
+          (waypoints.length > 0
+            ? '경유지를 지우면 원래 경로로 안내해 드려요.'
+            : '다른 경로를 선택해 주세요.'),
       };
     }
-    if (!firstStep) {
+    if (!activeStep) {
       return {
         eyebrow: '다음 안내 · -',
         title: '안내할 구간이 없어요',
@@ -275,22 +478,45 @@ export function NavigationPage() {
 
     const totalDistance = Math.round(routeResult?.totalDistanceM ?? 0);
     const totalMinutes = Math.max(1, Math.ceil((routeResult?.estimatedTimeSec ?? 0) / 60));
+    /*
+      현재 구간에서 **남은** 거리를 적는다. 구간 전체 길이를 적어 두면 그 구간을 절반 걸어도
+      숫자가 그대로여서, 걷고 있는데 아무 일도 일어나지 않는 것처럼 보인다.
+
+      위치를 모르거나 경로에서 벗어난 동안에는 구간 전체 길이로 돌아간다 — 진행도를 올리지
+      않았으므로 남은 거리라고 말할 근거가 없다.
+    */
+    const nextDistance = progress.offRoute
+      ? (activeStep.distanceM ?? 0)
+      : (progress.stepRemainingM ?? activeStep.distanceM ?? 0);
+
     return {
-      eyebrow: recalculated
-        ? '다음 안내 · 경로 업데이트 완료'
-        : `다음 안내 · ${Math.round(firstStep.distanceM ?? 0)}m`,
-      title: firstStep.instruction ?? '경로를 따라 이동하세요',
+      /*
+        다시 계산하는 동안에만 그렇게 적는다. 예전에는 한 번 경유지를 건드리면 안내가 끝날
+        때까지 `경로 업데이트 완료`에 머물러, 다음 지점까지 몇 미터인지가 영영 사라졌다.
+      */
+      eyebrow:
+        recalculated && routeQuery.isFetching
+          ? '다음 안내 · 경로 다시 계산 중'
+          : `다음 안내 · ${Math.round(nextDistance)}m`,
+      title: activeStep.instruction ?? '경로를 따라 이동하세요',
       meta: `총 ${totalDistance}m · 약 ${totalMinutes}분`,
     };
   })();
 
   const destinationChanged = activeDestination !== exit;
   const selectedFacilityIsWaypoint = selectedFacility
-    ? waypoints.includes(selectedFacility.nameKo)
+    ? waypoints.some((waypoint) => waypoint.nodeId === selectedFacility.linkedNodeId)
     : false;
   const selectedFacilityIsDestination = selectedFacility
     ? selectedFacility.nameKo === activeDestination
     : false;
+  /**
+   * 노드를 모르는 시설은 경유지가 될 수 없다.
+   *
+   * 경로는 노드로만 계산된다. 이름만 들고 추가하면 요청에 실을 것이 없어, 예전처럼 화면에만
+   * 칩이 붙고 경로는 그대로인 상태로 돌아간다.
+   */
+  const selectedFacilityRoutable = selectedFacility?.linkedNodeId != null;
 
   useEffect(() => {
     if (routeResult) setRouteResult(routeResult);
@@ -343,11 +569,16 @@ export function NavigationPage() {
                 disabled={
                   waypoints.length >= 2 ||
                   selectedFacilityIsWaypoint ||
-                  selectedFacilityIsDestination
+                  selectedFacilityIsDestination ||
+                  !selectedFacilityRoutable
                 }
                 onClick={() => {
                   if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  addWaypoint(selectedFacility.nameKo);
+                  if (selectedFacility.linkedNodeId == null) return;
+                  addWaypoint({
+                    nodeId: selectedFacility.linkedNodeId,
+                    nameKo: selectedFacility.nameKo,
+                  });
                   setRecalculated(true);
                   setSelectedFacility(null);
                 }}
@@ -356,9 +587,11 @@ export function NavigationPage() {
                   ? '현재 목적지는 추가 불가'
                   : selectedFacilityIsWaypoint
                     ? '이미 추가된 경유지'
-                    : waypoints.length >= 2
-                      ? '경유지 2개 추가 완료'
-                      : '경유지로 추가'}
+                    : !selectedFacilityRoutable
+                      ? '경유지로 지정할 수 없는 곳'
+                      : waypoints.length >= 2
+                        ? '경유지 2개 추가 완료'
+                        : '경유지로 추가'}
               </Button>
               <Button
                 variant="secondary"
@@ -417,7 +650,7 @@ export function NavigationPage() {
               <strong>{currentLocationLabel ?? station}</strong>
             </div>
             {waypoints.map((waypoint, index) => (
-              <Fragment key={waypoint}>
+              <Fragment key={waypoint.nodeId}>
                 <span className={styles.routeArrow} aria-hidden>
                   <Icon name="arrow-right" size={16} />
                 </span>
@@ -426,11 +659,11 @@ export function NavigationPage() {
                     type="button"
                     className={styles.removeWaypoint}
                     onClick={() => {
-                      removeWaypoint(waypoint);
+                      removeWaypoint(waypoint.nodeId);
                       setRecalculated(true);
                     }}
-                    aria-label={`${waypoint} 경유지 삭제`}
-                    title={`${waypoint} 경유지 삭제`}
+                    aria-label={`${waypoint.nameKo} 경유지 삭제`}
+                    title={`${waypoint.nameKo} 경유지 삭제`}
                   >
                     ×
                   </button>
@@ -438,7 +671,7 @@ export function NavigationPage() {
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
                     <small>경유 {index + 1}</small>
                   </span>
-                  <strong title={waypoint}>{waypoint}</strong>
+                  <strong title={waypoint.nameKo}>{waypoint.nameKo}</strong>
                 </div>
               </Fragment>
             ))}
@@ -484,8 +717,20 @@ export function NavigationPage() {
               <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
           </div>
-          <div className={styles.arrow}>↑</div>
-          <div className={styles.camCaption}>정면 통로를 따라 직진하세요</div>
+          {/* 방향을 알 때만 그린다. 모르는데 위를 향한 화살표를 두면 "정면"이라고 말하는 셈이다. */}
+          {camGuide && (
+            <>
+              <div
+                className={styles.arrow}
+                style={{ transform: `rotate(${camGuide.relativeDeg}deg)` }}
+                role="img"
+                aria-label={camGuide.caption}
+              >
+                ↑
+              </div>
+              <div className={styles.camCaption}>{camGuide.caption}</div>
+            </>
+          )}
         </div>
 
         <div className={styles.lower}>
@@ -495,10 +740,11 @@ export function NavigationPage() {
                   현재 위치 마커는 이 컴포넌트가 그린다 — 296 훅이 준 캐노니컬 미터 좌표를
                   넘기면 프레임 변환(meterToPixel)은 그쪽이 한다. 여기서 좌표를 가공하지 않는다.
 
-                  표시 층은 현재 위치를 따라간다. 사용자가 버튼으로 층을 바꾸는 기능은 280이다.
+                  표시 층은 현재 위치를 따라가고, 층 버튼이 바꾼다.
 
-                  TODO: useMockData를 끄면 실제 층 지도 API를 쓴다. 지금은 도면 이미지가
-                  업로드되지 않아(mapUrl이 null) 목업 도면으로 마커 움직임을 확인한다. */}
+                  목업을 끊었다. 도면 이미지는 목업·실제 모두 mapUrl이 null이라 같은 번들
+                  평면도로 떨어지므로 보이는 그림은 그대로이고, 좌표 프레임만 응답의 것을
+                  쓴다. 이 화면이 목업에 기대던 마지막 하나가 경로선이었다. */}
               <div className={styles.mapCanvas}>
                 <IndoorMapView
                   stationId={stationId ?? 0}
@@ -508,6 +754,9 @@ export function NavigationPage() {
                   /* 길안내 화면이므로 시점이 내 위치를 따라간다. 밀거나 확대하면 풀리고
                      `내 위치` 버튼으로 돌아온다. */
                   followCamera
+                  /* 층은 이 화면이 들고 있다. 시점만 되돌리면 다른 층을 보던 사용자는 그 층
+                     지도가 자기 좌표로 옮겨진 것만 보고, 마커는 다른 층이라 그려지지 않는다. */
+                  onRecenter={returnToMyFloor}
                   /* 실제 시설 좌표를 넘긴다. 목업 목적지를 쓰지 않는다 — 좌표와 이름이
                      다른 곳을 가리키던 원인이다. 다른 층의 목적지는 오버레이가 걸러낸다. */
                   destination={
@@ -522,15 +771,36 @@ export function NavigationPage() {
                   /* 이름은 응답의 것을 쓴다. 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
                      시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
                   destinationLabel={
-                    (facilityFilter == null || facilityFilter === 'exit') &&
+                    (effectiveType == null || effectiveType === 'exit') &&
                     destinationFacility !== null
                       ? destinationFacility.nameKo
                       : null
                   }
-                  facilityType={facilityFilter}
+                  /* 실제로 안내 중인 경로를 그린다. 조회 전이거나 실패하면 빈 배열이라
+                     선이 그려지지 않는다 — 예전에는 이 자리를 목업이 채워, 사용자가 가지도
+                     않을 B3 승강장 → 3번출구 경로가 늘 그려져 있었다. */
+                  pathNodes={routePathNodesOf(routeResult)}
+                  /* 다리별 색과 번호 핀에 쓰인다. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
+                  waypointNodeIds={waypointNodeIds}
+                  /* 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는 연하게 그린다. */
+                  activeLeg={activeLeg}
+                  /* 내 점과 경로 사이의 빈 자리를 잇는다.
+
+                     **경로에서 벗어난 동안에도 잇는다.** 처음에는 이탈이면 끊었는데, 그러면 정작
+                     필요한 자리에서 사라졌다 — 서버가 진입 노드를 목적지 기준으로 다시 고르면
+                     (S15P11A206-337) 그 노드가 수십 m 떨어질 수 있고, 그 층에 남는 경로 노드가
+                     그것 하나뿐이면 이탈로 판정되어 지도가 통째로 비었다. 역삼역 B3 복도(노드 209)
+                     에서 2번 출구로 갈 때 실제로 그랬다.
+
+                     벗어난 자리에서 가장 가까운 경로 지점으로 이어 주는 것이 필요한 안내다.
+                     아무것도 그리지 않으면 사용자는 자기 층에 경로가 없다고 읽는다. */
+                  connectCurrentToRoute
+                  facilityType={effectiveType}
+                  /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼져
+                     아무 시설도 그리지 않는다. */
+                  showAllFacilities={effectiveView === 'all'}
                   selectedFacilityId={selectedFacility?.facilityId}
                   onSelectFacility={setSelectedFacility}
-                  useMockData
                 />
               </div>
 
@@ -589,9 +859,10 @@ export function NavigationPage() {
                 })}
               </div>
 
+              {/* 표시 층에 있는 유형만 둔다. 눌러서 아무것도 안 나오는 칩은 두지 않는다. */}
               <div className={styles.facilityFilters} role="group" aria-label="시설 필터">
-                {MAP_FILTERS.map((filter) => {
-                  const active = facilityFilter === filter.facilityType;
+                {availableFilters.map((filter) => {
+                  const active = effectiveView === filter.facilityType;
 
                   return (
                     <button
@@ -604,7 +875,8 @@ export function NavigationPage() {
                       aria-pressed={active}
                       title={filter.name}
                       onClick={() => {
-                        setFacilityFilter(active ? null : filter.facilityType);
+                        // 켜 둔 것을 다시 누르면 전체 표시로 돌아간다.
+                        setFacilityView(active ? 'all' : filter.facilityType);
                         // 다른 유형으로 넘어가면 이전에 고른 시설의 이름표가 남지 않게 한다.
                         setSelectedFacility(null);
                       }}
@@ -613,6 +885,36 @@ export function NavigationPage() {
                     </button>
                   );
                 })}
+
+                {/*
+                  전부 감추기.
+
+                  유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 다시 누르면 전체
+                  표시로 돌아온다 — 켠 뒤 되돌릴 방법이 없으면 감추기를 누르기 망설이게 된다.
+
+                  목적지·내 위치·경로는 그대로 둔다. 안내에 필요한 표시까지 사라지면 지도가
+                  길을 알려 주지 못한다.
+                */}
+                <button
+                  type="button"
+                  className={[
+                    styles.facilityFilter,
+                    effectiveView === 'none' && styles.facilityFilterOn,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  aria-label={
+                    effectiveView === 'none' ? '시설 아이콘 다시 보기' : '시설 아이콘 모두 숨기기'
+                  }
+                  aria-pressed={effectiveView === 'none'}
+                  title={effectiveView === 'none' ? '시설 아이콘 다시 보기' : '시설 아이콘 숨기기'}
+                  onClick={() => {
+                    setFacilityView(effectiveView === 'none' ? 'all' : 'none');
+                    setSelectedFacility(null);
+                  }}
+                >
+                  <Icon name={effectiveView === 'none' ? 'eye' : 'eye-off'} size={14} />
+                </button>
               </div>
 
               {/* 현재 위치·방향·목적지·시설은 모두 IndoorMapView가 실제 좌표로 그린다.
@@ -627,28 +929,59 @@ export function NavigationPage() {
 
             {stepsOpen && (
               <div className={styles.steps}>
-                {routeResult?.steps?.map((step) => (
-                  <div
-                    key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
-                    className={styles.step}
-                  >
-                    <span className={styles.stepIcon}>↑</span>
-                    <b>{step.instruction ?? step.moveType ?? '이동'}</b>
-                    <span>
-                      {Math.round(step.distanceM ?? 0)}m · 약{' '}
-                      {Math.max(1, Math.ceil((step.estimatedTimeSec ?? 0) / 60))}분
-                    </span>
-                  </div>
-                ))}
-                {waypoints.map((waypoint) => (
-                  <div key={waypoint} className={styles.step}>
-                    <span className={styles.stepIcon}>
-                      <Icon name="pin" size={14} />
-                    </span>
-                    <b>{waypoint}</b>
-                    <span>추가 경유지</span>
-                  </div>
-                ))}
+                {routeResult?.steps?.map((step, index) => {
+                  /*
+                    지나온 구간은 지우지 않고 흐리게 둔다. 지워 버리면 목록이 짧아지면서 남은
+                    구간이 위로 튀어 올라, 방금 읽던 줄이 어디로 갔는지 알 수 없다. 흐린 줄로
+                    남기면 어디까지 왔는지도 함께 보인다.
+
+                    경로에서 벗어난 동안에는 아무 줄도 강조하지 않는다. 진행도를 올리지 않았으므로
+                    어느 구간에 있다고 말할 근거가 없고, 틀린 줄을 강조하면 그것을 따라 걷는다.
+                  */
+                  const active = !progress.offRoute && index === progress.currentStepIndex;
+                  const passed =
+                    !progress.offRoute &&
+                    progress.currentStepIndex !== null &&
+                    index < progress.currentStepIndex;
+
+                  return (
+                    <div
+                      key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
+                      className={[styles.step, passed && styles.stepPassed, active && styles.stepOn]
+                        .filter(Boolean)
+                        .join(' ')}
+                      aria-current={active ? 'step' : undefined}
+                    >
+                      <span className={styles.stepIcon}>
+                        {passed ? <Icon name="check" size={13} /> : '↑'}
+                      </span>
+                      <b>{step.instruction ?? step.moveType ?? '이동'}</b>
+                      <span>
+                        {Math.round(step.distanceM ?? 0)}m · 약{' '}
+                        {Math.max(1, Math.ceil((step.estimatedTimeSec ?? 0) / 60))}분
+                      </span>
+                    </div>
+                  );
+                })}
+                {waypoints.map((waypoint, index) => {
+                  // 지나온 경유지도 흐리게 둔다. 지도의 번호 핀과 같은 순서다.
+                  const passed = progress.passedNodeIds.includes(waypoint.nodeId);
+
+                  return (
+                    <div
+                      key={waypoint.nodeId}
+                      className={[styles.step, passed && styles.stepPassed]
+                        .filter(Boolean)
+                        .join(' ')}
+                    >
+                      <span className={styles.stepIcon}>
+                        {passed ? <Icon name="check" size={13} /> : <Icon name="pin" size={14} />}
+                      </span>
+                      <b>{waypoint.nameKo}</b>
+                      <span>경유 {index + 1}</span>
+                    </div>
+                  );
+                })}
                 <div className={styles.step}>
                   <span className={styles.stepIcon}>
                     <Icon name="flag" size={14} />

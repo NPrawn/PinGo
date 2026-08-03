@@ -43,4 +43,13 @@ export interface RouteOptionsQuery {
   startNodeId: number;
   /** 도착 실내 노드. 외부 목적지 검색·출구 추천은 이 API 범위 밖이다. */
   targetNodeId: number;
+  /**
+   * 사용자의 실제 캐노니컬 좌표. 선택이며 **짝으로 있어야** 쓰인다. (`routeOriginOf`)
+   *
+   * 서버가 이 값으로 진입 노드를 목적지까지의 총 거리가 가장 짧은 것으로 다시 고른다.
+   * **경로 생성에도 같은 값을 보내야 한다** — 한쪽만 보내면 진입 노드가 달라져, 이 화면에서
+   * 본 거리와 안내 화면의 경로 길이가 어긋난다.
+   */
+  currentMapX?: number;
+  currentMapY?: number;
 }

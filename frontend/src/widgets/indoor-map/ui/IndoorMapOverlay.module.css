@@ -10,22 +10,74 @@
   pointer-events: none;
 }
 
-/* 경로선. 프로토타입(pingo-user.html #s-nav)의 점선 경로를 그대로 옮겼다.
+/* 경로선.
+   프로토타입은 민트색 점선이었다. 시설 마커도 민트라 무엇이 갈 길이고 무엇이 시설인지
+   구분되지 않았고, 점선은 도면의 해칭 선과 섞여 어디까지가 경로인지 읽히지 않았다.
+   이제 실선 파스텔 레드에 바깥 테두리를 한 겹 두르고, 진행 방향을 얹는다.
 
-   **선 두께와 점 간격은 컴포넌트가 계산해 넘긴다.** `non-scaling-stroke`는 SVG 안의 변환만
-   무시하고 바깥 CSS 확대는 그대로 받으므로, 확대하면 반지름은 줄고 테두리만 두꺼워져 점이
-   작아 보이는 모습이 된다. 두께도 좌표와 같은 단위로 두고 함께 상쇄한다. */
+   **선 두께는 컴포넌트가 계산해 넘긴다.** `non-scaling-stroke`는 SVG 안의 변환만 무시하고
+   바깥 CSS 확대는 그대로 받으므로, 확대하면 반지름은 줄고 테두리만 두꺼워져 선이 뭉개진다.
+   두께도 좌표와 같은 단위로 두고 함께 상쇄한다. */
 .route {
   fill: none;
-  stroke: var(--color-mint-mid);
+  stroke: var(--color-route);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-/* 목적지 — 프로토타입 `.dotdest`. 흰 테두리를 두른 빨간 점이다.
-   현재 위치가 민트라 색만으로 구분된다. */
+/* 경유지가 있을 때 다리마다 다른 명도.
+   **지금 걷는 다리가 가장 진하다.** 남은 길은 맥락이고 지금 갈 길이 지시다.
+   색을 여러 가지로 나누지 않는 이유는 `legToneClass`에 적어 두었다. */
+.routeNear {
+  stroke: var(--color-route-near);
+}
+
+.routeFar {
+  stroke: var(--color-route-far);
+}
+
+/* 이미 지나온 다리. 지우지 않고 흐리게 둔다 — 어디서 왔는지가 보여야 지금 위치가 읽힌다. */
+.routePassed {
+  stroke: var(--color-route-far);
+  opacity: 0.45;
+}
+
+/* 경유지 번호 핀. 목적지와 같은 계열의 진한 색을 쓰되 숫자로 구분한다. */
+.waypointPin {
+  fill: var(--color-route-near);
+  /* 원본 마커들과 같은 순백 테두리. 연한 도면 위에서도 핀이 떨어져 나온다. */
+  stroke: #fff;
+}
+
+.waypointOrder {
+  font-weight: 800;
+  fill: #fff;
+}
+
+/* 본선 아래 한 겹. 도면의 벽·해칭 선에서 경로를 떼어 놓는다. */
+.routeCasing {
+  fill: none;
+  stroke: var(--color-route-veil);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 진행 방향 화살촉. 선 위에 흰색으로 얹어 방향만 도려낸 것처럼 보이게 한다.
+   본선보다 얇게 둬야 선을 끊지 않고 안쪽에 앉는다. */
+.routeDirection {
+  fill: none;
+  stroke: #fff;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* 순백은 파스텔 위에서 너무 튄다. 살짝 눌러 선과 같은 화면의 것으로 보이게 한다. */
+  opacity: 0.92;
+}
+
+/* 목적지 — 프로토타입 `.dotdest`. 흰 테두리를 두른 점이다.
+   경로와 같은 계열의 **가장 진한** 색을 쓴다. 경로가 파스텔 레드가 된 뒤로 예전의
+   `--color-red`는 선과 구분되지 않았다 — 도착점은 길보다 진해야 끝으로 읽힌다. */
 .destinationPin {
-  fill: var(--color-red);
+  fill: var(--color-route-deep);
   /* 원본은 순백 테두리다. --color-surface는 크림빛이라 연한 도면 위에서 테두리가 사라진다. */
   stroke: #fff;
 }
@@ -34,7 +86,7 @@
    같은 효과를 낸다 — SVG에서 배경 칩을 그리려면 글자 폭을 먼저 재야 한다. */
 .destinationLabel {
   font-weight: 800;
-  fill: var(--color-red);
+  fill: var(--color-route-deep);
   /* 원본은 순백 테두리다. --color-surface는 크림빛이라 연한 도면 위에서 테두리가 사라진다. */
   stroke: #fff;
   stroke-linejoin: round;
@@ -75,18 +127,22 @@
   paint-order: stroke;
 }
 
-/* 현재 위치 — 프로토타입 `.heading`의 세 겹(ping · beam · dot)을 옮겼다. */
+/* 현재 위치 — 프로토타입 `.heading`의 세 겹(ping · beam · dot)을 옮겼다.
+   색은 경로와 같은 계열이다. 내 위치와 갈 길은 한 이야기이고, 시설(민트)과 갈라야 하는 쪽은
+   그 둘이 함께다. */
 
-/* 살아 있는 위치임을 알리는 맥박. 원본과 같은 주기로 퍼진다. */
+/* 살아 있는 위치임을 알리는 맥박. 원본과 같은 주기로 퍼진다.
+   원본보다 진하다. 경로선과 같은 계열이어서 점만으로는 선 위에 얹힌 굵은 점으로 읽히는데,
+   퍼지는 맥박은 선이 절대 하지 않는 움직임이라 색을 바꾸지 않고도 둘이 갈린다. */
 .currentHalo {
-  fill: color-mix(in srgb, var(--color-mint-mid) 40%, transparent);
+  fill: color-mix(in srgb, var(--color-route) 62%, transparent);
   transform-box: fill-box;
   transform-origin: center;
   animation: current-pulse 2s ease-out infinite;
 }
 
 .currentDot {
-  fill: var(--color-mint-mid);
+  fill: var(--color-route);
   /* 원본은 순백 테두리다. --color-surface는 크림빛이라 연한 도면 위에서 테두리가 사라진다. */
   stroke: #fff;
 }
@@ -106,22 +162,24 @@
 }
 
 .beamStopInner {
-  stop-color: var(--color-mint-mid);
+  stop-color: var(--color-route);
   stop-opacity: 0.42;
 }
 
 .beamStopOuter {
-  stop-color: var(--color-mint-mid);
+  stop-color: var(--color-route);
   stop-opacity: 0;
 }
 
+/* 시작을 진하게, 사라지는 지점을 뒤로 미룬다. 원본은 주기의 70%에서 이미 투명해져 절반 넘게
+   아무것도 없는 상태였고, 그 사이에는 점만 남아 다시 선의 일부로 보였다. */
 @keyframes current-pulse {
   0% {
-    opacity: 0.55;
+    opacity: 0.85;
     transform: scale(0.7);
   }
 
-  70% {
+  82% {
     opacity: 0;
     transform: scale(1.9);
   }

@@ -378,7 +378,7 @@ export function ConsultSessionPage() {
               <strong>{currentLocationLabel ?? station}</strong>
             </div>
             {waypoints.map((waypoint, index) => (
-              <Fragment key={waypoint}>
+              <Fragment key={waypoint.nodeId}>
                 <span className={styles.routeArrow} aria-hidden>
                   <Icon name="arrow-right" size={16} />
                 </span>
@@ -386,9 +386,9 @@ export function ConsultSessionPage() {
                   <button
                     type="button"
                     className={styles.removeWaypoint}
-                    onClick={() => removeWaypoint(waypoint)}
-                    aria-label={`${waypoint} 경유지 삭제`}
-                    title={`${waypoint} 경유지 삭제`}
+                    onClick={() => removeWaypoint(waypoint.nodeId)}
+                    aria-label={`${waypoint.nameKo} 경유지 삭제`}
+                    title={`${waypoint.nameKo} 경유지 삭제`}
                   >
                     ×
                   </button>
@@ -396,7 +396,7 @@ export function ConsultSessionPage() {
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
                     <small>경유 {index + 1}</small>
                   </span>
-                  <strong title={waypoint}>{waypoint}</strong>
+                  <strong title={waypoint.nameKo}>{waypoint.nameKo}</strong>
                 </div>
               </Fragment>
             ))}

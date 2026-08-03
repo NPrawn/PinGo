@@ -39,6 +39,20 @@ interface IndoorMapViewProps {
   destinationLabel?: string | null;
   /** 경로가 지나는 노드. 경로 응답의 pathNodes를 그대로 받는다. */
   pathNodes?: readonly RoutePathNode[];
+  /** 경유지 노드. 경로에 실어 보낸 순서 그대로 넘긴다 — 다리별 색과 번호 핀에 쓰인다. */
+  waypointNodeIds?: readonly number[];
+  /** 지금 걷고 있는 다리(0이 출발 → 첫 경유지). 다리별 명도를 정한다. */
+  activeLeg?: number | null;
+  /**
+   * 현재 위치와 경로 사이의 빈 자리를 이을지. 기본은 잇지 않는다.
+   *
+   * 경로선은 그래프 노드에서 시작하고 내 점은 실제 좌표에 있어 둘이 떨어져 보인다. 서버가 진입
+   * 노드를 다시 고르면 그 간격이 수십 m가 될 수 있고, 그 층에 남는 경로 노드가 하나뿐이면 이 선이
+   * 그 층 안내의 전부가 된다.
+   *
+   * 안내 화면에서만 켠다. 둘러보기·상담 공유 지도의 경로는 내 위치에서 출발하는 것이 아니다.
+   */
+  connectCurrentToRoute?: boolean;
   /**
    * 지도에 표시할 시설 유형. 넘기지 않으면 **아무 시설도 그리지 않는다.**
    *
@@ -47,6 +61,14 @@ interface IndoorMapViewProps {
    * 덮는다. 유형을 하나 고르면 많아도 13개(계단)라 겹치지 않는다 — FR-U-006의 점진적 공개다.
    */
   facilityType?: string | null;
+  /**
+   * `facilityType`이 없을 때 **표시 층의 시설을 모두** 그린다. 기본은 아무것도 그리지 않는다.
+   *
+   * 안내 화면이 이걸 켠다. 무엇이 어디에 있는지 먼저 보여 준 다음 유형으로 좁히는 흐름이라,
+   * 아무것도 없는 지도에서 시작하지 않는다. 대신 위 밀도 계산이 그대로 적용되므로 마커가
+   * 서로 겹친다 — 훑어보는 용도이고, 고르려면 유형을 켜야 한다.
+   */
+  showAllFacilities?: boolean;
   /** 이름을 함께 보여줄 시설. */
   selectedFacilityId?: number | null;
   /** 시설 마커를 눌렀을 때. */
@@ -60,6 +82,14 @@ interface IndoorMapViewProps {
    * 지도를 훑어보는 화면(`/user/map`)에서는 꺼 둔다 — 거기서는 조망이 목적이다.
    */
   followCamera?: boolean;
+  /**
+   * `내 위치` 버튼을 눌렀을 때. 시점 복귀는 위젯이 하고, **층 되돌리기는 여기서** 한다.
+   *
+   * 표시 층은 화면이 들고 있다(안내 화면의 층 버튼). 위젯이 시점만 되돌리면 다른 층을 보던
+   * 사용자는 그 층 지도가 자기 좌표로 옮겨진 것만 보게 되고, 정작 마커는 다른 층이라 그려지지
+   * 않는다. 내 위치로 가는 버튼을 눌렀는데 내 위치가 화면에 없는 상태가 된다.
+   */
+  onRecenter?: () => void;
   /**
    * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
    * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
@@ -113,10 +143,15 @@ export function IndoorMapView({
   destination,
   destinationLabel,
   pathNodes,
+  waypointNodeIds,
+  activeLeg,
+  connectCurrentToRoute = false,
   facilityType,
+  showAllFacilities = false,
   selectedFacilityId,
   onSelectFacility,
   followCamera = false,
+  onRecenter,
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
@@ -124,8 +159,8 @@ export function IndoorMapView({
   /**
    * 시점 추종의 목표. 현재 위치를 표시 캔버스 좌표로 옮긴 값이다.
    *
-   * 층 판정은 하지 않는다 — 다른 층에 있으면 그 층 지도를 보고 있는 것이므로 따라갈 이유가
-   * 없고, 아래에서 표시 층과 다르면 목표를 비운다.
+   * 층 판정은 하지 않는다. 세 층이 같은 기준 캔버스에 얹혀 있어(`planPlacementOf`) 좌표만으로
+   * 목표가 정해지고, 층이 다른지는 `onOtherFloor`가 따로 판단해 복귀 버튼으로 알린다.
    */
   const followTarget =
     followCamera && currentLocation
@@ -171,16 +206,29 @@ export function IndoorMapView({
   const query = useStationFloorMaps(stationId, { enabled: !useMockData });
 
   /**
-   * 유형을 고르기 전에는 조회하지 않는다. 그릴 것이 없는데 77건을 받아 둘 이유가 없다.
+   * 그릴 것이 없으면 조회하지 않는다. 유형도 고르지 않고 전부 보여 주지도 않는 화면에서
+   * 77건을 받아 둘 이유가 없다.
+   *
+   * 층으로 좁히지 않는다. 역 하나의 시설은 수십 건이라 한 번에 받아도 부담이 없고, 층마다
+   * 좁히면 층을 오갈 때마다 다시 받는다(`useStationFacilities`). 다른 층 것은 오버레이가
+   * 걸러 낸다.
    *
    * 목업 모드에서도 조회한다 — 시설은 실제 API에만 있고 목업이 없다. 역삼역은 목업 floorId와
    * 실제 floorId가 우연히 같아(B2=1·B3=2·B1=3) 목업 도면 위에도 제 위치에 얹힌다. 목업이
    * 제거되면(297) 이 우연에 의존하지 않는다.
    */
+  const wantsFacilities = facilityType != null || showAllFacilities;
   const facilityQuery = useStationFacilities(stationId, {
     facilityType: facilityType ?? undefined,
-    enabled: facilityType != null,
+    enabled: wantsFacilities,
   });
+  /**
+   * 조회를 꺼도 캐시에 남은 목록은 그대로 돌아온다.
+   *
+   * 같은 키를 다른 화면이 이미 받아 두었으면 `enabled: false`가 데이터를 비워 주지 않는다.
+   * 그리지 않기로 한 상태에서 마커가 남지 않도록 여기서 한 번 더 끊는다.
+   */
+  const facilities = wantsFacilities ? facilityQuery.data : undefined;
 
   if (!useMockData) {
     if (query.isPending) {
@@ -208,6 +256,14 @@ export function IndoorMapView({
   const planImageUrl = floorPlanImageUrl(floorMap);
   const placement = planPlacementOf(floorMap);
   const imageAlt = t('indoorMap.imageAlt', { floorCode: floorMap.floorCode });
+
+  /**
+   * 내가 있는 층이 아닌 곳을 보고 있는지.
+   *
+   * 이때는 오버레이가 내 위치 마커를 그리지 않는다(다른 층 좌표라 걸러진다). 시점만 되돌려 봐야
+   * 아무것도 나타나지 않으므로, 복귀 버튼을 띄워 층까지 함께 되돌릴 수 있게 한다.
+   */
+  const onOtherFloor = currentLocation != null && currentLocation.floorId !== floorMap.floorId;
 
   /**
    * 모든 층의 도면을 한 번에 올려 두고 표시 층만 드러낸다.
@@ -290,7 +346,10 @@ export function IndoorMapView({
           destination={mockable(destination, MOCK_DESTINATION, useMockData)}
           destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}
-          facilities={facilityQuery.data}
+          waypointNodeIds={waypointNodeIds}
+          activeLeg={activeLeg}
+          connectCurrentToRoute={connectCurrentToRoute}
+          facilities={facilities}
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
           /* 지도가 커져도 마커는 화면상 크기를 유지한다. 확대는 도면을 크게 보려는 조작이고,
@@ -300,14 +359,23 @@ export function IndoorMapView({
           mapRotationDeg={mapView.rotation}
         />
       </div>
-      {/* 추종 중일 때는 버튼이 필요 없다. 손으로 둘러본 뒤에만 돌아갈 곳을 제시한다.
+      {/* 추종 중이고 내 층을 보고 있으면 버튼이 필요 없다. 손으로 둘러보거나 다른 층으로 넘어간
+          뒤에만 돌아갈 곳을 제시한다.
+
+          **층만 넘긴 경우에도 보여야 한다.** 지도를 밀지 않았으면 추종은 그대로 켜져 있어서,
+          예전에는 다른 층에서 버튼이 아예 나타나지 않았다. 내 층으로 돌아올 방법이 층 버튼을
+          직접 다시 누르는 것뿐이었고, 어느 층에 있었는지는 화면에 적혀 있지 않다.
+
           글자 대신 아이콘으로 둔다 — 지도를 가리는 면적이 줄고, 내비게이션의 통례다.
           이름은 화면에 보이지 않으므로 aria-label로만 남긴다. */}
-      {(followTarget ? !mapFollowing : mapTransformed) && (
+      {(followTarget ? !mapFollowing || onOtherFloor : mapTransformed) && (
         <button
           type="button"
           className={styles.resetView}
-          onClick={resetMapView}
+          onClick={() => {
+            resetMapView();
+            onRecenter?.();
+          }}
           aria-label={t(followTarget ? 'indoorMap.recenter' : 'indoorMap.resetView')}
         >
           <Icon name={followTarget ? 'target' : 'refresh'} size={18} />
@@ -335,6 +403,9 @@ function MapOverlay({
   destination,
   destinationLabel,
   pathNodes,
+  waypointNodeIds,
+  activeLeg,
+  connectCurrentToRoute,
   facilities,
   selectedFacilityId,
   onSelectFacility,
@@ -348,6 +419,11 @@ function MapOverlay({
   destination: IndoorPoint | null;
   destinationLabel?: string | null;
   pathNodes?: readonly RoutePathNode[];
+  waypointNodeIds?: readonly number[];
+  /** 지금 걷고 있는 다리(0이 출발 → 첫 경유지). 다리별 명도를 정한다. */
+  activeLeg?: number | null;
+  /** 현재 위치와 경로 사이를 이을지. 경로에서 벗어난 동안에는 켜지 않는다. */
+  connectCurrentToRoute?: boolean;
   facilities?: readonly Facility[];
   selectedFacilityId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
@@ -378,6 +454,9 @@ function MapOverlay({
       destination={destination}
       destinationLabel={destinationLabel}
       pathNodes={pathNodes}
+      waypointNodeIds={waypointNodeIds}
+      activeLeg={activeLeg}
+      connectCurrentToRoute={connectCurrentToRoute}
       facilities={facilities}
       selectedFacilityId={selectedFacilityId}
       onSelectFacility={onSelectFacility}

@@ -13,19 +13,33 @@ import type { RouteOptionsQuery } from '../model/types';
  * `useStationFloorMaps`가 유효하지 않은 stationId에서 요청을 걸지 않는 것과 같은 방식이다.
  */
 export function useIndoorRouteOptions(query: Partial<RouteOptionsQuery>) {
-  const { stationId, startNodeId, targetNodeId } = query;
+  const { stationId, startNodeId, targetNodeId, currentMapX, currentMapY } = query;
+  /**
+   * 사용자 좌표는 조건에 넣지 않는다. **선택 필드다.**
+   *
+   * 좌표 정합이 없는 층(역삼역 B1)은 위치 인식이 좌표를 주지 못한다. 조건에 넣으면 그 층에서
+   * 경로 옵션 자체를 못 받는데, 좌표 없이도 서버는 `startNodeId`로 예전처럼 답한다.
+   */
   const ready =
     isPositiveInteger(stationId) &&
     isPositiveInteger(startNodeId) &&
     isPositiveInteger(targetNodeId);
 
   return useQuery({
-    queryKey: queryKeys.indoorRouteOptions(stationId ?? 0, startNodeId ?? 0, targetNodeId ?? 0),
+    queryKey: queryKeys.indoorRouteOptions(
+      stationId ?? 0,
+      startNodeId ?? 0,
+      targetNodeId ?? 0,
+      currentMapX,
+      currentMapY,
+    ),
     queryFn: () =>
       getIndoorRouteOptions({
         stationId: stationId as number,
         startNodeId: startNodeId as number,
         targetNodeId: targetNodeId as number,
+        currentMapX,
+        currentMapY,
       }),
     enabled: ready,
   });
