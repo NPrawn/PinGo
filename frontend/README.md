@@ -153,8 +153,8 @@ Windows 방화벽이 연결을 차단하면 Node.js 또는 해당 포트의 사�
 
 | 변수                      | 용도                | 기본 예시               |
 | ------------------------- | ------------------- | ----------------------- |
-| `VITE_API_BASE_URL`       | HTTP API 기본 주소  | `http://localhost:8080` |
-| `VITE_WS_BASE_URL`        | WebSocket 기본 주소 | `ws://localhost:8080`   |
+| `VITE_API_BASE_URL`       | HTTP API 기본 주소  | `https://jenkins.example.invalid` |
+| `VITE_WS_BASE_URL`        | WebSocket 기본 주소 | `wss://jenkins.example.invalid`   |
 | `VITE_APP_ENV`            | 실행 환경           | `development`           |
 | `VITE_NAVER_MAP_BASE_URL` | 지도 관련 기본 주소 | 미정                    |
 | `VITE_STUN_URL`           | WebRTC STUN 서버    | 미정                    |
