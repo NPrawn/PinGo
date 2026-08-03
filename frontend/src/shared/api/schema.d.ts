@@ -1332,6 +1332,7 @@ export interface components {
       destinationId?: number;
       videoConsent?: boolean;
       audioConsent?: boolean;
+      locationConsent?: boolean;
     };
     ApiResponseConsultationCreateResponse: {
       success?: boolean;
