@@ -97,12 +97,24 @@ export function UserRoutes() {
         {/* Consultation */}
         <Route path={rel(USER_ROUTES.CONSULT_REQUEST)} element={<ConsultRequestPage />} />
         <Route path={rel(USER_ROUTES.CONSULT_PERMISSION)} element={<ConsultPermissionPage />} />
-        <Route path={rel(USER_ROUTES.CONSULT_WAITING)} element={<ConsultWaitingPage />} />
-        <Route path={rel(USER_ROUTES.CONSULT_SESSION)} element={<ConsultSessionPage />} />
-        <Route path={rel(USER_ROUTES.CONSULT_ENDED)} element={<ConsultEndedPage />} />
 
         <Route path={rel(USER_ROUTES.SETTINGS)} element={<SettingsPage />} />
       </Route>
+
+      {/*
+        상담이 시작된 뒤의 화면들은 가드 밖에 둔다.
+
+        가드는 권한이 사라지면 곧바로 권한 화면으로 돌려보낸다. 그거면 되는 화면이 대부분이지만
+        이쪽은 아니다. 잡아 둔 카메라·마이크가 그대로 남고, 서버의 상담도 진행 중으로 남아
+        상담자는 연결돼 있다고 믿은 채 빈 화면에 대고 안내를 이어 간다.
+
+        그래서 대기·상담 화면이 `usePermissionsRevoked`로 직접 알아채고, 장치를 놓아 준 뒤
+        서버의 상담까지 정리하고 나서 떠난다. 종료 화면은 장치를 쓰지 않으므로 애초에 권한을
+        요구할 이유가 없다 — 정리하고 도착하는 곳이기도 하다.
+      */}
+      <Route path={rel(USER_ROUTES.CONSULT_WAITING)} element={<ConsultWaitingPage />} />
+      <Route path={rel(USER_ROUTES.CONSULT_SESSION)} element={<ConsultSessionPage />} />
+      <Route path={rel(USER_ROUTES.CONSULT_ENDED)} element={<ConsultEndedPage />} />
 
       <Route path={rel(USER_ROUTES.OFFLINE)} element={<OfflinePage />} />
 

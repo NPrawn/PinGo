@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
 import { releaseConsultMedia } from '@/features/consult-signaling';
+import { usePermissionsRevoked } from '@/features/permissions';
 import {
   ApiError,
   cancelConsultation,
@@ -103,13 +104,35 @@ export function ConsultWaitingPage() {
     return () => events.close();
   }, [clearConsultation, consultationId, navigate, setSignalingRoom, userSessionId]);
 
-  const leaveWaiting = () => {
-    // 상담으로 이어지지 않았으니 미리 잡아 둔 화면·마이크를 놓아 준다. 그대로 두면 장치를
+  const leaveWaiting = useCallback(() => {
+    // 상담으로 이어지지 않았으니 미리 잡아 둔 카메라·마이크를 놓아 준다. 그대로 두면 장치를
     // 계속 물고 있어서 다음 권한 요청이 응답 없이 멈춘다.
     releaseConsultMedia();
     clearConsultation();
     void navigate(USER_ROUTES.CONSULT_REQUEST);
-  };
+  }, [clearConsultation, navigate]);
+
+  /**
+   * 기다리는 동안 권한이 사라지면 요청을 거둬들인다.
+   *
+   * 이 화면은 경로 가드(`RequirePermissions`) 밖에 있다. 가드에 맡기면 권한 화면으로 튕겨
+   * 나가면서 잡아 둔 장치가 그대로 남고, 서버에는 응답할 사람 없는 요청이 대기열에 남아
+   * 상담자가 수락한 뒤에야 잘못된 것을 알게 된다.
+   */
+  const permissionsRevoked = usePermissionsRevoked();
+  const withdrawingRef = useRef(false);
+
+  useEffect(() => {
+    if (!permissionsRevoked || withdrawingRef.current) return;
+
+    withdrawingRef.current = true;
+    releaseConsultMedia();
+    if (consultationId && userSessionId) {
+      void cancelConsultation(consultationId, userSessionId).catch(() => undefined);
+    }
+    clearConsultation();
+    void navigate(USER_ROUTES.PERMISSION);
+  }, [clearConsultation, consultationId, navigate, permissionsRevoked, userSessionId]);
 
   const cancel = async () => {
     if (!consultationId || !userSessionId) {

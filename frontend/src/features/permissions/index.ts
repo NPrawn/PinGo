@@ -24,7 +24,7 @@ export {
   watchPermissionStates,
 } from './model/permission.query';
 
-export { useBrowserPermissionStates } from './model/permission.watch';
+export { useBrowserPermissionStates, usePermissionsRevoked } from './model/permission.watch';
 
 export { RequirePermissions } from './ui/RequirePermissions';
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   queryPermissionStates,
+  revokedKindsOf,
   watchPermissionStates,
   UNKNOWN_PERMISSION_STATES,
   type BrowserPermissionStates,
@@ -37,4 +38,19 @@ export function useBrowserPermissionStates(): BrowserPermissionStates {
   }, []);
 
   return states;
+}
+
+/**
+ * 세 권한 중 하나라도 사라졌는지.
+ *
+ * 경로 가드는 이 경우 권한 화면으로 돌려보내면 그만이지만, 상담 화면은 그럴 수 없다. 잡아 둔
+ * 카메라·마이크를 놓아 주고 서버의 상담도 끝내야 해서, 되돌려 보내기 전에 할 일이 있다.
+ * 그래서 상담 화면들은 가드 대신 이 훅으로 직접 알아채고 스스로 정리한다.
+ *
+ * 조회할 수 없는 브라우저에서는 늘 거짓이다. 모르는 것을 사라진 것으로 치면 멀쩡히 진행 중인
+ * 상담을 끊게 된다.
+ */
+export function usePermissionsRevoked(): boolean {
+  const states = useBrowserPermissionStates();
+  return revokedKindsOf(states).length > 0;
 }

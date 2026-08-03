@@ -8,9 +8,11 @@ import { useUserSessionStore } from '@/entities/user-session';
 import { useTranslation } from 'react-i18next';
 import {
   peekConsultCamera,
+  releaseConsultMedia,
   useCaptionTranslation,
   useConsultSignaling,
 } from '@/features/consult-signaling';
+import { usePermissionsRevoked } from '@/features/permissions';
 import { useRemoteScreenDraw } from '@/features/shared-screen-draw';
 import { endConsultationByUser, getConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
@@ -241,12 +243,32 @@ export function ConsultSessionPage() {
    *
    * 상담자가 먼저 끝냈다면 이미 종료된 상담이라 거절된다. 그래도 화면은 넘어간다.
    */
-  const endCall = async () => {
+  const endCall = useCallback(async () => {
     if (consultationId && userSessionId) {
       await endConsultationByUser(consultationId, userSessionId).catch(() => undefined);
     }
     void navigate(USER_ROUTES.CONSULT_ENDED);
-  };
+  }, [consultationId, navigate, userSessionId]);
+
+  /**
+   * 상담 도중 권한이 사라지면 상담을 끝낸다.
+   *
+   * 이 화면은 경로 가드(`RequirePermissions`) 밖에 있다. 가드에 맡기면 권한 화면으로 튕겨
+   * 나가면서 잡아 둔 카메라·마이크가 그대로 남고, 서버의 상담도 진행 중으로 남는다. 상담자는
+   * 연결돼 있다고 믿은 채 빈 화면에 대고 안내를 이어 가게 된다.
+   *
+   * 장치를 먼저 놓아 준다. 서버 응답을 기다리는 동안 표시등이 켜져 있을 이유가 없다.
+   */
+  const permissionsRevoked = usePermissionsRevoked();
+  const endingRef = useRef(false);
+
+  useEffect(() => {
+    if (!permissionsRevoked || endingRef.current) return;
+
+    endingRef.current = true;
+    releaseConsultMedia();
+    void endCall();
+  }, [endCall, permissionsRevoked]);
 
   return (
     <PhoneFrame dark layout="flush">
