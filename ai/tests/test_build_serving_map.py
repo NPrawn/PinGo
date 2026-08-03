@@ -99,12 +99,14 @@ class ExportReferenceFeaturesTest(unittest.TestCase):
                 pipeline_output,
                 output_root,
                 "station-b2-v1",
+                "B2",
                 global_descriptors,
             )
 
             manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["schemaVersion"], 1)
             self.assertEqual(manifest["mapVersion"], "station-b2-v1")
+            self.assertEqual(manifest["floor"], "B2")
             self.assertEqual(manifest["retrieval"]["imageCount"], 1)
             self.assertEqual(
                 manifest["retrieval"]["descriptorDimension"],

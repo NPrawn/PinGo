@@ -12,6 +12,7 @@ public record ConsultationCreateRequest (
         String destinationType,
         Long destinationId,
         boolean videoConsent,
-        boolean audioConsent
+        boolean audioConsent,
+        boolean locationConsent
 ){
 }

@@ -2,6 +2,9 @@ package com.pingo.backend.route.dto.request;
 
 import com.pingo.backend.usersession.domain.Language;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+import java.util.List;
 
 /**
  * 경로 옵션 조회 요청. 출발 노드에서 도착 노드까지의 경로 옵션(빠른 경로·엘리베이터 이용 경로)을 조회한다.
@@ -21,11 +24,15 @@ public record RouteOptionsRequest(
         @NotNull
         Long targetNodeId,
 
+        @Size(max = 10)
+        List<@NotNull Long> waypointNodeIds,
+
         /** 생략하면 {@link Language#DEFAULT}. */
         Language language
 ) {
 
     public RouteOptionsRequest {
+        waypointNodeIds = waypointNodeIds == null ? List.of() : waypointNodeIds;
         language = language == null ? Language.DEFAULT : language;
     }
 }

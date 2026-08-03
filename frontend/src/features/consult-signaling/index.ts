@@ -5,7 +5,8 @@ export { describeRemoteCaptionTrouble } from './model/captionTrouble';
 export type { CaptionTrouble } from './model/captionTrouble';
 export {
   captureConsultCamera,
-  captureConsultMedia,
+  captureConsultMicrophone,
+  composeConsultMedia,
   holdConsultCamera,
   holdConsultMedia,
   peekConsultCamera,

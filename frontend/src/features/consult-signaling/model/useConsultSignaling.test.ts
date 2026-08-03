@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import { holdConsultMedia, releaseConsultMedia } from './consultMedia';
 import { useConsultSignaling } from './useConsultSignaling';
 
 /**
@@ -220,7 +221,7 @@ describe('useConsultSignaling', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
-        // 화면 공유는 지원하지 않는 브라우저로 둔다. 카메라·마이크가 늦게 도착한다.
+        // 마이크가 늦게 도착하는 상황을 만든다.
         getUserMedia: vi.fn(
           () =>
             new Promise<MediaStream>((resolve) => {
@@ -253,9 +254,14 @@ describe('useConsultSignaling', () => {
     expect(audioTrack.stop).toHaveBeenCalledTimes(1);
   });
 
-  /** 사용자 화면을 공유해야 상담자가 지도 위에 길을 그려 줄 수 있다. */
-  it('사용자는 카메라가 아니라 화면을 공유한다', async () => {
-    const getDisplayMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('video')]));
+  /**
+   * 화면 공유(`getDisplayMedia`)는 쓰지 않는다.
+   *
+   * 데스크톱 브라우저에만 있는 기능이라, 이 서비스가 상대하는 모바일 기기에서는 함수 자체가
+   * 없어 부르는 순간 `TypeError` 가 난다. 상담자가 보는 지도는 MAP_SYNC 로 따로 건너간다.
+   */
+  it('화면 공유를 시도하지 않는다', async () => {
+    const getDisplayMedia = vi.fn();
     const getUserMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')]));
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
@@ -272,24 +278,22 @@ describe('useConsultSignaling', () => {
       await Promise.resolve();
     });
 
-    expect(getDisplayMedia).toHaveBeenCalled();
-    // 마이크만 장치에서 받는다. 카메라 영상은 요청하지 않는다.
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
-    expect(getUserMedia).not.toHaveBeenCalledWith(expect.objectContaining({ video: true }));
-    expect(view.result.current.screenShareBlocked).toBe(false);
+    expect(getDisplayMedia).not.toHaveBeenCalled();
 
     view.unmount();
   });
 
-  /** 화면 공유를 거절해도 상담 자체는 이어져야 한다. 대신 다시 공유하라고 알린다. */
-  it('화면 공유가 막히면 카메라로 물러나고 다시 공유할 수 있다고 알린다', async () => {
-    const getDisplayMedia = vi.fn().mockRejectedValue(new Error('NotAllowedError'));
-    const getUserMedia = vi.fn((constraints: MediaStreamConstraints) =>
-      Promise.resolve(fakeStream([fakeTrack(constraints.video ? 'video' : 'audio')])),
-    );
+  /**
+   * 동의 화면을 거치지 않고 이 화면에 닿은 경우.
+   *
+   * 무엇을 보내도 좋다는 답을 받은 적이 없으므로 카메라를 열지 않는다. 여기서 `video: true`
+   * 를 요청하면 끄기로 한 사용자의 카메라가 재연결마다 도로 켜진다.
+   */
+  it('잡아 둔 스트림이 없으면 카메라를 열지 않고 목소리만 보낸다', async () => {
+    const getUserMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')]));
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
-      value: { getUserMedia, getDisplayMedia },
+      value: { getUserMedia },
     });
 
     const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
@@ -302,10 +306,37 @@ describe('useConsultSignaling', () => {
       await Promise.resolve();
     });
 
-    expect(getUserMedia).toHaveBeenCalledWith({ video: true, audio: true });
-    expect(view.result.current.screenShareBlocked).toBe(true);
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(getUserMedia).not.toHaveBeenCalledWith(expect.objectContaining({ video: true }));
 
     view.unmount();
+  });
+
+  /** 동의 화면이 고른 대로 잡아 둔 것을 그대로 쓴다. 장치를 다시 열지 않는다. */
+  it('동의 화면에서 잡아 둔 스트림을 그대로 보낸다', async () => {
+    const prepared = fakeStream([fakeTrack('video'), fakeTrack('audio')]);
+    holdConsultMedia(prepared);
+    const getUserMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')]));
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+
+    view.unmount();
+    // 다음 상담이 이 스트림을 물려받지 않게 여기서 놓아 준다.
+    releaseConsultMedia();
   });
 
   /**
@@ -390,7 +421,7 @@ describe('useConsultSignaling', () => {
     expect(sentTypes(FakeSocket.instances[0])).toContain('OFFER');
     expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled();
     // 연결이 맺어져도 지워지면 안 되는 안내다. 상담자는 자기 목소리가 나가지 않음을 알아야 한다.
-    expect(view.result.current.error).toBe('화면 공유 또는 마이크를 사용할 수 없습니다.');
+    expect(view.result.current.error).toBe('카메라 또는 마이크를 사용할 수 없습니다.');
 
     view.unmount();
   });
@@ -398,7 +429,7 @@ describe('useConsultSignaling', () => {
   /**
    * 상담자는 answer 를 받을 때까지 같은 offer 를 되풀이해 보낸다. 답한 직후 도착한 재전송을
    * 새 상담자로 오해해 연결을 다시 맺으면, 상담자는 이미 answer 를 적용해 두어 다시는
-   * offer 를 만들지 않으므로 화면 공유가 영영 뜨지 않는다.
+   * offer 를 만들지 않으므로 사용자 영상이 영영 뜨지 않는다.
    */
   it('이미 답한 offer 가 다시 와도 연결을 새로 맺지 않고 answer 만 다시 보낸다', async () => {
     Object.defineProperty(navigator, 'mediaDevices', {

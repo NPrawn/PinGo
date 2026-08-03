@@ -49,8 +49,6 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
     remoteCaptionError: null,
     captionsSupported: true,
     transcript: signalingMocks.transcript,
-    screenShareBlocked: false,
-    shareScreen: vi.fn(),
     sendConsultEvent: vi.fn(() => true),
   }),
 }));

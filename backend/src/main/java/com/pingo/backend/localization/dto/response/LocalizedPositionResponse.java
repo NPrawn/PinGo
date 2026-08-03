@@ -1,6 +1,7 @@
 package com.pingo.backend.localization.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
 
 import java.math.BigDecimal;
 
@@ -21,6 +22,7 @@ public record LocalizedPositionResponse(
         Long floorId,
 
         @Schema(description = "층 코드", example = "B2")
+        @NotBlank
         String floorCode,
 
         @Schema(description = "캐노니컬 X (m)", example = "-0.975")

@@ -344,7 +344,7 @@ export function SessionPage() {
     <CounselorConsoleShell connected>
       <div className={styles.layout}>
         <div className={styles.main}>
-          {/* 사용자 영상은 오른쪽 화면 공유 패널이 맡는다. 상담자 자신의 카메라는 되비추지 않는다. */}
+          {/* 사용자 영상은 오른쪽 패널이 맡는다. 상담자 자신의 카메라는 되비추지 않는다. */}
           {/*
             실패했을 때도 peer 상태를 함께 남긴다. 'new'(협상 시작 못 함)인지
             'connecting'(상대를 못 찾음)인지 'failed'(ICE 실패)인지에 따라 볼 곳이 완전히
@@ -684,7 +684,7 @@ export function SessionPage() {
                 <span className={styles.liveDot} />
                 <span className={styles.liveRing} />
               </span>
-              화면 공유 · 사용자 카메라
+              사용자 카메라
               <span className={styles.liveShine} />
             </span>
             <span className={styles.syncedChip}>
