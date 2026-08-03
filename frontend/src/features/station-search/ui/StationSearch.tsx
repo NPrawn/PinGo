@@ -15,6 +15,24 @@ import styles from './StationSearch.module.css';
 /** Accent cycle for the nearby list; the detected station stays mint. */
 const TONES: readonly BlobTone[] = ['mint', 'sky', 'coral', 'lilac'];
 
+/** Prototype GPS recommendations that are visible while indoor guidance is unavailable. */
+const DISPLAY_ONLY_NEARBY_STATIONS: readonly Station[] = [
+  {
+    stationId: null,
+    name: '선릉역',
+    line: '2호선·수인분당선',
+    dist: '420m',
+    serviceReady: false,
+  },
+  {
+    stationId: null,
+    name: '강남역',
+    line: '2호선·신분당선',
+    dist: '1.1km',
+    serviceReady: false,
+  },
+];
+
 type StationSearchProps = {
   onSelect?: (station: string) => void;
 };
@@ -44,6 +62,14 @@ export function StationSearch({ onSelect }: StationSearchProps) {
   const registeredStations = useRegisteredStations(!hasNearby);
   const results = stationSearch.data ?? [];
   const nearbyStations = hasNearby ? nearbySearch.data! : (registeredStations.data ?? []);
+  const visibleNearbyStations = hasNearby
+    ? [
+        ...nearbyStations,
+        ...DISPLAY_ONLY_NEARBY_STATIONS.filter(
+          (candidate) => !nearbyStations.some((item) => item.name === candidate.name),
+        ),
+      ].slice(0, 3)
+    : nearbyStations;
   // 검색어가 비면 쿼리를 켜지 않으므로 결과 영역도 열지 않는다.
   const showResults = searched && query.trim().length > 0;
   const hasUnavailableResult = results.some((item) => item.serviceReady === false);
@@ -163,10 +189,10 @@ export function StationSearch({ onSelect }: StationSearchProps) {
             {hasNearby ? '주변 역 · GPS 기반 추천' : '실내 안내가 준비된 역'}
           </Kicker>
           <div className={styles.list}>
-            {nearbyStations.map((item, index) =>
+            {visibleNearbyStations.map((item, index) =>
               renderRow(item, item.here ? 'mint' : TONES[index % TONES.length]),
             )}
-            {nearbyStations.length === 0 && (
+            {visibleNearbyStations.length === 0 && (
               <div className={styles.empty}>역 이름을 검색해 출발지를 골라주세요.</div>
             )}
           </div>
