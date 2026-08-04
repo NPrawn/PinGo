@@ -975,6 +975,8 @@ export interface components {
        * @example B2-B3 엘리베이터 A
        */
       startNodeLabel?: string;
+      /** @description 낮은 신뢰도 응답에서만 제공하는 다중 프레임 투표용 위치 후보 */
+      candidate?: components['schemas']['LocalizationCandidateResponse'];
       fallbackOptions?: (
         | 'retry_capture'
         | 'select_landmark'
@@ -991,6 +993,19 @@ export interface components {
        * @example 2310
        */
       processingTimeMs?: number;
+    };
+    /** @description 여러 프레임의 가중 투표에 사용할 수 있는, 아직 확정되지 않은 위치 후보 */
+    LocalizationCandidateResponse: {
+      position: components['schemas']['LocalizedPositionResponse'];
+      /** Format: int64 */
+      startNodeId: number;
+      startNodeLabel?: string;
+      /**
+       * Format: double
+       * @description 다중 프레임 투표 가중치. 강한 단일 프레임 기준을 1로 정규화한다.
+       * @example 0.72
+       */
+      confidenceScore: number;
     };
     /** @description 위치 인식으로 확정한 실내 위치. 캐노니컬 미터 좌표이며 지도에 그대로 표시한다. */
     LocalizedPositionResponse: {

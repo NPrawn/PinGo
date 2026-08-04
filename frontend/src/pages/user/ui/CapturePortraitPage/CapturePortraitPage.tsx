@@ -4,7 +4,11 @@ import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { queueCurrentNodeSync, useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
-import { localize } from '@/shared/api';
+import {
+  appendLocalizationCandidate,
+  selectWeightedLocalization,
+} from '@/features/location-weighted-vote';
+import { localize, type LocalizationCandidateResponse } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
 import {
@@ -45,7 +49,8 @@ const DIRECTIONS = [
  * Camera capture and VPS matching happen together on this screen.
  *
  * Samples camera frames until the 15-second deadline and navigates to
- * `LOCATE_SUCCESS` as soon as one VPS matching response succeeds.
+ * Strong results navigate immediately. Weak pose candidates are clustered across frames and
+ * navigate only after their confidence-weighted votes agree.
  */
 export function CapturePortraitPage() {
   const navigate = useNavigate();
@@ -62,6 +67,7 @@ export function CapturePortraitPage() {
   const camera = useCameraPreview();
   const captureInFlight = useRef(false);
   const timedOutRef = useRef(false);
+  const candidateVotes = useRef<LocalizationCandidateResponse[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
@@ -123,21 +129,45 @@ export function CapturePortraitPage() {
         });
         // 앵커링에 성공하면 서버가 경로 시작 노드와 캐노니컬 좌표를 함께 준다.
         // 좌표 정합이 없는 층(역삼역 B1)은 status가 map_not_ready로 내려온다. (S15P11A206-128)
-        const position = result.position;
-
         if (disposed) return;
+        let confirmed: LocalizationCandidateResponse | null = null;
         if (
           result.resultStatus === 'success' &&
           result.startNodeId != null &&
-          position?.floorId != null
+          result.position?.floorId != null &&
+          result.position.floorCode != null &&
+          result.position.mapX != null &&
+          result.position.mapY != null
         ) {
+          confirmed = {
+            position: {
+              ...result.position,
+              floorId: result.position.floorId,
+              floorCode: result.position.floorCode,
+              mapX: result.position.mapX,
+              mapY: result.position.mapY,
+            },
+            startNodeId: result.startNodeId,
+            startNodeLabel: result.startNodeLabel,
+            confidenceScore: 1,
+          };
+        } else if (result.resultStatus === 'low_confidence' && result.candidate) {
+          candidateVotes.current = appendLocalizationCandidate(
+            candidateVotes.current,
+            result.candidate,
+          );
+          confirmed = selectWeightedLocalization(candidateVotes.current);
+        }
+
+        if (confirmed) {
           localized = true;
           timedOutRef.current = false;
           setTimeoutOpen(false);
+          const position = confirmed.position;
           setCurrentLocation({
-            nodeId: result.startNodeId,
+            nodeId: confirmed.startNodeId,
             floorId: position.floorId,
-            label: result.startNodeLabel ?? undefined,
+            label: confirmed.startNodeLabel ?? undefined,
             mapX: position.mapX,
             mapY: position.mapY,
           });
@@ -150,7 +180,7 @@ export function CapturePortraitPage() {
           ) {
             setFloor(floorCode);
           }
-          queueCurrentNodeSync(result.startNodeId);
+          queueCurrentNodeSync(confirmed.startNodeId);
           navigate(USER_ROUTES.LOCATE_SUCCESS, { replace: true });
           return;
         }
@@ -229,6 +259,7 @@ export function CapturePortraitPage() {
 
   const retryCapture = () => {
     timedOutRef.current = false;
+    candidateVotes.current = [];
     setTimeoutOpen(false);
     setElapsed(0);
     setCurrentDirection(1);

@@ -35,6 +35,7 @@ class QualityResponse(BaseModel):
     retrievedImages: int
     supportingImages: int
     intrinsicsSource: str
+    confidenceScore: float = Field(ge=0.0, le=1.0)
 
 
 class TimingResponse(BaseModel):

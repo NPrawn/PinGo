@@ -27,7 +27,11 @@ class NetVladFeatureExtractor:
         if self._model is None:
             self._model = self._model_factory().eval().to(self.device)
 
-    def extract(self, image: bytes, center_crop: bool = False) -> np.ndarray:
+    def extract(
+        self,
+        image: bytes | Image.Image | np.ndarray,
+        center_crop: bool = False,
+    ) -> np.ndarray:
         self.load()
         array = self._decode(image)
         if center_crop:
@@ -50,10 +54,21 @@ class NetVladFeatureExtractor:
         return result / norm
 
     @staticmethod
-    def _decode(image: bytes) -> np.ndarray:
-        with Image.open(BytesIO(image)) as opened:
-            normalized = ImageOps.exif_transpose(opened).convert("RGB")
-            return np.asarray(normalized).copy()
+    def _decode(image: bytes | Image.Image | np.ndarray) -> np.ndarray:
+        if isinstance(image, bytes):
+            with Image.open(BytesIO(image)) as opened:
+                normalized = ImageOps.exif_transpose(opened).convert("RGB")
+                return np.asarray(normalized).copy()
+        if isinstance(image, Image.Image):
+            return np.asarray(ImageOps.exif_transpose(image).convert("RGB")).copy()
+        if isinstance(image, np.ndarray):
+            if image.ndim != 3 or image.shape[2] not in (1, 3, 4):
+                raise ValueError("NumPy image must have shape HxWx1, HxWx3 or HxWx4")
+            array = image[:, :, :3]
+            if array.shape[2] == 1:
+                array = np.repeat(array, 3, axis=2)
+            return np.ascontiguousarray(array)
+        raise TypeError(f"Unsupported image type: {type(image).__name__}")
 
     @staticmethod
     def _center_crop(image: np.ndarray) -> np.ndarray:
