@@ -1,9 +1,11 @@
 import unittest
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+from PIL import Image
 
 from app.engine.feature_extractor import LocalFeatures
 from app.engine.localizer import (
@@ -94,9 +96,15 @@ class CorrespondenceSelectionTest(unittest.TestCase):
             global_extractor=global_extractor,
             local_extractor=local_extractor,
             matcher=object(),
+            input_size=16,
         )
 
-        def fake_localize(localizer, _prepared, focal_length_px, top_k):
+        def fake_localize(
+            localizer,
+            _prepared,
+            focal_length_px,
+            top_k,
+        ):
             self.assertEqual(focal_length_px, 100.0)
             self.assertEqual(top_k, 5)
             return _result(

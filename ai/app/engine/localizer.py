@@ -10,6 +10,7 @@ import torch
 
 from app.engine.feature_extractor import AlikedFeatureExtractor, LocalFeatures
 from app.engine.global_feature_extractor import NetVladFeatureExtractor
+from app.engine.image_preprocessor import prepare_query_variants
 from app.maps.map_context import MapContext
 
 
@@ -85,6 +86,7 @@ class ImageLocalizer:
         global_extractor: NetVladFeatureExtractor | None = None,
         local_extractor: AlikedFeatureExtractor | None = None,
         matcher: Any | None = None,
+        input_size: int = 768,
     ) -> None:
         if context.reference_features_path is None:
             raise ValueError("reference feature DB가 포함된 serving map이 필요합니다.")
@@ -103,6 +105,7 @@ class ImageLocalizer:
         )
         self.local_extractor = local_extractor or AlikedFeatureExtractor(device=self.device)
         self._matcher: Any | None = matcher
+        self.input_size = input_size
 
     def load(self) -> None:
         """서버 시작 시 세 모델을 한 번 로드하여 요청 경로에서 재사용한다."""
