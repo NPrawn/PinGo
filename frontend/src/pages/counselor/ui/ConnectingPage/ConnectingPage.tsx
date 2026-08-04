@@ -42,6 +42,7 @@ export function ConnectingPage() {
   });
   const consultation = queueQuery.data?.find((item) => item.consultationId === consultationId);
   const closed = Boolean(consultation && isClosedConsultation(consultation.status));
+  const signalingReady = Boolean(signalingRoomId && signalingAccessToken);
 
   const leave = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.counselorConsultations() });
@@ -83,14 +84,14 @@ export function ConnectingPage() {
    * 열면 상담 화면이 또 하나를 여는 셈이라, 방금 맺은 연결을 스스로 끊게 된다.
    */
   useEffect(() => {
-    if (signalingRoomId && signalingAccessToken) {
+    if (signalingReady) {
       void navigate(COUNSELOR_ROUTES.SESSION);
       return;
     }
 
     const timer = setTimeout(() => void cancelConnection(), CONNECT_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [cancelConnection, signalingAccessToken, signalingRoomId]);
+  }, [cancelConnection, navigate, signalingReady]);
 
   return (
     <CounselorConsoleShell>
