@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
-import { peekConsultCamera, releaseConsultMedia } from '@/features/consult-signaling';
+import { releaseConsultMedia } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
 import { USER_ROUTES } from '@/shared/config';
 import { i18n } from '@/shared/i18n';
@@ -46,10 +46,12 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
     await importOriginal<typeof import('@/features/consult-signaling')>()
   ).describeRemoteCaptionTrouble,
   releaseConsultMedia: vi.fn(),
-  peekConsultCamera: vi.fn(() => null),
+  /** XR 세션이 카메라를 가져갈 때 부른다. 이 파일은 세션을 열지 않아 호출되지 않는다. */
+  swapConsultVideoTrack: vi.fn(() => false),
   useConsultSignaling: () => ({
     localVideoRef: { current: null },
     remoteVideoRef: { current: null },
+    replaceLocalVideoTrack: vi.fn(async () => false),
     status: 'connected',
     error: null,
     localCaption: '',
@@ -92,7 +94,6 @@ describe('ConsultSessionPage', () => {
     };
     // `clearAllMocks` 는 호출 기록만 지운다. 앞 테스트가 세운 반환값은 여기서 되돌린다.
     vi.mocked(usePermissionsRevoked).mockReturnValue(false);
-    vi.mocked(peekConsultCamera).mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -118,7 +119,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('상담 연결됨 · 음성만')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '상담 종료' })).toBeInTheDocument();
     expect(screen.queryByText('상담 종료 화면')).toBeNull();
   });
 
@@ -127,7 +128,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByText('상담 연결됨 · 음성만');
+    await screen.findByRole('button', { name: '상담 종료' });
     expect(apiMocks.useCaptionTranslation).toHaveBeenCalledWith('cs_1', '', 'en');
   });
 
@@ -148,7 +149,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByText('상담 연결됨 · 음성만');
+    await screen.findByRole('button', { name: '상담 종료' });
     // 읽어야 하는 것은 자기 언어로 된 쪽이라 옮긴 문장이 큰 자리를 지킨다.
     expect(screen.getByText('Go to exit 3')).toBeInTheDocument();
     // 그 아래로 지금 들어오는 말이 흘러간다. 이것이 없으면 화면은 멈춰 보인다.
@@ -163,7 +164,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByText('상담 연결됨 · 음성만');
+    await screen.findByRole('button', { name: '상담 종료' });
     expect(screen.getAllByText('3번 출구로 가세요')).toHaveLength(1);
   });
 
@@ -196,7 +197,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByText('상담 연결됨 · 음성만');
+    await screen.findByRole('button', { name: '상담 종료' });
     expect(screen.getByText('Go to exit 3')).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toHaveTextContent(
       '상담원 쪽 음성 인식 서버에 연결하지 못해',
@@ -204,18 +205,44 @@ describe('ConsultSessionPage', () => {
   });
 
   /**
-   * 카메라를 끄고 상담을 시작한 사용자에게 공유 중이라고 적으면 안 된다.
+   * 무엇이 건너가고 있는지 그대로 적어야 한다. (S15P11A206-89)
    *
-   * 화면 공유가 있던 시절에는 무엇을 보내든 `화면 공유 중`이라고만 적혀 있었다. 지금은 카메라가
-   * 유일한 영상이라, 껐는지 켰는지가 그대로 적혀야 무엇이 건너가는지 알 수 있다.
+   * 화면 공유가 있던 시절에는 무엇을 보내든 `화면 공유 중`이라고만 적혀 있었다. 지금 영상은
+   * XR 세션에서 뽑은 카메라 프레임 하나뿐이고, 그것이 흐르기 시작하는 시점은 세션이 열려
+   * 추적이 잡힌 뒤다. 그 전에 공유 중이라고 적으면 사용자는 상담자가 이미 보고 있다고 믿는다.
    */
-  it('카메라를 잡아 두었으면 카메라 공유 중이라고 알린다', async () => {
+  it('카메라 프레임이 아직 흐르지 않으면 준비 중이라고 적는다', async () => {
     apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
-    vi.mocked(peekConsultCamera).mockReturnValue({} as MediaStream);
+    // 트랙은 만들 수 있지만 세션이 없어 프레임은 오지 않는 상태.
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      createImageData: (width: number, height: number) => ({
+        data: new Uint8ClampedArray(width * height * 4),
+      }),
+      putImageData: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+    HTMLCanvasElement.prototype.captureStream = vi.fn(
+      () => ({ getTracks: () => [], getVideoTracks: () => [] }) as unknown as MediaStream,
+    );
 
     renderPage();
 
-    expect(await screen.findByText('상담 연결됨 · 카메라 공유 중')).toBeInTheDocument();
+    expect(await screen.findByText('상담 연결됨 · 카메라 준비 중')).toBeInTheDocument();
+
+    delete (HTMLCanvasElement.prototype as { captureStream?: unknown }).captureStream;
+  });
+
+  /**
+   * 트랙 자체를 만들 수 없는 기기. 이 사실을 숨기면 상담자는 검은 화면을 보는데 사용자는
+   * 자기 모습이 건너가고 있다고 믿는다. 무엇이 막혔는지 적어야 말로 설명할 수 있다.
+   */
+  it('카메라를 보낼 수 없는 기기에서는 그 사실을 적는다', async () => {
+    apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
+
+    renderPage();
+
+    expect(
+      await screen.findByText('상담 연결됨 · 이 기기는 카메라를 보낼 수 없어요'),
+    ).toBeInTheDocument();
   });
 
   /**

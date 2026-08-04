@@ -930,7 +930,7 @@ describe('카메라 송출', () => {
     const handle = controller.startCameraStream();
 
     expect(handle?.stream).toBe(stream);
-    expect(handle?.getState()).toBe('waiting');
+    expect(controller.getCameraStreamState()).toBe('waiting');
   });
 
   it('두 번 켜도 같은 트랙을 쓴다', () => {
@@ -960,17 +960,37 @@ describe('카메라 송출', () => {
     handle?.stop();
 
     expect(track.stop).toHaveBeenCalledTimes(1);
-    expect(handle?.getState()).toBe('idle');
+    expect(controller.getCameraStreamState()).toBe('idle');
   });
 
-  it('구독하면 지금 상태를 즉시 알려준다', () => {
+  it('구독하면 지금 상태를 즉시 알려주고 이후 전이를 이어서 알린다', () => {
     stubCanvas();
     const controller = createController();
     const seen: string[] = [];
 
-    controller.startCameraStream()?.subscribe((state) => seen.push(state));
+    controller.subscribeCameraStream((state) => seen.push(state));
+    controller.startCameraStream();
 
-    expect(seen).toEqual(['waiting']);
+    expect(seen).toEqual(['idle', 'waiting']);
+  });
+
+  /**
+   * 트랙을 만들 수 없는 기기에서도 구독 한 길로 사실이 전달된다.
+   *
+   * 반환값이 null 인 것만으로 알리면, 화면은 반환값 검사와 구독 두 가지 경로를 각각 처리해야
+   * 한다. 그중 하나를 빠뜨리면 영원히 "카메라 준비 중"에 머문다.
+   */
+  it('트랙을 만들지 못하면 구독자에게 unsupported 를 알린다', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      {} as unknown as CanvasRenderingContext2D,
+    );
+    const controller = createController();
+    const seen: string[] = [];
+
+    controller.subscribeCameraStream((state) => seen.push(state));
+    controller.startCameraStream();
+
+    expect(seen).toEqual(['idle', 'unsupported']);
   });
 
   /**
@@ -984,12 +1004,13 @@ describe('카메라 송출', () => {
     const controller = createController({ xr: fakeXr(async () => fake.session) });
     const seen: string[] = [];
 
-    controller.startCameraStream()?.subscribe((state) => seen.push(state));
+    controller.subscribeCameraStream((state) => seen.push(state));
+    controller.startCameraStream();
     await controller.start();
 
     fake.emitFrame(1200, poseWithViews([{}]));
 
-    expect(seen).toEqual(['waiting', 'unsupported']);
+    expect(seen).toEqual(['idle', 'waiting', 'unsupported']);
   });
 
   /** 프레임에 뷰가 없는 것은 결론이 아니다. 다음 프레임에 올 수 있다. */
@@ -997,12 +1018,12 @@ describe('카메라 송출', () => {
     stubCanvas();
     const fake = createFakeSession();
     const controller = createController({ xr: fakeXr(async () => fake.session) });
-    const handle = controller.startCameraStream();
+    controller.startCameraStream();
 
     await controller.start();
     fake.emitFrame(1200, poseWithViews([]));
 
-    expect(handle?.getState()).toBe('waiting');
+    expect(controller.getCameraStreamState()).toBe('waiting');
   });
 
   /**
@@ -1013,13 +1034,13 @@ describe('카메라 송출', () => {
     const { track } = stubCanvas();
     const fake = createFakeSession();
     const controller = createController({ xr: fakeXr(async () => fake.session) });
-    const handle = controller.startCameraStream();
+    controller.startCameraStream();
 
     await controller.start();
     await controller.stop();
 
     expect(track.stop).not.toHaveBeenCalled();
-    expect(handle?.getState()).toBe('waiting');
+    expect(controller.getCameraStreamState()).toBe('waiting');
   });
 });
 

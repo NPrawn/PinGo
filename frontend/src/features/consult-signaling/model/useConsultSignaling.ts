@@ -201,6 +201,13 @@ export function useConsultSignaling(
    */
   const dataEventRef = useRef(onDataEvent);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  /**
+   * 지금 살아 있는 연결. 영상 트랙을 갈아 끼우는 데만 쓴다. (S15P11A206-89)
+   *
+   * 연결 객체 자체를 밖으로 내보내지 않는다 — 화면이 협상에 끼어들 수 있게 되면 이 훅이
+   * 들고 있는 상태와 실제 연결이 어긋난다.
+   */
+  const peerRef = useRef<RTCPeerConnection | null>(null);
   /** DataChannel 이 열리지 않았을 때 상담 이벤트를 서버 편으로 보내는 우회로. */
   const eventFallbackRef = useRef<ConsultEventFallback | null>(null);
   /**
@@ -399,6 +406,8 @@ export function useConsultSignaling(
       markMediaReady = resolve;
     });
     const peer = new RTCPeerConnection(rtcConfig);
+
+    peerRef.current = peer;
     /**
      * 그리기 같은 상담 이벤트를 나르는 채널.
      *
@@ -1138,6 +1147,8 @@ export function useConsultSignaling(
       eventFallbackRef.current = null;
       socket.close();
       peer.close();
+      // 내가 만든 연결일 때만 지운다. 다음 연결이 이미 자리를 잡았으면 그것을 남긴다.
+      if (peerRef.current === peer) peerRef.current = null;
       if (!reusedPreparedStream) localStream?.getTracks().forEach((track) => track.stop());
     };
   }, [accessToken, attachRemoteStream, connectionEpoch, localSpeechLanguage, role, roomId, rtcConfig]);
@@ -1150,6 +1161,30 @@ export function useConsultSignaling(
    * 아무리 그려도 사용자 화면에 아무것도 나타나지 않았다. 무엇이 잘못됐는지 알 방법도
    * 없어, 상담자는 사용자가 보고 있다고 믿은 채 설명을 이어 갔다.
    */
+  /**
+   * 보내고 있는 영상 트랙을 다른 것으로 갈아 끼운다. (S15P11A206-89)
+   *
+   * XR 세션과 `getUserMedia`가 공존하지 못하므로(11.8), 세션을 여는 순간 카메라 트랙을 세션에서
+   * 뽑은 트랙으로 바꿔야 한다. `replaceTrack`은 **재협상 없이** 바뀌므로 상담이 끊기지 않는다.
+   *
+   * 영상 sender 가 없으면 아무것도 하지 않고 거짓을 돌려준다. 그런 상담은 사용자가 카메라 공유를
+   * 거절한 것이고, 그 자리에 세션 프레임을 밀어 넣는 것은 그 선택을 뒤집는 일이다. 새 m-line을
+   * 만들려면 재협상이 필요한데 지금 협상 흐름은 재협상을 하지 않는다.
+   */
+  const replaceLocalVideoTrack = useCallback(async (track: MediaStreamTrack | null) => {
+    const sender = peerRef.current?.getSenders().find((each) => each.track?.kind === 'video');
+
+    if (!sender) return false;
+
+    try {
+      await sender.replaceTrack(track);
+      return true;
+    } catch {
+      // 트랙 종류가 맞지 않거나 연결이 이미 닫혔다. 상담 자체는 이어 가야 한다.
+      return false;
+    }
+  }, []);
+
   const sendConsultEvent = useCallback(
     (body: ConsultEventBody) => {
       if (!roomId) return false;
@@ -1173,6 +1208,8 @@ export function useConsultSignaling(
   return {
     localVideoRef,
     remoteVideoRef,
+    /** 보내는 영상 트랙을 갈아 끼운다. XR 세션이 카메라를 가져갈 때 쓴다. */
+    replaceLocalVideoTrack,
     status,
     /**
      * 화면에 보여 줄 실패 안내.

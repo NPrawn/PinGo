@@ -175,10 +175,6 @@ export interface XrCameraStreamOptions {
 export interface XrCameraStreamHandle {
   /** WebRTC에 실을 스트림. 영상 트랙 하나가 담겨 있다. */
   stream: MediaStream;
-  /** 지금 상태. */
-  getState(): XrCameraStreamState;
-  /** 상태가 바뀔 때 알린다. 구독한 즉시 현재 상태로 한 번 부른다. */
-  subscribe(listener: (state: XrCameraStreamState) => void): () => void;
   /** 송출을 멈추고 트랙까지 정리한다. */
   stop(): void;
 }
@@ -234,13 +230,22 @@ export interface XrSessionController {
    * 협상이 시작되기 전에 이것을 켜서 보낼 트랙을 미리 확보하고, 프레임은 세션이 열려 추적이
    * 잡힌 뒤부터 흘러 들어온다.
    *
-   * 캔버스를 만들 수 없는 환경에서만 null이다. `camera-access`가 부여되지 않은 것은 여기서
-   * 알 수 없으므로(뷰가 있어야 판정된다) 핸들의 상태로 알린다.
+   * 캔버스를 만들 수 없는 환경에서만 null이다. 그때도 상태는 `unsupported`로 바뀌므로,
+   * 반환값을 보지 않고 `subscribeCameraStream`만 구독해도 화면은 사실을 알 수 있다.
    *
    * 이미 켜져 있으면 같은 핸들을 돌려준다 — 트랙을 두 개 만들면 어느 것이 협상에 실린 것인지
    * 알 수 없게 된다.
    */
   startCameraStream(options?: XrCameraStreamOptions): XrCameraStreamHandle | null;
+  /**
+   * 카메라 송출 상태를 구독한다. 구독한 즉시 현재 상태로 한 번 부른다.
+   *
+   * **상태를 핸들이 아니라 컨트롤러가 들고 있다.** 트랙을 만들지 못해 핸들이 없는 경우에도
+   * 그 사실을 알려야 하기 때문이다. 화면은 켜기 전에 구독해 두면 실패까지 한 길로 받는다.
+   */
+  subscribeCameraStream(listener: (state: XrCameraStreamState) => void): () => void;
+  /** 지금 카메라 송출 상태. */
+  getCameraStreamState(): XrCameraStreamState;
 }
 
 /**
@@ -941,32 +946,15 @@ export function createXrSessionController(
     stop,
 
     startCameraStream(cameraOptions = {}) {
-      const handle: XrCameraStreamHandle = {
-        // 아래에서 sink 를 확정한 뒤 다시 채운다.
-        stream: undefined as unknown as MediaStream,
-        getState: () => cameraState,
-        subscribe(listener) {
-          cameraListeners.add(listener);
-          // 구독 시점의 상태를 놓치지 않게 한 번 알린다. 이미 unsupported 일 수 있다.
-          listener(cameraState);
-
-          return () => {
-            cameraListeners.delete(listener);
-          };
-        },
-        stop() {
-          releaseCameraGlResources();
-          cameraSink?.dispose();
-          cameraSink = null;
-          setCameraState('idle');
-        },
+      const stop = (): void => {
+        releaseCameraGlResources();
+        cameraSink?.dispose();
+        cameraSink = null;
+        setCameraState('idle');
       };
 
       // 이미 켜져 있으면 같은 트랙을 쓴다. 두 번째 트랙은 협상에 실리지 않아 검은 화면이 된다.
-      if (cameraSink) {
-        handle.stream = cameraSink.stream;
-        return handle;
-      }
+      if (cameraSink) return { stream: cameraSink.stream, stop };
 
       cameraFrameSize = cameraOptions.size ?? DEFAULT_CAMERA_FRAME_SIZE;
 
@@ -976,15 +964,36 @@ export function createXrSessionController(
 
       const sink = createXrCameraFrameSink(cameraFrameSize, fps);
 
-      // 캔버스나 captureStream 이 없는 환경. 트랙을 만들 수 없으므로 켤 수 없다.
-      if (!sink) return null;
+      /**
+       * 캔버스나 `captureStream`이 없는 환경. 트랙을 만들 수 없으므로 켤 수 없다.
+       *
+       * 반환값만으로 알리지 않고 상태도 바꾼다. 화면이 구독 한 길로 실패까지 받게 하려는
+       * 것이며, 그래야 "켜기 전에 구독"이라는 한 가지 순서로 모든 경우가 처리된다.
+       */
+      if (!sink) {
+        setCameraState('unsupported');
+        return null;
+      }
 
       cameraSink = sink;
-      handle.stream = sink.stream;
       lastCameraFrameAt = null;
       setCameraState('waiting');
 
-      return handle;
+      return { stream: sink.stream, stop };
+    },
+
+    subscribeCameraStream(listener) {
+      cameraListeners.add(listener);
+      // 구독 시점의 상태를 놓치지 않게 한 번 알린다. 이미 unsupported 일 수 있다.
+      listener(cameraState);
+
+      return () => {
+        cameraListeners.delete(listener);
+      };
+    },
+
+    getCameraStreamState() {
+      return cameraState;
     },
   };
 }

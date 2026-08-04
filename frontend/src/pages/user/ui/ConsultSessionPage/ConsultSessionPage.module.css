@@ -118,6 +118,14 @@
   border-radius: 7px;
 }
 
+/* dom-overlay 로 카메라 위에 얹히는 뿌리. 세션을 열기 전에 DOM 에 있어야 한다. */
+.overlayRoot {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .cam {
   position: relative;
   display: flex;
@@ -127,6 +135,17 @@
   height: 250px;
   overflow: hidden;
   background: radial-gradient(120% 90% at 50% 20%, #2b2b30, #0e0e11);
+}
+
+/*
+  세션이 열린 동안만 카메라 영상이 보이게 비운다.
+
+  이 영역에는 `<video>` 가 없다 — XR 컴포지터가 카메라를 뒤에 합성하므로 배경을 지우는 것이
+  곧 카메라를 보이게 하는 방법이다(11.8). `starting` 구간은 제외한다. 아직 카메라가 그려지지
+  않아 검은 화면이 보인다.
+*/
+.camLive {
+  background: transparent;
 }
 
 .remoteVideo {
@@ -402,29 +421,8 @@
 }
 
 /*
-  내 카메라 셀프뷰. 화면 오른쪽 위 작은 창으로 띄운다.
-  이 화면 전체가 상담자에게 공유되므로, 여기 담긴 카메라 영상이 그대로 함께 건너간다.
+  실내 지도 위젯이 채우는 자리. 안내 화면(NavigationPage)과 같은 배치다.
 */
-.selfView {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 15;
-  width: 84px;
-  height: 112px;
-  object-fit: cover;
-  background: #000;
-  border: 1.5px solid rgb(255 255 255 / 35%);
-  border-radius: 10px;
-  box-shadow: 0 3px 10px rgb(0 0 0 / 35%);
-}
-
-/* 카메라를 허용하지 않았으면 빈 검은 상자를 띄우지 않는다. */
-.selfViewOff {
-  display: none;
-}
-
-/* 실내 지도 위젯이 채우는 자리. 안내 화면(NavigationPage)과 같은 배치다. */
 .mapCanvas {
   position: absolute;
   inset: 0;

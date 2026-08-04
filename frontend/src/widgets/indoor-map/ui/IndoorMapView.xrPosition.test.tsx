@@ -88,6 +88,8 @@ function createFakeController() {
     },
     // 이 파일은 카메라 송출을 다루지 않는다. 켤 수 없는 컨트롤러로 둔다.
     startCameraStream: () => null,
+    subscribeCameraStream: () => () => undefined,
+    getCameraStreamState: () => 'idle' as const,
 
     async stop() {
       state = { status: 'ended' };

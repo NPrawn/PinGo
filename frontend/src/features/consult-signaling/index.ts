@@ -11,4 +11,5 @@ export {
   holdConsultMedia,
   peekConsultCamera,
   releaseConsultMedia,
+  swapConsultVideoTrack,
 } from './model/consultMedia';
