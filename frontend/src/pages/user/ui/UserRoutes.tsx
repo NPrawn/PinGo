@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useConsultStore } from '@/entities/consult';
 import { useUserSessionBootstrap, useUserSessionStore } from '@/entities/user-session';
 import { RequirePermissions } from '@/features/permissions';
 import { USER_ROUTES } from '@/shared/config';
@@ -35,6 +36,7 @@ const rel = (path: string) => path.slice('/user/'.length);
  * The legacy hash id for each route is recorded in `shared/config/routes.ts`.
  */
 export function UserRoutes() {
+  const clearConsultation = useConsultStore((state) => state.clearConsultation);
   const { i18n } = useTranslation();
   const sessionLanguage = useUserSessionStore((state) => state.language);
   const previousLanguage = useRef(i18n.resolvedLanguage ?? i18n.language);
@@ -55,7 +57,7 @@ export function UserRoutes() {
     void i18n.changeLanguage(language);
   }, [i18n, sessionLanguage]);
 
-  useUserSessionBootstrap();
+  useUserSessionBootstrap({ onSessionExpired: clearConsultation });
 
   return (
     <Routes>

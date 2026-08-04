@@ -15,6 +15,12 @@ export interface IndoorPoint {
   mapY: number;
 }
 
+/** Canonical-map horizontal direction returned by VPS. */
+export interface MapDirection {
+  x: number;
+  y: number;
+}
+
 /**
  * 경로가 지나는 노드. (POST /api/routes/indoor 응답의 pathNodes)
  * 백엔드 RoutePathNode 레코드와 필드가 1:1로 대응한다.

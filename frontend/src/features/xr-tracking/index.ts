@@ -12,11 +12,7 @@ export {
   xrToMapPoint,
 } from './lib/mapAlignment';
 export type { PlanarVector, XrAnchorInput, XrAnchorStatus, XrMapAnchor } from './lib/mapAlignment';
-export {
-  MOCK_ANCHOR_FORWARD_MAP,
-  readForwardMap,
-  resolveAnchorForwardMap,
-} from './model/anchorForward';
+export { readForwardMap } from './model/anchorForward';
 export { useXrMapPosition } from './model/useXrMapPosition';
 export type {
   UseXrMapPositionOptions,

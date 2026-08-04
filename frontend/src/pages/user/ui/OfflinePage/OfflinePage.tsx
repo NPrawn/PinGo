@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { getHealth } from '@/shared/api';
-import { OfflineConnectionModal } from '@/widgets/offline-connection';
+import { OfflineConnectionModal } from '@/features/offline-connection';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './OfflinePage.module.css';
 

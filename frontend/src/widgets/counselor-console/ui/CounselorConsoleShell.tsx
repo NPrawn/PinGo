@@ -12,7 +12,7 @@ import {
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { WindowTabs } from '@/shared/ui';
 import type { WindowTab } from '@/shared/ui';
-import { OfflineConnectionModal } from '@/widgets/offline-connection';
+import { OfflineConnectionModal } from '@/features/offline-connection';
 import styles from './CounselorConsoleShell.module.css';
 
 const TABS: readonly WindowTab[] = [

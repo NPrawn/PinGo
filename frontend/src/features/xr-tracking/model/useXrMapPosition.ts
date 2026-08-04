@@ -44,6 +44,8 @@ export interface UseXrMapPositionOptions {
   currentIndoorLocation?: IndoorPoint | null;
   /** 표시 평활 기준값. 생략하면 provisional 기본값을 쓴다. */
   smoothing?: DisplaySmoothingOptions;
+  /** Map-coordinate units per physical XR meter. Defaults to 1 when calibration is unavailable. */
+  distanceScale?: number;
   /** 테스트에서 가짜 컨트롤러를 주입한다. */
   controller?: XrSessionController;
 }
@@ -115,6 +117,7 @@ export interface UseXrMapPositionValue extends UseXrTrackingValue {
 export function useXrMapPosition({
   currentIndoorLocation = null,
   smoothing,
+  distanceScale = 1,
   controller = xrSessionController,
 }: UseXrMapPositionOptions = {}): UseXrMapPositionValue {
   /**
@@ -147,10 +150,15 @@ export function useXrMapPosition({
    * 두면 렌더마다 구독을 다시 걸게 되고, 그 사이 확정된 스냅샷이 유실될 수 있다.
    */
   const smoothingRef = useRef(smoothing);
+  const distanceScaleRef = useRef(distanceScale);
 
   useEffect(() => {
     smoothingRef.current = smoothing;
   }, [smoothing]);
+
+  useEffect(() => {
+    distanceScaleRef.current = distanceScale;
+  }, [distanceScale]);
 
   const tracking = useXrTracking({
     controller,
@@ -160,7 +168,7 @@ export function useXrMapPosition({
       // 앵커가 없으면 XR 좌표를 지도에 놓을 기준이 없다. 확정 위치만 표시된다(11.2).
       if (!anchor) return;
 
-      const mapped = xrToMapPoint(snapshot.position, anchor);
+      const mapped = xrToMapPoint(snapshot.position, anchor, distanceScaleRef.current);
 
       if (!mapped) return;
 

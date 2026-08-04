@@ -9,6 +9,7 @@ import {
   appendLocalizationCandidate,
   selectWeightedLocalization,
 } from '@/features/location-weighted-vote';
+import { readForwardMap } from '@/features/xr-tracking';
 import { localize, type LocalizationCandidateResponse } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
@@ -172,6 +173,7 @@ export function CapturePortraitPage() {
             label: confirmed.startNodeLabel ?? undefined,
             mapX: position.mapX,
             mapY: position.mapY,
+            forwardMap: readForwardMap(position),
           });
           const floorCode = position.floorCode;
           if (

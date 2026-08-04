@@ -173,7 +173,13 @@ describe('CapturePortraitPage', () => {
       resultStatus: 'success',
       startNodeId: 123,
       startNodeLabel: 'B2 엘리베이터',
-      position: { floorId: 1, floorCode: 'B2', mapX: -0.975, mapY: 27.717 },
+      position: {
+        floorId: 1,
+        floorCode: 'B2',
+        mapX: -0.975,
+        mapY: 27.717,
+        forwardMap: { x: 0.6, y: 0.8 },
+      },
     });
     apiMocks.updateUserSession.mockResolvedValue({});
     useUserSessionStore.setState({ userSessionId: 'session-1' });
@@ -192,11 +198,16 @@ describe('CapturePortraitPage', () => {
 
       expect(useStationStore.getState().floor).toBe('B2');
       expect(useNavigationStore.getState().currentNodeId).toBe(123);
+      expect(useNavigationStore.getState().currentForwardMap).toEqual({ x: 0.6, y: 0.8 });
       expect(apiMocks.localize.mock.calls[0]?.[1]).not.toHaveProperty('mapVersion');
     } finally {
       useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
       useStationStore.setState({ floor: '1F' });
-      useNavigationStore.setState({ currentNodeId: null, currentFloorId: null });
+      useNavigationStore.setState({
+        currentNodeId: null,
+        currentFloorId: null,
+        currentForwardMap: null,
+      });
       cameraMocks.capture.mockReset();
       apiMocks.localize.mockReset();
       apiMocks.updateUserSession.mockReset();
