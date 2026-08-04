@@ -12,7 +12,9 @@ import {
   type PlanPlacement,
 } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
+import type { MeterPoint } from '@/entities/floor-map';
 import type { MapStroke } from '../model/mapStroke';
+import { useMapDraw } from '../model/useMapDraw';
 import { resolveAssetUrl } from '@/shared/config';
 import { Icon } from '@/shared/ui';
 import { MOCK_CURRENT_LOCATION, MOCK_DESTINATION, MOCK_PATH_NODES } from '../model/fixtures';
@@ -118,6 +120,18 @@ interface IndoorMapViewProps {
    */
   strokes?: readonly MapStroke[];
   /**
+   * 지도 위에 손으로 선을 그릴 수 있게 한다. (S15P11A206-89)
+   *
+   * 켜는 동안에는 지도의 팬·줌이 멈춘다 — 그리면서 지도가 밀리면 선이 손을 따라오지 못한다.
+   * 그린 결과는 이 위젯이 들고 있지 않다. `onStroke*` 로 알리기만 하고, 호출부가 상태로 모아
+   * `strokes` 로 다시 넘겨야 화면에 남는다. 그래야 상담자와 사용자가 같은 배열을 같은 방식으로
+   * 그린다.
+   */
+  drawing?: boolean;
+  onStrokeStart?: (stroke: { strokeId: string; floorId: number; point: MeterPoint }) => void;
+  onStrokeMove?: (stroke: { strokeId: string; points: MeterPoint[] }) => void;
+  onStrokeEnd?: (stroke: { strokeId: string }) => void;
+  /**
    * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
    * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
    *
@@ -185,6 +199,10 @@ export function IndoorMapView({
   onRecenter,
   showZoomControls = false,
   strokes,
+  drawing = false,
+  onStrokeStart,
+  onStrokeMove,
+  onStrokeEnd,
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
@@ -222,6 +240,22 @@ export function IndoorMapView({
    * 완만하게 편 값을 쓴다.
    */
   const mapRotationDeg = useSmoothedRotationDeg(targetRotationDeg);
+
+  /**
+   * 지도 위 그리기 입력. (S15P11A206-89)
+   *
+   * 콜백을 하나로 묶어 넘긴다 — 훅이 최신 것을 ref 로 들고 있으므로 매 렌더 새 객체여도 입력이
+   * 끊기지 않는다.
+   */
+  const { svgRef: drawSvgRef, handlers: drawHandlers } = useMapDraw({
+    enabled: drawing,
+    floorId,
+    emitter: {
+      onStrokeStart: (stroke) => onStrokeStart?.(stroke),
+      onStrokeMove: (stroke) => onStrokeMove?.(stroke),
+      onStrokeEnd: (stroke) => onStrokeEnd?.(stroke),
+    },
+  });
 
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
   const {
@@ -390,6 +424,9 @@ export function IndoorMapView({
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
           strokes={strokes}
+          drawing={drawing}
+          drawRef={drawSvgRef}
+          drawHandlers={drawHandlers}
           /* 지도가 커져도 마커는 화면상 크기를 유지한다. 확대는 도면을 크게 보려는 조작이고,
              마커까지 커지면 가리는 면적만 늘어난다. */
           viewScale={mapView.scale}
@@ -471,10 +508,16 @@ function MapOverlay({
   viewScale,
   mapRotationDeg,
   strokes,
+  drawing,
+  drawRef,
+  drawHandlers,
 }: {
   floorId: number;
   placement: PlanPlacement | null;
   strokes?: readonly MapStroke[];
+  drawing?: boolean;
+  drawRef?: React.Ref<SVGSVGElement>;
+  drawHandlers?: React.ComponentProps<typeof IndoorMapOverlay>['drawHandlers'];
   currentLocation: IndoorPoint | null;
   currentHeadingDeg?: number | null;
   destination: IndoorPoint | null;
@@ -524,6 +567,9 @@ function MapOverlay({
       viewScale={viewScale}
       mapRotationDeg={mapRotationDeg}
       strokes={strokes}
+      drawing={drawing}
+      drawRef={drawRef}
+      drawHandlers={drawHandlers}
     />
   );
 }

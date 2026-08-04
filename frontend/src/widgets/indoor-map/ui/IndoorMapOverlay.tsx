@@ -106,6 +106,20 @@ interface IndoorMapOverlayProps {
    * 두 화면이 같은 배열을 그리므로 상담자와 사용자가 같은 그림을 본다.
    */
   strokes?: readonly MapStroke[];
+  /**
+   * 그리기 모드. 켜면 이 레이어가 포인터를 받아 손이 지나간 자리를 선으로 만든다.
+   *
+   * 평소에는 받지 않는다 — 지도의 팬·줌과 시설 마커 탭이 모두 이 레이어를 통과해야 한다.
+   */
+  drawing?: boolean;
+  /** 그리기 입력을 붙일 자리. `useMapDraw` 가 돌려주는 것을 그대로 넘긴다. */
+  drawRef?: React.Ref<SVGSVGElement>;
+  drawHandlers?: {
+    onPointerDown: (event: React.PointerEvent<SVGSVGElement>) => void;
+    onPointerMove: (event: React.PointerEvent<SVGSVGElement>) => void;
+    onPointerUp: (event: React.PointerEvent<SVGSVGElement>) => void;
+    onPointerCancel: (event: React.PointerEvent<SVGSVGElement>) => void;
+  };
 }
 
 /**
@@ -136,6 +150,9 @@ export function IndoorMapOverlay({
   viewScale = 1,
   mapRotationDeg = 0,
   strokes,
+  drawing = false,
+  drawRef,
+  drawHandlers,
 }: IndoorMapOverlayProps) {
   const { t } = useTranslation();
   /**
@@ -238,8 +255,14 @@ export function IndoorMapOverlay({
       return points.length > 0 ? [{ ...stroke, points }] : [];
     });
 
-  // 그릴 것이 하나도 없으면 오버레이 자체를 만들지 않는다.
+  /*
+    그릴 것이 하나도 없으면 오버레이 자체를 만들지 않는다.
+
+    **그리기 모드는 예외다.** 아무것도 없는 층에도 짚어 줄 수 있어야 하는데, 레이어가 없으면
+    포인터를 받을 자리도 없다.
+  */
   if (
+    !drawing &&
     routeSegments.length === 0 &&
     waypointPins.length === 0 &&
     currentPoint === null &&
@@ -252,10 +275,12 @@ export function IndoorMapOverlay({
 
   return (
     <svg
-      className={styles.overlay}
+      ref={drawRef}
+      className={[styles.overlay, drawing && styles.overlayDrawing].filter(Boolean).join(' ')}
       viewBox={`0 0 ${imageWidth} ${imageHeight}`}
       // 배경 이미지 위 장식 레이어다. 의미 정보는 각 마커의 aria-label이 담당한다.
       focusable="false"
+      {...(drawing ? drawHandlers : undefined)}
     >
       {/* 이은 선만 있어도 그린다. 그 층에 경로 노드가 하나뿐이면 선으로 그릴 구간이 없는데,
           이 조건이 구간만 보면 사용자가 서 있는 층에 아무 안내도 남지 않는다. */}

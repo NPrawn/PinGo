@@ -1,5 +1,5 @@
 import type { MeterPoint } from '@/entities/floor-map';
-import type { ConsultDataEvent } from '@/shared/types';
+import type { ConsultEventBody } from '@/shared/types';
 
 /**
  * 지도 위에 그린 선 하나. (S15P11A206-89)
@@ -25,10 +25,13 @@ export interface MapStroke {
  *
  * 반영할 것이 없으면 **같은 배열을 그대로 돌려준다.** 새 배열을 만들면 React 가 매 이벤트마다
  * 다시 그린다 — 그리기와 무관한 이벤트(지도 동기화는 초당 여러 번 온다)까지 리렌더를 부른다.
+ *
+ * envelope 없이 본문만 받는다. 그리는 쪽은 보내기 전에 자기 화면에도 같은 규칙으로 얹어야 하는데,
+ * 그때는 아직 `eventId` 나 `timestamp` 가 없다. 이 함수가 그것들을 쓰지도 않는다.
  */
 export function applyMapStrokeEvent(
   strokes: readonly MapStroke[],
-  event: ConsultDataEvent,
+  event: ConsultEventBody,
 ): readonly MapStroke[] {
   if (event.eventType === 'DRAW_CLEAR') {
     return strokes.length === 0 ? strokes : [];

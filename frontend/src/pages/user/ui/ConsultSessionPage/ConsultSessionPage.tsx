@@ -35,7 +35,7 @@ import {
 } from '@/shared/lib/webxr';
 import type { ConsultDataEvent } from '@/shared/types';
 import { Icon, MapPreview } from '@/shared/ui';
-import { IndoorMapView } from '@/widgets/indoor-map';
+import { applyMapStrokeEvent, IndoorMapView, type MapStroke } from '@/widgets/indoor-map';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
 import styles from './ConsultSessionPage.module.css';
@@ -56,6 +56,13 @@ export function ConsultSessionPage() {
   const [tokenError, setTokenError] = useState<string | null>(null);
   /** 상담원이 화면 위에 그린 선을 받아 그대로 얹는다. */
   const { canvasRef: annotationRef, apply: applyAnnotation } = useRemoteScreenDraw();
+  /**
+   * 상담원이 **지도 위에** 그린 선. (S15P11A206-89)
+   *
+   * 카메라 영상 위 그리기와 좌표계가 다르므로(캐노니컬 미터 대 0~1 정규화) 따로 들고 있는다.
+   * 이 배열을 지도 위젯에 넘기면 상담자 화면과 같은 방식으로 그려진다.
+   */
+  const [mapStrokes, setMapStrokes] = useState<readonly MapStroke[]>([]);
   const setDestinationName = useNavigationStore((state) => state.setDestination);
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const setCurrentLocation = useNavigationStore((state) => state.setCurrentLocation);
@@ -71,6 +78,14 @@ export function ConsultSessionPage() {
     (event: ConsultDataEvent) => {
       // 지도 상태는 이쪽이 보내는 것이라 되받을 것이 없다.
       if (event.eventType === 'MAP_SYNC') return;
+
+      /**
+       * 상담원이 지도에 그린 선. (S15P11A206-89)
+       *
+       * 좌표가 캐노니컬 미터라 이 화면의 확대·회전과 무관하게 같은 자리에 얹힌다. 반영할 것이
+       * 없는 이벤트에는 같은 배열이 돌아오므로 지도가 헛되게 다시 그려지지 않는다.
+       */
+      setMapStrokes((strokes) => applyMapStrokeEvent(strokes, event));
 
       if (event.eventType === 'DESTINATION_CHANGE_REQUESTED') {
         const { nameKo, linkedNodeId } = event.payload;
@@ -862,6 +877,8 @@ export function ConsultSessionPage() {
                 showAllFacilities={effectiveView === 'all'}
                 selectedFacilityId={selectedFacility?.facilityId}
                 onSelectFacility={setSelectedFacility}
+                /* 상담원이 지도에 그려 준 선. 그 층을 볼 때만 보인다. */
+                strokes={mapStrokes}
               />
             </div>
 

@@ -30,6 +30,8 @@ const signaling = vi.hoisted(() => ({
     remoteCaptionError: null as string | null,
     captionError: null as string | null,
   } as Record<string, unknown>,
+  /** 화면이 넘긴 이벤트 처리기. 테스트가 상담원이 보낸 것처럼 밀어 넣는다. */
+  onDataEvent: null as ((event: unknown) => void) | null,
 }));
 
 /** 권한 조회는 이 화면의 관심사가 아니다. 사라졌는지 여부만 테스트가 정한다. */
@@ -71,18 +73,28 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
   releaseConsultMedia: vi.fn(),
   /** XR 세션이 카메라를 가져갈 때 부른다. 이 파일은 세션을 열지 않아 호출되지 않는다. */
   swapConsultVideoTrack: vi.fn(() => false),
-  useConsultSignaling: () => ({
-    localVideoRef: { current: null },
-    remoteVideoRef: { current: null },
-    replaceLocalVideoTrack: vi.fn(async () => false),
-    status: 'connected',
-    error: null,
-    localCaption: '',
-    captionsSupported: true,
-    transcript: [],
-    sendConsultEvent: vi.fn(() => true),
-    ...signaling.state,
-  }),
+  useConsultSignaling: (
+    _roomId: unknown,
+    _role: unknown,
+    _token: unknown,
+    onDataEvent: (event: unknown) => void,
+  ) => {
+    // 상담원이 보낸 이벤트를 테스트가 직접 밀어 넣을 수 있게 처리기를 붙잡아 둔다.
+    signaling.onDataEvent = onDataEvent;
+
+    return {
+      localVideoRef: { current: null },
+      remoteVideoRef: { current: null },
+      replaceLocalVideoTrack: vi.fn(async () => false),
+      status: 'connected',
+      error: null,
+      localCaption: '',
+      captionsSupported: true,
+      transcript: [],
+      sendConsultEvent: vi.fn(() => true),
+      ...signaling.state,
+    };
+  },
 }));
 
 function renderPage() {
@@ -505,6 +517,65 @@ describe('ConsultSessionPage', () => {
       });
 
       expect(await screen.findByRole('img', { name: 'Current location' })).toBeInTheDocument();
+    });
+
+    /**
+     * 상담원이 지도에 그려 준 선이 사용자 지도에 얹혀야 한다. (S15P11A206-89)
+     *
+     * 좌표는 캐노니컬 미터로 온다. 화면 기준 값으로 오면 두 사람의 확대·회전·표시 층이 달라
+     * 엉뚱한 자리에 찍힌다.
+     */
+    it('상담원이 지도에 그린 선을 지도에 얹는다', async () => {
+      useNavigationStore.setState({ currentFloorId: 1, currentMapX: 0, currentMapY: 0 });
+
+      renderPage();
+      await screen.findByRole('button', { name: '상담 종료' });
+
+      await act(async () => {
+        signaling.onDataEvent?.({
+          eventType: 'DRAW_STROKE_START',
+          eventId: 'evt_1',
+          payload: {
+            strokeId: 's1',
+            floorId: 1,
+            color: '#ffd23f',
+            width: 3.5,
+            map: { mapX: 0, mapY: 0 },
+          },
+        });
+        signaling.onDataEvent?.({
+          eventType: 'DRAW_STROKE_MOVE',
+          eventId: 'evt_2',
+          payload: { strokeId: 's1', mapPoints: [{ mapX: 4, mapY: 4 }] },
+        });
+      });
+
+      // 이 파일은 i18n 을 en 으로 두므로 오버레이 라벨도 영어다.
+      expect(screen.getByRole('img', { name: 'Marks from the agent' })).toBeInTheDocument();
+    });
+
+    /** 상담원은 자유 탐색으로 다른 층을 볼 수 있다. 그 층에 그린 선이 여기 남으면 안 된다. */
+    it('다른 층에 그린 선은 얹지 않는다', async () => {
+      useNavigationStore.setState({ currentFloorId: 1, currentMapX: 0, currentMapY: 0 });
+
+      renderPage();
+      await screen.findByRole('button', { name: '상담 종료' });
+
+      await act(async () => {
+        signaling.onDataEvent?.({
+          eventType: 'DRAW_STROKE_START',
+          eventId: 'evt_1',
+          payload: {
+            strokeId: 's1',
+            floorId: 2,
+            color: '#ffd23f',
+            width: 3.5,
+            map: { mapX: 0, mapY: 0 },
+          },
+        });
+      });
+
+      expect(screen.queryByRole('img', { name: 'Marks from the agent' })).toBeNull();
     });
 
     it('층 목록을 지도 응답에서 만들어 버튼으로 둔다', async () => {
