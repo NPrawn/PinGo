@@ -298,6 +298,7 @@ public class IndoorRouteService {
                     segment.estimatedTimeSec(),
                     moveType == null ? null : moveType.getCode(),
                     guidance.instruction(),
+                    guidance.instructionTemplate(),
                     guidance.turn(),
                     guidance.floorDelta()
             ));

@@ -1402,6 +1402,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
         "estimatedTimeSec": 45,
         "moveType": "walkway",
         "instruction": "30m 직진하세요.",
+        "instructionTemplate": "{distance} 직진하세요.",
         "turn": "straight",
         "floorDelta": null
       }
@@ -1429,6 +1430,7 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 | 필드 | 값 | 설명 |
 | --- | --- | --- |
 | `instruction` | 문장 | `language`에 따라 한국어 또는 영어. `ja`·`zh`는 영어로 내려간다 |
+| `instructionTemplate` | 문장 | `instruction`과 같은 문장인데 거리 자리가 `{distance}`로 비어 있다. 아래 참고 |
 | `turn` | `straight` · `left` · `right` · `around` | 이전 구간에서 이 구간으로 꺾이는 방향. **첫 단계이거나 구간이 너무 짧아 판단할 수 없으면 `null`이다** — `straight`와 구분된다 |
 | `floorDelta` | 정수 | 오르내리는 층수. **위로 가면 양수.** 층 이동이 아니거나 층을 알 수 없으면 `null`. 같은 층 안의 계단이면 `0` |
 
@@ -1466,6 +1468,33 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 ③이 없으면 45도 미만으로 조금씩 꺾이는 길이 끝없이 묶인다 — 42도씩 세 번이면 126도를 돈 길이 직진 한 문장이 된다. ④는 역삼역 B1 중간층 방어다.
 
 **`pathNodes`는 묶지 않는다.** 지도가 꼭짓점을 다 필요로 하므로 경로가 지나는 모든 노드가 그대로 들어간다. 그래서 `steps`의 개수와 `pathNodes`의 개수는 **일치하지 않는다.**
+
+#### 걷는 동안 남은 거리 — `instructionTemplate`
+
+묶은 결과 한 단계가 길어졌다. 그래서 `instruction`에 박힌 거리와 사용자가 실제로 남긴 거리가 크게 벌어진다 — 197m 구간을 절반 걸어도 문장은 계속 `197m 직진하세요`이고, 걷고 있는데 숫자가 그대로면 아무 일도 일어나지 않는 것처럼 보인다.
+
+`instructionTemplate`은 **같은 문장에서 거리 자리만 `{distance}`로 비운 것**이다. 클라이언트가 남은 거리로 채워 쓴다.
+
+```
+instruction         : "197m 직진하세요."
+instructionTemplate : "{distance} 직진하세요."
+                       ↓ 남은 거리로 채운다
+화면                : "164m 직진하세요."
+```
+
+**거리를 클라이언트가 문장 앞에 붙이는 방법은 쓸 수 없다.** 숫자 위치가 언어마다 다르다.
+
+| 언어 | `instruction` | `instructionTemplate` |
+| --- | --- | --- |
+| `ko` 직진 | `197m 직진하세요.` | `{distance} 직진하세요.` |
+| `ko` 회전 | `오른쪽으로 돌아 5m 이동하세요.` | `오른쪽으로 돌아 {distance} 이동하세요.` |
+| `en` 직진 | `Go straight for 197m.` | `Go straight for {distance}.` |
+| `en` 회전 | `Turn right and go 5m.` | `Turn right and go {distance}.` |
+| 층 이동·개찰구 | `계단으로 한 층 올라가세요.` | 같은 값 (`{distance}` 없음) |
+
+**거리가 들어가지 않는 문장은 `instruction`과 같은 값이다.** 층 이동과 개찰구가 그렇다. 자리가 있는지는 `{distance}` 포함 여부로 보면 되고, 없으면 거리를 따로 표시해야 한다.
+
+`instruction`은 그대로 둔다. 문장을 그냥 쓰는 클라이언트는 손댈 것이 없다.
 
 `mapZ`는 그 노드의 캐노니컬 높이(m)다. **같은 층 안에서 높이가 갈리는 구간을 구분하는 데 쓴다** — 역삼역 B0.5 중간층은 별도 층이 아니라 `floorId`가 B1이면서 `map_z=7.5`인 노드 6개로 돼 있어, 이 값이 없으면 바닥 구간과 중간층 구간이 도면 위 같은 평면에 겹쳐 그려진다. **관리자가 높이를 넣지 않은 노드는 `null`이다.**
 

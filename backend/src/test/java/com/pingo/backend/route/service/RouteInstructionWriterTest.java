@@ -344,6 +344,58 @@ class RouteInstructionWriterTest {
         assertThat(merges).isFalse();
     }
 
+    /**
+     * 거리 자리를 비운 문장을 함께 준다.
+     *
+     * <p>화면은 걷는 동안 남은 거리를 보여야 하는데 완성 문장에는 구간 전체 길이가 박혀 있다.
+     * 한 안내가 여러 간선을 담게 되면서 그 차이가 커졌다 — 197m 구간을 절반 걸으면 실제로
+     * 남은 것은 98m 다. 그래서 거리 자리만 비운 같은 문장을 함께 준다.
+     *
+     * <p><b>거리를 클라이언트가 앞에 붙일 수 없다.</b> 숫자 위치가 언어마다 다르다 — 한국어는
+     * 앞이고 영어는 중간이다. 그 사실을 이 테스트가 붙잡는다. (S15P11A206-339)
+     */
+    @Test
+    @DisplayName("완성 문장과 거리 자리를 비운 문장을 함께 준다")
+    void writesTemplateAlongsideInstruction() {
+        node(1L, 1L, 0, 0);
+        node(2L, 1L, 10, 0);
+        node(3L, 1L, 10, 12);
+
+        RouteInstructionWriter.Guidance straight = guidance(null, walkway(1L, 2L, 10), Language.KO);
+        assertThat(straight.instruction()).isEqualTo("10m 직진하세요.");
+        assertThat(straight.instructionTemplate()).isEqualTo("{distance} 직진하세요.");
+
+        RouteInstructionWriter.Guidance turn =
+                guidance(walkway(1L, 2L, 10), walkway(2L, 3L, 12), Language.KO);
+        assertThat(turn.instruction()).isEqualTo("오른쪽으로 돌아 12m 이동하세요.");
+        assertThat(turn.instructionTemplate()).isEqualTo("오른쪽으로 돌아 {distance} 이동하세요.");
+
+        // 영어는 거리가 문장 중간에 온다. 그래서 클라이언트가 숫자를 앞에 붙이는 방법을 쓸 수 없다.
+        RouteInstructionWriter.Guidance english = guidance(null, walkway(1L, 2L, 10), Language.EN);
+        assertThat(english.instruction()).isEqualTo("Go straight for 10m.");
+        assertThat(english.instructionTemplate()).isEqualTo("Go straight for {distance}.");
+    }
+
+    /** 거리가 들어가지 않는 문장은 비울 자리가 없어 완성 문장과 같다. */
+    @Test
+    @DisplayName("거리가 없는 문장은 템플릿이 완성 문장과 같다")
+    void templateEqualsInstructionWhenNoDistance() {
+        node(1L, 1L, 0, 0);
+        node(2L, 2L, 0, 0);
+        floorOrders.put(1L, 2);
+        floorOrders.put(2L, 1);
+
+        RouteInstructionWriter.Guidance stair =
+                guidance(null, segment(1L, 2L, 5, RouteMoveType.STAIR), Language.KO);
+        assertThat(stair.instruction()).isEqualTo("계단으로 한 층 올라가세요.");
+        assertThat(stair.instructionTemplate()).isEqualTo(stair.instruction());
+        assertThat(stair.instructionTemplate()).doesNotContain("{distance}");
+
+        RouteInstructionWriter.Guidance gate =
+                guidance(null, segment(1L, 2L, 5, RouteMoveType.GATE), Language.KO);
+        assertThat(gate.instructionTemplate()).isEqualTo(gate.instruction());
+    }
+
     private String write(Segment previous, Segment current) {
         return write(previous, current, Language.KO);
     }
