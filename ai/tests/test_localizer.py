@@ -30,9 +30,9 @@ class _FakeExtractor:
         return self.value
 
 
-def _result(num_inliers):
+def _result(num_inliers, status="LOCALIZED"):
     return LocalizationResult(
-        status="LOCALIZED",
+        status=status,
         candidates=(),
         total_matches=num_inliers,
         correspondence_count=num_inliers,
@@ -49,6 +49,13 @@ def _result(num_inliers):
 
 
 class CorrespondenceSelectionTest(unittest.TestCase):
+    def test_weak_candidate_requires_minimum_geometric_quality(self):
+        self.assertTrue(ImageLocalizer._is_candidate_quality(12, 0.10, 12.0))
+        self.assertFalse(ImageLocalizer._is_candidate_quality(11, 0.10, 12.0))
+        self.assertFalse(ImageLocalizer._is_candidate_quality(12, 0.09, 12.0))
+        self.assertFalse(ImageLocalizer._is_candidate_quality(12, 0.10, 12.1))
+        self.assertFalse(ImageLocalizer._is_candidate_quality(12, 0.10, None))
+
     def test_keeps_highest_score_without_query_or_point3d_duplicates(self):
         selected = ImageLocalizer._select_correspondences(
             [
@@ -112,13 +119,65 @@ class CorrespondenceSelectionTest(unittest.TestCase):
             )
 
         with patch.object(ImageLocalizer, "localize_prepared", new=fake_localize):
-            result = engine.localize(b"image", focal_length_px=100.0, top_k=5)
+            encoded = BytesIO()
+            Image.new("RGB", (12, 16), "white").save(encoded, format="JPEG")
+            result = engine.localize(
+                encoded.getvalue(), focal_length_px=100.0, top_k=5
+            )
 
         self.assertEqual(global_extractor.extract_calls, 1)
         self.assertEqual(local_extractor.extract_calls, 1)
         self.assertEqual(result.selected_map_version, "b3-v1")
         self.assertEqual(result.floor, "B3")
         self.assertEqual(len(result.map_results), 2)
+
+    def test_multi_map_selects_best_weak_pose_candidate(self):
+        descriptor_index = SimpleNamespace(
+            resize_max=1024,
+            model_name="VGG16-NetVLAD-Pitts30K",
+        )
+        contexts = {
+            "b2-v1": SimpleNamespace(
+                reference_features_path=Path("b2.db"),
+                global_descriptor_index=descriptor_index,
+                manifest={"floor": "B2"},
+            ),
+            "b3-v1": SimpleNamespace(
+                reference_features_path=Path("b3.db"),
+                global_descriptor_index=descriptor_index,
+                manifest={"floor": "B3"},
+            ),
+        }
+        engine = MultiMapLocalizer(
+            contexts,
+            device="cpu",
+            global_extractor=_FakeExtractor(np.zeros(4096, dtype=np.float32)),
+            local_extractor=_FakeExtractor(
+                LocalFeatures(
+                    keypoints=np.empty((0, 2), dtype=np.float32),
+                    descriptors=np.empty((0, 128), dtype=np.float32),
+                    scores=np.empty(0, dtype=np.float32),
+                    image_size=(16, 12),
+                )
+            ),
+            matcher=object(),
+            input_size=16,
+        )
+
+        def fake_localize(localizer, _prepared, focal_length_px, top_k):
+            return _result(
+                18 if localizer.context.manifest["floor"] == "B3" else 14,
+                status="LOW_GEOMETRIC_QUALITY",
+            )
+
+        with patch.object(ImageLocalizer, "localize_prepared", new=fake_localize):
+            encoded = BytesIO()
+            Image.new("RGB", (12, 16), "white").save(encoded, format="JPEG")
+            result = engine.localize(encoded.getvalue(), focal_length_px=100.0)
+
+        self.assertEqual(result.selected_map_version, "b3-v1")
+        self.assertEqual(result.floor, "B3")
+        self.assertEqual(result.result.status, "LOW_GEOMETRIC_QUALITY")
 
 
 if __name__ == "__main__":
