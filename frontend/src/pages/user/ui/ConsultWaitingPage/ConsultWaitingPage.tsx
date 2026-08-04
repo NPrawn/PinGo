@@ -50,7 +50,10 @@ export function ConsultWaitingPage() {
     void getConsultation(consultationId, userSessionId)
       .then((consultation) => {
         if (!active) return;
-        if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
+        if (
+          (consultation.status === 'ACCEPTED' || consultation.status === 'IN_PROGRESS') &&
+          consultation.signalingRoomId
+        ) {
           if (!consultation.signalingAccessToken) {
             setStatusMessage(missingTokenMessage);
             return;

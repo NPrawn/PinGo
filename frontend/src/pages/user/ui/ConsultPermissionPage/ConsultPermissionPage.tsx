@@ -112,6 +112,7 @@ export function ConsultPermissionPage() {
   const [requestingPermissions, setRequestingPermissions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [consultationAlreadyActive, setConsultationAlreadyActive] = useState(false);
   const [preparingSession, setPreparingSession] = useState(false);
   /**
    * 이 화면에서 실제로 확보한 공유 대상.
@@ -155,6 +156,7 @@ export function ConsultPermissionPage() {
 
     setSubmitting(true);
     setErrorMessage('');
+    setConsultationAlreadyActive(false);
     try {
       const completeDestination =
         destinationId != null && destinationType ? { destinationId, destinationType } : {};
@@ -186,11 +188,12 @@ export function ConsultPermissionPage() {
     } catch (error) {
       // 상담으로 이어지지 못했으니 잡아 둔 카메라·마이크를 놓아 준다.
       releaseConsultMedia();
-      setErrorMessage(
-        error instanceof ApiError && error.code === 'CONSULTATION_ALREADY_IN_PROGRESS'
-          ? t('user.consultPermission.alreadyActive')
-          : t('user.consultPermission.requestError'),
-      );
+      if (error instanceof ApiError && error.code === 'CONSULTATION_ALREADY_IN_PROGRESS') {
+        setConsultationAlreadyActive(true);
+        setErrorMessage('');
+      } else {
+        setErrorMessage(t('user.consultPermission.requestError'));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -248,7 +251,7 @@ export function ConsultPermissionPage() {
 
   /** 세션이 없거나 백엔드가 잠시 끊겼어도 한 번의 클릭으로 준비부터 권한 요청까지 잇는다. */
   const prepareAndConnect = async () => {
-    if (preparingSession || requestingPermissions || submitting) return;
+    if (consultationAlreadyActive || preparingSession || requestingPermissions || submitting) return;
 
     let readyUserSessionId = userSessionId;
     if (!readyUserSessionId) {
@@ -326,10 +329,13 @@ export function ConsultPermissionPage() {
       {errorMessage && <p role="alert">{errorMessage}</p>}
       {/* 세션 준비가 실패해도 버튼이 잠기지 않게, 준비를 다시 시도하는 버튼으로 바꾼다. */}
       <Button
+        className={consultationAlreadyActive ? styles.alreadyActiveButton : undefined}
         onClick={() => void prepareAndConnect()}
-        disabled={preparingSession || requestingPermissions || submitting}
+        disabled={consultationAlreadyActive || preparingSession || requestingPermissions || submitting}
       >
-        {!userSessionId
+        {consultationAlreadyActive
+          ? t('user.consultPermission.alreadyActive')
+          : !userSessionId
           ? preparingSession
             ? t('user.consultPermission.preparing')
             : t('user.consultPermission.prepare')

@@ -15,6 +15,11 @@ import java.util.Optional;
 public interface ConsultationSessionRepository extends JpaRepository<ConsultationSession, String> {
     boolean existsByUserSessionIdAndStatusIn(String userSessionId, Collection<ConsultationStatus> statuses);
 
+    Optional<ConsultationSession> findFirstByUserSessionIdAndStatusInOrderByRequestedAtDesc(
+            String userSessionId,
+            Collection<ConsultationStatus> statuses
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select cs from ConsultationSession cs where cs.consultationId = :consultationId")
     Optional<ConsultationSession> findByIdForUpdate(@Param("consultationId") String consultationId);

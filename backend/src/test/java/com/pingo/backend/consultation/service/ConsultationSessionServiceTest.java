@@ -132,10 +132,15 @@ class ConsultationSessionServiceTest {
         given(userSession.isExpired()).willReturn(false);
         given(consultationSessionRepository.existsByUserSessionIdAndStatusIn(anyString(), any()))
                 .willReturn(true);
+        ConsultationSession activeSession = newSession();
+        given(consultationSessionRepository
+                .findFirstByUserSessionIdAndStatusInOrderByRequestedAtDesc(anyString(), any()))
+                .willReturn(Optional.of(activeSession));
 
-        assertThatThrownBy(() -> consultationSessionService.create(createRequest))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.CONSULTATION_ALREADY_IN_PROGRESS);
+        ConsultationCreateResponse response = consultationSessionService.create(createRequest);
+
+        assertThat(response.consultationId()).isEqualTo(activeSession.getConsultationId());
+        assertThat(response.status()).isEqualTo(ConsultationStatus.WAITING);
 
         verify(stationRepository, never()).findById(any());
         verify(consultationSessionRepository, never()).save(any());
