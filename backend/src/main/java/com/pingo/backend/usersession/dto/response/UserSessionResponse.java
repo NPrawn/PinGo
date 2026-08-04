@@ -3,7 +3,8 @@ package com.pingo.backend.usersession.dto.response;
 import com.pingo.backend.usersession.domain.Language;
 import com.pingo.backend.usersession.domain.UserSession;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZoneOffset;
 
 public record UserSessionResponse(
 
@@ -19,7 +20,7 @@ public record UserSessionResponse(
 
         Long destinationId,
 
-        LocalDateTime expiresAt
+        Instant expiresAt
 ){
 
     public static UserSessionResponse from(UserSession session) {
@@ -38,7 +39,7 @@ public record UserSessionResponse(
 
                 session.getDestinationId(),
 
-                session.getExpiresAt()
+                session.getExpiresAt() == null ? null : session.getExpiresAt().toInstant(ZoneOffset.UTC)
 
         );
     }

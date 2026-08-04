@@ -9,6 +9,7 @@ import org.springframework.data.domain.Persistable;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Entity
@@ -63,10 +64,14 @@ public class UserSession implements Persistable<String> {
 
     @PrePersist
     private void prePersist(){
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = nowUtc();
         this.createdAt = now;
         this.lastActiveAt = now;
         this.expiresAt = now.plus(SESSION_TTL);
+    }
+
+    private static LocalDateTime nowUtc() {
+        return LocalDateTime.now(ZoneOffset.UTC);
     }
 
     public void changeLanguage(Language language){
@@ -92,15 +97,15 @@ public class UserSession implements Persistable<String> {
     }
 
     public void recordActivity(){
-        this.lastActiveAt = LocalDateTime.now();
+        this.lastActiveAt = nowUtc();
     }
 
     public boolean isExpired() {
-        return expiresAt != null && !expiresAt.isAfter(LocalDateTime.now());
+        return expiresAt != null && !expiresAt.isAfter(nowUtc());
     }
 
     public void expireNow() {
-        this.expiresAt = LocalDateTime.now();
+        this.expiresAt = nowUtc();
     }
 
     @Override

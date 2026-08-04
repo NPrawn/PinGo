@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useConsultStore } from '@/entities/consult';
 import { getUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { useUserSessionStore } from '../model/userSessionStore';
@@ -9,8 +10,9 @@ import { syncPendingCurrentNode } from './syncCurrentNode';
 export function useUserSessionBootstrap() {
   const navigate = useNavigate();
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
-  const expiresAt = useUserSessionStore((state) => state.expiresAt);
+  const setExpiresAt = useUserSessionStore((state) => state.setExpiresAt);
   const clearSession = useUserSessionStore((state) => state.clearSession);
+  const clearConsultation = useConsultStore((state) => state.clearConsultation);
 
   useEffect(() => {
     const retryPendingSync = () => void syncPendingCurrentNode();
@@ -23,20 +25,32 @@ export function useUserSessionBootstrap() {
 
     const expireSession = () => {
       clearSession();
+      clearConsultation();
       navigate(USER_ROUTES.SPLASH, { replace: true });
     };
-    const expiresAtMs = expiresAt ? new Date(expiresAt).getTime() : Number.NaN;
-    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
-      expireSession();
-      return;
-    }
 
     let disposed = false;
-    const expiryTimer = window.setTimeout(expireSession, expiresAtMs - Date.now());
+    let expiryTimer: number | undefined;
 
     void getUserSession(userSessionId)
-      .then(() => {
-        if (!disposed) void syncPendingCurrentNode();
+      .then((session) => {
+        if (disposed) return;
+
+        const expiresAt = session.expiresAt;
+        if (!expiresAt) {
+          expireSession();
+          return;
+        }
+
+        const expiresAtMs = new Date(expiresAt).getTime();
+        if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+          expireSession();
+          return;
+        }
+
+        setExpiresAt(expiresAt);
+        expiryTimer = window.setTimeout(expireSession, expiresAtMs - Date.now());
+        void syncPendingCurrentNode();
       })
       .catch(() => {
         if (!disposed) expireSession();
@@ -44,7 +58,7 @@ export function useUserSessionBootstrap() {
 
     return () => {
       disposed = true;
-      window.clearTimeout(expiryTimer);
+      if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
     };
-  }, [clearSession, expiresAt, navigate, userSessionId]);
+  }, [clearConsultation, clearSession, navigate, setExpiresAt, userSessionId]);
 }

@@ -18,6 +18,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -73,12 +75,12 @@ public class UserSessionServiceTest {
 
     @Test
     void expiresAt은_생성_시점_기준_6시간_뒤로_설정된다() {
-        LocalDateTime before = LocalDateTime.now();
+        Instant before = Instant.now();
         UserSessionCreateResponse response = userSessionService.create(Language.KO);
-        LocalDateTime after = LocalDateTime.now();
+        Instant after = Instant.now();
 
-        assertTrue(response.expiresAt().isAfter(before.plusHours(6).minusSeconds(5)));
-        assertTrue(response.expiresAt().isBefore(after.plusHours(6).plusSeconds(5)));
+        assertTrue(response.expiresAt().isAfter(before.plus(Duration.ofHours(6)).minusSeconds(5)));
+        assertTrue(response.expiresAt().isBefore(after.plus(Duration.ofHours(6)).plusSeconds(5)));
     }
 
     // ---------- 조회 ----------

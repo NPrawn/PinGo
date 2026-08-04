@@ -8,10 +8,6 @@ const SUPPORTED: readonly string[] = ['ko', 'en', 'ja', 'zh'];
 /** 동시에 여러 화면이 세션을 요청해도 생성은 한 번만 한다. */
 let creationPromise: Promise<string | null> | undefined;
 
-function isUsable(expiresAt?: string) {
-  return !expiresAt || new Date(expiresAt).getTime() > Date.now();
-}
-
 function normalizeLanguage(language: string): UserSessionLanguage {
   const base = language.slice(0, 2).toLowerCase();
   return (SUPPORTED.includes(base) ? base : 'ko') as UserSessionLanguage;
@@ -25,17 +21,17 @@ function normalizeLanguage(language: string): UserSessionLanguage {
  * 예외를 삼키지 않고 결과로 알린다.
  */
 export async function ensureUserSession(language: string): Promise<string | null> {
-  const { userSessionId, expiresAt, setSession, clearSession } = useUserSessionStore.getState();
+  const { userSessionId, setSession, setExpiresAt, clearSession } = useUserSessionStore.getState();
 
-  if (userSessionId && isUsable(expiresAt)) {
+  if (userSessionId) {
     try {
-      await getUserSession(userSessionId);
-      return userSessionId;
+      const session = await getUserSession(userSessionId);
+      if (!session.expiresAt) throw new Error('User session expiry is missing');
+      setExpiresAt(session.expiresAt);
+      return session.userSessionId ?? userSessionId;
     } catch {
       clearSession();
     }
-  } else if (userSessionId) {
-    clearSession();
   }
 
   creationPromise ??= createUserSession({ language: normalizeLanguage(language) })
