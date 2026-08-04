@@ -323,6 +323,19 @@
   margin: 10px 0 0 78px;
 }
 
+/*
+  표시 층에 없는 유형.
+
+  숨기지 않고 연하게 남긴다 — 상담자는 층을 오가며 보는 사람이라 칩이 층마다 사라지고 나타나면
+  누르려던 자리가 계속 바뀐다. 줄을 고정해 두고 진하기로만 알린다. (S15P11A206-89)
+
+  `cursor: default` 로 되돌린다. 누를 수 없는 것에 손가락 커서가 뜨면 눌러도 되는 것으로 읽힌다.
+*/
+.facilityFilterAbsent {
+  cursor: default;
+  opacity: 0.38;
+}
+
 /* 사용자 지도가 아직 오지 않았을 때. 아무 지도나 대신 띄우지 않는다. */
 .mapPlaceholder {
   position: absolute;

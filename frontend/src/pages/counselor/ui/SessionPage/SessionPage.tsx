@@ -10,7 +10,7 @@ import {
   useCounselorQueueStore,
   waitedLabel,
 } from '@/entities/consult';
-import { FACILITY_MAP_FILTERS, type Facility } from '@/entities/facility';
+import { FACILITY_MAP_FILTERS, useStationFacilities, type Facility } from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
   describeRemoteCaptionTrouble,
@@ -224,6 +224,51 @@ export function SessionPage() {
    */
   const displayedFloorId =
     (synced ? null : pickedFloorId) ?? mapSync?.floorId ?? floorMaps[0]?.floorId;
+
+  /**
+   * 지도에 켜 둔 시설 표시. **사용자 화면과 같은 세 상태 모델이다.**
+   *
+   * - `all` — 그 층 시설을 모두 보여 준다. **첫 화면이 이것이다.**
+   * - `none` — 아무것도 보여 주지 않는다.
+   * - 그 외 — 그 `facilityType` 만.
+   *
+   * 셋을 한 값에 담는다. 유형과 숨김을 따로 두면 "숨김인데 유형도 켜져 있는" 조합이 생긴다.
+   *
+   * 예전에는 `null` 로 시작해 아무 시설도 그리지 않았다. 상담자는 역에 무엇이 어디 있는지부터
+   * 봐야 짚어 줄 수 있는데, 빈 도면에서 시작하면 유형 칩을 하나씩 눌러 가며 찾아야 했다.
+   * 사용자 화면은 처음부터 전체를 보여 주므로 두 화면이 서로 다른 지도를 보고 있었다.
+   * (S15P11A206-89)
+   */
+  const [facilityView, setFacilityView] = useState<string>('all');
+
+  /**
+   * 표시 층에 실제로 있는 시설 유형. 칩의 진하기를 가르는 값이다. (S15P11A206-89)
+   *
+   * **사용자 화면은 없는 유형을 아예 빼지만 여기서는 연하게 남긴다.** 상담자는 층을 오가며
+   * 보는 사람이라 칩이 층마다 나타나고 사라지면 누르려던 자리가 계속 바뀐다. 연하게 두면 줄이
+   * 고정되고, 그 층에 없다는 것도 눌러 보지 않고 알 수 있다 — 역삼역 B3 에는 승차권 충전기가
+   * 없는데 예전에는 눌러서 빈 지도를 봐야만 알 수 있었다.
+   */
+  const facilities = useStationFacilities(mapSync?.stationId ?? 0).data;
+  const floorFacilityTypes = new Set(
+    (facilities ?? [])
+      .filter((facility) => facility.floorId === displayedFloorId)
+      .map((facility) => facility.facilityType),
+  );
+
+  /**
+   * 켜 둔 유형이 표시 층에 없으면 전체 표시로 친다. 고른 값 자체는 지우지 않는다 — 층을 넘길
+   * 때마다 사라지면 돌아왔을 때 매번 다시 눌러야 한다. 숨김은 층과 무관하므로 그대로 둔다.
+   */
+  const effectiveView =
+    facilityView !== 'all' &&
+    facilityView !== 'none' &&
+    facilities !== undefined &&
+    !floorFacilityTypes.has(facilityView)
+      ? 'all'
+      : facilityView;
+  /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
+  const facilityType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
   /**
    * 사용자 화면 거울의 배치. 사용자가 직접 재서 보낸 값을 그대로 쓴다. (S15P11A206-89)
    *
@@ -245,23 +290,6 @@ export function SessionPage() {
       ? screen.cameraSource.width / screen.cameraSource.height
       : FALLBACK_CAMERA_ASPECT,
   } as CSSProperties;
-  /**
-   * 지도에 켜 둔 시설 표시. **사용자 화면과 같은 세 상태 모델이다.**
-   *
-   * - `all` — 그 층 시설을 모두 보여 준다. **첫 화면이 이것이다.**
-   * - `none` — 아무것도 보여 주지 않는다.
-   * - 그 외 — 그 `facilityType` 만.
-   *
-   * 셋을 한 값에 담는다. 유형과 숨김을 따로 두면 "숨김인데 유형도 켜져 있는" 조합이 생긴다.
-   *
-   * 예전에는 `null` 로 시작해 아무 시설도 그리지 않았다. 상담자는 역에 무엇이 어디 있는지부터
-   * 봐야 짚어 줄 수 있는데, 빈 도면에서 시작하면 유형 칩을 하나씩 눌러 가며 찾아야 했다.
-   * 사용자 화면은 처음부터 전체를 보여 주므로 두 화면이 서로 다른 지도를 보고 있었다.
-   * (S15P11A206-89)
-   */
-  const [facilityView, setFacilityView] = useState<string>('all');
-  const facilityType =
-    facilityView === 'all' || facilityView === 'none' ? null : facilityView;
   /** 방금 사용자에게 보낸 변경. 상담자가 무엇을 눌렀는지 화면에 남긴다. */
   const [lastPick, setLastPick] = useState<string | null>(null);
 
@@ -652,7 +680,7 @@ export function SessionPage() {
                       showZoomControls
                       facilityType={facilityType}
                       /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼진다. */
-                      showAllFacilities={facilityView === 'all'}
+                      showAllFacilities={effectiveView === 'all'}
                       /*
                         재지정 모드일 때만 시설 선택을 사용자에게 보낸다. 켜지 않은 채로
                         지도를 훑어보다 잘못 눌러 사용자의 목적지가 바뀌면 안 된다.
@@ -691,12 +719,22 @@ export function SessionPage() {
           {mapSync && (
             <div className={styles.facilityFilters} role="group" aria-label="시설 표시">
               {FACILITY_MAP_FILTERS.map((filter) => {
-                const active = facilityView === filter.facilityType;
+                const active = effectiveView === filter.facilityType;
+                /*
+                  이 층에 없는 유형. 조회가 오기 전에는 판정하지 않는다 — 아직 모르는 것을
+                  없다고 그리면 모든 칩이 잠깐 연해진다.
+                */
+                const absent =
+                  facilities !== undefined && !floorFacilityTypes.has(filter.facilityType);
 
                 return (
                   <MapToggle
                     key={filter.facilityType}
                     on={active}
+                    className={absent ? styles.facilityFilterAbsent : undefined}
+                    /* 없는 유형은 누를 수 없다. 눌러도 빈 지도가 나오므로 고장으로 읽힌다. */
+                    disabled={absent}
+                    title={absent ? `이 층에는 ${filter.name}이 없어요` : undefined}
                     /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
                        누르기를 망설이게 된다. */
                     onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
@@ -716,11 +754,11 @@ export function SessionPage() {
                 상담자가 짚어 줄 근거가 없어진다.
               */}
               <MapToggle
-                on={facilityView === 'none'}
-                onClick={() => setFacilityView(facilityView === 'none' ? 'all' : 'none')}
+                on={effectiveView === 'none'}
+                onClick={() => setFacilityView(effectiveView === 'none' ? 'all' : 'none')}
               >
-                <Icon name={facilityView === 'none' ? 'eye' : 'eye-off'} size={13} />
-                {facilityView === 'none' ? '다시 보기' : '숨기기'}
+                <Icon name={effectiveView === 'none' ? 'eye' : 'eye-off'} size={13} />
+                {effectiveView === 'none' ? '다시 보기' : '숨기기'}
               </MapToggle>
             </div>
           )}

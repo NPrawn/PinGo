@@ -22,6 +22,21 @@ const signalingMocks = vi.hoisted(() => ({
   onEvent: null as ((event: unknown) => void) | null,
 }));
 
+const facilityMocks = vi.hoisted(() => ({
+  data: undefined as { floorId: number; facilityType: string }[] | undefined,
+}));
+
+/**
+ * 시설 조회. 층별로 무엇이 있는지가 칩의 진하기를 가르므로 목록을 테스트가 정한다.
+ *
+ * 기본은 빈 목록이 아니라 `undefined` 다 — 아직 모르는 것과 없는 것은 다르다. 모르는 동안
+ * 없다고 그리면 모든 칩이 잠깐 연해진다.
+ */
+vi.mock('@/entities/facility', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/facility')>()),
+  useStationFacilities: () => ({ data: facilityMocks.data }),
+}));
+
 vi.mock('@/shared/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/api')>()),
   getCounselorConsultations: apiMocks.getCounselorConsultations,
@@ -278,8 +293,12 @@ describe('SessionPage', () => {
    * 화면과도 다른 지도를 보고 있었다.
    */
   describe('시설 표시', () => {
+    afterEach(() => {
+      facilityMocks.data = undefined;
+    });
+
     /** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
-    async function renderWithMapSync() {
+    async function renderWithMapSync(floorId: number | null = null) {
       apiMocks.getCounselorConsultations.mockResolvedValue([
         { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
       ]);
@@ -297,7 +316,7 @@ describe('SessionPage', () => {
           version: 1,
           payload: {
             stationId: 1,
-            floorId: null,
+            floorId,
             current: null,
             headingDeg: null,
             destination: null,
@@ -353,6 +372,33 @@ describe('SessionPage', () => {
         'aria-pressed',
         'false',
       );
+    });
+
+    /**
+     * 그 층에 없는 유형은 연하게 두고 누를 수 없게 한다.
+     *
+     * 사용자 화면은 없는 유형을 아예 빼지만 상담자는 층을 오가며 보는 사람이라, 칩이 층마다
+     * 사라지고 나타나면 누르려던 자리가 계속 바뀐다. 예전에는 없는 유형도 같은 진하기로 떠 있어
+     * 눌러서 빈 지도를 봐야만 그 층에 없다는 것을 알 수 있었다.
+     */
+    it('표시 층에 없는 시설 유형은 누를 수 없게 둔다', async () => {
+      facilityMocks.data = [{ floorId: 7, facilityType: 'elevator' }];
+
+      await renderWithMapSync(7);
+
+      expect(screen.getByRole('button', { name: /엘리베이터/ })).toBeEnabled();
+
+      const absent = screen.getByRole('button', { name: /승차권 충전/ });
+      expect(absent).toBeDisabled();
+      // 왜 누를 수 없는지 화면에서 알 수 있어야 한다.
+      expect(absent).toHaveAttribute('title', '이 층에는 승차권 충전이 없어요');
+    });
+
+    /** 아직 조회가 오지 않은 동안 없다고 단정하면 모든 칩이 잠깐 연해진다. */
+    it('시설 목록을 받기 전에는 어느 칩도 잠그지 않는다', async () => {
+      await renderWithMapSync(7);
+
+      expect(screen.getByRole('button', { name: /승차권 충전/ })).toBeEnabled();
     });
   });
 });
