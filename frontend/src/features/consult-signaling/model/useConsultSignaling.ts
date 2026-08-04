@@ -297,6 +297,33 @@ export function useConsultSignaling(
    */
   const [tokenRejected, setTokenRejected] = useState(0);
 
+  useEffect(() => {
+    if (!roomId || !accessToken) return;
+
+    let wasOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const handleOffline = () => {
+      wasOffline = true;
+      setReconnecting(true);
+    };
+    const handleOnline = () => {
+      if (!wasOffline) return;
+      wasOffline = false;
+      // Rebuild both signaling and peer state after a browser-level outage.
+      rebuildingRef.current = true;
+      setReconnecting(true);
+      setConnectionEpoch((epoch) => epoch + 1);
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    if (wasOffline) setReconnecting(true);
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [accessToken, roomId]);
+
   /**
    * 받은 스트림을 영상 요소에 붙이고 재생시킨다.
    *
@@ -349,6 +376,7 @@ export function useConsultSignaling(
 
   useEffect(() => {
     if (!roomId) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     // 서버는 room과 함께 발급한 토큰이 없는 handshake를 401로 거절한다. 토큰 없이
     // 접속하면 무조건 실패하므로, 화면이 토큰을 받아올 때까지 기다린다.
     // (토큰이 채워지면 이 effect가 다시 돌면서 접속한다.)
@@ -1087,7 +1115,11 @@ export function useConsultSignaling(
         return;
       }
       // 이미 영상까지 붙었으면 signaling이 닫혀도 통화는 유지된다.
-      if (peer.connectionState === 'connected') return;
+      if (peer.connectionState === 'connected') {
+        if (event.code === 4400 || event.code === 4408) return;
+        recover('signaling_closed');
+        return;
+      }
       fail(`상담 연결이 끊어졌습니다. 잠시 후 다시 시도해 주세요.${detail}`);
 
       /**

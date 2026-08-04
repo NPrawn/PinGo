@@ -1,10 +1,18 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { clearAuthSession, getCounselorMe, queryKeys, updateCounselorMe } from '@/shared/api';
+import {
+  clearAuthSession,
+  getCounselorMe,
+  getHealth,
+  queryKeys,
+  updateCounselorMe,
+} from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { WindowTabs } from '@/shared/ui';
 import type { WindowTab } from '@/shared/ui';
+import { OfflineConnectionModal } from '@/widgets/offline-connection';
 import styles from './CounselorConsoleShell.module.css';
 
 const TABS: readonly WindowTab[] = [
@@ -26,6 +34,9 @@ type CounselorConsoleShellProps = {
  */
 export function CounselorConsoleShell({ children, connected }: CounselorConsoleShellProps) {
   const queryClient = useQueryClient();
+  const [online, setOnline] = useState(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+  );
   const profileQuery = useQuery({
     queryKey: queryKeys.counselorMe(),
     queryFn: getCounselorMe,
@@ -36,6 +47,27 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
     // 성공이든 실패든 서버 값을 다시 읽어, 셀렉트가 반영되지 않은 값을 보여주지 않게 한다.
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.counselorMe() }),
   });
+
+  const checkConnection = useCallback(async () => {
+    try {
+      await getHealth();
+      setOnline(true);
+    } catch {
+      setOnline(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleOffline = () => setOnline(false);
+    const handleOnline = () => void checkConnection();
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [checkConnection]);
 
   return (
     <div className={styles.layout}>
@@ -71,6 +103,7 @@ export function CounselorConsoleShell({ children, connected }: CounselorConsoleS
         }
       />
       <main className={styles.content}>{children}</main>
+      {!online && <OfflineConnectionModal onRetry={() => void checkConnection()} />}
     </div>
   );
 }
