@@ -268,12 +268,22 @@
   box-shadow: 0 0 0 1px #ccc;
 }
 
+/*
+  지도 마커와 **같은 변수**를 쓴다. (S15P11A206-89)
+
+  예전에는 스와치가 민트·`--color-red` 인데 지도의 마커는 파스텔 레드·진한 레드였고, 글자는
+  "파란점"·"빨간점" 이었다 — 세 곳이 서로 다른 색을 말하고 있었다. 범례는 지도를 읽는 열쇠라
+  틀리면 없는 것보다 나쁘다.
+
+  글자에서 색 이름을 뺀 것도 같은 이유다. 색을 글자로 적으면 색이 바뀔 때마다 함께 고쳐야 하고,
+  빠뜨리면 이번처럼 조용히 거짓이 된다. 무엇인지만 적고 색은 스와치가 보여 준다.
+*/
 .legendMe {
-  background: var(--color-mint-mid);
+  background: var(--color-route);
 }
 
 .legendDest {
-  background: var(--color-red);
+  background: var(--color-route-deep);
 }
 
 .mapRow {
