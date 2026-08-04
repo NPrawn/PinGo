@@ -7,19 +7,34 @@ import com.pingo.backend.externalmap.dto.request.ExternalDestinationRequest;
 import com.pingo.backend.externalmap.dto.request.ExternalDirectionRequest;
 import com.pingo.backend.externalmap.dto.request.GeoPointRequest;
 import com.pingo.backend.externalmap.dto.response.ExternalDirectionResponse;
+import com.pingo.backend.externalmap.client.KakaoLocalClient;
+import com.pingo.backend.externalmap.client.KakaoWalkingRouteResult;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
 public class ExternalMapServiceTest {
+
+    @Mock
+    private KakaoLocalClient kakaoLocalClient;
 
     private ExternalMapService externalMapService;
 
     @BeforeEach
     void setUp() {
-        externalMapService = new ExternalMapService();
+        externalMapService = new ExternalMapService(kakaoLocalClient);
+        lenient().when(kakaoLocalClient.findWalkingRoute(any(), any(), any(), any()))
+                .thenReturn(new KakaoWalkingRouteResult(2450L, 2295L, null));
     }
 
     @Test
@@ -45,6 +60,8 @@ public class ExternalMapServiceTest {
         assertThat(response.webUrl())
                 .isEqualTo(
                         "https://map.kakao.com/link/by/walk/%ED%98%84%EC%9E%AC%20%EC%9C%84%EC%B9%98,37.4982,127.0281/COEX%20Mall,37.5118,127.0592");
+        assertThat(response.distanceM()).isEqualTo(2450L);
+        assertThat(response.estimatedTimeSec()).isEqualTo(2295L);
 
     }
 
@@ -64,6 +81,20 @@ public class ExternalMapServiceTest {
         );
 
         assertThat(externalMapService.createDirection(request).provider()).isEqualTo("kakao");
+    }
+
+    @Test
+    void createDirectionReturnsUrlsWithoutMetricsWhenKakaoWalkingRouteFails() {
+        when(kakaoLocalClient.findWalkingRoute(any(), any(), any(), any()))
+                .thenThrow(new BusinessException(ErrorCode.EXTERNAL_WALKING_ROUTE_FAILED));
+
+        ExternalDirectionResponse response = externalMapService.createDirection(createRequest());
+
+        assertThat(response.provider()).isEqualTo("kakao");
+        assertThat(response.appUrl()).isNotBlank();
+        assertThat(response.webUrl()).contains("map.kakao.com/link/by/walk");
+        assertThat(response.distanceM()).isNull();
+        assertThat(response.estimatedTimeSec()).isNull();
     }
 
     @Test
@@ -94,5 +125,20 @@ public class ExternalMapServiceTest {
         assertThatThrownBy(() -> externalMapService.createDirection(request))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    private ExternalDirectionRequest createRequest() {
+        return new ExternalDirectionRequest(
+                "kakao",
+                new GeoPointRequest(new BigDecimal("37.4982"), new BigDecimal("127.0281")),
+                new ExternalDestinationRequest(
+                        3L,
+                        "COEX Mall",
+                        new BigDecimal("37.5118"),
+                        new BigDecimal("127.0592"),
+                        null
+                ),
+                "foot"
+        );
     }
 }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
@@ -34,6 +34,7 @@ function renderPage() {
         <Route path={USER_ROUTES.CONSULT_WAITING} element={<ConsultWaitingPage />} />
         <Route path={USER_ROUTES.PERMISSION} element={<div>권한 요청 화면</div>} />
         <Route path={USER_ROUTES.CONSULT_REQUEST} element={<div>문제 유형 선택 화면</div>} />
+        <Route path={USER_ROUTES.CONSULT_SESSION} element={<div>상담 화면</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -90,6 +91,55 @@ describe('ConsultWaitingPage', () => {
     renderPage();
 
     expect(await screen.findByText('권한 요청 화면')).toBeInTheDocument();
+    expect(releaseConsultMedia).toHaveBeenCalled();
+  });
+
+  it('CANCELED 이벤트 이후 늦게 도착한 ACCEPTED 응답으로 상담 화면에 진입하지 않는다', async () => {
+    let resolveAccepted: ((value: unknown) => void) | undefined;
+    let acceptedListener: EventListener | undefined;
+    let canceledListener: EventListener | undefined;
+
+    apiMocks.getConsultation
+      .mockResolvedValueOnce({ consultationId: 'cs_1', status: 'WAITING' })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveAccepted = resolve;
+          }),
+      );
+    apiMocks.subscribeToConsultationWaitingEvents.mockReturnValue({
+      addEventListener: vi.fn((type: string, listener: EventListener) => {
+        if (type === 'ACCEPTED') acceptedListener = listener;
+        if (type === 'CANCELED') canceledListener = listener;
+      }),
+      close: vi.fn(),
+    } as unknown as EventSource);
+
+    renderPage();
+    expect(await screen.findByText('CONNECTING · 상담 대기 중')).toBeInTheDocument();
+
+    await act(async () => {
+      acceptedListener?.({ data: JSON.stringify({ signalingRoomId: 'room_1' }) } as MessageEvent);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      canceledListener?.({ data: JSON.stringify({}) } as MessageEvent);
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText('문제 유형 선택 화면')).toBeInTheDocument();
+    await act(async () => {
+      resolveAccepted?.({
+        consultationId: 'cs_1',
+        status: 'ACCEPTED',
+        signalingRoomId: 'room_1',
+        signalingAccessToken: 'token-1',
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('상담 화면')).not.toBeInTheDocument();
+    expect(useConsultStore.getState().consultationId).toBeNull();
     expect(releaseConsultMedia).toHaveBeenCalled();
   });
 });

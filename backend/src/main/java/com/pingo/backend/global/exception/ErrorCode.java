@@ -68,6 +68,7 @@ public enum ErrorCode {
     EMPTY_FLOOR_MAP(HttpStatus.BAD_REQUEST, "EMPTY_FLOOR_MAP", "도면 파일과 좌표 프레임 중 최소 하나는 지정해야 합니다."),
     FILE_STORAGE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_STORAGE_FAILED", "파일 저장에 실패했습니다."),
     EXTERNAL_PLACE_SEARCH_FAILED(HttpStatus.BAD_GATEWAY, "EXTERNAL_PLACE_SEARCH_FAILED", "외부 장소 검색에 실패했습니다."),
+    EXTERNAL_WALKING_ROUTE_FAILED(HttpStatus.BAD_GATEWAY, "EXTERNAL_WALKING_ROUTE_FAILED", "외부 도보 경로 조회에 실패했습니다."),
 
 
     // 경로 

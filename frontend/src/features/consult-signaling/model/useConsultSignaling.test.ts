@@ -204,6 +204,7 @@ describe('useConsultSignaling', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     Reflect.deleteProperty(navigator, 'mediaDevices');
+    Reflect.deleteProperty(navigator, 'onLine');
     vi.restoreAllMocks();
   });
 
@@ -777,5 +778,31 @@ describe('useConsultSignaling', () => {
 
     view.unmount();
     expect(stream?.close).toHaveBeenCalled();
+  });
+
+  it('rebuilds signaling and peer connections when the browser comes back online', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(FakePeerConnection.instances).toHaveLength(1);
+
+    await act(async () => {
+      window.dispatchEvent(new Event('offline'));
+      window.dispatchEvent(new Event('online'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(FakeSocket.instances.length).toBeGreaterThan(1);
+    expect(FakePeerConnection.instances.length).toBeGreaterThan(1);
+
+    view.unmount();
   });
 });

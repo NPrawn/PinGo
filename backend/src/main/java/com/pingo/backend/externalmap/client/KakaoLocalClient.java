@@ -16,4 +16,11 @@ public interface KakaoLocalClient {
      * 카테고리(지하철역)로만 좁힌다.
      */
     List<KakaoPlaceSearchResult> searchSubwayStations(String keyword);
+
+    KakaoWalkingRouteResult findWalkingRoute(
+            BigDecimal startLongitude,
+            BigDecimal startLatitude,
+            BigDecimal endLongitude,
+            BigDecimal endLatitude
+    );
 }

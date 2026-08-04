@@ -25,6 +25,8 @@ export type RouteCreateRequest = Schemas['RouteCreateRequest'];
 export type RouteResponse = Schemas['RouteResponse'];
 export type LocalizationRequestMetadata = Schemas['LocalizationRequestMetadata'];
 export type LocalizationResponse = Schemas['LocalizationResponse'];
+export type ExternalDirectionRequest = Schemas['ExternalDirectionRequest'];
+export type ExternalDirectionResponse = Schemas['ExternalDirectionResponse'];
 
 export function getHealth() {
   return apiClient.get<string>('/api/health').then(({ data }) => data);
@@ -116,6 +118,12 @@ export function getIndoorRouteOptions(request: RouteOptionsRequest) {
 
 export function createIndoorRoute(request: RouteCreateRequest) {
   return unwrap<RouteResponse>(apiClient.post(ENDPOINTS.routes.indoor, request));
+}
+
+export function getExternalWalkingDirection(request: ExternalDirectionRequest) {
+  return unwrap<ExternalDirectionResponse>(
+    apiClient.post(ENDPOINTS.externalMaps.directions, request),
+  );
 }
 
 export function localize(image: File, metadata: LocalizationRequestMetadata) {

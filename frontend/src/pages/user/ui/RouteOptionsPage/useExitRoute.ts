@@ -1,12 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 // 경로 조회는 `entities/route`를 쓴다. `shared/api`의 생성 타입과 달리 응답 필드가 모두 있다.
 import { getIndoorRouteOptions, type RouteOption, type RouteOrigin } from '@/entities/route';
-import { ApiError, findNearestExit, getFacility } from '@/shared/api';
-import { useApiLanguage } from '@/shared/i18n';
+import { ApiError, findNearestExit, getExternalWalkingDirection, getFacility } from '@/shared/api';
+import { useApiLanguage, type ApiLanguage } from '@/shared/i18n';
 import type { RouteType } from '@/shared/types';
 
 /** 조건에 맞는 출구가 없을 때 서버가 주는 코드. 통신 실패가 아니라 정상 결과다. */
 const NO_EXIT_CODE = 'EXIT_LOCATION_NOT_FOUND';
+const ROUTE_LOOKUP_STALE_MS = 60_000;
+const WALKING_DIRECTION_STALE_MS = 5 * 60_000;
 
 /** 경로 유형 하나가 안내할 출구와 그 출구까지의 경로. */
 export interface ExitRoute {
@@ -16,6 +18,58 @@ export interface ExitRoute {
   exitLabel: string;
   /** 서버가 계산한 이 유형의 경로. 도달할 수 없으면 `available`이 false다. */
   option: RouteOption | null;
+  /** 출구에서 외부 목적지까지의 도보 거리(m). API 실패 시에는 직선거리다. */
+  outdoorDistanceM: number | null;
+  /** 카카오 도보 경로의 예상 시간(초). 직선거리 fallback에는 시간이 없다. */
+  outdoorEstimatedTimeSec: number | null;
+}
+
+const EARTH_RADIUS_M = 6_371_000;
+
+/** 두 GPS 좌표 사이의 지표면 직선 거리(m). */
+export function straightLineDistanceM(
+  fromLatitude: number,
+  fromLongitude: number,
+  toLatitude: number,
+  toLongitude: number,
+): number {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitudeDelta = toRadians(toLatitude - fromLatitude);
+  const longitudeDelta = toRadians(toLongitude - fromLongitude);
+  const fromLatitudeRadians = toRadians(fromLatitude);
+  const toLatitudeRadians = toRadians(toLatitude);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(fromLatitudeRadians) *
+      Math.cos(toLatitudeRadians) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(haversine));
+}
+
+/** 목적지 유형에 맞춰 카드에 표시할 거리를 고른다. */
+export function distanceForDestination(
+  destinationType: string | null,
+  indoorDistanceM: number | null,
+  outdoorDistanceM: number | null,
+): number | null {
+  const normalizedType = destinationType?.toLowerCase();
+  return normalizedType === 'place' || normalizedType === 'external_place'
+    ? outdoorDistanceM
+    : indoorDistanceM;
+}
+
+/** 실내 시간과 외부 도보 시간을 섞지 않도록 목적지 유형별 표시 시간을 고른다. */
+export function durationForDestination(
+  destinationType: string | null,
+  outdoorEstimatedTimeSec: number | null,
+): number | null {
+  return isExternalDestination(destinationType) ? outdoorEstimatedTimeSec : null;
+}
+
+export function isExternalDestination(destinationType: string | null): boolean {
+  const normalizedType = destinationType?.toLowerCase();
+  return normalizedType === 'place' || normalizedType === 'external_place';
 }
 
 interface UseExitRouteParams {
@@ -24,6 +78,12 @@ interface UseExitRouteParams {
   startNodeId: number | null;
   destinationLatitude: number | null;
   destinationLongitude: number | null;
+  destinationType: string | null;
+  destinationId: number | null;
+  destinationName: string | null;
+  destinationAddress: string | null;
+  /** 실내 시설을 검색할 때 이미 확정된 실제 목적지 노드. */
+  targetNodeId: number | null;
   /**
    * 사용자의 실제 좌표. 서버가 진입 노드를 다시 고르는 데 쓴다. (`routeOriginOf`)
    *
@@ -62,15 +122,29 @@ function formatExitLabel(exitNumber: string | undefined, fallbackName: string | 
  * 모두 성공해야 카드 한 장이 완성되기 때문이다. 부분 성공 상태를 화면이 따로 다룰 것이 없다.
  */
 export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
-  const { stationId, startNodeId, destinationLatitude, destinationLongitude, origin } = params;
+  const queryClient = useQueryClient();
+  const {
+    stationId,
+    startNodeId,
+    destinationLatitude,
+    destinationLongitude,
+    destinationType,
+    destinationId,
+    destinationName,
+    destinationAddress,
+    targetNodeId,
+    origin,
+  } = params;
   const accessibleOnly = routeType === 'elevator_only';
   /** 카드에 적히는 이용 불가 사유 문구를 서버가 이 언어로 쓴다. (`useApiLanguage`) */
   const language = useApiLanguage();
+  const externalDestination = isExternalDestination(destinationType);
   const ready =
     stationId != null &&
     startNodeId != null &&
-    destinationLatitude != null &&
-    destinationLongitude != null;
+    (externalDestination
+      ? destinationLatitude != null && destinationLongitude != null
+      : targetNodeId != null);
 
   return useQuery({
     queryKey: [
@@ -80,6 +154,11 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
       startNodeId,
       destinationLatitude,
       destinationLongitude,
+      destinationType,
+      destinationId,
+      destinationName,
+      destinationAddress,
+      externalDestination ? null : targetNodeId,
       /* 좌표도 결과를 바꾼다 — 서버가 그 값으로 진입 노드를 다시 골라 총 거리가 달라진다.
          키에 없으면 재인식으로 좌표만 바뀐 경우 옛 거리가 카드에 남는다. */
       origin?.currentMapX ?? null,
@@ -89,6 +168,30 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
       language,
     ],
     queryFn: async (): Promise<ExitRoute | null> => {
+      if (!externalDestination) {
+        const options = await queryClient.fetchQuery({
+          queryKey: indoorOptionsQueryKey(stationId!, startNodeId!, targetNodeId!, origin, language),
+          queryFn: () =>
+            getIndoorRouteOptions({
+              stationId: stationId!,
+              startNodeId: startNodeId!,
+              targetNodeId: targetNodeId!,
+              language,
+              ...(origin ?? {}),
+            }),
+          staleTime: ROUTE_LOOKUP_STALE_MS,
+          retry: false,
+        });
+
+        return {
+          targetNodeId: targetNodeId!,
+          exitLabel: destinationName ?? '목적지',
+          option: options.find((item) => item.routeType === routeType) ?? null,
+          outdoorDistanceM: null,
+          outdoorEstimatedTimeSec: null,
+        };
+      }
+
       /**
        * 조건에 맞는 출구가 없는 것은 실패가 아니다.
        *
@@ -96,32 +199,117 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
        * 답한다. 그것을 오류로 두면 화면이 "불러오지 못했다"고 말하는데, 실제로는 답을 받았고
        * 그 답이 "없다"이다. 사용자가 다시 시도해도 달라질 것이 없다.
        */
-      const exit = await findNearestExit({
-        stationId: stationId!,
-        destinationLatitude: destinationLatitude!,
-        destinationLongitude: destinationLongitude!,
-        accessibleOnly,
+      const exit = await queryClient.fetchQuery({
+        queryKey: [
+          'nearest-exit',
+          stationId,
+          destinationLatitude,
+          destinationLongitude,
+          accessibleOnly,
+        ],
+        queryFn: () =>
+          findNearestExit({
+            stationId: stationId!,
+            destinationLatitude: destinationLatitude!,
+            destinationLongitude: destinationLongitude!,
+            accessibleOnly,
+          }),
+        staleTime: ROUTE_LOOKUP_STALE_MS,
+        retry: false,
       }).catch((error: unknown) => {
         if (error instanceof ApiError && error.code === NO_EXIT_CODE) return null;
         throw error;
       });
       if (exit?.exitFacilityId == null) return null;
 
-      const facility = await getFacility(exit.exitFacilityId);
+      const facility = await queryClient.fetchQuery({
+        queryKey: ['facility', exit.exitFacilityId],
+        queryFn: () => getFacility(exit.exitFacilityId!),
+        staleTime: ROUTE_LOOKUP_STALE_MS,
+        retry: false,
+      });
       if (facility.linkedNodeId == null) return null;
 
-      const options = await getIndoorRouteOptions({
-        stationId: stationId!,
-        startNodeId: startNodeId!,
-        targetNodeId: facility.linkedNodeId,
-        language,
-        ...(origin ?? {}),
+      const optionsPromise = queryClient.fetchQuery({
+        queryKey: indoorOptionsQueryKey(
+          stationId!,
+          startNodeId!,
+          facility.linkedNodeId,
+          origin,
+          language,
+        ),
+        queryFn: () =>
+          getIndoorRouteOptions({
+            stationId: stationId!,
+            startNodeId: startNodeId!,
+            targetNodeId: facility.linkedNodeId!,
+            language,
+            ...(origin ?? {}),
+          }),
+        staleTime: ROUTE_LOOKUP_STALE_MS,
+        retry: false,
       });
+
+      const fallbackDistanceM =
+        facility.exitDetail?.outsideLatitude != null &&
+        facility.exitDetail.outsideLongitude != null
+          ? straightLineDistanceM(
+              facility.exitDetail.outsideLatitude,
+              facility.exitDetail.outsideLongitude,
+              destinationLatitude!,
+              destinationLongitude!,
+            )
+          : null;
+
+      const walkingDirectionPromise =
+        facility.exitDetail?.outsideLatitude != null &&
+        facility.exitDetail.outsideLongitude != null &&
+        destinationName
+          ? await queryClient
+              .fetchQuery({
+                queryKey: [
+                  'external-walking-direction',
+                  facility.exitDetail.outsideLatitude,
+                  facility.exitDetail.outsideLongitude,
+                  destinationLatitude,
+                  destinationLongitude,
+                  destinationId,
+                  destinationName,
+                  destinationAddress,
+                ],
+                queryFn: () =>
+                  getExternalWalkingDirection({
+                    provider: 'kakao',
+                    origin: {
+                      latitude: facility.exitDetail!.outsideLatitude!,
+                      longitude: facility.exitDetail!.outsideLongitude!,
+                    },
+                    destination: {
+                      ...(destinationId != null ? { placeId: destinationId } : {}),
+                      name: destinationName,
+                      latitude: destinationLatitude!,
+                      longitude: destinationLongitude!,
+                      ...(destinationAddress ? { address: destinationAddress } : {}),
+                    },
+                    mode: 'foot',
+                  }),
+                staleTime: WALKING_DIRECTION_STALE_MS,
+                retry: false,
+              })
+              .catch(() => null)
+          : Promise.resolve(null);
+
+      const [options, walkingDirection] = await Promise.all([
+        optionsPromise,
+        walkingDirectionPromise,
+      ]);
 
       return {
         targetNodeId: facility.linkedNodeId,
         exitLabel: formatExitLabel(exit.exitNumber, facility.nameKo),
         option: options.find((item) => item.routeType === routeType) ?? null,
+        outdoorDistanceM: walkingDirection?.distanceM ?? fallbackDistanceM,
+        outdoorEstimatedTimeSec: walkingDirection?.estimatedTimeSec ?? null,
       };
     },
     enabled: ready,
@@ -133,4 +321,29 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
      */
     retry: false,
   });
+}
+
+/**
+ * 안쪽 경로 옵션 조회의 캐시 키. 두 분기가 같은 응답을 나눠 쓰도록 한 곳에서 만든다.
+ *
+ * **언어가 들어간다.** 서버가 이용 불가 사유 문구(`unavailableMessage`)를 이 언어로 쓰므로
+ * 언어가 바뀌면 응답 자체가 달라진다. 키에 없으면 언어를 바꿔도 이 안쪽 캐시가 이전 언어
+ * 문구를 그대로 돌려준다 — 바깥 쿼리 키에 언어를 넣어도 여기서 막힌다. (S15P11A206-339)
+ */
+function indoorOptionsQueryKey(
+  stationId: number,
+  startNodeId: number,
+  targetNodeId: number,
+  origin: RouteOrigin | null | undefined,
+  language: ApiLanguage,
+) {
+  return [
+    'indoor-route-options',
+    stationId,
+    startNodeId,
+    targetNodeId,
+    origin?.currentMapX ?? null,
+    origin?.currentMapY ?? null,
+    language,
+  ] as const;
 }
