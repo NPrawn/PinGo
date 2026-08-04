@@ -19,8 +19,15 @@ import {
 } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
 import { useRemoteScreenDraw } from '@/features/shared-screen-draw';
-import { createIndoorRoute, endConsultationByUser, getConsultation } from '@/shared/api';
+import {
+  createIndoorRoute,
+  endConsultationByUser,
+  getConsultation,
+  getIceServers,
+} from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+/* 실기기 검사 패널. 임시다 — 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89) */
+import { DevProbe, useDevProbe } from '@/shared/devprobe';
 import {
   xrSessionController,
   type XrCameraStreamHandle,
@@ -567,6 +574,23 @@ export function ConsultSessionPage() {
     void endCall();
   }, [endCall, permissionsRevoked]);
 
+  /*
+    실기기 검사 패널에 넘기는 값. **읽기만 한다.** 임시다 — 지우는 방법은
+    `shared/devprobe/README.md`. (S15P11A206-89)
+  */
+  useDevProbe({
+    연결: status,
+    채널: eventChannelOpen,
+    카메라: cameraStreamState,
+    XR: xrStatus,
+    앵커: anchorStatus,
+    방: signalingRoomId,
+    토큰: signalingAccessToken ? '있음' : '없음',
+    경로노드: pathNodes.length,
+    내위치: currentLocation ? `${currentLocation.floorId}층` : null,
+    오류: error ?? tokenError,
+  });
+
   return (
     <PhoneFrame
       dark
@@ -874,6 +898,15 @@ export function ConsultSessionPage() {
             </p>
           </div>
         </div>
+
+        {/*
+          실기기 검사 패널. **오버레이 루트 안에 둔다** — 세션이 열리면 컴포지터가 이 루트의
+          자손만 그리므로 밖에 두면 XR 중에 보이지 않는다. 임시다(S15P11A206-89).
+
+          ICE 검사는 실기기에서만 답이 나온다. 서버가 TURN 을 주지 않으면 서로 다른 망에 있는
+          두 사람은 붙지 못하는데, 그 응답을 모바일에서 볼 방법이 지금 없다.
+        */}
+        <DevProbe actions={{ ICE: () => getIceServers(signalingAccessToken ?? '') }} />
       </div>
     </PhoneFrame>
   );

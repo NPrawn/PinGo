@@ -28,6 +28,8 @@ import {
   queryKeys,
   submitConsultationTranscript,
 } from '@/shared/api';
+/* 실기기 검사 패널. 임시다 — 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89) */
+import { DevProbe, useDevProbe } from '@/shared/devprobe';
 import { Badge, Button, FloorRail, Icon, MapPreview, MapToggle, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import { IndoorMapView } from '@/widgets/indoor-map';
@@ -95,6 +97,8 @@ export function SessionPage() {
     transcript,
     sendConsultEvent,
     tokenRejected,
+    /* 검사 패널만 읽는다. 패널을 지울 때 이 줄도 지운다. (S15P11A206-89) */
+    eventChannelOpen,
   } = useConsultSignaling(signalingRoomId, 'COUNSELOR', signalingAccessToken, handleDataEvent);
 
   /**
@@ -363,6 +367,23 @@ export function SessionPage() {
     clearConsultation();
     void navigate(COUNSELOR_ROUTES.REQUESTS);
   };
+
+  /*
+    실기기 검사 패널에 넘기는 값. **읽기만 한다.** 임시다 — 지우는 방법은
+    `shared/devprobe/README.md`. (S15P11A206-89)
+
+    `지도수신` 이 핵심이다. 사용자→상담자 지도 동기화는 DataChannel 이 열려야만 간다(서버
+    우회로는 상담자→사용자 한 방향뿐이다). 지도가 안 뜰 때 채널이 닫혀서인지 사용자가 보내지
+    않아서인지 이 두 값으로 갈린다.
+  */
+  useDevProbe({
+    연결: status,
+    채널: eventChannelOpen,
+    영상: sharing,
+    방: signalingRoomId,
+    지도수신: mapSync ? `${mapSync.pathNodes?.length ?? 0}노드` : '없음',
+    오류: error ?? tokenError,
+  });
 
   return (
     <CounselorConsoleShell connected>
@@ -774,6 +795,9 @@ export function SessionPage() {
           </div>
         </div>
       </div>
+
+      {/* 실기기 검사 패널. 임시다 — `shared/devprobe/README.md`. (S15P11A206-89) */}
+      <DevProbe />
     </CounselorConsoleShell>
   );
 }
