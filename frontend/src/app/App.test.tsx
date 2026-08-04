@@ -186,6 +186,10 @@ describe('user routes', () => {
    */
   beforeEach(() => {
     useNavigationStore.setState({
+      destination: '강남파이낸스센터',
+      destinationId: 3,
+      destinationType: 'place',
+      destinationAddress: '서울 강남구 테헤란로 152',
       currentNodeId: 205,
       targetNodeId: 325,
       targetExitLabel: '7번 출입구',
@@ -867,8 +871,8 @@ describe('user routes', () => {
   /**
    * 경로 옵션 화면. (S15P11A206-323)
    *
-   * 시간·거리는 `POST /api/routes/indoor/options` 응답에서 온다. 유형별로 도착 노드가
-   * 다르므로 조회도 유형별로 따로 나간다.
+   * 외부 목적지의 시간·거리는 출구 좌표에서 카카오 도보 경로를 조회한 응답에서 온다.
+   * 유형별로 출구가 다르므로 도보 경로도 유형별로 따로 조회한다.
    */
   it('경로 옵션을 조회 응답으로 그린다', async () => {
     await renderSection('/user/route');
@@ -876,12 +880,31 @@ describe('user routes', () => {
     const fastest = await screen.findByRole('button', { name: /최단 경로/ });
 
     expect(fastest).toHaveAttribute('aria-pressed', 'true');
-    // estimatedTimeSec 240 → 4분, totalDistanceM 180 → 180m
-    expect(within(fastest).getByText('4분')).toBeInTheDocument();
-    expect(within(fastest).getByText('180m')).toBeInTheDocument();
+    // 카카오 도보 응답 2295초 → 38분, 2450m → 2450m
+    expect(within(fastest).getByText('38분')).toBeInTheDocument();
+    expect(within(fastest).getByText('2450m')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '7번 출입구 길 안내 시작' })).toBeInTheDocument();
     expect(screen.getByText('출발지')).toBeInTheDocument();
     expect(screen.getByText('목적지')).toBeInTheDocument();
+  });
+
+  it('실내 목적지는 실제 목적지 노드까지의 거리만 그린다', async () => {
+    useNavigationStore.setState({
+      destination: '화장실',
+      destinationId: 50,
+      destinationType: 'facility',
+      destinationLatitude: null,
+      destinationLongitude: null,
+      destinationAddress: null,
+      targetNodeId: 130,
+    });
+
+    await renderSection('/user/route');
+
+    const fastest = await screen.findByRole('button', { name: /최단 경로/ });
+    expect(within(fastest).getByText('180m')).toBeInTheDocument();
+    expect(within(fastest).queryByText('4분')).toBeNull();
+    expect(screen.getByRole('link', { name: '화장실 길 안내 시작' })).toBeInTheDocument();
   });
 
   /**

@@ -49,6 +49,11 @@ const FACILITIES = [
     mapY: -33.989,
     linkedNodeId: 325,
     isAccessible: false,
+    exitDetail: {
+      exitNumber: '7',
+      outsideLatitude: 37.5002,
+      outsideLongitude: 127.0359,
+    },
   },
   {
     facilityId: 41,
@@ -79,6 +84,11 @@ const FACILITIES = [
     mapY: 42.5,
     linkedNodeId: 153,
     isAccessible: true,
+    exitDetail: {
+      exitNumber: '3',
+      outsideLatitude: 37.4998,
+      outsideLongitude: 127.0348,
+    },
   },
 ];
 
@@ -326,6 +336,22 @@ export const handlers = [
       body.targetNodeId === ACCESSIBLE_TARGET_NODE_ID ? ACCESSIBLE_ROUTE_OPTIONS : ROUTE_OPTIONS;
 
     return HttpResponse.json({ success: true, data, message: null });
+  }),
+  http.post('*/api/external-maps/directions', async ({ request }) => {
+    const body = (await request.json()) as { origin?: { longitude?: number } };
+    const elevatorRoute = body.origin?.longitude === 127.0348;
+
+    return HttpResponse.json({
+      success: true,
+      data: {
+        provider: 'kakao',
+        appUrl: 'kakaomap://route?by=foot',
+        webUrl: 'https://map.kakao.com/example',
+        distanceM: elevatorRoute ? 2638 : 2450,
+        estimatedTimeSec: elevatorRoute ? 2525 : 2295,
+      },
+      message: null,
+    });
   }),
   http.get('*/api/stations/:stationId/maps', () =>
     HttpResponse.json({ success: true, data: FLOOR_MAPS, message: null }),
