@@ -1,3 +1,14 @@
+import {
+  cameraImageOf,
+  createXrCameraFrameGrabber,
+  createXrCameraFrameSink,
+  DEFAULT_CAMERA_FRAME_FPS,
+  DEFAULT_CAMERA_FRAME_SIZE,
+  rawCameraOf,
+  type XrCameraFrameGrabber,
+  type XrCameraFrameSink,
+  type XrCameraFrameSize,
+} from './cameraFrames';
 import { angleDiffDeg, toPoseReading } from './pose';
 import { createPoseSampler, DEFAULT_SAMPLING_RULE } from './sampler';
 import { detectXrSupport } from './support';
@@ -143,6 +154,35 @@ export interface XrStartOptions {
   releaseCamera?: () => void | Promise<void>;
 }
 
+/**
+ * 카메라 송출 상태.
+ *
+ * - idle: 켜지 않았다.
+ * - waiting: 켰지만 아직 프레임이 없다. 세션이 열리고 추적이 잡히기를 기다리는 구간이다.
+ * - streaming: 프레임이 흐르고 있다.
+ * - unsupported: 이 기기에서는 얻을 수 없다. `camera-access` 미부여이거나 GL 자원을 만들 수
+ *   없는 경우다. **다시 시도해도 같은 결과이므로 화면은 다른 방법을 택해야 한다.**
+ */
+export type XrCameraStreamState = 'idle' | 'waiting' | 'streaming' | 'unsupported';
+
+export interface XrCameraStreamOptions {
+  /** 보낼 프레임 크기. 기본 320×240. */
+  size?: XrCameraFrameSize;
+  /** 초당 장수. 기본 10. */
+  fps?: number;
+}
+
+export interface XrCameraStreamHandle {
+  /** WebRTC에 실을 스트림. 영상 트랙 하나가 담겨 있다. */
+  stream: MediaStream;
+  /** 지금 상태. */
+  getState(): XrCameraStreamState;
+  /** 상태가 바뀔 때 알린다. 구독한 즉시 현재 상태로 한 번 부른다. */
+  subscribe(listener: (state: XrCameraStreamState) => void): () => void;
+  /** 송출을 멈추고 트랙까지 정리한다. */
+  stop(): void;
+}
+
 export interface XrSessionController {
   /** 현재 상태. */
   getState(): XrSessionState;
@@ -187,6 +227,20 @@ export interface XrSessionController {
   start(options?: XrStartOptions): Promise<XrSessionState>;
   /** 세션을 끝내고 추적 자원을 정리한다. 열려 있지 않으면 아무 일도 하지 않는다. */
   stop(): Promise<void>;
+  /**
+   * 세션의 카메라 영상을 `MediaStream`으로 뽑기 시작한다. (S15P11A206-89)
+   *
+   * **세션보다 먼저 불러도 된다.** 트랙은 캔버스에 붙어 있어 세션과 수명이 다르다. 상담 화면은
+   * 협상이 시작되기 전에 이것을 켜서 보낼 트랙을 미리 확보하고, 프레임은 세션이 열려 추적이
+   * 잡힌 뒤부터 흘러 들어온다.
+   *
+   * 캔버스를 만들 수 없는 환경에서만 null이다. `camera-access`가 부여되지 않은 것은 여기서
+   * 알 수 없으므로(뷰가 있어야 판정된다) 핸들의 상태로 알린다.
+   *
+   * 이미 켜져 있으면 같은 핸들을 돌려준다 — 트랙을 두 개 만들면 어느 것이 협상에 실린 것인지
+   * 알 수 없게 된다.
+   */
+  startCameraStream(options?: XrCameraStreamOptions): XrCameraStreamHandle | null;
 }
 
 /**
@@ -241,6 +295,24 @@ export function createXrSessionController(
    * 쓰이는 PBO가 WebGL2 기능이라, 나중에 그 경로를 붙일 때 컨텍스트를 다시 만들지 않아도 된다.
    */
   let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
+
+  /**
+   * 카메라 프레임 송출. 상담 화면이 켜면 생기고 세션이 끝나면 사라진다. (S15P11A206-89)
+   *
+   * binding·grabber는 **첫 프레임에 만든다.** 둘 다 GL 컨텍스트와 세션이 있어야 하는데,
+   * `startCameraStream`은 세션이 열리기 전에도 불릴 수 있다(상담 화면이 세션 게이트를 통과하기
+   * 전에 트랙을 준비해 둔다). 캔버스는 그때 만들어 트랙을 먼저 넘기고, GL 자원은 나중에 붙인다.
+   */
+  let cameraBinding: XRWebGLBinding | null = null;
+  let cameraGrabber: XrCameraFrameGrabber | null = null;
+  let cameraSink: XrCameraFrameSink | null = null;
+  let cameraState: XrCameraStreamState = 'idle';
+  let cameraFrameSize: XrCameraFrameSize = DEFAULT_CAMERA_FRAME_SIZE;
+  let cameraIntervalMs = 1000 / DEFAULT_CAMERA_FRAME_FPS;
+  /** 마지막으로 카메라를 읽은 프레임 시각. 송출 간격을 지키는 기준이다. */
+  let lastCameraFrameAt: DOMHighResTimeStamp | null = null;
+  const cameraListeners = new Set<(state: XrCameraStreamState) => void>();
+
   let sampler = createPoseSampler(rule);
   let startInFlight: Promise<XrSessionState> | null = null;
   let frameHandle: number | null = null;
@@ -355,6 +427,15 @@ export function createXrSessionController(
     setState({ status: 'tracking' });
 
     /**
+     * 카메라 프레임은 pose를 얻은 뒤에 뽑는다.
+     *
+     * 카메라는 `XRView`에 실려 오므로 viewerPose 없이는 접근할 방법이 없다. 즉 세션 시작 직후
+     * warming-up 구간(실측 0.96~1.54초)에는 프레임이 나오지 않는다 — 상담자 화면은 그동안
+     * `waiting`으로 남는다.
+     */
+    captureCameraFrame(viewerPose, time);
+
+    /**
      * 추적 상실에서 복구된 경우 샘플러를 초기화한다.
      *
      * 상실 구간 동안 상대 좌표의 연속성이 이미 끊겼다. 초기화하지 않으면 복구 첫 프레임이
@@ -447,8 +528,92 @@ export function createXrSessionController(
     }
   }
 
+  function setCameraState(next: XrCameraStreamState): void {
+    if (cameraState === next) return;
+
+    cameraState = next;
+    cameraListeners.forEach((listener) => {
+      listener(next);
+    });
+  }
+
+  /**
+   * 이 프레임의 카메라 영상을 캔버스로 옮긴다.
+   *
+   * **어디서 실패해도 조용히 넘긴다.** 카메라는 상담의 부가 기능이고 추적은 안내의 근간이다.
+   * 여기서 예외가 올라가면 프레임 루프가 끊겨 위치가 멈추는데, 그것은 카메라를 못 보내는 것보다
+   * 훨씬 나쁘다. 대신 `unsupported`로 알려 화면이 다른 방법을 택할 수 있게 한다.
+   */
+  function captureCameraFrame(viewerPose: XRViewerPose, time: DOMHighResTimeStamp): void {
+    if (!cameraSink || cameraState === 'unsupported') return;
+
+    // 송출 간격. 30fps 세션에서 매 프레임 읽으면 리드백이 추적과 GPU를 다툰다.
+    if (lastCameraFrameAt !== null && time - lastCameraFrameAt < cameraIntervalMs) return;
+
+    const current = session;
+    const view = viewerPose.views[0];
+
+    if (!current || !view) return;
+
+    const camera = rawCameraOf(view);
+
+    /**
+     * `camera-access`가 부여되지 않았다. optional로 요청하므로 세션은 열리고 이 값만 없다.
+     * 프레임마다 다시 확인할 이유가 없으니 여기서 결론을 낸다.
+     *
+     * **GL 컨텍스트보다 먼저 본다.** 기능 미부여는 이 기기의 결론이고 컨텍스트 유무와 무관하다.
+     */
+    if (!camera) return setCameraState('unsupported');
+
+    if (!gl) return;
+
+    try {
+      cameraBinding ??= new XRWebGLBinding(current, gl);
+      cameraGrabber ??= createXrCameraFrameGrabber(gl, cameraFrameSize);
+    } catch {
+      return setCameraState('unsupported');
+    }
+
+    // 셰이더·프레임버퍼를 만들 수 없는 기기다. 다시 시도해도 같은 결과다.
+    if (!cameraBinding || !cameraGrabber) return setCameraState('unsupported');
+
+    const texture = cameraImageOf(cameraBinding, camera);
+
+    // 이 프레임만 없는 것일 수 있으므로 결론을 내지 않는다.
+    if (!texture) return;
+
+    const pixels = cameraGrabber.grab(texture);
+
+    if (!pixels) return;
+
+    lastCameraFrameAt = time;
+    cameraSink.push(pixels);
+    setCameraState('streaming');
+  }
+
+  /**
+   * 세션에 묶인 카메라 자원만 반납한다. **캔버스와 트랙은 남긴다.**
+   *
+   * 세션이 다시 열릴 때 트랙까지 새로 만들면 WebRTC 협상을 다시 해야 하고, 상담자 화면에서는
+   * 영상이 한 번 끊긴다. 트랙은 캔버스에 붙어 있어 세션과 무관하게 살아 있으므로, GL 자원만
+   * 버리고 다음 세션의 첫 프레임에서 다시 만든다.
+   */
+  function releaseCameraGlResources(): void {
+    cameraGrabber?.dispose();
+    cameraGrabber = null;
+    cameraBinding = null;
+    lastCameraFrameAt = null;
+    // 다음 세션에서 다시 판정한다 — 기능 부여는 세션마다 새로 정해진다.
+    if (cameraSink) setCameraState('waiting');
+  }
+
   /** GL 자원을 반납한다. 컨텍스트는 기기당 개수 제한이 있어 세션마다 새로 만들고 버린다. */
   function releaseRenderLayer(): void {
+    /**
+     * 카메라 자원의 수명은 이 컨텍스트와 정확히 같다. 컨텍스트를 잃은 뒤 남은 텍스처·프로그램을
+     * 지우려 하면 조용히 실패하고, 다음 세션에서 만든 자원과 섞이면 검은 프레임이 나간다.
+     */
+    releaseCameraGlResources();
     gl?.getExtension('WEBGL_lose_context')?.loseContext();
     gl = null;
   }
@@ -774,6 +939,53 @@ export function createXrSessionController(
     },
 
     stop,
+
+    startCameraStream(cameraOptions = {}) {
+      const handle: XrCameraStreamHandle = {
+        // 아래에서 sink 를 확정한 뒤 다시 채운다.
+        stream: undefined as unknown as MediaStream,
+        getState: () => cameraState,
+        subscribe(listener) {
+          cameraListeners.add(listener);
+          // 구독 시점의 상태를 놓치지 않게 한 번 알린다. 이미 unsupported 일 수 있다.
+          listener(cameraState);
+
+          return () => {
+            cameraListeners.delete(listener);
+          };
+        },
+        stop() {
+          releaseCameraGlResources();
+          cameraSink?.dispose();
+          cameraSink = null;
+          setCameraState('idle');
+        },
+      };
+
+      // 이미 켜져 있으면 같은 트랙을 쓴다. 두 번째 트랙은 협상에 실리지 않아 검은 화면이 된다.
+      if (cameraSink) {
+        handle.stream = cameraSink.stream;
+        return handle;
+      }
+
+      cameraFrameSize = cameraOptions.size ?? DEFAULT_CAMERA_FRAME_SIZE;
+
+      const fps = cameraOptions.fps ?? DEFAULT_CAMERA_FRAME_FPS;
+
+      cameraIntervalMs = 1000 / fps;
+
+      const sink = createXrCameraFrameSink(cameraFrameSize, fps);
+
+      // 캔버스나 captureStream 이 없는 환경. 트랙을 만들 수 없으므로 켤 수 없다.
+      if (!sink) return null;
+
+      cameraSink = sink;
+      handle.stream = sink.stream;
+      lastCameraFrameAt = null;
+      setCameraState('waiting');
+
+      return handle;
+    },
   };
 }
 

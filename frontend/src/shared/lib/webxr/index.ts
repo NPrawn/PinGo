@@ -1,3 +1,5 @@
+export { DEFAULT_CAMERA_FRAME_FPS, DEFAULT_CAMERA_FRAME_SIZE } from './cameraFrames';
+export type { XrCameraFrameSize } from './cameraFrames';
 export { angleDiffDeg, planarDistanceM, toPoseReading, yawDegOf } from './pose';
 export { createPoseSampler, DEFAULT_SAMPLING_RULE } from './sampler';
 export type { XrPoseSampler } from './sampler';
@@ -9,6 +11,9 @@ export {
   xrSessionController,
 } from './session';
 export type {
+  XrCameraStreamHandle,
+  XrCameraStreamOptions,
+  XrCameraStreamState,
   XrSessionController,
   XrSessionControllerOptions,
   XrSessionState,
