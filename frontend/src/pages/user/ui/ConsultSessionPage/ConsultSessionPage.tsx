@@ -25,16 +25,8 @@ import {
 import { usePermissionsRevoked } from '@/features/permissions';
 import { readForwardMap } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
-import {
-  createIndoorRoute,
-  endConsultationByUser,
-  getConsultation,
-  getIceServers,
-  localize,
-} from '@/shared/api';
+import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
-/* 실기기 검사 패널. 임시다 — 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89) */
-import { countDevProbe, DevProbe, useDevProbe } from '@/shared/devprobe';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import {
   xrSessionController,
@@ -63,26 +55,6 @@ const CONSULTATION_WATCH_MS = 4000;
  * 짚어 주는 자리를 찾는 데도 지장이 없다.
  */
 const RELOCALIZE_INTERVAL_MS = 30_000;
-
-/**
- * 검사 패널이 쓰는 방향. 출발점에서 도착점을 향한 단위 벡터다. 임시다 —
- * 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89)
- *
- * 두 점이 같은 자리면 방향을 정할 수 없다. 그때는 null 이며 앵커도 만들어지지 않는다 —
- * 0 벡터를 넘기면 회전 계산이 NaN 이 되어 마커가 도면에서 사라진다.
- */
-function probeForwardMap(
-  from: { mapX: number; mapY: number },
-  to: { mapX: number; mapY: number },
-): { x: number; y: number } | null {
-  const dx = to.mapX - from.mapX;
-  const dy = to.mapY - from.mapY;
-  const length = Math.hypot(dx, dy);
-
-  if (!(length > 0)) return null;
-
-  return { x: dx / length, y: dy / length };
-}
 
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
@@ -523,9 +495,6 @@ export function ConsultSessionPage() {
         */
       }
 
-      /* 검사 패널용. 임시다 — `shared/devprobe/README.md`. (S15P11A206-89) */
-      countDevProbe('재인식 시도');
-
       if (!disposed) schedule();
     };
 
@@ -718,9 +687,6 @@ export function ConsultSessionPage() {
   useEffect(() => {
     if (stationId == null) return;
 
-    /* 검사 패널용. 임시다 — `shared/devprobe/README.md`. (S15P11A206-89) */
-    countDevProbe('MAP_SYNC 보냄');
-
     sendConsultEvent({
       eventType: 'MAP_SYNC',
       payload: {
@@ -856,59 +822,6 @@ export function ConsultSessionPage() {
     releaseConsultMedia();
     void endCall();
   }, [endCall, permissionsRevoked]);
-
-  /**
-   * 검사 패널의 이동 버튼이 쓰는 좌표 옮기기. **임시다** — 지우는 방법은
-   * `shared/devprobe/README.md`. (S15P11A206-89)
-   *
-   * 실기기에서는 실제로 걸어야 위치가 바뀌는데, 역 안에서만 확인할 수 있는 것을 책상에서 볼
-   * 방법이 없었다. 데스크톱에서는 콘솔로 `pingo.moveTo()` 를 불렀지만 모바일에는 콘솔이 없다.
-   */
-  const nudgeCurrentPosition = (meters: number) => {
-    if (
-      currentNodeId == null ||
-      currentFloorId == null ||
-      currentMapX == null ||
-      currentMapY == null
-    ) {
-      return '먼저 「위치·목적지 놓기」를 눌러야 한다';
-    }
-
-    const mapX = currentMapX + meters;
-    setCurrentLocation({
-      nodeId: currentNodeId,
-      floorId: currentFloorId,
-      label: currentLocationLabel ?? undefined,
-      mapX,
-      mapY: currentMapY,
-    });
-
-    return `내 위치 → (${mapX.toFixed(1)}, ${currentMapY.toFixed(1)})`;
-  };
-
-  /*
-    실기기 검사 패널에 넘기는 값. **읽기만 한다.** 임시다 — 지우는 방법은
-    `shared/devprobe/README.md`. (S15P11A206-89)
-  */
-  useDevProbe({
-    연결: status,
-    채널: eventChannelOpen,
-    카메라: cameraStreamState,
-    XR: xrStatus,
-    앵커: anchorStatus,
-    /*
-      앵커가 안 만들어질 때 이유를 가르는 값. 방향이 없으면 앵커를 만들지 않으므로(`343`),
-      `앵커: none` 만 보고는 추적이 안 잡힌 것인지 방향이 없는 것인지 구분할 수 없다.
-    */
-    앵커방향: confirmedForwardMap
-      ? `${confirmedForwardMap.x.toFixed(2)},${confirmedForwardMap.y.toFixed(2)}`
-      : '없음',
-    방: signalingRoomId,
-    토큰: signalingAccessToken ? '있음' : '없음',
-    경로노드: pathNodes.length,
-    내위치: currentLocation ? `${currentLocation.floorId}층` : null,
-    오류: error ?? tokenError,
-  });
 
   return (
     <PhoneFrame
@@ -1227,73 +1140,6 @@ export function ConsultSessionPage() {
           </div>
         </div>
 
-        {/*
-          실기기 검사 패널. **오버레이 루트 안에 둔다** — 세션이 열리면 컴포지터가 이 루트의
-          자손만 그리므로 밖에 두면 XR 중에 보이지 않는다. 임시다(S15P11A206-89).
-
-          ICE 검사는 실기기에서만 답이 나온다. 서버가 TURN 을 주지 않으면 서로 다른 망에 있는
-          두 사람은 붙지 못하는데, 그 응답을 모바일에서 볼 방법이 지금 없다.
-        */}
-        <DevProbe
-          actions={{
-            ICE: () => getIceServers(signalingAccessToken ?? ''),
-            /**
-             * 데스크톱에서 `pingo.moveTo()` 로 하던 것을 손가락으로 한다.
-             *
-             * 출발·도착을 함께 놓는다. 노드가 둘 다 정해져야 경로 조회가 돌고, 그때부터 지도에
-             * 선이 그려지고 상담자에게도 `pathNodes` 가 건너간다. 좌표는 지어내지 않고 이 층의
-             * 실제 시설에서 가져온다 — 없는 자리로 옮기면 도면 밖에 마커가 찍힌다.
-             */
-            '위치·목적지 놓기': async () => {
-              const spots = (facilities ?? []).flatMap((facility) =>
-                facility.floorId === displayedFloorId && facility.linkedNodeId != null
-                  ? [{ ...facility, nodeId: facility.linkedNodeId }]
-                  : [],
-              );
-              if (spots.length < 2) {
-                return `이 층에서 노드를 아는 시설이 ${spots.length}개뿐이라 경로를 만들 수 없다`;
-              }
-
-              const from = spots[0];
-              const to = spots[spots.length - 1];
-              setCurrentLocation({
-                nodeId: from.nodeId,
-                floorId: from.floorId,
-                label: from.nameKo,
-                mapX: from.mapX,
-                mapY: from.mapY,
-                /**
-                 * 검사용 방향. **여기에 두는 이유가 있다.** (S15P11A206-89)
-                 *
-                 * `343` 이 앵커에서 목업 방향을 없애 방향이 없으면 앵커를 만들지 않는다 — 임의
-                 * 방향을 쓰면 지도 경로를 가로지르는 오차가 생기기 때문이다. 그 판단은 그대로
-                 * 두되, 이 버튼은 실제 위치 인식을 거치지 않고 자리를 놓는 **검사 장치**라
-                 * 방향도 함께 지어내야 앵커가 만들어지고 추적을 확인할 수 있다.
-                 *
-                 * 지어낸 방향이 실제 위치 인식 경로로 새지 않는다. 이 값은 검사 패널 안에만
-                 * 있고 패널을 지우면 함께 사라진다 — `shared/devprobe/README.md`.
-                 *
-                 * 목적지 쪽을 향한 것으로 둔다. 걸어갈 방향이라 마커의 부채꼴이 경로를 따라
-                 * 놓이고, 상수로 두면 도면에 따라 벽을 보고 서 있게 된다.
-                 */
-                forwardMap: probeForwardMap(from, to),
-              });
-              setTargetNode(to.nodeId, to.nameKo);
-              setDestinationName(to.nameKo);
-
-              return `${from.nameKo}(${from.nodeId}) → ${to.nameKo}(${to.nodeId})`;
-            },
-            /**
-             * 걸어간 척한다. 마커가 움직이고, 그 움직임이 상담자 화면까지 가는지 본다.
-             *
-             * 노드는 그대로 두고 좌표만 옮긴다. 노드를 바꾸면 경로를 다시 조회하므로 "같은 경로
-             * 위를 걷는 중"이 아니게 된다. 지도 X 축 방향이며, 도면이 돌아 있으면 화면에서는
-             * 비스듬히 움직인다.
-             */
-            '+1m': async () => nudgeCurrentPosition(1),
-            '+5m': async () => nudgeCurrentPosition(5),
-          }}
-        />
       </div>
     </PhoneFrame>
   );
