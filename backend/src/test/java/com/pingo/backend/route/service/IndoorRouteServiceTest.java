@@ -404,6 +404,34 @@ class IndoorRouteServiceTest {
     }
 
     /**
+     * 시설 노드는 통로에 매달린 끝점이라 경로가 거기서 시작하면 안내가 "교통카드 충전기에서
+     * 출발"처럼 읽힌다. 사용자가 실제로 서 있는 곳은 그 앞 통로다. (S15P11A206-345)
+     */
+    @Test
+    @DisplayName("시설 노드는 진입점 후보에서 빠지고 복도 노드가 뽑힌다")
+    void picksCorridorNodeOverFacilityNode() {
+        givenActiveStation(1L);
+        givenNodes(1L,
+                nodeAt(2L, 0, 0),
+                // 사용자 바로 옆이지만 시설이다. 통로로 되돌아 나와야 하므로 진입점이 아니다.
+                landmarkAt(5L, 9, 1),
+                nodeAt(3L, 10, 0),
+                nodeAt(4L, 30, 0));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 20, RouteMoveType.WALKWAY),
+                edge(1L, 5L, 3L, 1, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 4L, null, "fastest", Language.KO,
+                new BigDecimal("9.0"), new BigDecimal("1.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(3L);
+        assertThat(response.totalDistanceM()).isEqualByComparingTo("20");
+    }
+
+    /**
      * {@code elevator_only} 는 계단 간선을 쓰지 않으므로 그 간선으로만 목적지에 닿는 노드는
      * 진입점 후보가 될 수 없다. 후보에서 빠지지 않으면 도달 불가한 노드에서 출발하게 된다.
      */
@@ -714,6 +742,14 @@ class IndoorRouteServiceTest {
     private RouteNode nodeAtFloor(long id, long floorId, double x, double y) {
         RouteNode node = RouteNode.create(1L, floorId, "normal", "노드" + id,
                 BigDecimal.valueOf(x), BigDecimal.valueOf(y), null, false);
+        ReflectionTestUtils.setField(node, "id", id);
+        return node;
+    }
+
+    /** 시설 노드. {@code is_landmark} 가 복도와 시설을 가른다. */
+    private RouteNode landmarkAt(long id, double x, double y) {
+        RouteNode node = RouteNode.create(1L, 1L, "facility", "시설" + id,
+                BigDecimal.valueOf(x), BigDecimal.valueOf(y), null, true);
         ReflectionTestUtils.setField(node, "id", id);
         return node;
     }
