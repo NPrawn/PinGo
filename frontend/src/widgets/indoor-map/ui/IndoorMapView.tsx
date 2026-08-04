@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStationFacilities, type Facility } from '@/entities/facility';
 import {
@@ -230,6 +231,26 @@ export function IndoorMapView({
     anchorY: FOLLOW_ANCHOR_Y,
     rotationDeg: mapRotationDeg,
   });
+
+  /**
+   * 추종을 켜라는 요청이 오면 시점을 되돌린다. (S15P11A206-89)
+   *
+   * `useMapGestures` 의 추종은 손으로 밀거나 확대하면 풀리고, **스스로 다시 붙지 않는다** —
+   * 그래야 사용자가 다른 곳을 보는 동안 시점이 도로 끌려가지 않는다. 그런데 그 때문에 호출부가
+   * `followCamera` 를 다시 켜도 아무 일도 일어나지 않았다. 상담자 화면에서 한 번 지도를 밀어 본
+   * 뒤 `사용자 시점 따라가기` 를 누르면 버튼만 켜지고 지도는 사용자를 따라가지 않았다.
+   *
+   * 켜는 순간에만 되돌린다. 켜져 있는 동안 계속 되돌리면 추종을 끄는 손 조작 자체가 막힌다.
+   */
+  const followCameraRef = useRef(followCamera);
+
+  useEffect(() => {
+    const turnedOn = followCamera && !followCameraRef.current;
+
+    followCameraRef.current = followCamera;
+    if (turnedOn) resetMapView();
+  }, [followCamera, resetMapView]);
+
   // 목업 모드에서는 목업 지도를 쓰므로 조회하지 않는다.
   const query = useStationFloorMaps(stationId, { enabled: !useMockData });
 

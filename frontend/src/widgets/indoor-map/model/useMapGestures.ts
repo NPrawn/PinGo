@@ -75,8 +75,15 @@ export function useMapGestures(follow?: FollowOptions) {
    * 안 된다. 풀린 뒤에는 전체 조망까지 자유롭게 볼 수 있고, 버튼으로 다시 붙인다.
    */
   const [following, setFollowing] = useState(true);
-  /** 추종이 풀리는 순간의 화면을 이어받기 위해 마지막 추종 시점을 들고 있는다. */
-  const lastFollowView = useRef<MapView | null>(null);
+  /**
+   * **지금** 화면에 그려지고 있는 추종 시점. 추종할 대상이 없으면 null 이다.
+   *
+   * 추종이 풀리는 순간 이 값을 이어받아야 화면이 튀지 않는다. **"마지막" 값이 아니라 "지금"
+   * 값이어야 한다** — 예전에는 null 이 되어도 앞의 값을 남겨 두었고(`if (followView)`), 그래서
+   * 자유 탐색처럼 추종 대상이 없는 상태에서 시점을 되돌린 뒤 지도를 밀면 한참 전의 확대된
+   * 시점이 되살아났다. 화면이 갑자기 튀면서 확대되던 원인이다. (S15P11A206-89)
+   */
+  const followViewRef = useRef<MapView | null>(null);
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
   /** 현재 눌려 있는 포인터들. 두 개가 되면 확대 제스처로 본다. */
   const pointers = useRef(new Map<number, { x: number; y: number }>());
@@ -90,10 +97,15 @@ export function useMapGestures(follow?: FollowOptions) {
     setFollowing(true);
   }, []);
 
-  /** 손으로 조작하면 추종이 풀린다. 풀리는 순간의 화면을 그대로 이어받아야 튀지 않는다. */
+  /**
+   * 손으로 조작하면 추종이 풀린다. 풀리는 순간의 화면을 그대로 이어받아야 튀지 않는다.
+   *
+   * 이어받을 것은 **지금 보이는 것**뿐이다. 추종 중이어도 대상이 없으면(`followViewRef` 가 null)
+   * 화면에 그려지던 것은 손으로 만든 `view` 이므로, 그대로 두는 것이 이어받는 것이다.
+   */
   const releaseFollow = useCallback(() => {
     setFollowing((wasFollowing) => {
-      if (wasFollowing && lastFollowView.current) setView(lastFollowView.current);
+      if (wasFollowing && followViewRef.current) setView(followViewRef.current);
       return false;
     });
   }, []);
@@ -332,8 +344,9 @@ export function useMapGestures(follow?: FollowOptions) {
 
   const followView = computeFollowView(follow, box);
 
+  /** null 도 그대로 반영한다. 추종 대상이 사라졌으면 이어받을 것도 없다. */
   useEffect(() => {
-    if (followView) lastFollowView.current = followView;
+    followViewRef.current = followView;
   }, [followView]);
 
   const active = following && followView ? followView : view;
