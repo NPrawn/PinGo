@@ -8,7 +8,7 @@ type OfflineConnectionModalProps = {
 /**
  * Reusable network-reconnection dialog.
  *
- * Keep this independent from a route so any user flow can render it over the
+ * Keep this independent from a route so any product flow can render it over the
  * screen where connectivity was lost.
  */
 export function OfflineConnectionModal({ onRetry }: OfflineConnectionModalProps) {

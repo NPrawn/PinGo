@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useConsultStore } from '@/entities/consult';
 import { useUserSessionBootstrap } from '@/entities/user-session';
 import { RequirePermissions } from '@/features/permissions';
 import { USER_ROUTES } from '@/shared/config';
@@ -33,7 +34,8 @@ const rel = (path: string) => path.slice('/user/'.length);
  * The legacy hash id for each route is recorded in `shared/config/routes.ts`.
  */
 export function UserRoutes() {
-  useUserSessionBootstrap();
+  const clearConsultation = useConsultStore((state) => state.clearConsultation);
+  useUserSessionBootstrap({ onSessionExpired: clearConsultation });
 
   return (
     <Routes>
