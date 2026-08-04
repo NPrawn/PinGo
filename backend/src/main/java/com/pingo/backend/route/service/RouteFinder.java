@@ -9,6 +9,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -53,6 +54,85 @@ public class RouteFinder {
     ) {
     }
 
+    /** 간선 목록으로 그래프를 만든다. <b>요청마다 새로 만든다.</b> {@link RouteGraph} 참고. */
+    public static RouteGraph graphOf(List<GraphEdge> edges) {
+        return new RouteGraph(edges);
+    }
+
+    /**
+     * 한 요청 동안 재사용하는 탐색용 그래프.
+     *
+     * <p><b>왜 있는가.</b> 인접 목록은 간선 목록에서만 나오는데, 예전에는 탐색 메서드마다 그것을
+     * 새로 만들었다. 옵션 조회는 경로 유형 2개를 돌면서 유형마다 역방향 탐색·후보 탐색·구간
+     * 탐색을 하므로 같은 간선으로 같은 인접 목록을 요청당 네 번 만들었다. 역삼역 간선 205개가
+     * 전부 양방향이라 한 번 만들 때 {@link Segment} 가 410개 생긴다.
+     *
+     * <p>그래서 <b>처음 쓸 때 만들고 그 뒤로는 재사용</b>한다. 경로 유형별로 간선 필터가 다르고
+     * 정방향·역방향이 다르므로 (유형 × 방향) 으로 따로 담는다. 미리 다 만들지 않는 이유는 한
+     * 요청이 넷을 다 쓰지 않기 때문이다 — 좌표가 없는 옵션 조회는 유형마다 정방향 하나만 쓴다.
+     *
+     * <p><b>요청 범위를 넘겨 쓰면 안 된다.</b> 관리자 API 로 노드·간선이 런타임에 바뀐다
+     * ({@code AdminRouteNodeController}·{@code AdminRouteEdgeController}). {@code stationId} 로
+     * 캐시를 잡아 두면 간선을 고친 뒤에도 낡은 인접 목록으로 경로가 나간다. 이 객체는 요청마다
+     * {@code loadGraph} 가 새로 만들므로 무효화할 것이 없다. 같은 이유로 <b>스레드 안전하지
+     * 않다</b> — 한 요청 안에서만 쓴다. (S15P11A206-338)
+     */
+    public static final class RouteGraph {
+
+        private final List<GraphEdge> edges;
+        private final Map<RouteType, Map<Long, List<Segment>>> forward = new EnumMap<>(RouteType.class);
+        private final Map<RouteType, Map<Long, List<Segment>>> inbound = new EnumMap<>(RouteType.class);
+
+        private RouteGraph(List<GraphEdge> edges) {
+            this.edges = edges;
+        }
+
+        /** 노드에서 나가는 구간. */
+        private Map<Long, List<Segment>> forward(RouteType routeType) {
+            return forward.computeIfAbsent(routeType, this::buildForward);
+        }
+
+        /**
+         * 노드로 들어오는 구간.
+         *
+         * <p>담기는 구간 자체는 뒤집지 않는다. {@code from -> to} 를 키 {@code to} 아래 그대로
+         * 둔다. 그래야 경로를 되짚을 때 나오는 구간이 곧 진행 방향이다.
+         */
+        private Map<Long, List<Segment>> inbound(RouteType routeType) {
+            return inbound.computeIfAbsent(routeType, type -> {
+                Map<Long, List<Segment>> reversed = new HashMap<>();
+                for (List<Segment> segments : forward(type).values()) {
+                    for (Segment segment : segments) {
+                        reversed.computeIfAbsent(segment.toNodeId(), key -> new ArrayList<>()).add(segment);
+                    }
+                }
+                return reversed;
+            });
+        }
+
+        private Map<Long, List<Segment>> buildForward(RouteType routeType) {
+            Map<Long, List<Segment>> adjacency = new HashMap<>();
+            for (GraphEdge edge : edges) {
+                if (!allows(routeType, edge.moveType())) {
+                    continue;
+                }
+                adjacency.computeIfAbsent(edge.fromNodeId(), key -> new ArrayList<>())
+                        .add(new Segment(edge.fromNodeId(), edge.toNodeId(), edge.distanceM(),
+                                edge.estimatedTimeSec(), edge.moveType()));
+                if (edge.bidirectional()) {
+                    adjacency.computeIfAbsent(edge.toNodeId(), key -> new ArrayList<>())
+                            .add(new Segment(edge.toNodeId(), edge.fromNodeId(), edge.distanceM(),
+                                    edge.estimatedTimeSec(), edge.moveType()));
+                }
+            }
+            return adjacency;
+        }
+
+        private boolean allows(RouteType routeType, RouteMoveType moveType) {
+            return moveType == null || routeType.allows(moveType);
+        }
+    }
+
     /**
      * 탐색 결과. 도달 불가 시 nodeIds·segments 는 빈 목록이고 총거리·총시간은 null 이다.
      * 총시간은 경로상 간선 중 하나라도 estimatedTimeSec 이 비어 있으면 null 이다.
@@ -75,14 +155,14 @@ public class RouteFinder {
     /**
      * 출발 노드에서 도착 노드까지 주어진 경로 옵션 조건으로 최단(거리) 경로를 찾는다.
      *
-     * @param edges        역의 활성 간선 목록
+     * @param graph        요청 범위 그래프({@link #graphOf})
      * @param startNodeId  출발 노드
      * @param targetNodeId 도착 노드
      * @param routeType    경로 옵션(간선 필터 기준)
      * @return 탐색 결과. 도달 불가 시 {@link RoutePath#isReachable()} 가 false.
      */
-    public RoutePath find(List<GraphEdge> edges, long startNodeId, long targetNodeId, RouteType routeType) {
-        Map<Long, List<Segment>> adjacency = buildAdjacency(edges, routeType);
+    public RoutePath find(RouteGraph graph, long startNodeId, long targetNodeId, RouteType routeType) {
+        Map<Long, List<Segment>> adjacency = graph.forward(routeType);
 
         Map<Long, BigDecimal> distance = new HashMap<>();
         Map<Long, Segment> arrivedBy = new HashMap<>();
@@ -188,8 +268,8 @@ public class RouteFinder {
      * <p>{@link #find} 와 달리 도착에서 멈추지 않고 큐가 빌 때까지 돈다. 닿지 못하는 노드는
      * 결과에 없다. 그래서 {@code elevator_only} 로 못 가는 노드는 자연히 후보에서 빠진다.
      */
-    public InboundSearch searchInbound(List<GraphEdge> edges, long destinationNodeId, RouteType routeType) {
-        Map<Long, List<Segment>> inbound = buildInboundAdjacency(edges, routeType);
+    public InboundSearch searchInbound(RouteGraph graph, long destinationNodeId, RouteType routeType) {
+        Map<Long, List<Segment>> inbound = graph.inbound(routeType);
 
         Map<Long, BigDecimal> distance = new HashMap<>();
         Map<Long, Segment> departsBy = new HashMap<>();
@@ -242,12 +322,12 @@ public class RouteFinder {
      * 떨어뜨리지 않기 위해서다.
      */
     public Set<Long> reachableWithin(
-            List<GraphEdge> edges,
+            RouteGraph graph,
             long startNodeId,
             Set<Long> allowedNodeIds,
             RouteType routeType
     ) {
-        Map<Long, List<Segment>> adjacency = buildAdjacency(edges, routeType);
+        Map<Long, List<Segment>> adjacency = graph.forward(routeType);
 
         Set<Long> reached = new HashSet<>();
         reached.add(startNodeId);
@@ -266,42 +346,6 @@ public class RouteFinder {
         }
 
         return reached;
-    }
-
-    /**
-     * 도착 노드에서 그리로 들어오는 구간을 찾을 수 있게 뒤집어 담은 인접 목록.
-     *
-     * <p>담기는 구간 자체는 뒤집지 않는다. {@code from -> to} 를 키 {@code to} 아래 그대로
-     * 둔다. 그래야 경로를 되짚을 때 나오는 구간이 곧 진행 방향이다.
-     */
-    private Map<Long, List<Segment>> buildInboundAdjacency(List<GraphEdge> edges, RouteType routeType) {
-        Map<Long, List<Segment>> inbound = new HashMap<>();
-        for (Map.Entry<Long, List<Segment>> entry : buildAdjacency(edges, routeType).entrySet()) {
-            for (Segment segment : entry.getValue()) {
-                inbound.computeIfAbsent(segment.toNodeId(), key -> new ArrayList<>()).add(segment);
-            }
-        }
-        return inbound;
-    }
-
-    private Map<Long, List<Segment>> buildAdjacency(List<GraphEdge> edges, RouteType routeType) {
-        Map<Long, List<Segment>> adjacency = new HashMap<>();
-        for (GraphEdge edge : edges) {
-            if (!allows(routeType, edge.moveType())) {
-                continue;
-            }
-            adjacency.computeIfAbsent(edge.fromNodeId(), key -> new ArrayList<>())
-                    .add(new Segment(edge.fromNodeId(), edge.toNodeId(), edge.distanceM(), edge.estimatedTimeSec(), edge.moveType()));
-            if (edge.bidirectional()) {
-                adjacency.computeIfAbsent(edge.toNodeId(), key -> new ArrayList<>())
-                        .add(new Segment(edge.toNodeId(), edge.fromNodeId(), edge.distanceM(), edge.estimatedTimeSec(), edge.moveType()));
-            }
-        }
-        return adjacency;
-    }
-
-    private boolean allows(RouteType routeType, RouteMoveType moveType) {
-        return moveType == null || routeType.allows(moveType);
     }
 
     private RoutePath reconstruct(

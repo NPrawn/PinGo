@@ -15,6 +15,7 @@ import com.pingo.backend.route.dto.response.RouteStep;
 import com.pingo.backend.route.repository.RouteEdgeRepository;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.route.service.RouteFinder.GraphEdge;
+import com.pingo.backend.route.service.RouteFinder.RouteGraph;
 import com.pingo.backend.route.service.RouteFinder.InboundSearch;
 import com.pingo.backend.route.service.RouteFinder.RoutePath;
 import com.pingo.backend.route.service.RouteFinder.Segment;
@@ -95,7 +96,7 @@ public class IndoorRouteService {
                     requested, data, routeType, request.currentMapX(), request.currentMapY());
             List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop, routeType,
                     request.currentMapX(), request.currentMapY());
-            RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType, toFirstStop);
+            RoutePath path = findThroughStops(data.graph(), stopNodeIds, routeType, toFirstStop);
             if (path.isReachable()) {
                 options.add(RouteOptionResponse.available(
                         routeType, path.totalDistanceM(), path.totalTimeSec(), hasStairsOrEscalator(path)));
@@ -119,7 +120,7 @@ public class IndoorRouteService {
                 requested, data, routeType, request.currentMapX(), request.currentMapY());
         List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop, routeType,
                 request.currentMapX(), request.currentMapY());
-        RoutePath path = findThroughStops(data.edges(), stopNodeIds, routeType, toFirstStop);
+        RoutePath path = findThroughStops(data.graph(), stopNodeIds, routeType, toFirstStop);
 
         if (!path.isReachable()) {
             return RouteResponse.unavailable(
@@ -159,7 +160,7 @@ public class IndoorRouteService {
      * 않은 경우다 — 예전처럼 구간마다 탐색한다.
      */
     private RoutePath findThroughStops(
-            List<GraphEdge> edges,
+            RouteGraph graph,
             List<Long> stopNodeIds,
             RouteType routeType,
             InboundSearch toFirstStop
@@ -172,7 +173,7 @@ public class IndoorRouteService {
         for (int i = 0; i < stopNodeIds.size() - 1; i++) {
             RoutePath path = i == 0 && toFirstStop != null
                     ? toFirstStop.pathFrom(stopNodeIds.get(0))
-                    : routeFinder.find(edges, stopNodeIds.get(i), stopNodeIds.get(i + 1), routeType);
+                    : routeFinder.find(graph, stopNodeIds.get(i), stopNodeIds.get(i + 1), routeType);
             if (!path.isReachable()) {
                 return RoutePath.unreachable();
             }
@@ -214,7 +215,7 @@ public class IndoorRouteService {
                 .stream()
                 .collect(Collectors.toMap(StationFloor::getId, StationFloor::getFloorOrder));
 
-        return new RouteGraphData(nodes, edges, floorOrders);
+        return new RouteGraphData(nodes, RouteFinder.graphOf(edges), floorOrders);
     }
 
     /**
@@ -274,7 +275,7 @@ public class IndoorRouteService {
                 .filter(node -> node.getFloorId().equals(requestedNode.getFloorId()))
                 .map(RouteNode::getId)
                 .collect(Collectors.toSet());
-        Set<Long> walkable = routeFinder.reachableWithin(data.edges(), requestedEntry, sameFloor, routeType);
+        Set<Long> walkable = routeFinder.reachableWithin(data.graph(), requestedEntry, sameFloor, routeType);
 
         double x = currentMapX.doubleValue();
         double y = currentMapY.doubleValue();
@@ -316,7 +317,7 @@ public class IndoorRouteService {
         if (currentMapX == null || currentMapY == null || stopNodeIds.size() < 2) {
             return null;
         }
-        return routeFinder.searchInbound(data.edges(), stopNodeIds.get(1), routeType);
+        return routeFinder.searchInbound(data.graph(), stopNodeIds.get(1), routeType);
     }
 
     private double straightDistance(double x, double y, RouteNode node) {
@@ -386,7 +387,8 @@ public class IndoorRouteService {
 
     private record RouteGraphData(
             Map<Long, RouteNode> nodes,
-            List<GraphEdge> edges,
+            /** 요청 범위 탐색 그래프. 인접 목록을 처음 쓸 때 만들고 재사용한다({@link RouteGraph}). */
+            RouteGraph graph,
             /** 층 ID 에서 {@code floor_order} 로. 층 이동 안내가 몇 층인지 셀 때 쓴다. */
             Map<Long, Integer> floorOrders
     ) {
