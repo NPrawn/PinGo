@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 // 경로 조회는 `entities/route`를 쓴다. `shared/api`의 생성 타입과 달리 응답 필드가 모두 있다.
 import { getIndoorRouteOptions, type RouteOption, type RouteOrigin } from '@/entities/route';
 import {
@@ -11,6 +11,8 @@ import type { RouteType } from '@/shared/types';
 
 /** 조건에 맞는 출구가 없을 때 서버가 주는 코드. 통신 실패가 아니라 정상 결과다. */
 const NO_EXIT_CODE = 'EXIT_LOCATION_NOT_FOUND';
+const ROUTE_LOOKUP_STALE_MS = 60_000;
+const WALKING_DIRECTION_STALE_MS = 5 * 60_000;
 
 /** 경로 유형 하나가 안내할 출구와 그 출구까지의 경로. */
 export interface ExitRoute {
@@ -124,6 +126,7 @@ function formatExitLabel(exitNumber: string | undefined, fallbackName: string | 
  * 모두 성공해야 카드 한 장이 완성되기 때문이다. 부분 성공 상태를 화면이 따로 다룰 것이 없다.
  */
 export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
+  const queryClient = useQueryClient();
   const {
     stationId,
     startNodeId,
@@ -165,11 +168,17 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
     ],
     queryFn: async (): Promise<ExitRoute | null> => {
       if (!externalDestination) {
-        const options = await getIndoorRouteOptions({
-          stationId: stationId!,
-          startNodeId: startNodeId!,
-          targetNodeId: targetNodeId!,
-          ...(origin ?? {}),
+        const options = await queryClient.fetchQuery({
+          queryKey: indoorOptionsQueryKey(stationId!, startNodeId!, targetNodeId!, origin),
+          queryFn: () =>
+            getIndoorRouteOptions({
+              stationId: stationId!,
+              startNodeId: startNodeId!,
+              targetNodeId: targetNodeId!,
+              ...(origin ?? {}),
+            }),
+          staleTime: ROUTE_LOOKUP_STALE_MS,
+          retry: false,
         });
 
         return {
@@ -188,25 +197,53 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
        * 답한다. 그것을 오류로 두면 화면이 "불러오지 못했다"고 말하는데, 실제로는 답을 받았고
        * 그 답이 "없다"이다. 사용자가 다시 시도해도 달라질 것이 없다.
        */
-      const exit = await findNearestExit({
-        stationId: stationId!,
-        destinationLatitude: destinationLatitude!,
-        destinationLongitude: destinationLongitude!,
-        accessibleOnly,
+      const exit = await queryClient.fetchQuery({
+        queryKey: [
+          'nearest-exit',
+          stationId,
+          destinationLatitude,
+          destinationLongitude,
+          accessibleOnly,
+        ],
+        queryFn: () =>
+          findNearestExit({
+            stationId: stationId!,
+            destinationLatitude: destinationLatitude!,
+            destinationLongitude: destinationLongitude!,
+            accessibleOnly,
+          }),
+        staleTime: ROUTE_LOOKUP_STALE_MS,
+        retry: false,
       }).catch((error: unknown) => {
         if (error instanceof ApiError && error.code === NO_EXIT_CODE) return null;
         throw error;
       });
       if (exit?.exitFacilityId == null) return null;
 
-      const facility = await getFacility(exit.exitFacilityId);
+      const facility = await queryClient.fetchQuery({
+        queryKey: ['facility', exit.exitFacilityId],
+        queryFn: () => getFacility(exit.exitFacilityId!),
+        staleTime: ROUTE_LOOKUP_STALE_MS,
+        retry: false,
+      });
       if (facility.linkedNodeId == null) return null;
 
-      const options = await getIndoorRouteOptions({
-        stationId: stationId!,
-        startNodeId: startNodeId!,
-        targetNodeId: facility.linkedNodeId,
-        ...(origin ?? {}),
+      const optionsPromise = queryClient.fetchQuery({
+        queryKey: indoorOptionsQueryKey(
+          stationId!,
+          startNodeId!,
+          facility.linkedNodeId,
+          origin,
+        ),
+        queryFn: () =>
+          getIndoorRouteOptions({
+            stationId: stationId!,
+            startNodeId: startNodeId!,
+            targetNodeId: facility.linkedNodeId!,
+            ...(origin ?? {}),
+          }),
+        staleTime: ROUTE_LOOKUP_STALE_MS,
+        retry: false,
       });
 
       const fallbackDistanceM =
@@ -220,26 +257,48 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
             )
           : null;
 
-      const walkingDirection =
+      const walkingDirectionPromise =
         facility.exitDetail?.outsideLatitude != null &&
         facility.exitDetail.outsideLongitude != null &&
         destinationName
-          ? await getExternalWalkingDirection({
-              provider: 'kakao',
-              origin: {
-                latitude: facility.exitDetail.outsideLatitude,
-                longitude: facility.exitDetail.outsideLongitude,
-              },
-              destination: {
-                ...(destinationId != null ? { placeId: destinationId } : {}),
-                name: destinationName,
-                latitude: destinationLatitude!,
-                longitude: destinationLongitude!,
-                ...(destinationAddress ? { address: destinationAddress } : {}),
-              },
-              mode: 'foot',
-            }).catch(() => null)
-          : null;
+          ? await queryClient
+              .fetchQuery({
+                queryKey: [
+                  'external-walking-direction',
+                  facility.exitDetail.outsideLatitude,
+                  facility.exitDetail.outsideLongitude,
+                  destinationLatitude,
+                  destinationLongitude,
+                  destinationId,
+                  destinationName,
+                  destinationAddress,
+                ],
+                queryFn: () =>
+                  getExternalWalkingDirection({
+                    provider: 'kakao',
+                    origin: {
+                      latitude: facility.exitDetail!.outsideLatitude!,
+                      longitude: facility.exitDetail!.outsideLongitude!,
+                    },
+                    destination: {
+                      ...(destinationId != null ? { placeId: destinationId } : {}),
+                      name: destinationName,
+                      latitude: destinationLatitude!,
+                      longitude: destinationLongitude!,
+                      ...(destinationAddress ? { address: destinationAddress } : {}),
+                    },
+                    mode: 'foot',
+                  }),
+                staleTime: WALKING_DIRECTION_STALE_MS,
+                retry: false,
+              })
+              .catch(() => null)
+          : Promise.resolve(null);
+
+      const [options, walkingDirection] = await Promise.all([
+        optionsPromise,
+        walkingDirectionPromise,
+      ]);
 
       return {
         targetNodeId: facility.linkedNodeId,
@@ -258,4 +317,20 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
      */
     retry: false,
   });
+}
+
+function indoorOptionsQueryKey(
+  stationId: number,
+  startNodeId: number,
+  targetNodeId: number,
+  origin: RouteOrigin | null | undefined,
+) {
+  return [
+    'indoor-route-options',
+    stationId,
+    startNodeId,
+    targetNodeId,
+    origin?.currentMapX ?? null,
+    origin?.currentMapY ?? null,
+  ] as const;
 }

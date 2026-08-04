@@ -907,6 +907,91 @@ describe('user routes', () => {
     expect(screen.getByRole('link', { name: '화장실 길 안내 시작' })).toBeInTheDocument();
   });
 
+  it('두 경로가 같은 출구를 쓰면 공통 하위 요청을 한 번만 호출한다', async () => {
+    let nearestExitCalls = 0;
+    let facilityCalls = 0;
+    let indoorOptionsCalls = 0;
+    let walkingDirectionCalls = 0;
+
+    server.use(
+      http.post('*/api/destinations/nearest-exit', () => {
+        nearestExitCalls += 1;
+        return HttpResponse.json({
+          success: true,
+          data: { exitFacilityId: 25, exitNumber: '7' },
+        });
+      }),
+      http.get('*/api/facilities/25', () => {
+        facilityCalls += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            facilityId: 25,
+            stationId: 1,
+            floorId: 3,
+            facilityType: 'exit',
+            nameKo: '7번 출구',
+            linkedNodeId: 325,
+            isAccessible: true,
+            exitDetail: {
+              exitNumber: '7',
+              outsideLatitude: 37.5002,
+              outsideLongitude: 127.0359,
+            },
+          },
+        });
+      }),
+      http.post('*/api/routes/indoor/options', () => {
+        indoorOptionsCalls += 1;
+        return HttpResponse.json({
+          success: true,
+          data: [
+            {
+              routeType: 'fastest',
+              displayName: '빠른 경로',
+              available: true,
+              totalDistanceM: 180,
+              estimatedTimeSec: 240,
+              hasStairsOrEscalator: false,
+            },
+            {
+              routeType: 'elevator_only',
+              displayName: '엘리베이터 이용 경로',
+              available: true,
+              totalDistanceM: 180,
+              estimatedTimeSec: 240,
+              hasStairsOrEscalator: false,
+            },
+          ],
+        });
+      }),
+      http.post('*/api/external-maps/directions', () => {
+        walkingDirectionCalls += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            provider: 'kakao',
+            appUrl: 'kakaomap://route?by=foot',
+            webUrl: 'https://map.kakao.com/example',
+            distanceM: 2450,
+            estimatedTimeSec: 2295,
+          },
+        });
+      }),
+    );
+
+    await renderSection('/user/route');
+
+    expect(await screen.findByRole('button', { name: /최단 경로/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /엘리베이터 우선/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(nearestExitCalls).toBe(2);
+      expect(facilityCalls).toBe(1);
+      expect(indoorOptionsCalls).toBe(1);
+      expect(walkingDirectionCalls).toBe(1);
+    });
+  });
+
   /**
    * 계단 없이 닿는 출구가 있으면 엘리베이터 경로도 고를 수 있다.
    *
