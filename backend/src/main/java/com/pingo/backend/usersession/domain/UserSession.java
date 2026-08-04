@@ -8,8 +8,7 @@ import org.springframework.data.domain.Persistable;
 
 import java.math.BigDecimal;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -42,12 +41,12 @@ public class UserSession implements Persistable<String> {
     private BigDecimal lastGpsLongitude;
 
     @Column(nullable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @Column(nullable = false)
-    private LocalDateTime lastActiveAt;
+    private Instant lastActiveAt;
 
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     private static final Duration SESSION_TTL = Duration.ofHours(6);
 
@@ -64,14 +63,10 @@ public class UserSession implements Persistable<String> {
 
     @PrePersist
     private void prePersist(){
-        LocalDateTime now = nowUtc();
+        Instant now = Instant.now();
         this.createdAt = now;
         this.lastActiveAt = now;
         this.expiresAt = now.plus(SESSION_TTL);
-    }
-
-    private static LocalDateTime nowUtc() {
-        return LocalDateTime.now(ZoneOffset.UTC);
     }
 
     public void changeLanguage(Language language){
@@ -97,15 +92,15 @@ public class UserSession implements Persistable<String> {
     }
 
     public void recordActivity(){
-        this.lastActiveAt = nowUtc();
+        this.lastActiveAt = Instant.now();
     }
 
     public boolean isExpired() {
-        return expiresAt != null && !expiresAt.isAfter(nowUtc());
+        return expiresAt != null && !expiresAt.isAfter(Instant.now());
     }
 
     public void expireNow() {
-        this.expiresAt = nowUtc();
+        this.expiresAt = Instant.now();
     }
 
     @Override

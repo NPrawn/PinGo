@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -208,8 +207,8 @@ public class UserSessionServiceTest {
     void 수정_요청마다_lastActiveAt과_expiresAt이_갱신된다() throws InterruptedException {
         String userSessionId = createSession();
         UserSession before = userSessionRepository.findById(userSessionId).orElseThrow();
-        LocalDateTime firstLastActiveAt = before.getLastActiveAt();
-        LocalDateTime firstExpiresAt = before.getExpiresAt();
+        Instant firstLastActiveAt = before.getLastActiveAt();
+        Instant firstExpiresAt = before.getExpiresAt();
 
         Thread.sleep(10);
 

@@ -4,7 +4,6 @@ import com.pingo.backend.usersession.domain.Language;
 import com.pingo.backend.usersession.domain.UserSession;
 
 import java.time.Instant;
-import java.time.ZoneOffset;
 
 public record UserSessionCreateResponse (
         String userSessionId,
@@ -15,7 +14,7 @@ public record UserSessionCreateResponse (
     return new UserSessionCreateResponse(
             session.getUserSessionId(),
             session.getLanguage(),
-            session.getExpiresAt() == null ? null : session.getExpiresAt().toInstant(ZoneOffset.UTC)
+            session.getExpiresAt()
     );
 }
 }

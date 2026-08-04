@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
-import { getUserSession } from '@/shared/api';
+import { ApiError, getUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { useUserSessionStore } from '../model/userSessionStore';
+import { parseUserSessionExpiry } from './parseUserSessionExpiry';
 import { syncPendingCurrentNode } from './syncCurrentNode';
 
 /** 저장된 세션을 검증하고 최초 생성 시각 기준 만료 시점에 사용자 흐름을 초기화한다. */
@@ -31,6 +32,15 @@ export function useUserSessionBootstrap() {
 
     let disposed = false;
     let expiryTimer: number | undefined;
+    const scheduleExpiry = (expiresAtMs: number) => {
+      if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
+      expiryTimer = window.setTimeout(expireSession, Math.max(0, expiresAtMs - Date.now()));
+    };
+
+    const storedExpiresAtMs = parseUserSessionExpiry(useUserSessionStore.getState().expiresAt);
+    if (storedExpiresAtMs !== null && storedExpiresAtMs > Date.now()) {
+      scheduleExpiry(storedExpiresAtMs);
+    }
 
     void getUserSession(userSessionId)
       .then((session) => {
@@ -42,18 +52,21 @@ export function useUserSessionBootstrap() {
           return;
         }
 
-        const expiresAtMs = new Date(expiresAt).getTime();
-        if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+        const expiresAtMs = parseUserSessionExpiry(expiresAt);
+        if (expiresAtMs === null || expiresAtMs <= Date.now()) {
           expireSession();
           return;
         }
 
         setExpiresAt(expiresAt);
-        expiryTimer = window.setTimeout(expireSession, expiresAtMs - Date.now());
+        scheduleExpiry(expiresAtMs);
         void syncPendingCurrentNode();
       })
-      .catch(() => {
-        if (!disposed) expireSession();
+      .catch((error: unknown) => {
+        if (disposed) return;
+        if (error instanceof ApiError && error.code === 'USER_SESSION_NOT_FOUND') {
+          expireSession();
+        }
       });
 
     return () => {

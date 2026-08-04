@@ -1,5 +1,6 @@
-import { createUserSession, getUserSession } from '@/shared/api';
+import { createUserSession } from '@/shared/api';
 import { useUserSessionStore } from '../model/userSessionStore';
+import { isUsableUserSession } from './parseUserSessionExpiry';
 
 export type UserSessionLanguage = 'ko' | 'en' | 'ja' | 'zh';
 
@@ -21,17 +22,14 @@ function normalizeLanguage(language: string): UserSessionLanguage {
  * 예외를 삼키지 않고 결과로 알린다.
  */
 export async function ensureUserSession(language: string): Promise<string | null> {
-  const { userSessionId, setSession, setExpiresAt, clearSession } = useUserSessionStore.getState();
+  const { userSessionId, expiresAt, setSession, clearSession } = useUserSessionStore.getState();
+
+  if (userSessionId && isUsableUserSession(expiresAt)) {
+    return userSessionId;
+  }
 
   if (userSessionId) {
-    try {
-      const session = await getUserSession(userSessionId);
-      if (!session.expiresAt) throw new Error('User session expiry is missing');
-      setExpiresAt(session.expiresAt);
-      return session.userSessionId ?? userSessionId;
-    } catch {
-      clearSession();
-    }
+    clearSession();
   }
 
   creationPromise ??= createUserSession({ language: normalizeLanguage(language) })
