@@ -1,5 +1,7 @@
 package com.pingo.backend.externalmap.service;
 
+import com.pingo.backend.externalmap.client.KakaoLocalClient;
+import com.pingo.backend.externalmap.client.KakaoWalkingRouteResult;
 import com.pingo.backend.externalmap.dto.request.ExternalDirectionRequest;
 import com.pingo.backend.externalmap.dto.response.ExternalDirectionResponse;
 import com.pingo.backend.global.exception.BusinessException;
@@ -16,6 +18,12 @@ public class ExternalMapService {
     private static final String LEGACY_WALKING_MODE = "walking";
     private static final String KAKAO_WALKING_MODE = "foot";
 
+    private final KakaoLocalClient kakaoLocalClient;
+
+    public ExternalMapService(KakaoLocalClient kakaoLocalClient) {
+        this.kakaoLocalClient = kakaoLocalClient;
+    }
+
     public ExternalDirectionResponse createDirection(ExternalDirectionRequest request) {
         boolean isWalkingMode = WALKING_MODE.equalsIgnoreCase(request.mode())
                 || LEGACY_WALKING_MODE.equalsIgnoreCase(request.mode());
@@ -29,6 +37,13 @@ public class ExternalMapService {
                 request.destination().longitude().toPlainString());
         String destinationName = encode(request.destination().name());
 
+        KakaoWalkingRouteResult walkingRoute = kakaoLocalClient.findWalkingRoute(
+                request.origin().longitude(),
+                request.origin().latitude(),
+                request.destination().longitude(),
+                request.destination().latitude()
+        );
+
         String appUrl = "kakaomap://route"
                 + "?sp=" + origin
                 + "&ep=" + destination
@@ -39,7 +54,15 @@ public class ExternalMapService {
                 + "/"
                 + destinationName + "," + destination;
 
-        return new ExternalDirectionResponse(KAKAO_PROVIDER, appUrl, webUrl);
+        return new ExternalDirectionResponse(
+                KAKAO_PROVIDER,
+                appUrl,
+                walkingRoute.landingUrl() == null || walkingRoute.landingUrl().isBlank()
+                        ? webUrl
+                        : walkingRoute.landingUrl(),
+                walkingRoute.distanceMeters(),
+                walkingRoute.estimatedTimeSeconds()
+        );
     }
 
     private String formatPoint(String latitude, String longitude) {
