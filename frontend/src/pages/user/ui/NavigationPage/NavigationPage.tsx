@@ -416,6 +416,14 @@ export function NavigationPage() {
    */
   const facilitiesQuery = useStationFacilities(stationId ?? 0);
   const facilitiesLoaded = facilitiesQuery.data !== undefined;
+  const waypointName = (waypoint: (typeof waypoints)[number]) => {
+    if (language !== 'en') return waypoint.nameKo;
+
+    const facilityNameEn = (facilitiesQuery.data ?? []).find(
+      (facility) => facility.linkedNodeId === waypoint.nodeId,
+    )?.nameEn;
+    return facilityNameEn?.trim() || localizeUserLabel(waypoint.nameKo, language);
+  };
   const floorFacilityTypes = new Set(
     (facilitiesQuery.data ?? [])
       .filter((facility) => facility.floorId === displayedFloorId)
@@ -714,8 +722,12 @@ export function NavigationPage() {
                       removeWaypoint(waypoint.nodeId);
                       setRecalculated(true);
                     }}
-                    aria-label={t('user.navigation.removeWaypoint', { name: waypoint.nameKo })}
-                    title={t('user.navigation.removeWaypoint', { name: waypoint.nameKo })}
+                    aria-label={t('user.navigation.removeWaypoint', {
+                      name: waypointName(waypoint),
+                    })}
+                    title={t('user.navigation.removeWaypoint', {
+                      name: waypointName(waypoint),
+                    })}
                   >
                     ×
                   </button>
@@ -723,9 +735,7 @@ export function NavigationPage() {
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
                     <small>{t('user.navigation.waypoint', { order: index + 1 })}</small>
                   </span>
-                  <strong title={localizeUserLabel(waypoint.nameKo, language)}>
-                    {localizeUserLabel(waypoint.nameKo, language)}
-                  </strong>
+                  <strong title={waypointName(waypoint)}>{waypointName(waypoint)}</strong>
                 </div>
               </Fragment>
             ))}
@@ -1043,7 +1053,7 @@ export function NavigationPage() {
                       <span className={styles.stepIcon}>
                         {passed ? <Icon name="check" size={13} /> : <Icon name="pin" size={14} />}
                       </span>
-                      <b>{waypoint.nameKo}</b>
+                      <b>{waypointName(waypoint)}</b>
                       <span>{t('user.navigation.waypoint', { order: index + 1 })}</span>
                     </div>
                   );

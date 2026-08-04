@@ -5,6 +5,7 @@ import { routeOriginOf, routeUnavailableText, SEND_CURRENT_POSITION } from '@/en
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedNameOf } from '@/shared/i18n';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import type { RouteType } from '@/shared/types';
 import { ButtonLink, Icon, SelectRow } from '@/shared/ui';
@@ -62,6 +63,8 @@ export function RouteOptionsPage() {
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
   const destination = useNavigationStore((state) => state.destination);
+  const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
+  const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
   const destinationId = useNavigationStore((state) => state.destinationId);
   const destinationType = useNavigationStore((state) => state.destinationType);
   const destinationAddress = useNavigationStore((state) => state.destinationAddress);
@@ -78,7 +81,12 @@ export function RouteOptionsPage() {
   const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
   const locationLabel = localizeUserLabel(currentLocationLabel ?? station, language);
-  const destinationLabel = destination ? localizeUserLabel(destination, language) : null;
+  const destinationLabel = destination
+    ? destination === destinationNameKo || destination === destinationNameEn
+      ? localizedNameOf(language, destinationNameKo, destinationNameEn) ??
+        localizeUserLabel(destination, language)
+      : localizeUserLabel(destination, language)
+    : null;
   const externalDestination = isExternalDestination(destinationType);
 
   /**

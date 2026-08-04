@@ -10,6 +10,7 @@ const ENGLISH_LABELS: Readonly<Record<string, string>> = {
   논현역: 'Nonhyeon Station',
   매봉역: 'Maebong Station',
   'GS25 역삼역점': 'GS25 Yeoksam Station',
+  강남파이낸스센터: 'Gangnam Finance Center',
   '올리브영 역삼중앙점': 'Olive Young Yeoksam Jungang',
   '차지 역삼점': 'Chaji Yeoksam',
   '스타벅스 아크플레이스점': 'Starbucks Arc Place',
@@ -28,6 +29,12 @@ export function localizeUserLabel(label: string, language: string): string {
 
   const frontOfGate = /^(B\d+) 개찰구 앞$/.exec(label);
   if (frontOfGate) return `${frontOfGate[1]} In front of fare gates`;
+
+  const testOrigin = /^(B\d+) 테스트 출발지$/.exec(label);
+  if (testOrigin) return `${testOrigin[1]} Test Origin`;
+
+  const numberedExit = /^(\d+)번 (?:출구|출입구)$/.exec(label);
+  if (numberedExit) return `Exit ${numberedExit[1]}`;
 
   return label;
 }

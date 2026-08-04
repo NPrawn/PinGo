@@ -188,6 +188,8 @@ export function DestinationSearch({
       destinationLatitude: selectedPoi.latitude,
       destinationLongitude: selectedPoi.longitude,
       destinationAddress: selectedPoi.address,
+      destinationNameKo: selectedPoi.nameKo,
+      destinationNameEn: selectedPoi.nameEn,
     });
     if (userSessionId && selectedPoi.id != null) {
       void updateUserSession(userSessionId, {
@@ -310,6 +312,8 @@ export function DestinationSearch({
               const poi = {
                 ...quickDestination.poi,
                 name: language === 'en' ? quickDestination.nameEn : quickDestination.poi.name,
+                nameKo: quickDestination.poi.name,
+                nameEn: quickDestination.nameEn,
               };
               const labels =
                 language === 'en' ? quickDestination.labelsEn : quickDestination.labelsKo;
