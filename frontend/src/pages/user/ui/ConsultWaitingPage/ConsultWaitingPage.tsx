@@ -96,10 +96,15 @@ export function ConsultWaitingPage() {
         setStatusMessage('상담 연결을 완료하지 못했습니다.');
       }
     };
+    const handleCanceled = () => {
+      clearConsultation();
+      void navigate(USER_ROUTES.CONSULT_REQUEST);
+    };
 
     events.addEventListener('ACCEPTED', handleAccepted as EventListener);
     events.addEventListener('REJECTED', handleUnavailable as EventListener);
     events.addEventListener('NO_COUNSELOR', handleUnavailable as EventListener);
+    events.addEventListener('CANCELED', handleCanceled as EventListener);
 
     return () => events.close();
   }, [clearConsultation, consultationId, navigate, setSignalingRoom, userSessionId]);
