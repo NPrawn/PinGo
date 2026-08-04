@@ -245,8 +245,23 @@ export function SessionPage() {
       ? screen.cameraSource.width / screen.cameraSource.height
       : FALLBACK_CAMERA_ASPECT,
   } as CSSProperties;
-  /** 지도에 켜 둔 시설 유형. 안내 화면과 같은 목록에서 고른다. */
-  const [facilityType, setFacilityType] = useState<string | null>(null);
+  /**
+   * 지도에 켜 둔 시설 표시. **사용자 화면과 같은 세 상태 모델이다.**
+   *
+   * - `all` — 그 층 시설을 모두 보여 준다. **첫 화면이 이것이다.**
+   * - `none` — 아무것도 보여 주지 않는다.
+   * - 그 외 — 그 `facilityType` 만.
+   *
+   * 셋을 한 값에 담는다. 유형과 숨김을 따로 두면 "숨김인데 유형도 켜져 있는" 조합이 생긴다.
+   *
+   * 예전에는 `null` 로 시작해 아무 시설도 그리지 않았다. 상담자는 역에 무엇이 어디 있는지부터
+   * 봐야 짚어 줄 수 있는데, 빈 도면에서 시작하면 유형 칩을 하나씩 눌러 가며 찾아야 했다.
+   * 사용자 화면은 처음부터 전체를 보여 주므로 두 화면이 서로 다른 지도를 보고 있었다.
+   * (S15P11A206-89)
+   */
+  const [facilityView, setFacilityView] = useState<string>('all');
+  const facilityType =
+    facilityView === 'all' || facilityView === 'none' ? null : facilityView;
   /** 방금 사용자에게 보낸 변경. 상담자가 무엇을 눌렀는지 화면에 남긴다. */
   const [lastPick, setLastPick] = useState<string | null>(null);
 
@@ -636,6 +651,8 @@ export function SessionPage() {
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
                       facilityType={facilityType}
+                      /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼진다. */
+                      showAllFacilities={facilityView === 'all'}
                       /*
                         재지정 모드일 때만 시설 선택을 사용자에게 보낸다. 켜지 않은 채로
                         지도를 훑어보다 잘못 눌러 사용자의 목적지가 바뀌면 안 된다.
@@ -654,25 +671,45 @@ export function SessionPage() {
                   </div>
 
                   {/*
-                    시설 유형은 한 번에 하나만 켠다. 한 층 시설을 모두 그리면 마커가 서로를
-                    덮어 아무것도 짚을 수 없다. 목록은 안내 화면과 같은 것을 쓴다 — 사용자
-                    화면에 없는 유형을 상담자가 짚으면 현장에서 찾을 수 없다.
+                    처음에는 그 층 시설을 모두 보여 주고, 유형을 누르면 그것만 남긴다.
+
+                    전체 표시는 마커가 서로 겹친다 — 역삼역 B2 는 1m 가 몇 px 이라 36개가 붙어
+                    선다. 훑어보는 용도이고, 짚으려면 유형으로 좁힌다. 목록은 안내 화면과 같은
+                    것을 쓴다 — 사용자 화면에 없는 유형을 상담자가 짚으면 현장에서 찾을 수 없다.
                   */}
                   <div className={styles.facilityFilters} role="group" aria-label="시설 표시">
-                    {FACILITY_MAP_FILTERS.map((filter) => (
-                      <MapToggle
-                        key={filter.facilityType}
-                        on={facilityType === filter.facilityType}
-                        onClick={() =>
-                          setFacilityType(
-                            facilityType === filter.facilityType ? null : filter.facilityType,
-                          )
-                        }
-                      >
-                        <Icon name={filter.icon} size={13} />
-                        {filter.name}
-                      </MapToggle>
-                    ))}
+                    {FACILITY_MAP_FILTERS.map((filter) => {
+                      const active = facilityView === filter.facilityType;
+
+                      return (
+                        <MapToggle
+                          key={filter.facilityType}
+                          on={active}
+                          /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
+                             누르기를 망설이게 된다. */
+                          onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
+                        >
+                          <Icon name={filter.icon} size={13} />
+                          {filter.name}
+                        </MapToggle>
+                      );
+                    })}
+
+                    {/*
+                      전부 감추기.
+
+                      유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 겹쳐 선 마커가
+                      도면을 가려 역 구조나 경로선을 확인하기 어려울 때 쓴다. 다시 누르면 전체
+                      표시로 돌아온다. 현재 위치·목적지·경로는 그대로 둔다 — 안내에 필요한 표시
+                      까지 사라지면 상담자가 짚어 줄 근거가 없어진다.
+                    */}
+                    <MapToggle
+                      on={facilityView === 'none'}
+                      onClick={() => setFacilityView(facilityView === 'none' ? 'all' : 'none')}
+                    >
+                      <Icon name={facilityView === 'none' ? 'eye' : 'eye-off'} size={13} />
+                      {facilityView === 'none' ? '다시 보기' : '숨기기'}
+                    </MapToggle>
                   </div>
                 </>
               ) : (

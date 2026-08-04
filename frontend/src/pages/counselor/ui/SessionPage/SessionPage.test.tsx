@@ -269,4 +269,90 @@ describe('SessionPage', () => {
     expect(mapRegion?.style.width).toBe('91.79%');
     expect(mapRegion?.style.height).toBe('35.55%');
   });
+
+  /**
+   * 시설 표시는 사용자 화면과 같은 세 상태다 — 전체 · 유형 하나 · 숨김. (S15P11A206-89)
+   *
+   * 예전에는 아무 시설도 없는 도면에서 시작했다. 상담자는 역에 무엇이 어디 있는지부터 봐야
+   * 짚어 줄 수 있는데, 빈 도면에서 시작하면 유형 칩을 하나씩 눌러 가며 찾아야 했고 사용자
+   * 화면과도 다른 지도를 보고 있었다.
+   */
+  describe('시설 표시', () => {
+    /** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
+    async function renderWithMapSync() {
+      apiMocks.getCounselorConsultations.mockResolvedValue([
+        { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
+      ]);
+
+      renderPage();
+      await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.');
+
+      act(() => {
+        signalingMocks.onEvent?.({
+          eventType: 'MAP_SYNC',
+          eventId: 'evt_1',
+          sessionId: 'cs_1',
+          senderType: 'USER',
+          timestamp: '2026-08-03T00:00:00Z',
+          version: 1,
+          payload: {
+            stationId: 1,
+            floorId: null,
+            current: null,
+            headingDeg: null,
+            destination: null,
+            destinationLabel: null,
+            pathNodes: [],
+            screen: null,
+          },
+        });
+      });
+    }
+
+    it('처음에는 전체 표시이고 켜진 유형 칩이 없다', async () => {
+      await renderWithMapSync();
+
+      const chips = screen.getAllByRole('button', { pressed: false });
+
+      // 유형을 고르지 않은 것이 곧 전체 표시다. 어느 칩도 켜져 있지 않다.
+      expect(chips.some((chip) => chip.textContent?.includes('엘리베이터'))).toBe(true);
+      expect(screen.queryByRole('button', { pressed: true, name: /엘리베이터/ })).toBeNull();
+      // 감출 길이 화면에 있어야 한다. 겹쳐 선 마커가 도면을 가릴 때 쓴다.
+      expect(screen.getByRole('button', { name: /숨기기/ })).toBeInTheDocument();
+    });
+
+    it('숨기기를 누르면 켜지고 문구가 다시 보기로 바뀐다', async () => {
+      await renderWithMapSync();
+
+      fireEvent.click(screen.getByRole('button', { name: /숨기기/ }));
+
+      const restore = screen.getByRole('button', { name: /다시 보기/ });
+      expect(restore).toHaveAttribute('aria-pressed', 'true');
+
+      // 되돌릴 길이 없으면 누르기를 망설이게 된다.
+      fireEvent.click(restore);
+      expect(screen.getByRole('button', { name: /숨기기/ })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+
+    /** 켜 둔 유형을 다시 누르면 꺼지지 않고 전체 표시로 돌아간다. */
+    it('유형을 골랐다가 다시 누르면 전체 표시로 돌아간다', async () => {
+      await renderWithMapSync();
+
+      const elevator = () => screen.getByRole('button', { name: /엘리베이터/ });
+
+      fireEvent.click(elevator());
+      expect(elevator()).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(elevator());
+      expect(elevator()).toHaveAttribute('aria-pressed', 'false');
+      // 숨김이 아니라 전체다. 숨기기 칩은 꺼진 채로 남는다.
+      expect(screen.getByRole('button', { name: /숨기기/ })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+  });
 });
