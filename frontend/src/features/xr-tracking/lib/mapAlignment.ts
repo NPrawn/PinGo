@@ -182,17 +182,27 @@ export function mapHeadingDegOf(yawDeg: number, anchor: XrMapAnchor): number | n
 export function xrToMapPoint(
   position: { x: number; z: number },
   anchor: XrMapAnchor,
+  distanceScale = 1,
 ): IndoorPoint | null {
   const dX = position.x - anchor.xr.x;
   const dZ = position.z - anchor.xr.z; // 부호 반전 없음
 
-  if (!Number.isFinite(dX) || !Number.isFinite(dZ)) return null;
+  if (
+    !Number.isFinite(dX) ||
+    !Number.isFinite(dZ) ||
+    !Number.isFinite(distanceScale) ||
+    distanceScale <= 0
+  ) {
+    return null;
+  }
 
   const { cosA, sinA } = anchor.rotation;
+  const scaledX = dX * distanceScale;
+  const scaledZ = dZ * distanceScale;
 
   return {
     floorId: anchor.map.floorId,
-    mapX: anchor.map.mapX + (cosA * dX - sinA * dZ),
-    mapY: anchor.map.mapY + (sinA * dX + cosA * dZ),
+    mapX: anchor.map.mapX + (cosA * scaledX - sinA * scaledZ),
+    mapY: anchor.map.mapY + (sinA * scaledX + cosA * scaledZ),
   };
 }

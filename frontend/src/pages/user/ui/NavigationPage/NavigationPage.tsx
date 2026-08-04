@@ -12,6 +12,7 @@ import {
   carriesDistance,
   instructionAt,
   routeBearingOf,
+  routeDistanceScaleOf,
   routePathNodesOf,
   routeProgressOf,
   useNavigationStore,
@@ -114,6 +115,7 @@ export function NavigationPage() {
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
+  const currentForwardMap = useNavigationStore((state) => state.currentForwardMap);
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const setRouteResult = useNavigationStore((state) => state.setRouteResult);
   const progressKey = useNavigationStore((state) => state.progressKey);
@@ -235,6 +237,8 @@ export function NavigationPage() {
       ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
       : null,
   );
+  const [confirmedForwardMap] = useState(() => currentForwardMap);
+  const xrDistanceScale = routeDistanceScaleOf(routeResult, confirmedLocation?.floorId);
 
   /**
    * XR 세션 게이트. 진입 시 안내를 띄우고 사용자가 확인하면 세션을 연다(11.7).
@@ -259,6 +263,8 @@ export function NavigationPage() {
     anchorStatus,
   } = useXrNavigationSession({
     currentIndoorLocation: confirmedLocation,
+    anchorForwardMap: confirmedForwardMap,
+    distanceScale: xrDistanceScale,
     /**
      * 앞 화면들이 켜 둔 카메라를 세션 직전에 반납한다. (11.8)
      *

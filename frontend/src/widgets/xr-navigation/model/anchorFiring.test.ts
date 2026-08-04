@@ -15,8 +15,7 @@ import { useXrNavigationSession } from './useXrNavigationSession';
  * 그 뒤 pose가 들어오면 표시 좌표가 갱신되는지다. 좌표가 지도 마커 픽셀로 옮겨지는 것은
  * `widgets/indoor-map/ui/IndoorMapView.xrPosition.test.tsx`(296)가 검사한다.
  *
- * **앵커 좌표와 방향은 목업이다.** 세션 안 위치 인식 엔드포인트가 미정이라(12장 4번) 진입 시
- * 확정 위치와 `MOCK_ANCHOR_FORWARD_MAP`을 쓴다. 실제 위치 인식 연동이 아니다.
+ * 앵커 방향은 진입 전 VPS 응답으로 받은 실제 `forwardMap` fixture를 사용한다.
  */
 
 /** 진입 시 확정 위치. 검산이 쉬운 미터 원점이다. */
@@ -113,7 +112,13 @@ function createFakeController(initial: XrSessionState) {
 }
 
 function renderSession(controller: XrSessionController) {
-  return renderHook(() => useXrNavigationSession({ controller, currentIndoorLocation: CONFIRMED }));
+  return renderHook(() =>
+    useXrNavigationSession({
+      controller,
+      currentIndoorLocation: CONFIRMED,
+      anchorForwardMap: { x: 0.6, y: 0.8 },
+    }),
+  );
 }
 
 const TRACKING: XrSessionState = { status: 'tracking', referenceSpaceType: 'local' };
@@ -125,6 +130,19 @@ describe('첫 위치 인식 발화', () => {
     const { result } = renderSession(fake.controller);
 
     expect(result.current.anchorStatus).toBe('established');
+  });
+
+  it('VPS 방향이 없으면 임의 방향으로 앵커를 만들지 않는다', () => {
+    const fake = createFakeController(TRACKING);
+    const { result } = renderHook(() =>
+      useXrNavigationSession({
+        controller: fake.controller,
+        currentIndoorLocation: CONFIRMED,
+        anchorForwardMap: null,
+      }),
+    );
+
+    expect(result.current.anchorStatus).toBe('none');
   });
 
   /**

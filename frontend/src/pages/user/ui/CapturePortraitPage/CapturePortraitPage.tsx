@@ -4,6 +4,7 @@ import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { queueCurrentNodeSync, useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
+import { readForwardMap } from '@/features/xr-tracking';
 import { localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
@@ -140,6 +141,7 @@ export function CapturePortraitPage() {
             label: result.startNodeLabel ?? undefined,
             mapX: position.mapX,
             mapY: position.mapY,
+            forwardMap: readForwardMap(position),
           });
           const floorCode = position.floorCode;
           if (

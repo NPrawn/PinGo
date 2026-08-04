@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { RouteResponse } from '@/shared/api';
 import type { RouteType } from '@/shared/types';
+import type { MapDirection } from './types';
 
 /**
  * 안내 도중 들르기로 한 곳.
@@ -45,6 +46,7 @@ type NavigationStore = {
   currentLocationLabel: string | null;
   currentMapX: number | null;
   currentMapY: number | null;
+  currentForwardMap: MapDirection | null;
   routeResult: RouteResponse | null;
   /**
    * 사용자가 고른 경로 유형.
@@ -102,6 +104,7 @@ type NavigationStore = {
     label?: string;
     mapX?: number;
     mapY?: number;
+    forwardMap?: MapDirection | null;
   }) => void;
   setRoute: (route: RouteType) => void;
   /**
@@ -149,6 +152,7 @@ export const useNavigationStore = create<NavigationStore>()(
       currentLocationLabel: null,
       currentMapX: null,
       currentMapY: null,
+      currentForwardMap: null,
       routeResult: null,
       route: 'fastest',
       stepsOpen: false,
@@ -190,6 +194,7 @@ export const useNavigationStore = create<NavigationStore>()(
           currentLocationLabel: location.label ?? null,
           currentMapX: location.mapX ?? null,
           currentMapY: location.mapY ?? null,
+          currentForwardMap: location.forwardMap ?? null,
           routeResult: null,
         }),
       setRoute: (route) => set({ route }),
