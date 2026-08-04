@@ -669,54 +669,61 @@ export function SessionPage() {
                       rotateWithHeading={false}
                     />
                   </div>
-
-                  {/*
-                    처음에는 그 층 시설을 모두 보여 주고, 유형을 누르면 그것만 남긴다.
-
-                    전체 표시는 마커가 서로 겹친다 — 역삼역 B2 는 1m 가 몇 px 이라 36개가 붙어
-                    선다. 훑어보는 용도이고, 짚으려면 유형으로 좁힌다. 목록은 안내 화면과 같은
-                    것을 쓴다 — 사용자 화면에 없는 유형을 상담자가 짚으면 현장에서 찾을 수 없다.
-                  */}
-                  <div className={styles.facilityFilters} role="group" aria-label="시설 표시">
-                    {FACILITY_MAP_FILTERS.map((filter) => {
-                      const active = facilityView === filter.facilityType;
-
-                      return (
-                        <MapToggle
-                          key={filter.facilityType}
-                          on={active}
-                          /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
-                             누르기를 망설이게 된다. */
-                          onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
-                        >
-                          <Icon name={filter.icon} size={13} />
-                          {filter.name}
-                        </MapToggle>
-                      );
-                    })}
-
-                    {/*
-                      전부 감추기.
-
-                      유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 겹쳐 선 마커가
-                      도면을 가려 역 구조나 경로선을 확인하기 어려울 때 쓴다. 다시 누르면 전체
-                      표시로 돌아온다. 현재 위치·목적지·경로는 그대로 둔다 — 안내에 필요한 표시
-                      까지 사라지면 상담자가 짚어 줄 근거가 없어진다.
-                    */}
-                    <MapToggle
-                      on={facilityView === 'none'}
-                      onClick={() => setFacilityView(facilityView === 'none' ? 'all' : 'none')}
-                    >
-                      <Icon name={facilityView === 'none' ? 'eye' : 'eye-off'} size={13} />
-                      {facilityView === 'none' ? '다시 보기' : '숨기기'}
-                    </MapToggle>
-                  </div>
                 </>
               ) : (
                 <p className={styles.mapPlaceholder}>사용자 화면의 지도를 기다리는 중입니다.</p>
               )}
             </MapPreview>
           </div>
+
+          {/*
+            시설 표시 칩. **지도 밖, 지도 아래에 둔다.**
+
+            예전에는 지도 위에 얹혀 있었다(`position: absolute`). 유형이 일곱 개로 늘자 세 줄이
+            되어 도면의 절반 가까이를 덮었고, 상담자가 역 구조를 보려면 먼저 시설을 숨겨야 했다.
+            가리는 것을 치우려고 누르는 버튼이 그 자리를 가리고 있었다. (S15P11A206-89)
+
+            처음에는 그 층 시설을 모두 보여 주고, 유형을 누르면 그것만 남긴다. 전체 표시는 마커가
+            서로 겹친다 — 역삼역 B2 는 1m 가 몇 px 이라 36개가 붙어 선다. 훑어보는 용도이고,
+            짚으려면 유형으로 좁힌다. 목록은 안내 화면과 같은 것을 쓴다 — 사용자 화면에 없는
+            유형을 상담자가 짚으면 현장에서 찾을 수 없다.
+          */}
+          {mapSync && (
+            <div className={styles.facilityFilters} role="group" aria-label="시설 표시">
+              {FACILITY_MAP_FILTERS.map((filter) => {
+                const active = facilityView === filter.facilityType;
+
+                return (
+                  <MapToggle
+                    key={filter.facilityType}
+                    on={active}
+                    /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
+                       누르기를 망설이게 된다. */
+                    onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
+                  >
+                    <Icon name={filter.icon} size={13} />
+                    {filter.name}
+                  </MapToggle>
+                );
+              })}
+
+              {/*
+                전부 감추기.
+
+                유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 겹쳐 선 마커가 도면을
+                가려 역 구조나 경로선을 확인하기 어려울 때 쓴다. 다시 누르면 전체 표시로
+                돌아온다. 현재 위치·목적지·경로는 그대로 둔다 — 안내에 필요한 표시까지 사라지면
+                상담자가 짚어 줄 근거가 없어진다.
+              */}
+              <MapToggle
+                on={facilityView === 'none'}
+                onClick={() => setFacilityView(facilityView === 'none' ? 'all' : 'none')}
+              >
+                <Icon name={facilityView === 'none' ? 'eye' : 'eye-off'} size={13} />
+                {facilityView === 'none' ? '다시 보기' : '숨기기'}
+              </MapToggle>
+            </div>
+          )}
 
           <div className={styles.mapActions}>
             <PillButton
