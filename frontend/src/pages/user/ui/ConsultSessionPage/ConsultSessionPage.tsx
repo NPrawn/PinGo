@@ -162,16 +162,30 @@ export function ConsultSessionPage() {
   const storedTravelledM = useNavigationStore((state) => state.travelledM);
 
   /**
-   * 상담 진입 시점의 확정 실내 위치. 앵커의 기준점이다.
+   * 스토어에 들어 있는 지금의 확정 실내 위치. 앵커의 기준점이며 지도 마커의 바탕이다.
    *
-   * **첫 렌더 값에 고정한다.** 296 훅이 이 값을 진입 시점의 입력으로 다루므로(앵커가 생긴 뒤
-   * 바꾸면 조용히 무시된다) 렌더마다 새 객체를 만들면 앵커 발화 effect 가 헛돈다. 안내 화면과
-   * 같은 방식이다.
+   * **안내 화면과 달리 첫 렌더 값에 고정하지 않는다.** (S15P11A206-89)
+   *
+   * 안내 화면은 위치 인식을 끝낸 뒤에만 들어올 수 있어 진입 시점에 좌표가 늘 있다. 상담은 어느
+   * 화면에서도 시작되므로 좌표 없이 들어오는 경우가 있고, 그때 위치는 나중에 도착한다 — 상담자가
+   * 지도에서 짚어 주거나(`CURRENT_LOCATION_CORRECTED`) 위치 인식이 끝난 뒤다.
+   *
+   * 고정해 두면 그 좌표가 영원히 `null` 로 남아 **앵커가 만들어지지 않는다.** 앵커가 없으면
+   * `useXrMapPosition` 이 pose 스냅숏과 heading 갱신을 둘 다 버리므로(`if (!anchor) return`),
+   * XR 이 `tracking` 이어도 사용자의 방향과 이동이 잡히지 않는다. 실기기에서 그렇게 막혀 있었다.
+   *
+   * `useMemo` 로 참조를 안정시킨다. 렌더마다 새 객체를 만들면 앵커 발화 effect 가 헛돈다 —
+   * 안내 화면이 값을 고정한 본래 이유가 그것이다. 값이 그대로면 참조도 그대로이므로 그 문제는
+   * 생기지 않으면서, 값이 바뀌는 순간에만 effect 가 돈다.
+   *
+   * 앵커가 생긴 뒤의 변경은 훅이 조용히 무시한다(296 계약). 그 뒤로는 추적 좌표가 앞선다.
    */
-  const [confirmedLocation] = useState<IndoorPoint | null>(() =>
-    currentFloorId != null && currentMapX != null && currentMapY != null
-      ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
-      : null,
+  const storedLocation = useMemo<IndoorPoint | null>(
+    () =>
+      currentFloorId != null && currentMapX != null && currentMapY != null
+        ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
+        : null,
+    [currentFloorId, currentMapX, currentMapY],
   );
 
   /**
@@ -239,23 +253,9 @@ export function ConsultSessionPage() {
     source,
     anchorStatus,
   } = useXrNavigationSession({
-    currentIndoorLocation: confirmedLocation,
+    currentIndoorLocation: storedLocation,
     releaseCamera: handOverCameraToSession,
   });
-
-  /**
-   * 스토어에 들어 있는 지금의 확정 위치. **마운트 시점 값이 아니라 현재 값이다.**
-   *
-   * `confirmedLocation` 은 앵커의 기준점이라 첫 렌더 값에 고정돼 있다. 그것만 읽으면 상담 중에
-   * 위치가 바뀌어도 화면이 따라오지 않는다.
-   */
-  const storedLocation = useMemo<IndoorPoint | null>(
-    () =>
-      currentFloorId != null && currentMapX != null && currentMapY != null
-        ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
-        : null,
-    [currentFloorId, currentMapX, currentMapY],
-  );
 
   /**
    * 지도에 그릴 현재 위치. 추적 값을 우선하고, 없으면 스토어의 확정 위치를 쓴다.
@@ -263,11 +263,10 @@ export function ConsultSessionPage() {
    * 추적이 잡히기 전(warming-up)이나 세션을 열지 않기로 한 경우에도 위치는 보여야 한다.
    * 그 구간에 마커를 지우면 사용자와 상담자 양쪽에서 위치가 사라진다.
    *
-   * **예전에는 `confirmedLocation` 을 썼다.** 그 값은 앵커 기준점이라 마운트 시점에 고정돼
-   * 있어서, 상담 중에 위치가 바뀌어도 화면이 그 자리에 머물렀다. 상담자가
-   * `CURRENT_LOCATION_CORRECTED` 로 자리를 고쳐 주면 `handleDataEvent` 가 스토어에 써 넣는데,
-   * 화면은 그것을 읽지 않아 사용자 지도가 움직이지 않았다 — 상담자는 고쳐 줬다고 믿고 사용자는
-   * 옛 자리를 보는 상태가 된다. 진입 시점에 위치가 없었던 경우에는 아예 마커가 뜰 길이 없었다.
+   * **예전에는 마운트 시점에 고정한 값을 썼다.** 그래서 상담 중에 위치가 바뀌어도 화면이 그
+   * 자리에 머물렀다. 상담자가 `CURRENT_LOCATION_CORRECTED` 로 자리를 고쳐 주면
+   * `handleDataEvent` 가 스토어에 써 넣는데, 화면은 그것을 읽지 않아 사용자 지도가 움직이지
+   * 않았다 — 상담자는 고쳐 줬다고 믿고 사용자는 옛 자리를 보는 상태가 된다.
    *
    * 추적이 살아 있는 동안에는 추적 값이 이긴다. 실제로 걷고 있는 사람의 좌표가 더 최신이다.
    */
