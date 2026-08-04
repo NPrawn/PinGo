@@ -723,6 +723,13 @@ export function ConsultSessionPage() {
     카메라: cameraStreamState,
     XR: xrStatus,
     앵커: anchorStatus,
+    /*
+      앵커가 안 만들어질 때 이유를 가르는 값. 방향이 없으면 앵커를 만들지 않으므로(`343`),
+      `앵커: none` 만 보고는 추적이 안 잡힌 것인지 방향이 없는 것인지 구분할 수 없다.
+    */
+    앵커방향: confirmedForwardMap
+      ? `${confirmedForwardMap.x.toFixed(2)},${confirmedForwardMap.y.toFixed(2)}`
+      : '없음',
     방: signalingRoomId,
     토큰: signalingAccessToken ? '있음' : '없음',
     경로노드: pathNodes.length,
