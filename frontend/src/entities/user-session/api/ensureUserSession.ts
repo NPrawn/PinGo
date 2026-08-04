@@ -1,5 +1,6 @@
-import { createUserSession, getUserSession } from '@/shared/api';
+import { createUserSession } from '@/shared/api';
 import { useUserSessionStore } from '../model/userSessionStore';
+import { isUsableUserSession } from './parseUserSessionExpiry';
 
 export type UserSessionLanguage = 'ko' | 'en' | 'ja' | 'zh';
 
@@ -7,10 +8,6 @@ const SUPPORTED: readonly string[] = ['ko', 'en', 'ja', 'zh'];
 
 /** 동시에 여러 화면이 세션을 요청해도 생성은 한 번만 한다. */
 let creationPromise: Promise<string | null> | undefined;
-
-function isUsable(expiresAt?: string) {
-  return !expiresAt || new Date(expiresAt).getTime() > Date.now();
-}
 
 function normalizeLanguage(language: string): UserSessionLanguage {
   const base = language.slice(0, 2).toLowerCase();
@@ -27,14 +24,11 @@ function normalizeLanguage(language: string): UserSessionLanguage {
 export async function ensureUserSession(language: string): Promise<string | null> {
   const { userSessionId, expiresAt, setSession, clearSession } = useUserSessionStore.getState();
 
-  if (userSessionId && isUsable(expiresAt)) {
-    try {
-      await getUserSession(userSessionId);
-      return userSessionId;
-    } catch {
-      clearSession();
-    }
-  } else if (userSessionId) {
+  if (userSessionId && isUsableUserSession(expiresAt)) {
+    return userSessionId;
+  }
+
+  if (userSessionId) {
     clearSession();
   }
 

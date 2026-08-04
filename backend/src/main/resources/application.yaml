@@ -1,6 +1,11 @@
 spring:
   application:
     name: backend
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
   servlet:
     multipart:
       max-file-size: 10MB

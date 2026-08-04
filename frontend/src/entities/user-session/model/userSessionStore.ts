@@ -22,6 +22,7 @@ type UserSessionStore = {
   expiresAt?: string;
   pendingCurrentNodeId?: number;
   setSession: (session: StoredSession) => void;
+  setExpiresAt: (expiresAt: string) => void;
   setPendingCurrentNodeId: (currentNodeId: number) => void;
   clearPendingCurrentNodeId: (currentNodeId: number) => void;
   clearSession: () => void;
@@ -37,6 +38,17 @@ export const useUserSessionStore = create<UserSessionStore>((set) => ({
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     set({ ...session, pendingCurrentNodeId: undefined });
   },
+  setExpiresAt: (expiresAt) =>
+    set((state) => {
+      if (!state.userSessionId) return state;
+      const next = {
+        userSessionId: state.userSessionId,
+        expiresAt,
+        pendingCurrentNodeId: state.pendingCurrentNodeId,
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    }),
   setPendingCurrentNodeId: (pendingCurrentNodeId) =>
     set((state) => {
       if (!state.userSessionId) return state;
