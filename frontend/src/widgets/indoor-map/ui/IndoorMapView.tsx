@@ -83,6 +83,17 @@ interface IndoorMapViewProps {
    */
   followCamera?: boolean;
   /**
+   * 진행 방향이 화면 위를 향하도록 **지도를 돌릴지**. 기본은 돌린다.
+   *
+   * `followCamera`가 켜져 있을 때만 뜻이 있다. 추종은 그대로 두고 회전만 끄는 자리다.
+   *
+   * 끄는 쪽은 상담자 화면이다. 상담자는 사용자를 따라가며 봐야 하지만 자기 화면까지 같이 돌면
+   * 도면을 읽을 수 없다 — 역 구조를 아는 사람이 방향을 잡는 기준은 도면의 고정된 방위다.
+   * 회전을 끄면 지도는 북쪽 고정이고 **마커의 방향 부채꼴만 돈다**(`currentHeadingImageDeg`는
+   * 지도 회전과 무관하게 계산된다). 사용자가 어디를 보고 있는지는 그대로 전달된다.
+   */
+  rotateWithHeading?: boolean;
+  /**
    * `내 위치` 버튼을 눌렀을 때. 시점 복귀는 위젯이 하고, **층 되돌리기는 여기서** 한다.
    *
    * 표시 층은 화면이 들고 있다(안내 화면의 층 버튼). 위젯이 시점만 되돌리면 다른 층을 보던
@@ -151,6 +162,7 @@ export function IndoorMapView({
   selectedFacilityId,
   onSelectFacility,
   followCamera = false,
+  rotateWithHeading = true,
   onRecenter,
   useMockData = false,
 }: IndoorMapViewProps) {
@@ -174,9 +186,12 @@ export function IndoorMapView({
    * 0도는 오른쪽이고 위는 -90도이므로, 방향각 φ를 위로 세우려면 `-90 - φ`만큼 돌린다.
    *
    * 방향을 모르면 돌리지 않는다 — 0으로 채우면 북쪽 고정과 구분되지 않는다.
+   *
+   * `rotateWithHeading`을 끈 화면은 방향을 알아도 돌리지 않는다. 추종(`followTarget`)은 위에서
+   * 따로 정하므로, 사용자를 화면 가운데 붙들어 둔 채 도면 방위만 고정된다.
    */
   const targetRotationDeg =
-    followCamera && typeof currentHeadingDeg === 'number'
+    followCamera && rotateWithHeading && typeof currentHeadingDeg === 'number'
       ? -90 - (currentHeadingDeg + PLAN_REFERENCE.frame.angleDeg)
       : null;
 

@@ -536,6 +536,13 @@ export function SessionPage() {
                       onSelectFacility={repinning ? pickOnMap : undefined}
                       /* 따라가기일 때만 사용자 위치를 좇는다. 자유 탐색은 층 전체를 본다. */
                       followCamera={synced}
+                      /*
+                        사용자를 좇되 지도는 돌리지 않는다.
+                        사용자 화면은 진행 방향이 위를 향하게 돌아가지만(네비게이션 모드), 상담자
+                        화면까지 같이 돌면 도면의 방위가 계속 바뀌어 역 구조를 짚어 줄 수 없다.
+                        사용자가 보고 있는 방향은 마커의 부채꼴로 그대로 나타난다.
+                      */
+                      rotateWithHeading={false}
                       useMockData
                     />
                   </div>
