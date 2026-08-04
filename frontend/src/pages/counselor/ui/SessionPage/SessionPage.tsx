@@ -717,49 +717,57 @@ export function SessionPage() {
             유형을 상담자가 짚으면 현장에서 찾을 수 없다.
           */}
           {mapSync && (
-            <div className={styles.facilityFilters} role="group" aria-label="시설 표시">
-              {FACILITY_MAP_FILTERS.map((filter) => {
-                const active = effectiveView === filter.facilityType;
-                /*
-                  이 층에 없는 유형. 조회가 오기 전에는 판정하지 않는다 — 아직 모르는 것을
-                  없다고 그리면 모든 칩이 잠깐 연해진다.
-                */
-                const absent =
-                  facilities !== undefined && !floorFacilityTypes.has(filter.facilityType);
+            <div className={styles.facilityBar} role="group" aria-label="시설 표시">
+              <div className={styles.facilityFilters}>
+                {FACILITY_MAP_FILTERS.map((filter) => {
+                  const active = effectiveView === filter.facilityType;
+                  /*
+                    이 층에 없는 유형. 조회가 오기 전에는 판정하지 않는다 — 아직 모르는 것을
+                    없다고 그리면 모든 칩이 잠깐 연해진다.
+                  */
+                  const absent =
+                    facilities !== undefined && !floorFacilityTypes.has(filter.facilityType);
 
-                return (
-                  <MapToggle
-                    key={filter.facilityType}
-                    on={active}
-                    className={absent ? styles.facilityFilterAbsent : undefined}
-                    /* 없는 유형은 누를 수 없다. 눌러도 빈 지도가 나오므로 고장으로 읽힌다. */
-                    disabled={absent}
-                    title={absent ? `이 층에는 ${filter.name}이 없어요` : undefined}
-                    /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
-                       누르기를 망설이게 된다. */
-                    onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
-                  >
-                    <Icon name={filter.icon} size={13} />
-                    {filter.name}
-                  </MapToggle>
-                );
-              })}
+                  return (
+                    <MapToggle
+                      key={filter.facilityType}
+                      on={active}
+                      className={absent ? styles.facilityFilterAbsent : undefined}
+                      /* 없는 유형은 누를 수 없다. 눌러도 빈 지도가 나오므로 고장으로 읽힌다. */
+                      disabled={absent}
+                      title={absent ? `이 층에는 ${filter.name}이 없어요` : undefined}
+                      /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
+                         누르기를 망설이게 된다. */
+                      onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
+                    >
+                      <Icon name={filter.icon} size={13} />
+                      {filter.name}
+                    </MapToggle>
+                  );
+                })}
+              </div>
 
               {/*
-                전부 감추기.
+                전부 감추기. **유형 칩과 다른 칸에 둔다.**
+
+                이것은 유형이 아니라 표시 모드다. 같은 줄에 섞어 두면 여덜 번째 유형처럼 보여,
+                누르면 그 유형만 남는 것으로 읽힌다. 유형이 줄바꿈으로 늘어나도 이 칩은 첫 줄
+                오른쪽에 그대로 있어 찾는 자리가 바뀌지 않는다. (S15P11A206-89)
 
                 유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 겹쳐 선 마커가 도면을
                 가려 역 구조나 경로선을 확인하기 어려울 때 쓴다. 다시 누르면 전체 표시로
                 돌아온다. 현재 위치·목적지·경로는 그대로 둔다 — 안내에 필요한 표시까지 사라지면
                 상담자가 짚어 줄 근거가 없어진다.
               */}
-              <MapToggle
-                on={effectiveView === 'none'}
-                onClick={() => setFacilityView(effectiveView === 'none' ? 'all' : 'none')}
-              >
-                <Icon name={effectiveView === 'none' ? 'eye' : 'eye-off'} size={13} />
-                {effectiveView === 'none' ? '다시 보기' : '숨기기'}
-              </MapToggle>
+              <div className={styles.facilityVisibility}>
+                <MapToggle
+                  on={effectiveView === 'none'}
+                  onClick={() => setFacilityView(effectiveView === 'none' ? 'all' : 'none')}
+                >
+                  <Icon name={effectiveView === 'none' ? 'eye' : 'eye-off'} size={13} />
+                  {effectiveView === 'none' ? '다시 보기' : '숨기기'}
+                </MapToggle>
+              </div>
             </div>
           )}
 
