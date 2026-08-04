@@ -1,7 +1,12 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
+import { useStationFacilities } from '@/entities/facility';
+import { useStationFloorMaps } from '@/entities/floor-map';
+import { useNavigationStore } from '@/entities/navigation';
+import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
 import { releaseConsultMedia } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
@@ -12,6 +17,7 @@ import { ConsultSessionPage } from './ConsultSessionPage';
 const apiMocks = vi.hoisted(() => ({
   getConsultation: vi.fn(),
   endConsultationByUser: vi.fn(),
+  createIndoorRoute: vi.fn(),
   useCaptionTranslation: vi.fn(() => ''),
 }));
 
@@ -29,11 +35,28 @@ const signaling = vi.hoisted(() => ({
 /** 권한 조회는 이 화면의 관심사가 아니다. 사라졌는지 여부만 테스트가 정한다. */
 vi.mock('@/features/permissions', () => ({ usePermissionsRevoked: vi.fn(() => false) }));
 
+/**
+ * 층·시설 조회만 갈아 끼운다. 좌표 변환과 도면 배치는 실제 구현을 그대로 쓴다.
+ *
+ * 이 화면이 지도에 얹는 것은 층 버튼과 시설 필터이고, 둘 다 조회 결과에서 만들어진다. 조회를
+ * 비워 두면 버튼이 하나도 없어 "없는 것"과 "안 그린 것"을 구분할 수 없다.
+ */
+vi.mock('@/entities/floor-map', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/floor-map')>()),
+  useStationFloorMaps: vi.fn(() => ({ data: undefined, isPending: false, isError: false })),
+}));
+
+vi.mock('@/entities/facility', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/facility')>()),
+  useStationFacilities: vi.fn(() => ({ data: undefined })),
+}));
+
 vi.mock('@/shared/api', async (importOriginal) => ({
   // 실내 지도 위젯이 층별 지도 조회 키를 쓴다. 화면이 그것까지 가짜로 만들 이유는 없다.
   ...(await importOriginal<typeof import('@/shared/api')>()),
   getConsultation: apiMocks.getConsultation,
   endConsultationByUser: apiMocks.endConsultationByUser,
+  createIndoorRoute: apiMocks.createIndoorRoute,
 }));
 
 /** WebRTC·음성 인식은 이 화면의 관심사가 아니다. 연결된 척만 한다. */
@@ -273,5 +296,163 @@ describe('ConsultSessionPage', () => {
 
     expect(await screen.findByText('상담 종료 화면')).toBeInTheDocument();
     expect(releaseConsultMedia).toHaveBeenCalled();
+  });
+
+  /**
+   * 상담 중에도 안내 화면과 같은 지도 조작이 있어야 한다. (S15P11A206-89)
+   *
+   * 없으면 상담자가 "한 층 위 엘리베이터로 가세요"라고 말해도 사용자는 그 층을 볼 방법이 없고,
+   * 시설이 하나도 그려지지 않아 짚어 준 자리를 도면에서 찾을 수 없다.
+   */
+  describe('지도 조작', () => {
+    const floorMap = {
+      mapId: 1,
+      floorId: 1,
+      floorCode: 'B2',
+      mapType: 'image',
+      mapUrl: null,
+      width: 1624,
+      height: 969,
+      originPxX: 622,
+      originPxY: 512,
+      frameAngleDeg: -21.28,
+      scaleMPerPx: 0.19,
+      version: 'v1',
+    };
+
+    beforeEach(() => {
+      apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
+      vi.mocked(useStationFloorMaps).mockReturnValue({
+        data: [floorMap, { ...floorMap, mapId: 2, floorId: 2, floorCode: 'B3' }],
+        isPending: false,
+        isError: false,
+      } as unknown as ReturnType<typeof useStationFloorMaps>);
+    });
+
+    const PATH = [
+      { nodeId: 1, floorId: 1, mapX: 0, mapY: 0 },
+      { nodeId: 2, floorId: 1, mapX: -12.4, mapY: 15.6 },
+    ];
+
+    /**
+     * 스토어에 경로가 있으면 그것을 그린다. 안내 화면에서 넘어온 직후의 상태다.
+     *
+     * 조회 응답을 기다리는 사이에 선을 지우면 상담자가 짚어 주는 자리를 맞춰 볼 수 없다.
+     */
+    it('스토어의 현재 위치와 경로를 지도에 그린다', async () => {
+      useNavigationStore.setState({
+        currentFloorId: 1,
+        currentMapX: 0,
+        currentMapY: 0,
+        routeResult: { pathNodes: PATH },
+      } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+      renderPage();
+
+      // 이 파일은 i18n 을 en 으로 두므로 오버레이 라벨도 영어다.
+      expect(await screen.findByRole('img', { name: 'Current location' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Route' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Destination' })).toBeInTheDocument();
+    });
+
+    /**
+     * 스토어에 경로가 없으면 **이 화면이 직접 조회한다.** (S15P11A206-89)
+     *
+     * 예전에는 스토어에 있는 것만 그렸다. 안내 화면을 거치지 않고 들어온 경우, 새로고침으로
+     * 스토어가 비워진 경우, 그리고 상담자가 목적지를 바꾼 경우에 경로가 그려지지 않았다 —
+     * 마지막 것이 특히 문제였다. `targetNodeId` 만 바뀌고 경로를 다시 받는 사람이 없어, 화면에
+     * 적힌 목적지와 지도에 그려진 길이 서로 다른 곳을 가리켰다.
+     */
+    it('스토어에 경로가 없으면 직접 조회해 그린다', async () => {
+      useNavigationStore.setState({
+        currentFloorId: 1,
+        currentMapX: 0,
+        currentMapY: 0,
+        currentNodeId: 209,
+        targetNodeId: 341,
+        routeResult: null,
+      } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+      useStationStore.setState({ stationId: 1 });
+      apiMocks.createIndoorRoute.mockResolvedValue({ pathNodes: PATH });
+
+      renderPage();
+
+      expect(await screen.findByRole('img', { name: 'Route' })).toBeInTheDocument();
+      expect(apiMocks.createIndoorRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ stationId: 1, startNodeId: 209, targetNodeId: 341 }),
+      );
+    });
+
+    /** 출발·도착 노드를 모르면 조회할 수 없다. 빈 요청을 보내지 않는다. */
+    it('출발·도착 노드가 없으면 경로를 조회하지 않는다', async () => {
+      useNavigationStore.setState({
+        currentFloorId: 1,
+        currentMapX: 0,
+        currentMapY: 0,
+        currentNodeId: null,
+        targetNodeId: null,
+        routeResult: null,
+      } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+      useStationStore.setState({ stationId: 1 });
+
+      renderPage();
+
+      await screen.findByRole('img', { name: 'Current location' });
+      expect(apiMocks.createIndoorRoute).not.toHaveBeenCalled();
+    });
+
+    it('층 목록을 지도 응답에서 만들어 버튼으로 둔다', async () => {
+      renderPage();
+
+      const floors = await screen.findByRole('group', { name: '층 선택' });
+      expect([...floors.querySelectorAll('button')].map((each) => each.textContent)).toEqual([
+        'B2',
+        'B3',
+      ]);
+    });
+
+    /** 표시 층에 없는 유형은 칩도 두지 않는다. 눌러서 아무것도 안 나오는 칩은 두지 않는다. */
+    it('표시 층에 있는 시설 유형만 필터로 둔다', async () => {
+      useNavigationStore.setState({ currentFloorId: 1 });
+      vi.mocked(useStationFacilities).mockReturnValue({
+        data: [
+          { facilityId: 1, floorId: 1, facilityType: 'exit', nameKo: '2번 출입구' },
+          // 다른 층 시설. 이것 때문에 칩이 생기면 눌러도 아무것도 나오지 않는다.
+          { facilityId: 2, floorId: 2, facilityType: 'toilet', nameKo: '화장실' },
+        ],
+      } as unknown as ReturnType<typeof useStationFacilities>);
+
+      renderPage();
+
+      const filters = await screen.findByRole('group', { name: '시설 필터' });
+      const labels = [...filters.querySelectorAll('button')].map((each) =>
+        each.getAttribute('title'),
+      );
+
+      expect(labels).toContain('출구');
+      expect(labels).not.toContain('화장실');
+    });
+
+    /**
+     * 유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 되돌릴 수 있어야 누르기를
+     * 망설이지 않는다 — 그래서 같은 버튼이 다시 전체 표시로 되돌린다.
+     */
+    it('숨기기 토글로 시설 아이콘을 끄고 다시 켠다', async () => {
+      renderPage();
+
+      const hide = await screen.findByRole('button', { name: '시설 아이콘 모두 숨기기' });
+      expect(hide).toHaveAttribute('aria-pressed', 'false');
+
+      await userEvent.click(hide);
+
+      const show = screen.getByRole('button', { name: '시설 아이콘 다시 보기' });
+      expect(show).toHaveAttribute('aria-pressed', 'true');
+
+      await userEvent.click(show);
+      expect(screen.getByRole('button', { name: '시설 아이콘 모두 숨기기' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
   });
 });

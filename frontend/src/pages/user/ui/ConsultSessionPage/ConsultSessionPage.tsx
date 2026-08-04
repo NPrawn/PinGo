@@ -3,7 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { isClosedConsultation, useConsultStore } from '@/entities/consult';
-import { useNavigationStore, type IndoorPoint } from '@/entities/navigation';
+import { FACILITY_MAP_FILTERS, useStationFacilities, type Facility } from '@/entities/facility';
+import { useStationFloorMaps } from '@/entities/floor-map';
+import { routeProgressOf, useNavigationStore, type IndoorPoint } from '@/entities/navigation';
+import { routeOriginOf, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
 import {
@@ -16,7 +19,7 @@ import {
 } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
 import { useRemoteScreenDraw } from '@/features/shared-screen-draw';
-import { endConsultationByUser, getConsultation } from '@/shared/api';
+import { createIndoorRoute, endConsultationByUser, getConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import {
   xrSessionController,
@@ -143,9 +146,13 @@ export function ConsultSessionPage() {
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
-  const routeResult = useNavigationStore((state) => state.routeResult);
+  const storedRouteResult = useNavigationStore((state) => state.routeResult);
+  const currentNodeId = useNavigationStore((state) => state.currentNodeId);
+  const targetNodeId = useNavigationStore((state) => state.targetNodeId);
+  const routeType = useNavigationStore((state) => state.route);
   const waypoints = useNavigationStore((state) => state.waypoints);
   const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
+  const storedTravelledM = useNavigationStore((state) => state.travelledM);
 
   /**
    * 상담 진입 시점의 확정 실내 위치. 앵커의 기준점이다.
@@ -238,6 +245,54 @@ export function ConsultSessionPage() {
   const currentLocation = trackedLocation ?? confirmedLocation;
 
   /**
+   * 층 선택과 시설 필터. 안내 화면과 같은 조작을 상담 중에도 쓸 수 있어야 한다.
+   *
+   * 이것이 없으면 상담자가 "한 층 위 엘리베이터로 가세요"라고 말해도 사용자는 그 층을 볼 방법이
+   * 없고, 시설이 하나도 그려지지 않아 짚어 준 자리를 도면에서 찾을 수 없다.
+   *
+   * **층 목록은 지도 응답에서 만든다.** `floor_id` 는 auto-increment 라 코드↔id 매핑을 상수로
+   * 두면 시드가 바뀔 때 조용히 어긋난다.
+   */
+  const floorMaps = useStationFloorMaps(stationId ?? 0).data ?? [];
+  /** 사용자가 탭으로 고른 층. null 이면 현재 위치를 따라간다. */
+  const [pickedFloorId, setPickedFloorId] = useState<number | null>(null);
+  const displayedFloorId = pickedFloorId ?? currentLocation?.floorId ?? currentFloorId ?? undefined;
+
+  /**
+   * 시설 표시 상태. 안내 화면과 같은 모델이다 — `all`·`none`·유형 하나를 **한 상태로** 둔다.
+   *
+   * 유형과 숨김을 따로 두면 "숨김인데 유형도 켜져 있는" 조합이 생긴다.
+   */
+  const [facilityView, setFacilityView] = useState<string>('all');
+  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
+  const facilities = useStationFacilities(stationId ?? 0).data;
+  /**
+   * 표시 층에 실제로 있는 유형만 칩으로 둔다. 눌러서 아무것도 나오지 않는 칩은 두지 않는다 —
+   * 역삼역 B3 에는 승차권 충전기가 없는데 칩이 늘 떠 있으면 없다는 것을 눌러 봐야만 알 수 있다.
+   */
+  const floorFacilityTypes = new Set(
+    (facilities ?? [])
+      .filter((facility) => facility.floorId === displayedFloorId)
+      .map((facility) => facility.facilityType),
+  );
+  const availableFilters = FACILITY_MAP_FILTERS.filter((filter) =>
+    floorFacilityTypes.has(filter.facilityType),
+  );
+  /**
+   * 켜 둔 유형이 표시 층에 없으면 전체 표시로 친다. 고른 값 자체는 지우지 않는다 — 층을 넘길
+   * 때마다 사라지면 돌아왔을 때 매번 다시 눌러야 한다. 숨김은 층과 무관하므로 그대로 둔다.
+   */
+  const effectiveView =
+    facilityView !== 'all' &&
+    facilityView !== 'none' &&
+    facilities !== undefined &&
+    !floorFacilityTypes.has(facilityView)
+      ? 'all'
+      : facilityView;
+  /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
+  const effectiveType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
+
+  /**
    * 지금 상담자에게 무엇이 건너가고 있는지.
    *
    * `unsupported`를 숨기지 않는다. 이 기기에서는 세션 카메라를 얻을 수 없다는 뜻이고, 그 상태로
@@ -253,6 +308,51 @@ export function ConsultSessionPage() {
         ? '상담 연결됨 · 이 기기는 카메라를 보낼 수 없어요'
         : '상담 연결됨 · 카메라 준비 중';
   /**
+   * 경로를 이 화면에서도 직접 조회한다. (S15P11A206-89)
+   *
+   * **예전에는 스토어에 있는 것만 그렸다.** 안내 화면이 조회해 넣어 둔 값을 읽을 뿐이라, 그것이
+   * 비어 있으면 지도에 경로가 그려지지 않았다. 안내 화면을 거치지 않고 들어온 경우, 새로고침으로
+   * 스토어가 초기화된 경우, 그리고 **상담자가 목적지를 바꾼 경우**가 그렇다 — 마지막 것이 특히
+   * 문제였다. `DESTINATION_CHANGE_REQUESTED` 는 `targetNodeId` 만 바꾸는데 경로를 다시 받는
+   * 사람이 없어, 화면에 적힌 목적지와 지도에 그려진 길이 서로 다른 곳을 가리켰다.
+   *
+   * 조회 키와 조건은 안내 화면과 같다. 같은 키를 쓰므로 안내 화면에서 이미 받은 경로가 있으면
+   * 캐시에서 즉시 나오고 요청이 한 번 더 나가지 않는다.
+   */
+  const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
+  const origin = SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null;
+  const routeQuery = useQuery({
+    queryKey: [
+      'indoor-route',
+      stationId,
+      currentNodeId,
+      targetNodeId,
+      routeType,
+      waypointNodeIds,
+      origin?.currentMapX ?? null,
+      origin?.currentMapY ?? null,
+    ],
+    queryFn: () =>
+      createIndoorRoute({
+        stationId: stationId!,
+        startNodeId: currentNodeId!,
+        targetNodeId: targetNodeId!,
+        waypointNodeIds,
+        routeType,
+        ...(origin ?? {}),
+      }),
+    enabled: stationId != null && currentNodeId != null && targetNodeId != null,
+    retry: false,
+  });
+  /**
+   * 조회가 끝나기 전에는 스토어에 남은 경로를 그린다.
+   *
+   * 안내 화면에서 넘어온 순간에는 캐시가 있어 곧바로 나오지만, 새로고침 뒤에는 응답을 기다리는
+   * 동안 경로가 비어 있다. 그 사이에 선을 지우면 상담자가 짚어 주는 자리를 맞춰 볼 수 없다.
+   */
+  const routeResult = routeQuery.data ?? storedRouteResult;
+
+  /**
    * 경로의 마지막 노드를 목적지 마커로 쓴다.
    *
    * 이름으로 시설을 되찾아 좌표를 맞추는 대신 경로 응답을 그대로 쓴다. 이름과 좌표가 서로
@@ -267,6 +367,31 @@ export function ConsultSessionPage() {
     [routeResult],
   );
   const destinationPoint = pathNodes.at(-1) ?? null;
+
+  /**
+   * 경로 진행도. 다리별 명도를 정하는 데 쓴다. (S15P11A206-89)
+   *
+   * **진행 거리는 스토어 값을 읽기만 한다.** 되돌아가지 않게 최대값을 남기는 일은 안내 화면이
+   * 한다 — 두 화면이 같은 열쇠에 각자 쓰면 어느 값이 남는지 순서에 달리고, 상담 중 잠깐 뒤로
+   * 잡힌 좌표가 안내 화면의 진행도를 되돌릴 수 있다. 여기서 필요한 것은 지금 어느 다리를 걷는지
+   * 판단하는 것뿐이며, 진행 거리가 0이어도 경로선은 그대로 그려진다.
+   */
+  const progress = routeProgressOf({
+    pathNodes,
+    steps: routeResult?.steps,
+    currentLocation,
+    travelledM: storedTravelledM,
+  });
+  /**
+   * 지금 걷고 있는 다리. 지나온 경유지 수가 곧 다리 번호다.
+   *
+   * 경유지가 없으면 나눌 다리가 없고, 경로에서 벗어난 동안에는 어느 다리인지 말할 근거가 없다.
+   * 둘 다 null 이며 지도는 한 색으로 그린다.
+   */
+  const activeLeg =
+    progress.offRoute || waypoints.length === 0
+      ? null
+      : waypointNodeIds.filter((nodeId) => progress.passedNodeIds.includes(nodeId)).length;
 
   /**
    * 보고 있는 지도를 상담자 화면에 그대로 옮긴다.
@@ -405,6 +530,15 @@ export function ConsultSessionPage() {
     <PhoneFrame
       dark
       layout="flush"
+      phoneClassName={styles.phone}
+      /*
+        상단 여백은 `.bar` 가 자기 패딩으로 만든다.
+
+        세션이 열리면 `dom-overlay` 가 오버레이 루트만 화면 전체에 그리므로, PhoneFrame 이 루트
+        밖에 두는 여백은 컴포지터에게 버려진다. 여백이 루트 안에 있어야 세션 전후로 헤더 영역이
+        같다. 여기서 켜 두면 세션 전에만 46px 이 두 번 들어간다.
+      */
+      reserveTopSpace={false}
       overlay={
         /**
          * 세션 안내가 화면 전체를 덮는다. 세션을 열기 전에는 위치도 카메라도 흐르지 않으므로
@@ -436,13 +570,14 @@ export function ConsultSessionPage() {
             {cameraShareLabel}
             <span className={styles.liveShine} />
           </span>
+          {/* 추적 상태는 안내 화면과 같은 자리(상단 줄 가운데)에 둔다. */}
+          <XrTrackingBadge status={xrStatus} anchorStatus={anchorStatus} source={source} />
           <button type="button" className={styles.endCall} onClick={() => void endCall()}>
             상담 종료
           </button>
         </div>
 
         <div className={[styles.cam, isSessionOpen && styles.camLive].filter(Boolean).join(' ')}>
-          <XrTrackingBadge status={xrStatus} anchorStatus={anchorStatus} source={source} />
           {/*
             signaling이 붙기 전에 끊기면(1009 등) 원인 코드만 화면에 남아 있었다. 자동으로
             다시 맺는 동안에는 그 문구 대신 로딩 화면을 보여 준다 — 재시도가 곧 이어지므로
@@ -577,16 +712,113 @@ export function ConsultSessionPage() {
             <div className={styles.mapCanvas}>
               <IndoorMapView
                 stationId={stationId ?? 0}
-                floorId={currentLocation?.floorId ?? currentFloorId ?? undefined}
+                floorId={displayedFloorId}
                 currentLocation={currentLocation}
                 /* 사용자 화면은 안내 화면과 같이 진행 방향이 위를 향하게 돈다. */
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
                 destinationLabel={destination}
                 pathNodes={pathNodes}
+                /* 경유지 번호 핀과 다리별 색. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
+                waypointNodeIds={waypointNodeIds}
+                /* 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는 연하게 그린다. */
+                activeLeg={activeLeg}
+                /*
+                  내 점과 경로 사이의 빈 자리를 잇는다. **벗어난 동안에도 잇는다.**
+
+                  서버가 진입 노드를 목적지 기준으로 다시 고르면 그 노드가 수십 m 떨어질 수 있고,
+                  그 층에 남는 경로 노드가 그것 하나뿐이면 이탈로 판정되어 지도가 통째로 빈다.
+                  아무것도 그리지 않으면 사용자는 자기 층에 경로가 없다고 읽는다. (S15P11A206-83)
+                */
+                connectCurrentToRoute
                 followCamera
-                useMockData
+                /* `내 위치` 버튼은 고른 층까지 함께 되돌린다. 시점만 돌리면 다른 층을 보던
+                   사용자는 그 층 지도가 자기 좌표로 옮겨진 것만 보고 마커는 그려지지 않는다. */
+                onRecenter={() => setPickedFloorId(null)}
+                facilityType={effectiveType}
+                /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼진다. */
+                showAllFacilities={effectiveView === 'all'}
+                selectedFacilityId={selectedFacility?.facilityId}
+                onSelectFacility={setSelectedFacility}
               />
+            </div>
+
+            <div className={styles.floorButtons} role="group" aria-label="층 선택">
+              {floorMaps.map((map) => {
+                const on = map.floorId === displayedFloorId;
+
+                return (
+                  <button
+                    key={map.floorId}
+                    type="button"
+                    aria-pressed={on}
+                    className={[styles.floorButton, on && styles.floorButtonOn]
+                      .filter(Boolean)
+                      .join(' ')}
+                    onClick={() => {
+                      setPickedFloorId(map.floorId);
+                      // 다른 층의 시설을 고른 상태로 남기지 않는다.
+                      setSelectedFacility(null);
+                    }}
+                  >
+                    {map.floorCode}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className={styles.facilityFilters} role="group" aria-label="시설 필터">
+              {availableFilters.map((filter) => {
+                const active = effectiveView === filter.facilityType;
+
+                return (
+                  <button
+                    key={filter.facilityType}
+                    type="button"
+                    className={[styles.facilityFilter, active && styles.facilityFilterOn]
+                      .filter(Boolean)
+                      .join(' ')}
+                    aria-label={`${filter.name} ${active ? '필터 해제' : '필터 적용'}`}
+                    aria-pressed={active}
+                    title={filter.name}
+                    onClick={() => {
+                      // 켜 둔 것을 다시 누르면 전체 표시로 돌아간다.
+                      setFacilityView(active ? 'all' : filter.facilityType);
+                      setSelectedFacility(null);
+                    }}
+                  >
+                    <Icon name={filter.icon} size={14} />
+                  </button>
+                );
+              })}
+
+              {/*
+                전부 감추기.
+
+                유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 다시 누르면 전체 표시로
+                돌아온다 — 되돌릴 방법이 없으면 누르기를 망설이게 된다. 목적지·내 위치·경로는
+                그대로 둔다. 안내에 필요한 표시까지 사라지면 지도가 길을 알려 주지 못한다.
+              */}
+              <button
+                type="button"
+                className={[
+                  styles.facilityFilter,
+                  effectiveView === 'none' && styles.facilityFilterOn,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                aria-label={
+                  effectiveView === 'none' ? '시설 아이콘 다시 보기' : '시설 아이콘 모두 숨기기'
+                }
+                aria-pressed={effectiveView === 'none'}
+                title={effectiveView === 'none' ? '시설 아이콘 다시 보기' : '시설 아이콘 숨기기'}
+                onClick={() => {
+                  setFacilityView(effectiveView === 'none' ? 'all' : 'none');
+                  setSelectedFacility(null);
+                }}
+              >
+                <Icon name={effectiveView === 'none' ? 'eye' : 'eye-off'} size={14} />
+              </button>
             </div>
           </MapPreview>
 
