@@ -9,6 +9,8 @@ import {
 } from '@/entities/facility';
 import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
 import {
+  carriesDistance,
+  instructionAt,
   routeBearingOf,
   routePathNodesOf,
   routeProgressOf,
@@ -532,7 +534,10 @@ export function NavigationPage() {
           ? '다음 안내 · 경로 다시 계산 중'
           : `다음 안내 · ${Math.round(nextDistance)}m`,
       title: activeStep.instruction ?? '경로를 따라 이동하세요',
-      meta: totalMinutes === null ? `총 ${totalDistance}m` : `총 ${totalDistance}m · 약 ${totalMinutes}분`,
+      meta:
+        totalMinutes === null
+          ? `총 ${totalDistance}m`
+          : `총 ${totalDistance}m · 약 ${totalMinutes}분`,
     };
   })();
 
@@ -980,6 +985,19 @@ export function NavigationPage() {
                     progress.currentStepIndex !== null &&
                     index < progress.currentStepIndex;
 
+                  /*
+                    지금 걷는 줄만 **남은** 거리를 적는다. 지나온 줄과 앞으로 올 줄은 구간 전체
+                    길이다 — 지나온 구간에 "197m 걸었다"가 남는 것이 정보이고, 앞으로 올 구간은
+                    아직 걷지 않았으므로 남은 거리라고 말할 것이 없다.
+
+                    숫자는 한 줄에 한 번만 보인다. 문장이 거리를 품는 구간(직진·회전)은 문장 안에
+                    적고, 품지 않는 구간(층 이동·개찰구)은 오른쪽 칸에 적는다. 둘 다 적으면 같은
+                    줄에 197m 와 42m 가 나란히 놓인다.
+                  */
+                  const shownDistanceM = active
+                    ? (progress.stepRemainingM ?? step.distanceM ?? 0)
+                    : (step.distanceM ?? 0);
+
                   return (
                     <div
                       key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
@@ -991,13 +1009,8 @@ export function NavigationPage() {
                       <span className={styles.stepIcon}>
                         {passed ? <Icon name="check" size={13} /> : '↑'}
                       </span>
-                      <b>{step.instruction ?? step.moveType ?? '이동'}</b>
-                      <span>
-                        {Math.round(step.distanceM ?? 0)}m
-                        {minutesOf(step.estimatedTimeSec) === null
-                          ? null
-                          : ` · 약 ${minutesOf(step.estimatedTimeSec)}분`}
-                      </span>
+                      <b>{instructionAt(step, shownDistanceM)}</b>
+                      <span>{carriesDistance(step) ? null : `${Math.round(shownDistanceM)}m`}</span>
                     </div>
                   );
                 })}

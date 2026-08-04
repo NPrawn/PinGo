@@ -1135,6 +1135,19 @@ export interface components {
       moveType?: string;
       instruction?: string;
       /**
+       * `instruction`과 같은 문장인데 거리 자리가 `{distance}`로 비어 있다. (S15P11A206-339)
+       *
+       * **걷는 동안 남은 거리를 보여줄 때 쓴다.** `instruction`에는 구간 전체 길이가 박혀 있어
+       * 197m 구간을 절반 걸어도 "197m 직진하세요"라고 말한다. 한 안내가 여러 간선을 담게 되면서
+       * 그 차이가 커졌다.
+       *
+       * 거리를 앞에 붙이는 방법은 쓸 수 없다 — 숫자 위치가 언어마다 다르다. 한국어는
+       * `"197m 직진하세요."`로 앞이고 영어는 `"Go straight for 197m."`로 중간이다.
+       *
+       * 거리가 들어가지 않는 문장(층 이동·개찰구)은 `instruction`과 같은 값이라 그대로 쓰면 된다.
+       */
+      instructionTemplate?: string;
+      /**
        * 이전 구간에서 이 구간으로 꺾이는 방향. (S15P11A206-337)
        *
        * **첫 단계이거나 구간이 너무 짧아 판단할 수 없으면 없다** — `straight`와 구분된다.
