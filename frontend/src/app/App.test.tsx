@@ -609,17 +609,18 @@ describe('user routes', () => {
   });
 
   /**
-   * 사용자 좌표. (S15P11A206-83 / S15P11A206-337)
+   * 사용자 좌표. (S15P11A206-83 / S15P11A206-337 / S15P11A206-338)
    *
-   * 좌표를 보내면 서버가 진입 노드를 목적지 기준으로 다시 고르는데, 그 기준이 **직선 거리**라
-   * 선로를 모른다. 역삼역 B3는 선로 양쪽에 승강장이 있어(y≈24와 y≈2) 반대편 계단이 직선으로 더
-   * 가깝게 나오고, 실제로 관통하는 경로가 나왔다 — 같은 승강장 계단 5가 27.7m인데 건너편 계단 7
-   * (35.6m)이 뽑혔다.
+   * 좌표를 보내면 서버가 진입 노드를 목적지 기준으로 다시 고른다. 한동안 껐던 배선이다 — 서버가
+   * 후보를 "같은 층 + 목적지에서 도달 가능"으로만 걸러서 선로 건너편 승강장이 뽑혔고, 화면에
+   * 선로를 관통하는 선이 그려졌다.
    *
-   * 배선은 남겨 두고 `SEND_CURRENT_POSITION`만 껐다. 백엔드가 그래프 거리로 고르게 되면 그 값을
-   * 되돌리고 이 테스트를 "좌표를 함께 보낸다"로 바꾼다.
+   * 338에서 후보를 그 층 간선으로 닿는 노드로 좁히고 직선 구간에 상한을 둬서 다시 켰다. 껐다
+   * 켠 값이라 요청 본문에 실리는지를 여기서 붙잡아 둔다 — 사유는 `SEND_CURRENT_POSITION`에 있다.
+   *
+   * 좌표는 조회 키와 본문에 **같은 반올림 값**으로 실린다(0.1m). 그래서 49.121은 49.1이다.
    */
-  it('지금은 좌표를 보내지 않는다', async () => {
+  it('좌표를 함께 보낸다', async () => {
     const routeRequests: Record<string, unknown>[] = [];
     server.use(
       http.post('*/api/routes/indoor', async ({ request }) => {
@@ -633,10 +634,11 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
 
     await waitFor(() => expect(routeRequests).not.toHaveLength(0));
-    expect(routeRequests[0]).not.toHaveProperty('currentMapX');
-    expect(routeRequests[0]).not.toHaveProperty('currentMapY');
-    // 좌표가 없으면 서버가 요청에 온 진입 노드를 그대로 쓴다. 내가 서 있는 노드에서 시작한다.
-    expect(routeRequests[0]).toMatchObject({ startNodeId: 205 });
+    expect(routeRequests[0]).toMatchObject({
+      startNodeId: 205,
+      currentMapX: 49.1,
+      currentMapY: 24.3,
+    });
   });
 
   /**

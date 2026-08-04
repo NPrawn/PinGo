@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.List;
 
+import static com.pingo.backend.route.service.RouteFinder.graphOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
@@ -27,7 +28,7 @@ class RouteFinderTest {
                 edge(3, 2, 10, RouteMoveType.WALKWAY, true)
         );
 
-        RoutePath path = routeFinder.find(edges, 1, 2, RouteType.FASTEST);
+        RoutePath path = routeFinder.find(graphOf(edges), 1, 2, RouteType.FASTEST);
 
         assertThat(path.isReachable()).isTrue();
         assertThat(path.nodeIds()).containsExactly(1L, 3L, 2L);
@@ -42,7 +43,7 @@ class RouteFinderTest {
                 edge(2, 3, 10, RouteMoveType.WALKWAY, true)
         );
 
-        RoutePath path = routeFinder.find(edges, 1, 3, RouteType.FASTEST);
+        RoutePath path = routeFinder.find(graphOf(edges), 1, 3, RouteType.FASTEST);
 
         assertThat(path.segments())
                 .extracting(RouteFinder.Segment::fromNodeId, RouteFinder.Segment::toNodeId)
@@ -57,7 +58,7 @@ class RouteFinderTest {
     void bidirectionalEdgeAllowsReverse() {
         List<GraphEdge> edges = List.of(edge(1, 2, 10, RouteMoveType.WALKWAY, true));
 
-        RoutePath path = routeFinder.find(edges, 2, 1, RouteType.FASTEST);
+        RoutePath path = routeFinder.find(graphOf(edges), 2, 1, RouteType.FASTEST);
 
         assertThat(path.isReachable()).isTrue();
         assertThat(path.nodeIds()).containsExactly(2L, 1L);
@@ -68,7 +69,7 @@ class RouteFinderTest {
     void unidirectionalEdgeBlocksReverse() {
         List<GraphEdge> edges = List.of(edge(1, 2, 10, RouteMoveType.WALKWAY, false));
 
-        RoutePath path = routeFinder.find(edges, 2, 1, RouteType.FASTEST);
+        RoutePath path = routeFinder.find(graphOf(edges), 2, 1, RouteType.FASTEST);
 
         assertThat(path.isReachable()).isFalse();
     }
@@ -78,7 +79,7 @@ class RouteFinderTest {
     void returnsEmptyPathWhenUnreachable() {
         List<GraphEdge> edges = List.of(edge(1, 2, 10, RouteMoveType.WALKWAY, true));
 
-        RoutePath path = routeFinder.find(edges, 1, 99, RouteType.FASTEST);
+        RoutePath path = routeFinder.find(graphOf(edges), 1, 99, RouteType.FASTEST);
 
         assertThat(path.isReachable()).isFalse();
         assertThat(path.nodeIds()).isEmpty();
@@ -96,8 +97,8 @@ class RouteFinderTest {
                 edge(3, 4, 10, RouteMoveType.ELEVATOR, true)     // 길지만 엘리베이터
         );
 
-        RoutePath fastest = routeFinder.find(edges, 1, 4, RouteType.FASTEST);
-        RoutePath elevatorOnly = routeFinder.find(edges, 1, 4, RouteType.ELEVATOR_ONLY);
+        RoutePath fastest = routeFinder.find(graphOf(edges), 1, 4, RouteType.FASTEST);
+        RoutePath elevatorOnly = routeFinder.find(graphOf(edges), 1, 4, RouteType.ELEVATOR_ONLY);
 
         assertThat(fastest.nodeIds()).containsExactly(1L, 2L, 4L);
         assertThat(fastest.totalDistanceM()).isEqualByComparingTo(BigDecimal.valueOf(15));
@@ -111,8 +112,8 @@ class RouteFinderTest {
     void elevatorOnlyUnreachableWhenOnlyStairs() {
         List<GraphEdge> edges = List.of(edge(1, 2, 10, RouteMoveType.STAIR, true));
 
-        assertThat(routeFinder.find(edges, 1, 2, RouteType.FASTEST).isReachable()).isTrue();
-        assertThat(routeFinder.find(edges, 1, 2, RouteType.ELEVATOR_ONLY).isReachable()).isFalse();
+        assertThat(routeFinder.find(graphOf(edges), 1, 2, RouteType.FASTEST).isReachable()).isTrue();
+        assertThat(routeFinder.find(graphOf(edges), 1, 2, RouteType.ELEVATOR_ONLY).isReachable()).isFalse();
     }
 
     @Test
@@ -123,7 +124,7 @@ class RouteFinderTest {
                 timedEdge(2, 3, 10, 40, RouteMoveType.WALKWAY, true)
         );
 
-        RoutePath path = routeFinder.find(edges, 1, 3, RouteType.FASTEST);
+        RoutePath path = routeFinder.find(graphOf(edges), 1, 3, RouteType.FASTEST);
 
         assertThat(path.totalTimeSec()).isEqualTo(70);
     }
@@ -136,7 +137,7 @@ class RouteFinderTest {
                 edge(2, 3, 10, RouteMoveType.WALKWAY, true) // 시간 없음
         );
 
-        RoutePath path = routeFinder.find(edges, 1, 3, RouteType.FASTEST);
+        RoutePath path = routeFinder.find(graphOf(edges), 1, 3, RouteType.FASTEST);
 
         assertThat(path.isReachable()).isTrue();
         assertThat(path.totalTimeSec()).isNull();
@@ -147,7 +148,7 @@ class RouteFinderTest {
     void sameStartAndTargetReturnsZeroDistancePath() {
         List<GraphEdge> edges = List.of(edge(1, 2, 10, RouteMoveType.WALKWAY, true));
 
-        RoutePath path = routeFinder.find(edges, 1, 1, RouteType.FASTEST);
+        RoutePath path = routeFinder.find(graphOf(edges), 1, 1, RouteType.FASTEST);
 
         assertThat(path.isReachable()).isTrue();
         assertThat(path.nodeIds()).containsExactly(1L);
@@ -164,7 +165,7 @@ class RouteFinderTest {
                 edge(2, 3, 20, RouteMoveType.WALKWAY, true)
         );
 
-        InboundSearch search = routeFinder.searchInbound(edges, 3, RouteType.FASTEST);
+        InboundSearch search = routeFinder.searchInbound(graphOf(edges), 3, RouteType.FASTEST);
 
         assertThat(search.distanceFrom(1L)).isEqualByComparingTo(BigDecimal.valueOf(30));
         assertThat(search.distanceFrom(2L)).isEqualByComparingTo(BigDecimal.valueOf(20));
@@ -179,7 +180,7 @@ class RouteFinderTest {
                 timedEdge(2, 3, 20, 30, RouteMoveType.WALKWAY, true)
         );
 
-        RoutePath path = routeFinder.searchInbound(edges, 3, RouteType.FASTEST).pathFrom(1L);
+        RoutePath path = routeFinder.searchInbound(graphOf(edges), 3, RouteType.FASTEST).pathFrom(1L);
 
         assertThat(path.nodeIds()).containsExactly(1L, 2L, 3L);
         assertThat(path.segments())
@@ -202,8 +203,8 @@ class RouteFinderTest {
                 edge(3, 2, 5, RouteMoveType.WALKWAY, true)
         );
 
-        InboundSearch toOne = routeFinder.searchInbound(edges, 1, RouteType.FASTEST);
-        InboundSearch toTwo = routeFinder.searchInbound(edges, 2, RouteType.FASTEST);
+        InboundSearch toOne = routeFinder.searchInbound(graphOf(edges), 1, RouteType.FASTEST);
+        InboundSearch toTwo = routeFinder.searchInbound(graphOf(edges), 2, RouteType.FASTEST);
 
         // 2 에서 1 로 가는 길은 없다
         assertThat(toOne.reaches(2L)).isFalse();
@@ -223,10 +224,61 @@ class RouteFinderTest {
                 edge(3, 2, 10, RouteMoveType.WALKWAY, true)
         );
 
-        InboundSearch search = routeFinder.searchInbound(edges, 2, RouteType.ELEVATOR_ONLY);
+        InboundSearch search = routeFinder.searchInbound(graphOf(edges), 2, RouteType.ELEVATOR_ONLY);
 
         assertThat(search.reaches(1L)).isFalse();
         assertThat(search.reaches(3L)).isTrue();
+    }
+
+    /**
+     * 같은 그래프로 여러 번 탐색해도 인접 목록을 다시 만들지 않는다.
+     *
+     * <p>인접 목록은 {@code private} 이라 밖에서 셀 수 없으므로 <b>구간 객체의 동일성</b>으로
+     * 본다. {@link RouteFinder.Segment} 는 인접 목록을 만들 때 생성되므로, 두 번째 탐색이 첫
+     * 번째와 같은 인스턴스를 내놓으면 다시 만들지 않은 것이다. {@code isSameAs} 로 봐야 한다 —
+     * record 라 {@code equals} 는 값이 같으면 통과해서 재생성을 잡지 못한다.
+     *
+     * <p>역방향 인접 목록도 정방향에서 파생되므로 같은 인스턴스를 공유한다. (S15P11A206-338)
+     */
+    @Test
+    @DisplayName("같은 그래프로 여러 번 탐색하면 인접 목록을 재사용한다")
+    void reusesAdjacencyAcrossSearches() {
+        List<GraphEdge> edges = List.of(
+                edge(1, 2, 10, RouteMoveType.WALKWAY, true),
+                edge(2, 3, 10, RouteMoveType.WALKWAY, true)
+        );
+        RouteFinder.RouteGraph graph = graphOf(edges);
+
+        RouteFinder.Segment first = routeFinder.find(graph, 1, 3, RouteType.FASTEST).segments().get(0);
+        RouteFinder.Segment second = routeFinder.find(graph, 1, 3, RouteType.FASTEST).segments().get(0);
+        RouteFinder.Segment viaInbound =
+                routeFinder.searchInbound(graph, 3, RouteType.FASTEST).pathFrom(1L).segments().get(0);
+
+        assertThat(second).isSameAs(first);
+        assertThat(viaInbound).isSameAs(first);
+
+        // 그래프를 새로 만들면 당연히 새 인스턴스다. 위의 동일성이 우연이 아님을 확인한다.
+        RouteFinder.Segment fromNewGraph =
+                routeFinder.find(graphOf(edges), 1, 3, RouteType.FASTEST).segments().get(0);
+        assertThat(fromNewGraph).isNotSameAs(first).isEqualTo(first);
+    }
+
+    /** 경로 유형이 다르면 간선 필터가 달라 인접 목록도 따로 만든다. */
+    @Test
+    @DisplayName("경로 유형별로 인접 목록을 따로 가진다")
+    void keepsAdjacencyPerRouteType() {
+        List<GraphEdge> edges = List.of(
+                edge(1, 2, 10, RouteMoveType.WALKWAY, true),
+                edge(2, 3, 10, RouteMoveType.STAIR, true),
+                edge(2, 3, 30, RouteMoveType.ELEVATOR, true)
+        );
+        RouteFinder.RouteGraph graph = graphOf(edges);
+
+        RoutePath fastest = routeFinder.find(graph, 1, 3, RouteType.FASTEST);
+        RoutePath elevatorOnly = routeFinder.find(graph, 1, 3, RouteType.ELEVATOR_ONLY);
+
+        assertThat(fastest.totalDistanceM()).isEqualByComparingTo(BigDecimal.valueOf(20));
+        assertThat(elevatorOnly.totalDistanceM()).isEqualByComparingTo(BigDecimal.valueOf(40));
     }
 
     private GraphEdge edge(long from, long to, long distanceM, RouteMoveType moveType, boolean bidirectional) {
