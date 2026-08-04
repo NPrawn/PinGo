@@ -2,27 +2,56 @@
  * WebRTC DataChannel 로 오가는 상담 이벤트.
  *
  * `docs/WebRTC_DataChannel_이벤트_명세서.md` 4·6·7장의 계약을 그대로 옮긴 것이다.
- * 좌표는 공유 화면 기준 정규화 값(0~1)이라 두 기기의 해상도·비율이 달라도 같은 자리에
- * 그려진다.
+ *
+ * **그리기 좌표는 두 계가 있다.** 명세 6장은 공유 화면 기준 정규화 값(0~1) 하나만 두었는데,
+ * 그것은 상담자가 사용자의 **카메라 영상** 위에 그린다는 전제였다. 지도 위에 그리는 선은 두
+ * 사람의 확대·이동·회전·표시 층이 달라 그 기준이 통하지 않으므로 캐노니컬 미터를 쓴다.
+ * 자세한 근거는 `MapDrawPoint` 에 적어 두었다. (S15P11A206-89)
  */
 
 export type ConsultEventSender = 'USER' | 'COUNSELOR' | 'SYSTEM';
 
+/** 공유 화면 기준 정규화 좌표(0~1). 카메라 영상 위에 그리는 선이 쓴다(명세 6장). */
 export interface DrawPoint {
   x: number;
   y: number;
 }
 
-export interface DrawStrokeStartPayload extends DrawPoint {
-  strokeId: string;
-  color: string;
-  width: number;
+/**
+ * 지도 위 한 점. **캐노니컬 미터**다. (S15P11A206-89)
+ *
+ * 지도에는 정규화 좌표를 쓸 수 없다. 두 사람이 보는 범위가 다르고(사용자는 60m로 당겨 자기
+ * 위치를 따라가고 상담자는 전체를 본다), 사용자 지도는 진행 방향으로 **회전**하며, 층도 서로
+ * 다를 수 있다. 같은 0.5·0.5가 전혀 다른 곳을 가리킨다.
+ *
+ * 미터로 보내면 받는 쪽이 자기 화면의 변환으로 투영하므로 확대·이동·회전과 무관하게 같은 자리에
+ * 그려진다. 지도의 다른 것(현재 위치·목적지·경로)이 이미 이 좌표를 쓴다.
+ */
+export interface MapDrawPoint {
+  mapX: number;
+  mapY: number;
 }
 
-export interface DrawStrokeMovePayload {
-  strokeId: string;
-  points: DrawPoint[];
-}
+/**
+ * 선 하나의 시작.
+ *
+ * **두 좌표계를 유니온으로 갈라 둔다.** 한 payload에 둘을 섞으면 받는 쪽이 어느 쪽을 읽어야
+ * 하는지 런타임에 판단해야 하고, 잘못 읽어도 오류가 나지 않고 선만 엉뚱한 자리에 뜬다. 유니온이면
+ * 컴파일러가 반대쪽 필드 접근을 막는다.
+ */
+export type DrawStrokeStartPayload =
+  | ({ strokeId: string; color: string; width: number } & DrawPoint)
+  | {
+      strokeId: string;
+      color: string;
+      width: number;
+      /** 이 선이 놓인 층. 다른 층을 보고 있으면 그리지 않는다. */
+      floorId: number;
+      map: MapDrawPoint;
+    };
+
+export type DrawStrokeMovePayload =
+  { strokeId: string; points: DrawPoint[] } | { strokeId: string; mapPoints: MapDrawPoint[] };
 
 export interface DrawStrokeEndPayload {
   strokeId: string;

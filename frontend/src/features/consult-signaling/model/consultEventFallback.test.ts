@@ -23,6 +23,14 @@ function move(strokeId: string, x: number) {
   return drawEvent({ eventType: 'DRAW_STROKE_MOVE', payload: { strokeId, points: [{ x, y: x }] } });
 }
 
+/** 지도 위에 그린 선의 이동. 좌표계가 캐노니컬 미터다. */
+function mapMove(strokeId: string, mapX: number) {
+  return drawEvent({
+    eventType: 'DRAW_STROKE_MOVE',
+    payload: { strokeId, mapPoints: [{ mapX, mapY: mapX }] },
+  });
+}
+
 /** 보낸 순서대로의 요청 본문. */
 function publishedPayloads() {
   return publish.mock.calls.map(
@@ -66,6 +74,50 @@ describe('createConsultEventFallback', () => {
         { x: 0.2, y: 0.2 },
         { x: 0.3, y: 0.3 },
       ],
+    });
+  });
+
+  /** 지도 위에 그린 선도 같은 선끼리 모여야 한다. 요청 수가 줄어드는 이유가 같다. */
+  it('지도 위에 그린 선의 이동도 한 요청으로 모아 보낸다', async () => {
+    const fallback = createConsultEventFallback('consultation-1', 100);
+
+    fallback.send(mapMove('stroke_1', 1));
+    fallback.send(mapMove('stroke_1', 2));
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    const [request] = publishedPayloads();
+    expect(request.payload.payload).toEqual({
+      strokeId: 'stroke_1',
+      mapPoints: [
+        { mapX: 1, mapY: 1 },
+        { mapX: 2, mapY: 2 },
+      ],
+    });
+  });
+
+  /**
+   * 좌표계가 다른 이동은 합치지 않는다. (S15P11A206-89)
+   *
+   * 카메라 영상 위 그리기는 0~1 정규화, 지도 위 그리기는 캐노니컬 미터다. 한 배열에 섞으면
+   * 받는 쪽이 전부를 한 계로 읽어 절반이 엉뚱한 자리에 찍힌다. 오류가 나지 않으므로 합쳐 버리면
+   * 알아챌 방법이 없다.
+   */
+  it('좌표계가 다른 이동은 합치지 않고 따로 보낸다', async () => {
+    const fallback = createConsultEventFallback('consultation-1', 100);
+
+    fallback.send(move('stroke_1', 0.1));
+    fallback.send(mapMove('stroke_1', 5));
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(publish).toHaveBeenCalledTimes(2);
+    const [first, second] = publishedPayloads();
+    expect(first.payload.payload).toEqual({ strokeId: 'stroke_1', points: [{ x: 0.1, y: 0.1 }] });
+    expect(second.payload.payload).toEqual({
+      strokeId: 'stroke_1',
+      mapPoints: [{ mapX: 5, mapY: 5 }],
     });
   });
 

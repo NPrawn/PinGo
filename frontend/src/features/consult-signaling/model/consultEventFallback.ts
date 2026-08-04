@@ -1,5 +1,5 @@
 import { publishConsultationDataChannelEvent } from '@/shared/api';
-import type { ConsultDataEvent } from '@/shared/types';
+import type { ConsultDataEvent, DrawStrokeMovePayload } from '@/shared/types';
 
 /**
  * DataChannel 이 열리지 않았을 때 상담 이벤트가 지나는 우회로.
@@ -11,6 +11,28 @@ import type { ConsultDataEvent } from '@/shared/types';
 
 /** 이동 이벤트를 모아 두는 시간. 길수록 요청은 줄지만 선이 늦게 따라 그려진다. */
 const DEFAULT_FLUSH_MS = 100;
+
+/**
+ * 같은 선의 이동 좌표를 하나로 합친다. 합칠 수 없으면 null.
+ *
+ * 카메라 영상 위 그리기(정규화 0~1)와 지도 위 그리기(캐노니컬 미터)는 좌표계가 다르다. 한
+ * 배열에 섞으면 받는 쪽이 전부를 한 계로 읽어 절반이 엉뚱한 자리에 찍힌다. 같은 계끼리만
+ * 합치고, 다르면 합치지 않고 따로 보낸다.
+ */
+function mergeStrokeMove(
+  previous: DrawStrokeMovePayload,
+  next: DrawStrokeMovePayload,
+): DrawStrokeMovePayload | null {
+  if ('points' in previous && 'points' in next) {
+    return { ...previous, points: [...previous.points, ...next.points] };
+  }
+
+  if ('mapPoints' in previous && 'mapPoints' in next) {
+    return { ...previous, mapPoints: [...previous.mapPoints, ...next.mapPoints] };
+  }
+
+  return null;
+}
 
 export interface ConsultEventFallback {
   send: (event: ConsultDataEvent) => void;
@@ -68,10 +90,11 @@ export function createConsultEventFallback(
       last.payload.strokeId === event.payload.strokeId
     ) {
       // 같은 선을 잇는 점들이다. 하나로 합쳐도 그려지는 모양은 같다.
-      queue[queue.length - 1] = {
-        ...last,
-        payload: { ...last.payload, points: [...last.payload.points, ...event.payload.points] },
-      };
+      const merged = mergeStrokeMove(last.payload, event.payload);
+
+      // 좌표계가 다르면 합치지 않는다. 합치면 한쪽 좌표가 조용히 사라진다.
+      if (merged) queue[queue.length - 1] = { ...last, payload: merged };
+      else queue.push(event);
     } else if (event.eventType === 'MAP_SYNC') {
       /**
        * 지도 상태는 쌓이는 것이 아니라 덮어쓰는 스냅숏이다.
