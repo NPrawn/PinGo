@@ -282,6 +282,23 @@ describe('ConsultSessionPage', () => {
   });
 
   /**
+   * 붙는 과정에서 오류가 한 번 스치는 것은 정상이다 — 토큰을 아직 받지 못했거나 첫 handshake 가
+   * 늦은 경우다. 그때마다 칩에 `연결 실패`를 적으면 접속 직후부터 실패로 보여, 곧 붙을 상담을
+   * 사용자가 그 자리에서 나가 버린다. 원인은 아래 `연결 상태:` 줄이 따로 알린다.
+   */
+  it('붙는 중에 오류가 스쳐도 칩은 연결 중이라고 적는다', async () => {
+    apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
+    signaling.state = { ...signaling.state, status: 'signaling', error: '연결 코드 1009' };
+
+    renderPage();
+
+    expect(await screen.findByText('연결 중')).toBeInTheDocument();
+    expect(screen.queryByText('연결 실패')).toBeNull();
+    // 사실 자체는 숨기지 않는다. 원인은 따로 보인다.
+    expect(screen.getByRole('alert')).toHaveTextContent('연결 코드 1009');
+  });
+
+  /**
    * 트랙 자체를 만들 수 없는 기기. 이 사실을 숨기면 상담자는 검은 화면을 보는데 사용자는
    * 자기 모습이 건너가고 있다고 믿는다. 무엇이 막혔는지 적어야 말로 설명할 수 있다.
    */
