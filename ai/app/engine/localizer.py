@@ -10,7 +10,7 @@ import torch
 
 from app.engine.feature_extractor import AlikedFeatureExtractor, LocalFeatures
 from app.engine.global_feature_extractor import NetVladFeatureExtractor
-from app.engine.image_preprocessor import prepare_query_variants
+from app.engine.image_preprocessor import prepare_query_image
 from app.maps.map_context import MapContext
 
 
@@ -122,7 +122,7 @@ class ImageLocalizer:
         focal_length_px: float,
         top_k: int = 20,
     ) -> LocalizationResult:
-        canonical = prepare_query_variants(image, focal_length_px, self.input_size)[0]
+        canonical = prepare_query_image(image, focal_length_px, self.input_size)
         return self.localize_prepared(
             self.prepare_query(canonical.pixels),
             focal_length_px=canonical.focal_length_px,
@@ -492,7 +492,7 @@ class MultiMapLocalizer:
         if unknown:
             raise ValueError(f"로드되지 않은 mapVersion입니다: {', '.join(unknown)}")
 
-        aspect = prepare_query_variants(image, focal_length_px, self.input_size)[0]
+        aspect = prepare_query_image(image, focal_length_px, self.input_size)
         prepared = PreparedQuery(
             global_descriptor=self.global_extractor.extract(aspect.pixels),
             local_features=self.local_extractor.extract(aspect.pixels),

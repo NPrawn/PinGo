@@ -193,7 +193,7 @@ public class LocalizationService {
             return null;
         }
         Double score = aiResponse.quality().confidenceScore();
-        if (score == null || !Double.isFinite(score) || score <= 0.0 || score >= 1.0) {
+        if (score == null || !Double.isFinite(score) || score <= 0.0 || score > 1.0) {
             return null;
         }
         AnchoredLocation value = anchored.orElseThrow();

@@ -21,7 +21,7 @@ function validCandidate(candidate: LocalizationCandidateResponse): boolean {
     Number.isFinite(position.mapY) &&
     Number.isFinite(confidenceScore) &&
     confidenceScore > 0 &&
-    confidenceScore < 1
+    confidenceScore <= 1
   );
 }
 

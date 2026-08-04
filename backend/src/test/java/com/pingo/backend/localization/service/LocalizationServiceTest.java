@@ -249,7 +249,7 @@ class LocalizationServiceTest {
                         List.of(0.0, 0.0, 0.0),
                         List.of(1.0736587455, -1.1765271796, 6.6548534318)
                 ),
-                new AiQualityResponse(30, 20, 18, 0.15, 9.0, 20, 2, "browser", 0.72),
+                new AiQualityResponse(30, 20, 18, 0.15, 9.0, 20, 2, "browser", 1.0),
                 List.of(),
                 new AiTimingResponse(1234, null, null, null),
                 "LOW_GEOMETRIC_QUALITY"
@@ -266,7 +266,7 @@ class LocalizationServiceTest {
         assertThat(response.position()).isNull();
         assertThat(response.startNodeId()).isNull();
         assertThat(response.candidate()).isNotNull();
-        assertThat(response.candidate().confidenceScore()).isEqualTo(0.72);
+        assertThat(response.candidate().confidenceScore()).isEqualTo(1.0);
         assertThat(response.candidate().startNodeId()).isEqualTo(123L);
         assertThat(response.candidate().position().floorCode()).isEqualTo("B2");
     }
