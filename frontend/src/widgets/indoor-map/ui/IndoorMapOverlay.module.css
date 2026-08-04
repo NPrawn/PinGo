@@ -170,6 +170,18 @@
  * 각도가 진짜인 대신 가장자리로 옅어지게 해 원본의 부드러운 인상을 유지한다.
  * SVG에는 conic-gradient가 없어 방사형으로 옅어지며, 방향을 읽는 데는 차이가 없다.
  */
+/*
+  상담자가 지도 위에 그린 선. (S15P11A206-89)
+
+  색은 보낸 쪽이 정하므로 여기서 칠하지 않는다 — 상담자가 여러 색을 쓰게 되면 그대로 따라간다.
+  끝을 둥글게 두는 것은 손으로 그은 선이기 때문이다. 각진 끝은 도면의 벽선처럼 읽힌다.
+*/
+.annotationStroke {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .currentBeam {
   opacity: 1;
 }

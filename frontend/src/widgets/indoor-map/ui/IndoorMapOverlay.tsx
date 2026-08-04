@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { facilityIconOf, type Facility } from '@/entities/facility';
 import { type PixelPoint } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
+import type { MapStroke } from '../model/mapStroke';
 import styles from './IndoorMapOverlay.module.css';
 
 interface IndoorMapOverlayProps {
@@ -98,6 +99,13 @@ interface IndoorMapOverlayProps {
    * 읽는 요소만 세워 둔다.
    */
   mapRotationDeg?: number;
+  /**
+   * 상담자가 지도 위에 그린 선. 표시 층에 속한 것만 그린다. (S15P11A206-89)
+   *
+   * 좌표가 캐노니컬 미터라 `project` 로 투영하면 확대·이동·회전과 무관하게 같은 자리에 얹힌다.
+   * 두 화면이 같은 배열을 그리므로 상담자와 사용자가 같은 그림을 본다.
+   */
+  strokes?: readonly MapStroke[];
 }
 
 /**
@@ -127,6 +135,7 @@ export function IndoorMapOverlay({
   onSelectFacility,
   viewScale = 1,
   mapRotationDeg = 0,
+  strokes,
 }: IndoorMapOverlayProps) {
   const { t } = useTranslation();
   /**
@@ -160,6 +169,7 @@ export function IndoorMapOverlay({
   const waypointFontSize = WAYPOINT_FONT_SIZE * sizeUnit;
   const directionSpacing = DIRECTION_SPACING * sizeUnit;
   const directionArm = DIRECTION_ARM * sizeUnit;
+  const strokeWidth = ANNOTATION_WIDTH * sizeUnit;
   const directionWidth = DIRECTION_WIDTH * sizeUnit;
   /** 오른쪽(0도)을 향하는 화살촉. 방향은 `transform`의 회전이 맡는다. */
   const chevron = [
@@ -210,6 +220,23 @@ export function IndoorMapOverlay({
     : [];
   const destinationPoint = pointOnFloor(destination, floorId, project);
   const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project);
+  /**
+   * 상담자가 그린 선. 표시 층의 것만 투영한다.
+   *
+   * 점이 하나뿐인 선(누르고 움직이지 않은 경우)도 남긴다 — 짚어 준 자리라는 뜻이고, 아래에서
+   * 점으로 그린다. 투영할 수 없는 좌표는 빼고 남은 점으로 그린다.
+   */
+  const strokePaths = (strokes ?? [])
+    .filter((stroke) => stroke.floorId === floorId)
+    .flatMap((stroke) => {
+      const points = stroke.points.flatMap((point) => {
+        const projected = project(point.x, point.y);
+
+        return projected ? [projected] : [];
+      });
+
+      return points.length > 0 ? [{ ...stroke, points }] : [];
+    });
 
   // 그릴 것이 하나도 없으면 오버레이 자체를 만들지 않는다.
   if (
@@ -217,7 +244,8 @@ export function IndoorMapOverlay({
     waypointPins.length === 0 &&
     currentPoint === null &&
     destinationPoint === null &&
-    facilityPins.length === 0
+    facilityPins.length === 0 &&
+    strokePaths.length === 0
   ) {
     return null;
   }
@@ -322,6 +350,38 @@ export function IndoorMapOverlay({
               transform={`translate(${mark.px} ${mark.py}) rotate(${mark.angleDeg})`}
             />
           ))}
+        </g>
+      )}
+
+      {/*
+        상담자가 지도 위에 그린 선. (S15P11A206-89)
+
+        경로선 **위**, 마커 **아래**에 둔다. 안내를 덧붙이는 것이라 경로를 가려도 되지만, 내 위치와
+        목적지를 가리면 지금 어디에 서 있는지가 화면에서 사라진다.
+
+        누르고 움직이지 않은 선은 점으로 그린다. 그것도 "여기"라고 짚어 준 것이라 버리지 않는다.
+      */}
+      {strokePaths.length > 0 && (
+        <g role="img" aria-label={t('indoorMap.overlay.annotation')}>
+          {strokePaths.map((stroke) =>
+            stroke.points.length === 1 ? (
+              <circle
+                key={stroke.strokeId}
+                cx={stroke.points[0].px}
+                cy={stroke.points[0].py}
+                r={strokeWidth}
+                fill={stroke.color}
+              />
+            ) : (
+              <polyline
+                key={stroke.strokeId}
+                className={styles.annotationStroke}
+                points={stroke.points.map((point) => `${point.px},${point.py}`).join(' ')}
+                stroke={stroke.color}
+                strokeWidth={strokeWidth}
+              />
+            ),
+          )}
         </g>
       )}
 
@@ -609,6 +669,15 @@ function directionMarks(points: readonly PixelPoint[], spacing: number): Directi
  * 안쪽 아이콘 글리프는 원 지름의 절반이며, 이 역시 프로토타입과 같다.
  */
 const FACILITY_RADIUS = 65;
+
+/**
+ * 상담자가 그린 선의 두께. (S15P11A206-89)
+ *
+ * 경로선(`ROUTE_WIDTH`)보다 얇게 둔다. 안내를 덧붙이는 것이라 경로보다 앞서 읽히면 안 된다.
+ * 상담자가 보낸 `width` 를 쓰지 않는 이유는 그 값이 상담자 화면의 픽셀이라 이 캔버스(도면 원본
+ * 픽셀, 역삼역 B2 는 240m 가 1624px)에서는 뜻이 없기 때문이다.
+ */
+const ANNOTATION_WIDTH = 16;
 
 /** 방향 부채꼴. 원본의 conic-gradient가 60도를 덮었으므로 반각은 30도다. */
 const BEAM_LENGTH = MARKER_RADIUS * 3.375;

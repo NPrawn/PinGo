@@ -44,6 +44,7 @@ export const en = {
         currentLocation: 'Current location',
         destination: 'Destination',
         route: 'Route',
+        annotation: 'Marks from the agent',
         waypoint: 'Stop {{order}}',
       },
     },

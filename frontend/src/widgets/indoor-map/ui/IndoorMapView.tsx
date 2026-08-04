@@ -12,6 +12,7 @@ import {
   type PlanPlacement,
 } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
+import type { MapStroke } from '../model/mapStroke';
 import { resolveAssetUrl } from '@/shared/config';
 import { Icon } from '@/shared/ui';
 import { MOCK_CURRENT_LOCATION, MOCK_DESTINATION, MOCK_PATH_NODES } from '../model/fixtures';
@@ -110,6 +111,13 @@ interface IndoorMapViewProps {
    */
   showZoomControls?: boolean;
   /**
+   * 상담자가 지도 위에 그린 선. 표시 층의 것만 그려진다. (S15P11A206-89)
+   *
+   * 상담자 화면은 자기가 그린 것을, 사용자 화면은 받은 것을 넘긴다. 좌표가 캐노니컬 미터라 두
+   * 화면의 확대·이동·회전이 달라도 같은 자리에 얹힌다.
+   */
+  strokes?: readonly MapStroke[];
+  /**
    * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
    * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
    *
@@ -176,6 +184,7 @@ export function IndoorMapView({
   rotateWithHeading = true,
   onRecenter,
   showZoomControls = false,
+  strokes,
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
@@ -380,6 +389,7 @@ export function IndoorMapView({
           facilities={facilities}
           selectedFacilityId={selectedFacilityId}
           onSelectFacility={onSelectFacility}
+          strokes={strokes}
           /* 지도가 커져도 마커는 화면상 크기를 유지한다. 확대는 도면을 크게 보려는 조작이고,
              마커까지 커지면 가리는 면적만 늘어난다. */
           viewScale={mapView.scale}
@@ -460,9 +470,11 @@ function MapOverlay({
   onSelectFacility,
   viewScale,
   mapRotationDeg,
+  strokes,
 }: {
   floorId: number;
   placement: PlanPlacement | null;
+  strokes?: readonly MapStroke[];
   currentLocation: IndoorPoint | null;
   currentHeadingDeg?: number | null;
   destination: IndoorPoint | null;
@@ -511,6 +523,7 @@ function MapOverlay({
       onSelectFacility={onSelectFacility}
       viewScale={viewScale}
       mapRotationDeg={mapRotationDeg}
+      strokes={strokes}
     />
   );
 }
