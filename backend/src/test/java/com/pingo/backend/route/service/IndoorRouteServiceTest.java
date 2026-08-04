@@ -507,6 +507,40 @@ class IndoorRouteServiceTest {
         assertThat(response.totalDistanceM()).isEqualByComparingTo("80");
     }
 
+    /**
+     * 간선이 없는 노드를 가리켜도 진입 노드 선택은 깨지지 않는다.
+     *
+     * <p>리뷰에서 나온 우려다 — {@code withChosenEntry} 가 {@code data.nodes()::get} 으로 노드를
+     * 꺼내니, 간선에는 있는데 노드 맵에는 없는 id 가 섞이면 {@code null} 이 흘러 NPE 가 난다는
+     * 것이다. 실제로는 후보를 {@code sameFloor} 로 거르고 그 집합을 <b>노드 맵에서</b> 만들기
+     * 때문에 그런 id 는 {@code reachableWithin} 의 {@code allowedNodeIds.contains(next)} 에서
+     * 이미 떨어진다.
+     *
+     * <p>그 불변식을 여기서 붙잡아 둔다. {@code sameFloor} 를 간선 기준으로 바꾸는 변경이
+     * 들어오면 이 테스트가 먼저 깨진다.
+     */
+    @Test
+    @DisplayName("간선이 노드 맵에 없는 id를 가리켜도 진입 노드를 고른다")
+    void ignoresEdgesPointingAtUnknownNodes() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 10, 0), nodeAt(5L, 20, 0));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 5L, 10, RouteMoveType.WALKWAY),
+                // 노드 99는 givenNodes 에 없다. 정합성이 깨진 간선을 흉내낸다.
+                edge(1L, 3L, 99L, 1, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 5L, null, "fastest", Language.KO,
+                new BigDecimal("9.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(3L);
+        assertThat(response.pathNodes())
+                .extracting(RoutePathNode::nodeId)
+                .doesNotContain(99L);
+    }
+
     @Test
     @DisplayName("상세 경로 안내에 회전과 층 이동 방향이 실린다")
     void writesTurnAndFloorDirection() {
