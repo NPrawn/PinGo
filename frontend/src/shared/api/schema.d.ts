@@ -1329,6 +1329,16 @@ export interface components {
        * @example https://map.kakao.com/link/by/walk/현재 위치,37.5665,126.9780/강남역,37.4979,127.0276
        */
       webUrl?: string;
+      /**
+       * @description 도보 경로 거리(m)
+       * @example 2450
+       */
+      distanceM?: number | null;
+      /**
+       * @description 도보 예상 시간(초)
+       * @example 2295
+       */
+      estimatedTimeSec?: number | null;
     };
     NearestExitRequest: {
       /** Format: int64 */
