@@ -1,12 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 // 경로 조회는 `entities/route`를 쓴다. `shared/api`의 생성 타입과 달리 응답 필드가 모두 있다.
 import { getIndoorRouteOptions, type RouteOption, type RouteOrigin } from '@/entities/route';
-import {
-  ApiError,
-  findNearestExit,
-  getExternalWalkingDirection,
-  getFacility,
-} from '@/shared/api';
+import { ApiError, findNearestExit, getExternalWalkingDirection, getFacility } from '@/shared/api';
+import { useApiLanguage, type ApiLanguage } from '@/shared/i18n';
 import type { RouteType } from '@/shared/types';
 
 /** 조건에 맞는 출구가 없을 때 서버가 주는 코드. 통신 실패가 아니라 정상 결과다. */
@@ -140,6 +136,8 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
     origin,
   } = params;
   const accessibleOnly = routeType === 'elevator_only';
+  /** 카드에 적히는 이용 불가 사유 문구를 서버가 이 언어로 쓴다. (`useApiLanguage`) */
+  const language = useApiLanguage();
   const externalDestination = isExternalDestination(destinationType);
   const ready =
     stationId != null &&
@@ -165,16 +163,20 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
          키에 없으면 재인식으로 좌표만 바뀐 경우 옛 거리가 카드에 남는다. */
       origin?.currentMapX ?? null,
       origin?.currentMapY ?? null,
+      /* 언어도 응답을 바꾼다 — 서버가 이용 불가 사유 문구를 이 언어로 쓴다. 키에 없으면
+         언어를 바꿨는데 카드에 이전 언어 문구가 그대로 남는다. */
+      language,
     ],
     queryFn: async (): Promise<ExitRoute | null> => {
       if (!externalDestination) {
         const options = await queryClient.fetchQuery({
-          queryKey: indoorOptionsQueryKey(stationId!, startNodeId!, targetNodeId!, origin),
+          queryKey: indoorOptionsQueryKey(stationId!, startNodeId!, targetNodeId!, origin, language),
           queryFn: () =>
             getIndoorRouteOptions({
               stationId: stationId!,
               startNodeId: startNodeId!,
               targetNodeId: targetNodeId!,
+              language,
               ...(origin ?? {}),
             }),
           staleTime: ROUTE_LOOKUP_STALE_MS,
@@ -234,12 +236,14 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
           startNodeId!,
           facility.linkedNodeId,
           origin,
+          language,
         ),
         queryFn: () =>
           getIndoorRouteOptions({
             stationId: stationId!,
             startNodeId: startNodeId!,
             targetNodeId: facility.linkedNodeId!,
+            language,
             ...(origin ?? {}),
           }),
         staleTime: ROUTE_LOOKUP_STALE_MS,
@@ -319,11 +323,19 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
   });
 }
 
+/**
+ * 안쪽 경로 옵션 조회의 캐시 키. 두 분기가 같은 응답을 나눠 쓰도록 한 곳에서 만든다.
+ *
+ * **언어가 들어간다.** 서버가 이용 불가 사유 문구(`unavailableMessage`)를 이 언어로 쓰므로
+ * 언어가 바뀌면 응답 자체가 달라진다. 키에 없으면 언어를 바꿔도 이 안쪽 캐시가 이전 언어
+ * 문구를 그대로 돌려준다 — 바깥 쿼리 키에 언어를 넣어도 여기서 막힌다. (S15P11A206-339)
+ */
 function indoorOptionsQueryKey(
   stationId: number,
   startNodeId: number,
   targetNodeId: number,
   origin: RouteOrigin | null | undefined,
+  language: ApiLanguage,
 ) {
   return [
     'indoor-route-options',
@@ -332,5 +344,6 @@ function indoorOptionsQueryKey(
     targetNodeId,
     origin?.currentMapX ?? null,
     origin?.currentMapY ?? null,
+    language,
   ] as const;
 }

@@ -59,10 +59,10 @@ export function getNearbyStations(latitude: number, longitude: number) {
 }
 
 /** keyword를 비우면 서비스 중인 역 전체를 반환한다. */
-export function searchStations(keyword?: string, language?: string) {
+export function searchStations(keyword?: string) {
   return unwrap<StationSearchResponse[]>(
     apiClient.get(ENDPOINTS.stations.search, {
-      params: { keyword, language },
+      params: { keyword },
     }),
   );
 }
@@ -80,7 +80,6 @@ export function getStationFacilities(
   filters: {
     floorId?: number;
     facilityType?: string;
-    language?: string;
   } = {},
 ) {
   return unwrap<FacilityResponse[]>(
@@ -94,10 +93,10 @@ export function getFacility(facilityId: number) {
   return unwrap<FacilityDetailResponse>(apiClient.get(ENDPOINTS.facilities.detail(facilityId)));
 }
 
-export function searchDestinations(stationId: number, keyword: string, language?: string) {
+export function searchDestinations(stationId: number, keyword: string) {
   return unwrap<DestinationSearchResponse[]>(
     apiClient.get(ENDPOINTS.destinations.search, {
-      params: { stationId, keyword, language },
+      params: { stationId, keyword },
     }),
   );
 }
