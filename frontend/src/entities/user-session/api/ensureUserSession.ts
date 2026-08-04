@@ -21,8 +21,14 @@ let creationPromise: Promise<string | null> | undefined;
  * 대체돼 지웠다.
  */
 export async function ensureUserSession(language: string): Promise<string | null> {
-  const { userSessionId, language: storedLanguage, expiresAt, pendingCurrentNodeId, setSession, clearSession } =
-    useUserSessionStore.getState();
+  const {
+    userSessionId,
+    language: storedLanguage,
+    expiresAt,
+    pendingCurrentNodeId,
+    setSession,
+    clearSession,
+  } = useUserSessionStore.getState();
   const normalizedLanguage = apiLanguageOf(language) === 'en' ? 'en' : 'ko';
 
   if (userSessionId && isUsableUserSession(expiresAt)) {
@@ -37,8 +43,11 @@ export async function ensureUserSession(language: string): Promise<string | null
         pendingCurrentNodeId,
       });
       return userSessionId;
-    } catch {
-      return null;
+    } catch (error) {
+      // 세션 자체는 여전히 유효하다. 언어 동기화의 일시적인 실패 때문에 온보딩이나
+      // 상담 진입까지 막지 않고 기존 세션으로 계속 진행한다.
+      console.warn('Failed to synchronize the user session language.', error);
+      return userSessionId;
     }
   }
 
@@ -49,7 +58,11 @@ export async function ensureUserSession(language: string): Promise<string | null
   creationPromise ??= createUserSession({ language: normalizedLanguage })
     .then((session) => {
       if (!session.userSessionId) return null;
-      setSession({ userSessionId: session.userSessionId, language: normalizedLanguage, expiresAt: session.expiresAt });
+      setSession({
+        userSessionId: session.userSessionId,
+        language: normalizedLanguage,
+        expiresAt: session.expiresAt,
+      });
       return session.userSessionId;
     })
     .finally(() => {
