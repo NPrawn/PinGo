@@ -49,7 +49,11 @@ vi.mock('@/shared/api', () => ({
 }));
 
 vi.mock('@/shared/config', () => ({
-  env: { VITE_WS_BASE_URL: 'ws://localhost:8080' },
+  /**
+   * 백엔드 절대 주소를 지정한 빌드로 둔다. 그래야 소켓 주소도 `VITE_WS_BASE_URL` 로 정해진다 —
+   * 빈 값이면 같은 오리진으로 보내므로(`signalingBaseUrl`) jsdom 의 주소에 딸려 간다.
+   */
+  env: { VITE_API_BASE_URL: 'http://localhost:8080', VITE_WS_BASE_URL: 'ws://localhost:8080' },
   rtcConfiguration: () => ({ iceServers: [] }),
 }));
 
@@ -139,6 +143,25 @@ class FakeRecognition {
   }
 }
 
+/**
+ * `addTrack` 이 돌려주는 sender. **브라우저와 같이 `replaceTrack` 이 `track` 을 바꾼다.**
+ *
+ * 이 점이 중요하다 — `replaceTrack(null)` 뒤에는 `sender.track` 이 null 이 되어, 종류로
+ * sender 를 되찾을 수 없다. 가짜가 그 동작을 흉내 내지 않으면 그 결함을 테스트가 놓친다.
+ * (S15P11A206-89 리뷰)
+ */
+class FakeSender {
+  track: MediaStreamTrack | null;
+  replaceTrack: ReturnType<typeof vi.fn>;
+
+  constructor(track: MediaStreamTrack) {
+    this.track = track;
+    this.replaceTrack = vi.fn(async (next: MediaStreamTrack | null) => {
+      this.track = next;
+    });
+  }
+}
+
 /** 협상은 이 테스트의 관심사가 아니다. 호출만 받아 넘긴다. */
 class FakePeerConnection {
   static instances: FakePeerConnection[] = [];
@@ -149,7 +172,13 @@ class FakePeerConnection {
   onconnectionstatechange: (() => void) | null = null;
   ontrack: (() => void) | null = null;
   onicecandidate: (() => void) | null = null;
-  addTrack = vi.fn();
+  senders: FakeSender[] = [];
+  addTrack = vi.fn((track: MediaStreamTrack) => {
+    const sender = new FakeSender(track);
+    this.senders.push(sender);
+    return sender;
+  });
+  getSenders = vi.fn(() => this.senders);
   close = vi.fn();
   createDataChannel = vi.fn(() => ({ readyState: 'connecting', send: vi.fn(), onmessage: null }));
   addTransceiver = vi.fn();
@@ -804,5 +833,109 @@ describe('useConsultSignaling', () => {
     expect(FakePeerConnection.instances.length).toBeGreaterThan(1);
 
     view.unmount();
+  });
+
+  /**
+   * 영상 트랙 교체. (S15P11A206-89 리뷰)
+   *
+   * XR 세션과 `getUserMedia` 가 공존하지 못하므로(11.8) 세션을 여는 순간 카메라 트랙을 세션에서
+   * 뽑은 트랙으로 바꿔야 한다. 재협상 없이 바꾸는 유일한 길이다.
+   */
+  describe('영상 트랙 교체', () => {
+    /** 영상 트랙을 실은 연결을 만들어 준다. */
+    async function connectedWithVideo() {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: vi
+            .fn()
+            .mockResolvedValue(fakeStream([fakeTrack('video'), fakeTrack('audio')])),
+        },
+      });
+
+      const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      return view;
+    }
+
+    /**
+     * **한 번 끈 영상을 다시 켤 수 있어야 한다.**
+     *
+     * 예전에는 `getSenders()` 에서 `track?.kind === 'video'` 로 sender 를 찾았다. 그런데
+     * `replaceTrack(null)` 이 성공하면 `sender.track` 이 null 이 되므로, 그 다음 호출은 영상
+     * sender 를 찾지 못하고 조기에 끝났다. 카메라를 잠시 끄면 그 상담에서는 다시 켤 방법이
+     * 없었다 — `kind` 는 sender 가 아니라 트랙에 있는 값이라 되찾을 길도 없다.
+     */
+    it('영상을 끈 뒤에도 새 트랙으로 다시 켤 수 있다', async () => {
+      const view = await connectedWithVideo();
+
+      await act(async () => {
+        await view.result.current.replaceLocalVideoTrack(null);
+      });
+
+      const revived = fakeTrack('video');
+      let resumed: boolean | undefined;
+
+      await act(async () => {
+        resumed = await view.result.current.replaceLocalVideoTrack(revived);
+      });
+
+      expect(resumed).toBe(true);
+
+      const sender = FakePeerConnection.instances[0]?.senders[0];
+      expect(sender?.track).toBe(revived);
+
+      view.unmount();
+    });
+
+    /**
+     * 연결이 새로 맺어지면 지난 연결의 sender 를 쓰지 않는다.
+     *
+     * 남겨 두면 이미 닫힌 연결에 `replaceTrack` 을 걸어 조용히 실패하고, 상담자 화면은 검은
+     * 영상을 받는다.
+     */
+    it('연결을 다시 맺으면 새 연결의 sender 로 바꾼다', async () => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+
+      const view = await connectedWithVideo();
+
+      await act(async () => {
+        window.dispatchEvent(new Event('offline'));
+        window.dispatchEvent(new Event('online'));
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const rebuilt = FakePeerConnection.instances.at(-1);
+
+      await act(async () => {
+        // 다시 맺은 소켓을 열어 새 연결에 트랙이 붙게 한다.
+        FakeSocket.instances.at(-1)?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const next = fakeTrack('video');
+
+      await act(async () => {
+        await view.result.current.replaceLocalVideoTrack(next);
+      });
+
+      // 첫 연결의 sender 는 건드리지 않는다. 이미 닫힌 연결이다.
+      expect(FakePeerConnection.instances[0]?.senders[0]?.track).not.toBe(next);
+      expect(rebuilt?.senders[0]?.track).toBe(next);
+
+      view.unmount();
+    });
   });
 });

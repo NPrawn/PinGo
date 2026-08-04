@@ -206,6 +206,8 @@ export const ko = {
       },
       consultEnded: {
         title: '상담이 종료되었어요', description: '별점을 남기면 목적지 검색으로 이동해요',
+        /* 경로 안내에서 상담에 들어온 사용자는 안내로 돌아간다. (S15P11A206-89) */
+        descriptionNavigation: '별점을 남기면 경로 안내로 돌아가요',
         score: '{{score}}점', error: '평가를 저장하지 못했어요. 다시 눌러 주세요.',
         rating1: '별로예요', rating2: '아쉬워요', rating3: '보통이에요', rating4: '좋았어요', rating5: '매우 만족해요',
       },
@@ -227,6 +229,13 @@ export const ko = {
         cameraOn: '상담 연결됨 · 카메라 공유 중', voiceOnly: '상담 연결됨 · 음성만', end: '상담 종료',
         reconnecting: '연결을 다시 시도하고 있어요', myCamera: '내 카메라', retryingStatus: '연결 상태: 재시도 중',
         status: '연결 상태: {{status}}', routeLabel: '상담 중인 경로', removeWaypoint: '{{name}} 경유지 삭제',
+        /* XR 카메라 공유 상태. 붙는 과정과 카메라 준비 과정이 따로 진행된다. (S15P11A206-89) */
+        connecting: '연결 중', connected: '상담 연결됨', retrying: '연결 다시 시도 중',
+        cameraSharing: '카메라 공유 중', cameraPreparing: '카메라 준비 중',
+        cameraUnsupported: '이 기기는 카메라를 보낼 수 없어요',
+        /* 지도 동기화는 DataChannel 이 열려야 간다. 피어 연결과 따로 실패하므로 함께 적는다. */
+        statusWithChannel: '연결 상태: {{status}} · 이벤트 채널 {{channel}}',
+        channelOpen: '열림', channelClosed: '닫힘',
         waypoint: '경유 {{order}}', noDestination: '목적지 미지정', captionLabel: '실시간 자막 · 상담원',
         captionWaiting: '상담원이 말하면 이 자리에 표시됩니다.', captionUnsupported: '이 브라우저에서는 음성 자막을 지원하지 않습니다.',
         mapSync: '상담원이 같은 지도를 보며 안내 중이에요',
@@ -277,6 +286,7 @@ export const ko = {
       imageAlt: '{{floorCode}} 실내 지도',
       resetView: '지도 초기화',
       recenter: '내 위치',
+      zoom: { group: '지도 확대·축소', in: '지도 확대', out: '지도 축소' },
       overlay: {
         currentLocation: '현재 위치',
         destination: '목적지',

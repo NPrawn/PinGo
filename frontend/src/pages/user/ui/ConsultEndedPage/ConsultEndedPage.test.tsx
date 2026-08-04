@@ -33,6 +33,7 @@ function renderPage() {
       <Routes>
         <Route path={USER_ROUTES.CONSULT_ENDED} element={<ConsultEndedPage />} />
         <Route path={USER_ROUTES.STATION} element={<div>역 선택 화면</div>} />
+        <Route path={USER_ROUTES.NAVIGATION} element={<div>경로 안내 화면</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -96,5 +97,52 @@ describe('ConsultEndedPage', () => {
 
     expect(useConsultStore.getState().consultationId).toBeNull();
     expect(useConsultStore.getState().signalingRoomId).toBeNull();
+  });
+
+  /**
+   * 상담을 어디서 시작했는지에 따라 돌아갈 자리가 다르다. (S15P11A206-89)
+   *
+   * 경로 안내 중에 상담을 받은 사용자를 역 선택으로 보내면, 걷던 사람이 역 고르기부터 목적지
+   * 고르기까지 다시 밟아야 한다. 상담은 안내를 잠시 멈춘 것이지 처음으로 되돌린 것이 아니다.
+   */
+  describe('돌아갈 자리', () => {
+    it('경로 안내에서 시작한 상담은 안내로 돌아간다', async () => {
+      useConsultStore.setState({ entryRoute: USER_ROUTES.NAVIGATION });
+
+      renderPage();
+      fireEvent.click(screen.getByRole('button', { name: '5점' }));
+
+      expect(await screen.findByText('경로 안내 화면')).toBeInTheDocument();
+    });
+
+    it('안내로 돌아갈 때는 안내 문구도 그렇게 적는다', () => {
+      useConsultStore.setState({ entryRoute: USER_ROUTES.NAVIGATION });
+
+      renderPage();
+
+      expect(screen.getByText('별점을 남기면 경로 안내로 돌아가요')).toBeInTheDocument();
+    });
+
+    it('다른 화면에서 시작했으면 역 선택으로 간다', async () => {
+      useConsultStore.setState({ entryRoute: USER_ROUTES.ROUTE_OPTIONS });
+
+      renderPage();
+      fireEvent.click(screen.getByRole('button', { name: '5점' }));
+
+      expect(await screen.findByText('역 선택 화면')).toBeInTheDocument();
+    });
+
+    /**
+     * CTA 를 거치지 않고 상담 화면에 닿은 경우다. 돌아갈 자리를 모르는 채 안내로 보내면
+     * 목적지도 경로도 없는 빈 안내가 뜬다.
+     */
+    it('진입 지점을 모르면 역 선택으로 간다', async () => {
+      useConsultStore.setState({ entryRoute: null });
+
+      renderPage();
+      fireEvent.click(screen.getByRole('button', { name: '5점' }));
+
+      expect(await screen.findByText('역 선택 화면')).toBeInTheDocument();
+    });
   });
 });

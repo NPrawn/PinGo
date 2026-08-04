@@ -67,6 +67,13 @@ function createFakeController(initial: XrSessionState) {
     async start() {
       return state;
     },
+    // 이 파일은 카메라 송출을 다루지 않는다. 켤 수 없는 컨트롤러로 둔다.
+    startCameraStream: () => null,
+    subscribeCameraStream: () => () => undefined,
+    getCameraStreamState: () => 'idle' as const,
+    getCameraSourceSize: () => null,
+    captureStillFrame: () => Promise.resolve(null),
+
     async stop() {
       state = { status: 'ended' };
     },
@@ -200,6 +207,45 @@ describe('첫 위치 인식 발화', () => {
     // 지도 좌표가 없으면 XR 좌표를 놓을 기준을 만들 수 없다.
     expect(result.current.anchorStatus).toBe('none');
     expect(result.current.currentLocation).toBeNull();
+  });
+
+  /**
+   * 확정 위치가 나중에 도착하는 경우. (S15P11A206-89)
+   *
+   * 안내 화면은 진입 시점에 위치를 늘 들고 있지만, 상담은 어느 화면에서도 시작된다. 그때 위치는
+   * 상담자가 지도에서 짚어 주거나 위치 인식이 끝난 뒤에 도착한다. 그 시점에 앵커를 만들지 않으면
+   * **방향과 이동이 영원히 잡히지 않는다** — `useXrMapPosition` 은 앵커가 없으면 pose 스냅샷과
+   * heading 갱신을 둘 다 버린다.
+   */
+  it('추적 중에 확정 위치가 나중에 도착하면 그때 앵커를 만들고 방향도 잡는다', () => {
+    const fake = createFakeController(TRACKING);
+    const { result, rerender } = renderHook(
+      ({ location }: { location: IndoorPoint | null }) =>
+        useXrNavigationSession({
+          controller: fake.controller,
+          currentIndoorLocation: location,
+          // 방향은 처음부터 있다. 여기서 보는 것은 **좌표가 늦게 도착하는** 경우다.
+          anchorForwardMap: { x: 0.6, y: 0.8 },
+        }),
+      { initialProps: { location: null as IndoorPoint | null } },
+    );
+
+    expect(result.current.anchorStatus).toBe('none');
+
+    // 앵커가 없는 동안 들어온 방향은 버려진다.
+    act(() => {
+      fake.emitHeading(30);
+    });
+    expect(result.current.headingDeg).toBeNull();
+
+    rerender({ location: CONFIRMED });
+
+    expect(result.current.anchorStatus).toBe('established');
+
+    act(() => {
+      fake.emitHeading(30);
+    });
+    expect(result.current.headingDeg).not.toBeNull();
   });
 
   /**

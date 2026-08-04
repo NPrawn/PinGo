@@ -1,3 +1,14 @@
+import {
+  cameraImageOf,
+  createXrCameraFrameGrabber,
+  createXrCameraFrameSink,
+  DEFAULT_CAMERA_FRAME_FPS,
+  DEFAULT_CAMERA_FRAME_SIZE,
+  rawCameraOf,
+  type XrCameraFrameGrabber,
+  type XrCameraFrameSink,
+  type XrCameraFrameSize,
+} from './cameraFrames';
 import { angleDiffDeg, toPoseReading } from './pose';
 import { createPoseSampler, DEFAULT_SAMPLING_RULE } from './sampler';
 import { detectXrSupport } from './support';
@@ -143,6 +154,98 @@ export interface XrStartOptions {
   releaseCamera?: () => void | Promise<void>;
 }
 
+/**
+ * 카메라 송출 상태.
+ *
+ * - idle: 켜지 않았다.
+ * - waiting: 켰지만 아직 프레임이 없다. 세션이 열리고 추적이 잡히기를 기다리는 구간이다.
+ * - streaming: 프레임이 흐르고 있다.
+ * - unsupported: 이 기기에서는 얻을 수 없다. `camera-access` 미부여이거나 GL 자원을 만들 수
+ *   없는 경우다. **다시 시도해도 같은 결과이므로 화면은 다른 방법을 택해야 한다.**
+ */
+export type XrCameraStreamState = 'idle' | 'waiting' | 'streaming' | 'unsupported';
+
+export interface XrCameraStreamOptions {
+  /** 보낼 프레임 크기. 기본 320×240. */
+  size?: XrCameraFrameSize;
+  /** 초당 장수. 기본 10. */
+  fps?: number;
+}
+
+export interface XrCameraStreamHandle {
+  /** WebRTC에 실을 스트림. 영상 트랙 하나가 담겨 있다. */
+  stream: MediaStream;
+  /** 송출을 멈추고 트랙까지 정리한다. */
+  stop(): void;
+}
+
+/**
+ * 세션 카메라에서 뽑은 정지 화상 한 장. (S15P11A206-89)
+ *
+ * 크기를 함께 돌려주는 이유가 있다 — 위치 인식은 보낸 그림과 카메라 내부 파라미터가 맞아야
+ * 하므로 요청 메타데이터에 **실제로 보낸 크기**를 적어야 한다. 부르는 쪽이 다시 재지 않도록
+ * 여기서 알려 준다.
+ */
+export interface XrCameraStillFrame {
+  blob: Blob;
+  width: number;
+  height: number;
+}
+
+export interface XrCameraStillFrameOptions {
+  /** 긴 변의 최대 픽셀. 원본이 이보다 작으면 원본 크기를 그대로 쓴다. */
+  maxSide?: number;
+}
+
+/** 정지 화상 기본 크기. 위치 인식이 기대하는 긴 변 768px 이다(`vpsFrameDimensions`와 같은 값). */
+const DEFAULT_STILL_FRAME_MAX_SIDE = 768;
+
+/**
+ * 비율을 지키며 긴 변을 `maxSide` 로 줄인 크기. 원본이 더 작으면 확대하지 않는다.
+ *
+ * 자르지 않고 줄이기만 한다. 잘라 보내면 카메라가 실제로 본 화각과 내부 파라미터가 어긋나
+ * 위치 인식이 엉뚱한 자리를 낸다.
+ */
+function scaleToMaxSide(width: number, height: number, maxSide: number): XrCameraFrameSize {
+  const longest = Math.max(width, height);
+  const scale = longest > 0 ? Math.min(1, maxSide / longest) : 1;
+
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+/**
+ * 읽어 온 픽셀을 JPEG 한 장으로 만든다. 캔버스를 쓸 수 없으면 null.
+ *
+ * 매번 캔버스를 새로 만든다. 정지 화상은 수십 초에 한 장이라 아껴 둘 이유가 없고, 크기가
+ * 기기마다 달라 재사용하려면 크기 관리가 하나 더 붙는다.
+ */
+function encodeStillFrame(pixels: Uint8Array, size: XrCameraFrameSize): Promise<Blob | null> {
+  const canvas = document.createElement('canvas');
+
+  canvas.width = size.width;
+  canvas.height = size.height;
+
+  const context = canvas.getContext('2d');
+
+  if (!context || typeof canvas.toBlob !== 'function') return Promise.resolve(null);
+
+  const image = context.createImageData(size.width, size.height);
+
+  image.data.set(pixels);
+  context.putImageData(image, 0, 0);
+
+  /**
+   * JPEG 로 보낸다. 위치 인식은 사진을 받는 쪽이고, 무손실로 보내면 같은 그림이 몇 배 무거워져
+   * 상담 중 업로드가 영상과 대역폭을 다툰다. 품질은 촬영 화면과 같은 값을 쓴다.
+   */
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.9);
+  });
+}
+
 export interface XrSessionController {
   /** 현재 상태. */
   getState(): XrSessionState;
@@ -187,6 +290,49 @@ export interface XrSessionController {
   start(options?: XrStartOptions): Promise<XrSessionState>;
   /** 세션을 끝내고 추적 자원을 정리한다. 열려 있지 않으면 아무 일도 하지 않는다. */
   stop(): Promise<void>;
+  /**
+   * 세션의 카메라 영상을 `MediaStream`으로 뽑기 시작한다. (S15P11A206-89)
+   *
+   * **세션보다 먼저 불러도 된다.** 트랙은 캔버스에 붙어 있어 세션과 수명이 다르다. 상담 화면은
+   * 협상이 시작되기 전에 이것을 켜서 보낼 트랙을 미리 확보하고, 프레임은 세션이 열려 추적이
+   * 잡힌 뒤부터 흘러 들어온다.
+   *
+   * 캔버스를 만들 수 없는 환경에서만 null이다. 그때도 상태는 `unsupported`로 바뀌므로,
+   * 반환값을 보지 않고 `subscribeCameraStream`만 구독해도 화면은 사실을 알 수 있다.
+   *
+   * 이미 켜져 있으면 같은 핸들을 돌려준다 — 트랙을 두 개 만들면 어느 것이 협상에 실린 것인지
+   * 알 수 없게 된다.
+   */
+  startCameraStream(options?: XrCameraStreamOptions): XrCameraStreamHandle | null;
+  /**
+   * 카메라 송출 상태를 구독한다. 구독한 즉시 현재 상태로 한 번 부른다.
+   *
+   * **상태를 핸들이 아니라 컨트롤러가 들고 있다.** 트랙을 만들지 못해 핸들이 없는 경우에도
+   * 그 사실을 알려야 하기 때문이다. 화면은 켜기 전에 구독해 두면 실패까지 한 길로 받는다.
+   */
+  subscribeCameraStream(listener: (state: XrCameraStreamState) => void): () => void;
+  /** 지금 카메라 송출 상태. */
+  getCameraStreamState(): XrCameraStreamState;
+  /**
+   * 이 기기 카메라의 원본 크기. 프레임을 한 장도 잡기 전이면 null 이다.
+   *
+   * **보내는 트랙 크기(320×240)와 다른 값이다.** 원본이 16:9여도 그 크기로 늘여 담으므로,
+   * 받는 쪽이 비율을 되돌리려면 원본이 몇 대 몇이었는지 알아야 한다. `camera-access` 가
+   * 부여되지 않은 기기에서는 끝까지 null 이다.
+   */
+  getCameraSourceSize(): XrCameraFrameSize | null;
+  /**
+   * 세션 카메라에서 정지 화상 한 장을 뽑는다. 위치 재인식에 보낼 사진이다. (S15P11A206-89)
+   *
+   * **송출 트랙과 별개다.** 송출은 320×240 고정이라 위치 인식의 특징점 매칭에는 너무 작고,
+   * 송출을 키우면 매 프레임 리드백 비용이 늘어 추적이 흔들린다. 그래서 큰 프레임은 부를 때만
+   * 한 장 뽑는다.
+   *
+   * 다음 프레임 루프에서 채워지므로 즉시 돌아오지 않는다. 카메라 픽셀을 얻을 수 없는 기기나
+   * 세션이 닫힌 뒤에는 null 이다. 요청은 한 번에 하나만 유지되며, 겹쳐 부르면 앞의 요청은
+   * null 로 끝난다 — 지난 장면으로 위치를 확정하지 않기 위해서다.
+   */
+  captureStillFrame(options?: XrCameraStillFrameOptions): Promise<XrCameraStillFrame | null>;
 }
 
 /**
@@ -241,6 +387,43 @@ export function createXrSessionController(
    * 쓰이는 PBO가 WebGL2 기능이라, 나중에 그 경로를 붙일 때 컨텍스트를 다시 만들지 않아도 된다.
    */
   let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
+
+  /**
+   * 카메라 프레임 송출. 상담 화면이 켜면 생기고 세션이 끝나면 사라진다. (S15P11A206-89)
+   *
+   * binding·grabber는 **첫 프레임에 만든다.** 둘 다 GL 컨텍스트와 세션이 있어야 하는데,
+   * `startCameraStream`은 세션이 열리기 전에도 불릴 수 있다(상담 화면이 세션 게이트를 통과하기
+   * 전에 트랙을 준비해 둔다). 캔버스는 그때 만들어 트랙을 먼저 넘기고, GL 자원은 나중에 붙인다.
+   */
+  let cameraBinding: XRWebGLBinding | null = null;
+  let cameraGrabber: XrCameraFrameGrabber | null = null;
+  let cameraSink: XrCameraFrameSink | null = null;
+  let cameraState: XrCameraStreamState = 'idle';
+  let cameraFrameSize: XrCameraFrameSize = DEFAULT_CAMERA_FRAME_SIZE;
+  let cameraIntervalMs = 1000 / DEFAULT_CAMERA_FRAME_FPS;
+  /**
+   * 카메라 원본 크기. 프레임에서 읽어 남긴다.
+   *
+   * 세션이 닫혀도 비우지 않는다 — 기기의 규격이라 다음 세션에서도 같은 값이고, 비우면 상담
+   * 중 세션이 한 번 끊긴 사이 상담자 화면의 카메라 비율이 기본값으로 되돌아간다.
+   */
+  let cameraSourceSize: XrCameraFrameSize | null = null;
+  /**
+   * 걸려 있는 정지 화상 요청. 한 번에 하나만 둔다.
+   *
+   * 여러 개를 큐에 쌓지 않는다 — 위치 인식은 "지금 보이는 장면"을 묻는 것이라 밀려 있던 요청을
+   * 나중에 채워 주면 이미 지난 장면으로 위치를 확정한다.
+   */
+  let stillFrameRequest: {
+    maxSide: number;
+    resolve: (frame: XrCameraStillFrame | null) => void;
+  } | null = null;
+  let stillGrabber: XrCameraFrameGrabber | null = null;
+  let stillGrabberSize: XrCameraFrameSize | null = null;
+  /** 마지막으로 카메라를 읽은 프레임 시각. 송출 간격을 지키는 기준이다. */
+  let lastCameraFrameAt: DOMHighResTimeStamp | null = null;
+  const cameraListeners = new Set<(state: XrCameraStreamState) => void>();
+
   let sampler = createPoseSampler(rule);
   let startInFlight: Promise<XrSessionState> | null = null;
   let frameHandle: number | null = null;
@@ -355,6 +538,23 @@ export function createXrSessionController(
     setState({ status: 'tracking' });
 
     /**
+     * 카메라 프레임은 pose를 얻은 뒤에 뽑는다.
+     *
+     * 카메라는 `XRView`에 실려 오므로 viewerPose 없이는 접근할 방법이 없다. 즉 세션 시작 직후
+     * warming-up 구간(실측 0.96~1.54초)에는 프레임이 나오지 않는다 — 상담자 화면은 그동안
+     * `waiting`으로 남는다.
+     */
+    captureCameraFrame(viewerPose, time);
+
+    /**
+     * 정지 화상 요청이 걸려 있으면 이 프레임에서 뽑는다.
+     *
+     * **프레임 루프 안에서만 할 수 있다.** `getCameraImage` 는 유효한 `XRFrame` 안에서만 텍스처를
+     * 돌려주므로, 밖에서 부르는 쪽은 요청만 남기고 여기서 채워진다.
+     */
+    fulfilStillFrameRequest(viewerPose);
+
+    /**
      * 추적 상실에서 복구된 경우 샘플러를 초기화한다.
      *
      * 상실 구간 동안 상대 좌표의 연속성이 이미 끊겼다. 초기화하지 않으면 복구 첫 프레임이
@@ -447,8 +647,178 @@ export function createXrSessionController(
     }
   }
 
+  function setCameraState(next: XrCameraStreamState): void {
+    if (cameraState === next) return;
+
+    cameraState = next;
+    cameraListeners.forEach((listener) => {
+      listener(next);
+    });
+  }
+
+  /**
+   * 이 프레임의 카메라 영상을 캔버스로 옮긴다.
+   *
+   * **어디서 실패해도 조용히 넘긴다.** 카메라는 상담의 부가 기능이고 추적은 안내의 근간이다.
+   * 여기서 예외가 올라가면 프레임 루프가 끊겨 위치가 멈추는데, 그것은 카메라를 못 보내는 것보다
+   * 훨씬 나쁘다. 대신 `unsupported`로 알려 화면이 다른 방법을 택할 수 있게 한다.
+   */
+  function captureCameraFrame(viewerPose: XRViewerPose, time: DOMHighResTimeStamp): void {
+    if (!cameraSink || cameraState === 'unsupported') return;
+
+    // 송출 간격. 30fps 세션에서 매 프레임 읽으면 리드백이 추적과 GPU를 다툰다.
+    if (lastCameraFrameAt !== null && time - lastCameraFrameAt < cameraIntervalMs) return;
+
+    const current = session;
+    const view = viewerPose.views[0];
+
+    if (!current || !view) return;
+
+    const camera = rawCameraOf(view);
+
+    /**
+     * `camera-access`가 부여되지 않았다. optional로 요청하므로 세션은 열리고 이 값만 없다.
+     * 프레임마다 다시 확인할 이유가 없으니 여기서 결론을 낸다.
+     *
+     * **GL 컨텍스트보다 먼저 본다.** 기능 미부여는 이 기기의 결론이고 컨텍스트 유무와 무관하다.
+     */
+    if (!camera) return setCameraState('unsupported');
+
+    /**
+     * 원본 규격을 남긴다. 상담자 화면이 늘어난 비율을 되돌리는 데 쓴다.
+     *
+     * 프레임마다 확인한다 — 기기가 카메라를 바꾸면(전·후면 전환) 값이 달라지고, 한 번 재고
+     * 굳히면 그때부터 상담자 화면이 잘못된 비율로 자른다.
+     */
+    if (cameraSourceSize?.width !== camera.width || cameraSourceSize.height !== camera.height) {
+      cameraSourceSize = { width: camera.width, height: camera.height };
+    }
+
+    if (!gl) return;
+
+    try {
+      cameraBinding ??= new XRWebGLBinding(current, gl);
+      cameraGrabber ??= createXrCameraFrameGrabber(gl, cameraFrameSize);
+    } catch {
+      return setCameraState('unsupported');
+    }
+
+    // 셰이더·프레임버퍼를 만들 수 없는 기기다. 다시 시도해도 같은 결과다.
+    if (!cameraBinding || !cameraGrabber) return setCameraState('unsupported');
+
+    const texture = cameraImageOf(cameraBinding, camera);
+
+    // 이 프레임만 없는 것일 수 있으므로 결론을 내지 않는다.
+    if (!texture) return;
+
+    const pixels = cameraGrabber.grab(texture);
+
+    if (!pixels) return;
+
+    lastCameraFrameAt = time;
+    cameraSink.push(pixels);
+    setCameraState('streaming');
+  }
+
+  /**
+   * 걸려 있는 정지 화상 요청을 이 프레임의 카메라로 채운다. (S15P11A206-89)
+   *
+   * **송출용 프레임과 따로 뽑는다.** 송출은 320×240 이라 대역폭에는 좋지만 위치 인식의 특징점
+   * 매칭에는 너무 작다. 그렇다고 송출 자체를 키우면 매 프레임 리드백 비용이 그만큼 늘어 추적이
+   * 흔들린다(11.8). 그래서 큰 프레임은 **요청이 있을 때만** 한 장 뽑는다.
+   *
+   * 요청이 없으면 아무 일도 하지 않으므로 평소 프레임 루프에는 비용이 없다.
+   */
+  function fulfilStillFrameRequest(viewerPose: XRViewerPose): void {
+    const request = stillFrameRequest;
+
+    if (!request) return;
+
+    const current = session;
+    const view = viewerPose.views[0];
+    const camera = view ? rawCameraOf(view) : null;
+
+    /**
+     * 이 기기에서는 카메라 픽셀을 얻을 수 없다. 다음 프레임에도 같으므로 여기서 끝낸다 —
+     * 기다리게 두면 부른 쪽이 영원히 응답을 받지 못한다.
+     */
+    if (!current || !camera || !gl) {
+      stillFrameRequest = null;
+      request.resolve(null);
+      return;
+    }
+
+    const size = scaleToMaxSide(camera.width, camera.height, request.maxSide);
+
+    try {
+      cameraBinding ??= new XRWebGLBinding(current, gl);
+
+      /**
+       * 크기가 달라지면 그래버를 다시 만든다. 프레임버퍼와 픽셀 버퍼가 크기에 묶여 있어
+       * 재사용할 수 없다. 같은 크기로 다시 부르는 것이 보통이므로 대개 한 번만 만든다.
+       */
+      if (
+        !stillGrabber ||
+        stillGrabberSize?.width !== size.width ||
+        stillGrabberSize.height !== size.height
+      ) {
+        stillGrabber?.dispose();
+        stillGrabber = createXrCameraFrameGrabber(gl, size);
+        stillGrabberSize = size;
+      }
+    } catch {
+      stillFrameRequest = null;
+      request.resolve(null);
+      return;
+    }
+
+    const texture = stillGrabber ? cameraImageOf(cameraBinding, camera) : null;
+    const pixels = texture && stillGrabber ? stillGrabber.grab(texture) : null;
+
+    // 이 프레임만 없는 것일 수 있다. 요청을 남겨 두고 다음 프레임에 다시 시도한다.
+    if (!pixels) return;
+
+    stillFrameRequest = null;
+
+    void encodeStillFrame(pixels, size).then((blob) => {
+      request.resolve(blob ? { blob, width: size.width, height: size.height } : null);
+    });
+  }
+
+  /**
+   * 세션에 묶인 카메라 자원만 반납한다. **캔버스와 트랙은 남긴다.**
+   *
+   * 세션이 다시 열릴 때 트랙까지 새로 만들면 WebRTC 협상을 다시 해야 하고, 상담자 화면에서는
+   * 영상이 한 번 끊긴다. 트랙은 캔버스에 붙어 있어 세션과 무관하게 살아 있으므로, GL 자원만
+   * 버리고 다음 세션의 첫 프레임에서 다시 만든다.
+   */
+  function releaseCameraGlResources(): void {
+    cameraGrabber?.dispose();
+    cameraGrabber = null;
+    cameraBinding = null;
+    lastCameraFrameAt = null;
+    stillGrabber?.dispose();
+    stillGrabber = null;
+    stillGrabberSize = null;
+    /**
+     * 기다리는 요청을 끝낸다. **세션이 닫히면 채워 줄 프레임이 없다.**
+     *
+     * 남겨 두면 재인식을 기다리는 쪽의 Promise 가 영원히 안 풀린다. 상담 화면은 그 응답 뒤에
+     * 다음 주기를 잡으므로, 한 번 멈추면 상담이 끝날 때까지 재인식이 다시 돌지 않는다.
+     */
+    stillFrameRequest?.resolve(null);
+    stillFrameRequest = null;
+    // 다음 세션에서 다시 판정한다 — 기능 부여는 세션마다 새로 정해진다.
+    if (cameraSink) setCameraState('waiting');
+  }
+
   /** GL 자원을 반납한다. 컨텍스트는 기기당 개수 제한이 있어 세션마다 새로 만들고 버린다. */
   function releaseRenderLayer(): void {
+    /**
+     * 카메라 자원의 수명은 이 컨텍스트와 정확히 같다. 컨텍스트를 잃은 뒤 남은 텍스처·프로그램을
+     * 지우려 하면 조용히 실패하고, 다음 세션에서 만든 자원과 섞이면 검은 프레임이 나간다.
+     */
+    releaseCameraGlResources();
     gl?.getExtension('WEBGL_lose_context')?.loseContext();
     gl = null;
   }
@@ -774,6 +1144,78 @@ export function createXrSessionController(
     },
 
     stop,
+
+    startCameraStream(cameraOptions = {}) {
+      const stop = (): void => {
+        releaseCameraGlResources();
+        cameraSink?.dispose();
+        cameraSink = null;
+        setCameraState('idle');
+      };
+
+      // 이미 켜져 있으면 같은 트랙을 쓴다. 두 번째 트랙은 협상에 실리지 않아 검은 화면이 된다.
+      if (cameraSink) return { stream: cameraSink.stream, stop };
+
+      cameraFrameSize = cameraOptions.size ?? DEFAULT_CAMERA_FRAME_SIZE;
+
+      const fps = cameraOptions.fps ?? DEFAULT_CAMERA_FRAME_FPS;
+
+      cameraIntervalMs = 1000 / fps;
+
+      const sink = createXrCameraFrameSink(cameraFrameSize, fps);
+
+      /**
+       * 캔버스나 `captureStream`이 없는 환경. 트랙을 만들 수 없으므로 켤 수 없다.
+       *
+       * 반환값만으로 알리지 않고 상태도 바꾼다. 화면이 구독 한 길로 실패까지 받게 하려는
+       * 것이며, 그래야 "켜기 전에 구독"이라는 한 가지 순서로 모든 경우가 처리된다.
+       */
+      if (!sink) {
+        setCameraState('unsupported');
+        return null;
+      }
+
+      cameraSink = sink;
+      lastCameraFrameAt = null;
+      setCameraState('waiting');
+
+      return { stream: sink.stream, stop };
+    },
+
+    subscribeCameraStream(listener) {
+      cameraListeners.add(listener);
+      // 구독 시점의 상태를 놓치지 않게 한 번 알린다. 이미 unsupported 일 수 있다.
+      listener(cameraState);
+
+      return () => {
+        cameraListeners.delete(listener);
+      };
+    },
+
+    getCameraStreamState() {
+      return cameraState;
+    },
+
+    getCameraSourceSize() {
+      return cameraSourceSize;
+    },
+
+    captureStillFrame(options = {}) {
+      const maxSide = options.maxSide ?? DEFAULT_STILL_FRAME_MAX_SIDE;
+
+      /**
+       * 세션이 없으면 카메라도 없다. 기다리게 두지 않고 바로 끝낸다 — 프레임 루프가 돌지 않으니
+       * 요청을 남겨 두면 영원히 응답이 없다.
+       */
+      if (!session) return Promise.resolve(null);
+
+      // 앞의 요청은 여기서 끝낸다. 지난 장면으로 위치를 확정하지 않는다.
+      stillFrameRequest?.resolve(null);
+
+      return new Promise<XrCameraStillFrame | null>((resolve) => {
+        stillFrameRequest = { maxSide, resolve };
+      });
+    },
   };
 }
 

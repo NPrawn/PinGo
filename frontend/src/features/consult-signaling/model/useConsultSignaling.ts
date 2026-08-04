@@ -12,9 +12,14 @@ import type {
 } from '@/shared/api';
 import { createConsultEvent, parseConsultEvent } from '@/shared/types';
 import type { ConsultDataEvent, ConsultEventBody } from '@/shared/types';
-import { captureConsultMicrophone, peekConsultMedia } from './consultMedia';
+import {
+  captureConsultMicrophone,
+  peekConsultMedia,
+  swapConsultVideoTrack,
+} from './consultMedia';
 import { createConsultEventFallback } from './consultEventFallback';
 import type { ConsultEventFallback } from './consultEventFallback';
+import { signalingBaseUrl } from './signalingBaseUrl';
 import {
   flushConsultPhaseReport,
   markConsultPhase,
@@ -201,6 +206,27 @@ export function useConsultSignaling(
    */
   const dataEventRef = useRef(onDataEvent);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  /**
+   * 지금 살아 있는 연결. 영상 트랙을 갈아 끼우는 데만 쓴다. (S15P11A206-89)
+   *
+   * 연결 객체 자체를 밖으로 내보내지 않는다 — 화면이 협상에 끼어들 수 있게 되면 이 훅이
+   * 들고 있는 상태와 실제 연결이 어긋난다.
+   */
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+  /**
+   * 영상을 보내는 sender. **`addTrack` 이 돌려준 참조를 그대로 들고 있는다.** (S15P11A206-89 리뷰)
+   *
+   * 예전에는 필요할 때마다 `getSenders()` 에서 `track?.kind === 'video'` 로 찾았다. 그런데
+   * `replaceTrack(null)` 이 성공하면 `sender.track` 이 null 이 되어, **그 다음부터는 같은 조건으로
+   * 영상 sender 를 찾지 못한다.** 한 번 끈 영상은 다시 켤 수 없었다.
+   *
+   * `kind` 는 sender 자체에 남지 않고 트랙에만 있으므로, 트랙을 비운 뒤에 종류로 되찾는 방법은
+   * 없다. 붙일 때 받은 참조를 보관하는 것이 유일하게 확실한 길이다.
+   *
+   * 연결이 새로 맺어질 때마다 다시 채운다. 남겨 두면 닫힌 연결의 sender 에 `replaceTrack` 을
+   * 걸어 조용히 실패한다.
+   */
+  const videoSenderRef = useRef<RTCRtpSender | null>(null);
   /** DataChannel 이 열리지 않았을 때 상담 이벤트를 서버 편으로 보내는 우회로. */
   const eventFallbackRef = useRef<ConsultEventFallback | null>(null);
   /**
@@ -427,6 +453,10 @@ export function useConsultSignaling(
       markMediaReady = resolve;
     });
     const peer = new RTCPeerConnection(rtcConfig);
+
+    peerRef.current = peer;
+    // 새 연결에는 아직 붙인 트랙이 없다. 지난 연결의 sender 를 물려받으면 조용히 실패한다.
+    videoSenderRef.current = null;
     /**
      * 그리기 같은 상담 이벤트를 나르는 채널.
      *
@@ -475,7 +505,7 @@ export function useConsultSignaling(
       peer.ondatachannel = (event) => attachDataChannel(event.channel);
     }
     markConsultPhase('signaling 소켓 생성');   // 추가
-    const wsBase = env.VITE_WS_BASE_URL.replace(/\/$/, '');
+    const wsBase = signalingBaseUrl();
     const socket = new WebSocket(`${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`);
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
     /** 정리된 뒤에 도착한 이벤트로 화면에 실패를 남기지 않는다. */
@@ -937,7 +967,14 @@ export function useConsultSignaling(
         localStream = stream;
         setMediaError(null);
         if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-        localStream.getTracks().forEach((track) => peer.addTrack(track, localStream!));
+        localStream.getTracks().forEach((track) => {
+          const sender = peer.addTrack(track, localStream!);
+          /**
+           * 영상 sender 를 붙일 때 받아 둔다. 나중에 `getSenders()` 에서 되찾을 수 없다 —
+           * 트랙을 비우면 종류를 알 방법이 사라진다. (S15P11A206-89 리뷰)
+           */
+          if (track.kind === 'video') videoSenderRef.current = sender;
+        });
       } catch (cause) {
         const timedOut = cause instanceof Error && cause.message === 'media_capture_timeout';
         markConsultPhase(timedOut ? '미디어 캡처 타임아웃(8초)' : '미디어 캡처 실패');   // 추가
@@ -1170,6 +1207,11 @@ export function useConsultSignaling(
       eventFallbackRef.current = null;
       socket.close();
       peer.close();
+      // 내가 만든 연결일 때만 지운다. 다음 연결이 이미 자리를 잡았으면 그것을 남긴다.
+      if (peerRef.current === peer) {
+        peerRef.current = null;
+        videoSenderRef.current = null;
+      }
       if (!reusedPreparedStream) localStream?.getTracks().forEach((track) => track.stop());
     };
   }, [accessToken, attachRemoteStream, connectionEpoch, localSpeechLanguage, role, roomId, rtcConfig]);
@@ -1182,6 +1224,58 @@ export function useConsultSignaling(
    * 아무리 그려도 사용자 화면에 아무것도 나타나지 않았다. 무엇이 잘못됐는지 알 방법도
    * 없어, 상담자는 사용자가 보고 있다고 믿은 채 설명을 이어 갔다.
    */
+  /**
+   * 보내는 영상 트랙을 다른 것으로 갈아 끼운다. **두 곳을 함께 바꾼다.** (S15P11A206-89)
+   *
+   * XR 세션과 `getUserMedia`가 공존하지 못하므로(11.8), 세션을 여는 순간 카메라 트랙을 세션에서
+   * 뽑은 트랙으로 바꿔야 한다. 그런데 바꿀 곳이 두 군데다.
+   *
+   * ```
+   * 지금 맺어진 연결   → sender.replaceTrack   (재협상 없이 즉시 바뀐다)
+   * 맡겨 둔 스트림     → swapConsultVideoTrack (끊겼다 다시 맺을 때 실릴 트랙)
+   * ```
+   *
+   * **하나만 하면 반쪽만 낫는다.** 연결만 바꾸면 재연결에서 멈춘 옛 트랙이 다시 실려 상담자
+   * 화면이 검게 되고, 맡겨 둔 스트림만 바꾸면 지금 화면은 옛 트랙 그대로다. 예전에는 이 둘을
+   * 화면이 차례로 불렀는데, 짝을 맞추는 책임이 호출부에 있으면 한쪽을 빠뜨린 것을 아무도 알아채지
+   * 못한다 — 그때 드러나는 증상이 "재연결하면 검은 화면"이라 원인을 찾기도 어렵다.
+   * 그래서 한 문으로 묶었다. (S15P11A206-89 리뷰)
+   *
+   * 영상 sender 가 없으면 연결 쪽은 건너뛴다. 사용자가 카메라 공유를 거절했거나 장치 요청이
+   * 시간을 넘겼을 때다. 새 m-line 을 만들려면 재협상이 필요한데 지금 협상 흐름은 재협상을 하지
+   * 않는다. 맡겨 둔 스트림 쪽도 카메라를 잡은 적이 없으면 스스로 아무것도 하지 않는다.
+   *
+   * 돌려주는 값은 **연결 쪽이 실제로 바뀌었는지**다. 지금 보이는 화면이 바뀌었는지를 뜻한다.
+   */
+  const replaceLocalVideoTrack = useCallback(async (track: MediaStreamTrack | null) => {
+    /**
+     * 붙일 때 받아 둔 sender 를 쓴다. `getSenders()` 에서 `track?.kind` 로 찾으면 한 번
+     * `replaceTrack(null)` 을 한 뒤에는 되찾을 수 없다. (S15P11A206-89 리뷰)
+     */
+    const sender = videoSenderRef.current;
+    let replaced = false;
+
+    if (sender) {
+      try {
+        await sender.replaceTrack(track);
+        replaced = true;
+      } catch {
+        // 트랙 종류가 맞지 않거나 연결이 이미 닫혔다. 상담 자체는 이어 가야 한다.
+        replaced = false;
+      }
+    }
+
+    /**
+     * 재연결에 실릴 트랙도 같이 바꾼다. **연결 쪽이 실패해도 한다.**
+     *
+     * 연결이 이미 닫혀 `replaceTrack` 이 실패하는 경우가 곧 재연결이 필요한 상황이다. 그때
+     * 맡겨 둔 스트림을 옛 트랙으로 남겨 두면, 다시 맺은 연결이 멈춘 트랙을 실어 보낸다.
+     */
+    swapConsultVideoTrack(track);
+
+    return replaced;
+  }, []);
+
   const sendConsultEvent = useCallback(
     (body: ConsultEventBody) => {
       if (!roomId) return false;
@@ -1205,6 +1299,8 @@ export function useConsultSignaling(
   return {
     localVideoRef,
     remoteVideoRef,
+    /** 보내는 영상 트랙을 갈아 끼운다. XR 세션이 카메라를 가져갈 때 쓴다. */
+    replaceLocalVideoTrack,
     status,
     /**
      * 화면에 보여 줄 실패 안내.

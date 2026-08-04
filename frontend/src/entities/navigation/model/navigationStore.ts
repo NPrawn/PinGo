@@ -198,15 +198,29 @@ export const useNavigationStore = create<NavigationStore>()(
           routeResult: null,
         }),
       setCurrentLocation: (location) =>
-        set({
+        set((state) => ({
           currentNodeId: location.nodeId,
           currentFloorId: location.floorId,
           currentLocationLabel: location.label ?? null,
           currentMapX: location.mapX ?? null,
           currentMapY: location.mapY ?? null,
-          currentForwardMap: location.forwardMap ?? null,
+          /**
+           * 방향은 넘기지 않으면 그대로 둔다. **위치를 옮기는 것이 방향을 지우는 일은 아니다.**
+           *
+           * `forwardMap` 은 위치가 아니라 기기가 향한 쪽이다. 사용자가 서 있는 자리를 고쳐도
+           * 몸을 돌린 것은 아니므로 그 방향은 그대로 유효하다.
+           *
+           * 예전에는 `?? null` 로 지웠다. 그래서 상담자가 `CURRENT_LOCATION_CORRECTED` 로 위치를
+           * 바로잡으면 방향이 함께 사라지고, 방향이 없으면 앵커를 만들지 않으므로(`343`) 그때부터
+           * 추적이 통째로 죽었다 — 위치도 방향도 갱신되지 않는다. 위치를 고쳐 준 것이 추적을
+           * 끄는 결과가 됐다. (S15P11A206-89)
+           *
+           * 지우려면 `null` 을 명시한다. 다시 인식해서 방향이 실제로 달라진 경우다.
+           */
+          currentForwardMap:
+            location.forwardMap === undefined ? state.currentForwardMap : location.forwardMap,
           routeResult: null,
-        }),
+        })),
       setRoute: (route) => set({ route }),
       // 도착점이 바뀌면 이전 유형으로 받아 둔 상세 경로는 더 이상 그 경로가 아니다.
       setTargetNode: (targetNodeId, exitLabel) =>

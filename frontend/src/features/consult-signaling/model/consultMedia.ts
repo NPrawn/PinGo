@@ -53,6 +53,46 @@ export function peekConsultMedia(): MediaStream | null {
 }
 
 /**
+ * 보내는 스트림의 영상 트랙을 다른 것으로 갈아 끼운다. (S15P11A206-89)
+ *
+ * 상담 화면이 XR 세션을 열면 `getUserMedia` 카메라를 놓아야 한다 — 둘은 공존하지 못한다(11.8).
+ * 대신 세션 안에서 뽑은 프레임이 트랙이 되어 그 자리에 들어온다.
+ *
+ * **맡겨 둔 스트림 쪽도 함께 바꾸는 것이 요점이다.** 이미 맺어진 연결은 `replaceTrack`으로
+ * 갈아 끼우지만, 끊겼다 다시 맺을 때는 시그널링이 `peekConsultMedia()`를 다시 읽는다. 여기를
+ * 바꾸지 않으면 재연결에서 멈춘 옛 카메라 트랙이 다시 실려 상담자 화면이 검게 된다.
+ *
+ * 카메라를 잡은 적이 없으면(사용자가 영상 공유를 거절했다) 아무것도 하지 않는다. 거절한 사람의
+ * 화면을 세션 프레임으로 대신 보내는 것은 그 선택을 뒤집는 일이다.
+ */
+export function swapConsultVideoTrack(next: MediaStreamTrack | null): boolean {
+  if (!heldStream) return false;
+
+  const previous = heldStream.getVideoTracks();
+
+  if (previous.length === 0) return false;
+
+  previous.forEach((track) => {
+    heldStream?.removeTrack(track);
+    track.stop();
+  });
+
+  if (next) heldStream.addTrack(next);
+
+  /**
+   * 셀프뷰용으로 따로 잡아 둔 카메라도 함께 놓는다.
+   *
+   * 이것을 남기면 `immersive-ar` 세션이 열려도 카메라 장치가 점유된 채라, 세션은 오류 없이
+   * 열리고 pose만 영원히 들어오지 않는다(11.8). 상담 화면은 셀프뷰를 두지 않으므로 읽는 곳도
+   * 없다 — 세션이 그리는 카메라 영상이 곧 사용자가 보는 화면이다.
+   */
+  heldCamera?.getTracks().forEach((track) => track.stop());
+  heldCamera = null;
+
+  return true;
+}
+
+/**
  * 사용자 카메라. 보내는 스트림과 따로 한 번 더 붙잡아 둔다.
  *
  * 상담 화면의 셀프뷰가 이걸 읽는다. 같은 영상 트랙이 보내는 스트림에도 담겨 있어, 사용자가

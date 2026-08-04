@@ -44,6 +44,9 @@ export function useRemoteScreenDraw() {
       }
 
       if (event.eventType === 'DRAW_STROKE_START') {
+        // 지도 위에 그린 선은 이 캔버스가 다룰 것이 아니다. 좌표계가 다르다(미터 대 0~1).
+        if (!('x' in event.payload)) return;
+
         const { strokeId, x, y, color, width } = event.payload;
         ctx.strokeStyle = color;
         ctx.lineWidth = width;
@@ -60,6 +63,7 @@ export function useRemoteScreenDraw() {
 
       // 그리기 외의 상담 이벤트(지도 동기화 등)는 이 캔버스가 다룰 것이 아니다.
       if (event.eventType !== 'DRAW_STROKE_MOVE') return;
+      if (!('points' in event.payload)) return;
 
       const { strokeId, points } = event.payload;
       // 시작 이벤트를 놓쳤다면 이을 곳이 없다. 첫 점을 시작점으로 삼는다.

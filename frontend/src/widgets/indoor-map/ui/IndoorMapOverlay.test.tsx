@@ -308,6 +308,29 @@ describe('IndoorMapOverlay', () => {
       expect(connectorLine()).toEqual([1500, 0, 1000, 0]);
     });
 
+    /**
+     * 연결선에도 방향 표시를 둔다. (S15P11A206-89)
+     *
+     * 이 선만 방향이 없었다. 그런데 경로에서 벗어났거나 목적지를 지나친 동안에는 화면에 이 선밖에
+     * 없고, 그때 알아야 하는 것은 "어느 쪽으로 가면 경로로 돌아가는가"다. 방향이 없으면 걸어온
+     * 자취처럼 보인다.
+     */
+    it('연결선 가운데에 경로 쪽을 가리키는 화살표를 둔다', () => {
+      renderOverlay({
+        // 본선이 짧아 자기 화살표는 하나도 갖지 않는다. 남는 것은 연결선의 것뿐이다.
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 100, mapY: 0 },
+        ],
+        // 경로 끝을 한참 지나친 자리. 되돌아가려면 -x 쪽으로 가야 한다.
+        currentLocation: { floorId: FLOOR_B2, mapX: 600, mapY: 0 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(connectorLine()).toEqual([600, 0, 100, 0]);
+      expect(directionAngles()).toEqual([180]);
+    });
+
     /** 그만한 길이는 현재 위치 점 안에 묻혀 보이지 않는다. 요소만 하나 늘어난다. */
     it('점 안에 묻히는 길이는 그리지 않는다', () => {
       renderOverlay({

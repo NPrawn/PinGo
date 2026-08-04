@@ -41,8 +41,9 @@ type Gestures = Omit<ReturnType<typeof useMapGestures>, 'ref'>;
 
 function Harness({ options, expose }: { options: FollowOptions; expose: (g: Gestures) => void }) {
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
-  const { ref, view, reset, isFollowing, isTransformed, handlers } = useMapGestures(options);
-  expose({ view, reset, isFollowing, isTransformed, handlers });
+  const { ref, view, reset, zoomBy, isFollowing, isTransformed, handlers } =
+    useMapGestures(options);
+  expose({ view, reset, zoomBy, isFollowing, isTransformed, handlers });
   // 실제 사용처와 같이 ref를 요소에 붙인다. 붙지 않으면 크기를 관찰하지 못해 추종이 꺼진다.
   return <div ref={ref} {...handlers} />;
 }
@@ -173,6 +174,39 @@ describe('시점 추종', () => {
     });
 
     expect(state.current?.isFollowing).toBe(true);
+  });
+
+  /**
+   * 추종 대상이 사라진 뒤에는 이어받을 것이 없다. (S15P11A206-89)
+   *
+   * 예전에는 마지막 추종 시점을 계속 들고 있었다. 그래서 상담자 화면에서 `자유 탐색`으로 바꾼 뒤
+   * (추종 대상이 없어진다) 시점을 되돌리고 지도를 밀면, 한참 전 사용자를 좇던 확대 시점이
+   * 되살아나 화면이 갑자기 튀면서 확대됐다.
+   */
+  it('추종 대상이 없어진 뒤 되돌려 밀면 확대 시점이 되살아나지 않는다', () => {
+    const { state, rerender } = mount(followOptions({ px: 1200, py: 400 }));
+
+    // 사용자를 좇는 동안에는 확대돼 있다. 이 값이 되살아나면 안 되는 그 값이다.
+    expect(state.current!.view.scale).toBeGreaterThan(1);
+
+    // 자유 탐색으로 바꾼다. 추종할 대상이 없어진다.
+    act(() => {
+      rerender(followOptions(null));
+    });
+    // 새로고침 버튼. 시점을 되돌리고 추종 표시를 다시 세운다.
+    act(() => {
+      state.current!.reset();
+    });
+
+    expect(state.current!.view).toEqual({ scale: 1, x: 0, y: 0, rotation: 0 });
+
+    act(() => {
+      state.current!.handlers.onPointerDown(pointer(1, 100, 100));
+      // 문턱을 넘겨 추종을 푼다. 여기서 옛 시점을 이어받으면 화면이 튄다.
+      state.current!.handlers.onPointerMove(pointer(1, 160, 130));
+    });
+
+    expect(state.current!.view.scale).toBe(1);
   });
 
   it('목표를 모르면 추종하지 않는다', () => {

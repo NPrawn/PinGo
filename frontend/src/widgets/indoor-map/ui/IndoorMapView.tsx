@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStationFacilities, type Facility } from '@/entities/facility';
 import {
@@ -83,6 +84,17 @@ interface IndoorMapViewProps {
    */
   followCamera?: boolean;
   /**
+   * 진행 방향이 화면 위를 향하도록 **지도를 돌릴지**. 기본은 돌린다.
+   *
+   * `followCamera`가 켜져 있을 때만 뜻이 있다. 추종은 그대로 두고 회전만 끄는 자리다.
+   *
+   * 끄는 쪽은 상담자 화면이다. 상담자는 사용자를 따라가며 봐야 하지만 자기 화면까지 같이 돌면
+   * 도면을 읽을 수 없다 — 역 구조를 아는 사람이 방향을 잡는 기준은 도면의 고정된 방위다.
+   * 회전을 끄면 지도는 북쪽 고정이고 **마커의 방향 부채꼴만 돈다**(`currentHeadingImageDeg`는
+   * 지도 회전과 무관하게 계산된다). 사용자가 어디를 보고 있는지는 그대로 전달된다.
+   */
+  rotateWithHeading?: boolean;
+  /**
    * `내 위치` 버튼을 눌렀을 때. 시점 복귀는 위젯이 하고, **층 되돌리기는 여기서** 한다.
    *
    * 표시 층은 화면이 들고 있다(안내 화면의 층 버튼). 위젯이 시점만 되돌리면 다른 층을 보던
@@ -90,6 +102,14 @@ interface IndoorMapViewProps {
    * 않는다. 내 위치로 가는 버튼을 눌렀는데 내 위치가 화면에 없는 상태가 된다.
    */
   onRecenter?: () => void;
+  /**
+   * 확대·축소 버튼을 지도 위에 둘지. 기본은 두지 않는다.
+   *
+   * 켜는 쪽은 상담자 콘솔이다. 마우스만 있는 화면에서는 휠이 유일한 확대 통로인데 휠은 화면에
+   * 보이지 않아 있는 줄도 모른다. 사용자 화면은 두 손가락으로 확대할 수 있고 이미 층 버튼·시설
+   * 필터가 지도를 덮고 있어 켜지 않는다.
+   */
+  showZoomControls?: boolean;
   /**
    * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
    * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
@@ -128,6 +148,9 @@ const FOLLOW_SPAN_PX = 60 / 0.19;
 /** 내 위치를 화면 세로 68% 지점에 둔다. 위쪽 3분의 2를 진행 방향에 내주는 배치다. */
 const FOLLOW_ANCHOR_Y = 0.68;
 
+/** 확대 버튼 한 번의 배수. 휠(1.1)보다 크게 둔다 — 버튼은 여러 번 누르기 번거롭다. */
+const ZOOM_STEP = 1.4;
+
 /**
  * 특정 역·층의 실내 지도 이미지를 렌더링하고, 그 위에 현재 위치·목적지·경로를 겹쳐 그린다.
  *
@@ -151,7 +174,9 @@ export function IndoorMapView({
   selectedFacilityId,
   onSelectFacility,
   followCamera = false,
+  rotateWithHeading = true,
   onRecenter,
+  showZoomControls = false,
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
@@ -174,9 +199,12 @@ export function IndoorMapView({
    * 0도는 오른쪽이고 위는 -90도이므로, 방향각 φ를 위로 세우려면 `-90 - φ`만큼 돌린다.
    *
    * 방향을 모르면 돌리지 않는다 — 0으로 채우면 북쪽 고정과 구분되지 않는다.
+   *
+   * `rotateWithHeading`을 끈 화면은 방향을 알아도 돌리지 않는다. 추종(`followTarget`)은 위에서
+   * 따로 정하므로, 사용자를 화면 가운데 붙들어 둔 채 도면 방위만 고정된다.
    */
   const targetRotationDeg =
-    followCamera && typeof currentHeadingDeg === 'number'
+    followCamera && rotateWithHeading && typeof currentHeadingDeg === 'number'
       ? -90 - (currentHeadingDeg + PLAN_REFERENCE.frame.angleDeg)
       : null;
 
@@ -192,6 +220,7 @@ export function IndoorMapView({
     ref: mapRef,
     view: mapView,
     reset: resetMapView,
+    zoomBy: zoomMapBy,
     isFollowing: mapFollowing,
     isTransformed: mapTransformed,
     handlers: mapHandlers,
@@ -202,6 +231,26 @@ export function IndoorMapView({
     anchorY: FOLLOW_ANCHOR_Y,
     rotationDeg: mapRotationDeg,
   });
+
+  /**
+   * 추종을 켜라는 요청이 오면 시점을 되돌린다. (S15P11A206-89)
+   *
+   * `useMapGestures` 의 추종은 손으로 밀거나 확대하면 풀리고, **스스로 다시 붙지 않는다** —
+   * 그래야 사용자가 다른 곳을 보는 동안 시점이 도로 끌려가지 않는다. 그런데 그 때문에 호출부가
+   * `followCamera` 를 다시 켜도 아무 일도 일어나지 않았다. 상담자 화면에서 한 번 지도를 밀어 본
+   * 뒤 `사용자 시점 따라가기` 를 누르면 버튼만 켜지고 지도는 사용자를 따라가지 않았다.
+   *
+   * 켜는 순간에만 되돌린다. 켜져 있는 동안 계속 되돌리면 추종을 끄는 손 조작 자체가 막힌다.
+   */
+  const followCameraRef = useRef(followCamera);
+
+  useEffect(() => {
+    const turnedOn = followCamera && !followCameraRef.current;
+
+    followCameraRef.current = followCamera;
+    if (turnedOn) resetMapView();
+  }, [followCamera, resetMapView]);
+
   // 목업 모드에서는 목업 지도를 쓰므로 조회하지 않는다.
   const query = useStationFloorMaps(stationId, { enabled: !useMockData });
 
@@ -380,6 +429,27 @@ export function IndoorMapView({
         >
           <Icon name={followTarget ? 'target' : 'refresh'} size={18} />
         </button>
+      )}
+      {/* 확대·축소. 복귀 버튼 위에 세로로 쌓아 같은 모서리에 모아 둔다. */}
+      {showZoomControls && (
+        <div className={styles.zoomControls} role="group" aria-label={t('indoorMap.zoom.group')}>
+          <button
+            type="button"
+            className={styles.zoomButton}
+            onClick={() => zoomMapBy(ZOOM_STEP)}
+            aria-label={t('indoorMap.zoom.in')}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className={styles.zoomButton}
+            onClick={() => zoomMapBy(1 / ZOOM_STEP)}
+            aria-label={t('indoorMap.zoom.out')}
+          >
+            −
+          </button>
+        </div>
       )}
     </div>
   );

@@ -47,21 +47,11 @@
   overflow: auto;
 }
 
-/* 사용자가 보내온 영상. 잘라내면 안내에 필요한 주변이 사라지므로 화면 전체를 담는다. */
-.sharedScreen {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
-}
-
+/* 영상이 오기 전이나 오지 않을 때의 안내. 거울의 지도·카메라보다 앞에 둔다. */
 .streamPlaceholder {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -268,12 +258,22 @@
   box-shadow: 0 0 0 1px #ccc;
 }
 
+/*
+  지도 마커와 **같은 변수**를 쓴다. (S15P11A206-89)
+
+  예전에는 스와치가 민트·`--color-red` 인데 지도의 마커는 파스텔 레드·진한 레드였고, 글자는
+  "파란점"·"빨간점" 이었다 — 세 곳이 서로 다른 색을 말하고 있었다. 범례는 지도를 읽는 열쇠라
+  틀리면 없는 것보다 나쁘다.
+
+  글자에서 색 이름을 뺀 것도 같은 이유다. 색을 글자로 적으면 색이 바뀔 때마다 함께 고쳐야 하고,
+  빠뜨리면 이번처럼 조용히 거짓이 된다. 무엇인지만 적고 색은 스와치가 보여 준다.
+*/
 .legendMe {
-  background: var(--color-mint-mid);
+  background: var(--color-route);
 }
 
 .legendDest {
-  background: var(--color-red);
+  background: var(--color-route-deep);
 }
 
 .mapRow {
@@ -299,17 +299,68 @@
   z-index: 4;
 }
 
-/* 시설 유형 칩. 지도 위 오른쪽 아래에 깔린다. */
-.facilityFilters {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  left: 8px;
-  z-index: 5;
+/*
+  시설 유형 칩. 지도 위 오른쪽 아래에 깔린다.
+
+  오른쪽 끝을 복귀 버튼(위젯의 `.resetView`, 32px + 여백) 만큼 비워 둔다. 예전에는 `right: 8px`
+  이라 마지막 칩이 그 버튼 아래로 들어가 눌리지 않았다. 칩은 줄바꿈되므로 폭이 줄면 위로 한 줄
+  더 쌓일 뿐이고, 가려지는 것보다는 낫다.
+*/
+/*
+  시설 표시 칩. 지도 **아래** 줄이다.
+
+  예전에는 `position: absolute` 로 도면 위에 얹혀 있었다. 유형이 일곱 개가 되자 세 줄로 늘어
+  도면의 절반 가까이를 덮었다 — 시설이 가리는 것을 치우려고 누르는 버튼이 그 자리를 가리고 있었다.
+  흐름 안에 두면 몇 줄이 되든 지도를 밀어내지 않고 아래로 늘어난다. (S15P11A206-89)
+
+  왼쪽 여백 78px 은 층 목록을 비켜 도면의 시작선에 맞추는 값이다. 아래 `.mapActions` 와 같은
+  값이며, 둘이 갈라지면 지도 아래 두 줄의 시작선이 서로 어긋난다.
+*/
+/*
+  시설 표시 줄 전체. 왼쪽은 유형 칩, 오른쪽은 표시 모드(숨기기)다.
+
+  `align-items: flex-start` 로 두어 유형이 줄바꿈으로 늘어나도 숨기기는 **첫 줄 오른쪽**에
+  남는다. 늘어난 높이의 가운데로 내려가면 찾는 자리가 층마다 달라진다.
+*/
+.facilityBar {
   display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 10px 0 0 78px;
+}
+
+/* 유형 칩. 남는 폭을 모두 쓰고 넘치면 줄바꿈한다. */
+.facilityFilters {
+  display: flex;
+  flex: 1;
   flex-wrap: wrap;
   gap: 6px;
-  justify-content: flex-end;
+  min-width: 0;
+}
+
+/*
+  표시 모드 칸. 유형과 성격이 달라 선으로 갈라 둔다.
+
+  줄이지 않는다(`flex: none`) — 유형이 많아도 이 칩의 글자가 접히면 안 된다.
+*/
+.facilityVisibility {
+  display: flex;
+  flex: none;
+  padding-left: 12px;
+  border-left: 1px solid #e6e6ee;
+}
+
+/*
+  표시 층에 없는 유형.
+
+  숨기지 않고 연하게 남긴다 — 상담자는 층을 오가며 보는 사람이라 칩이 층마다 사라지고 나타나면
+  누르려던 자리가 계속 바뀐다. 줄을 고정해 두고 진하기로만 알린다. (S15P11A206-89)
+
+  `cursor: default` 로 되돌린다. 누를 수 없는 것에 손가락 커서가 뜨면 눌러도 되는 것으로 읽힌다.
+*/
+.facilityFilterAbsent {
+  cursor: default;
+  opacity: 0.38;
 }
 
 /* 사용자 지도가 아직 오지 않았을 때. 아무 지도나 대신 띄우지 않는다. */
@@ -541,14 +592,93 @@
   color: #8be09b;
 }
 
-.stream {
-  position: relative;
+/*
+  사용자 화면 거울이 놓일 자리. (S15P11A206-89)
+
+  `container-type: size` 로 두는 이유는 아래 `.mirror` 가 이 상자의 **가로와 세로 양쪽**을
+  알아야 하기 때문이다. 폰 비율(약 9:19)은 세로로 길어서, 창이 높으면 폭이 걸리고 창이 낮으면
+  높이가 걸린다. `aspect-ratio` 에 `max-width`·`max-height` 를 함께 걸면 어느 쪽이 먼저
+  적용되는지가 브라우저마다 다르므로, 두 치수를 직접 비교해 작은 쪽을 고른다.
+*/
+.mirrorFit {
+  container-type: size;
   display: flex;
   flex: 1;
-  flex-direction: column;
+  min-height: 0;
+}
+
+/*
+  사용자 화면 전체를 같은 비율로 비추는 상자.
+
+  **비율은 사용자가 재서 보낸다**(`ScreenGeometryPayload`). 여기에 52:48 같은 숫자를 박아 두면
+  화면 높이가 다른 기기에서 어긋나고, 어긋나면 상담자가 짚어 준 자리가 사용자 화면의 다른 곳에
+  찍힌다. `--mirror-aspect` 는 그 값이며 도착하기 전에는 어림값이 들어온다.
+
+  가로세로 중 상자에 들어가는 쪽을 고른다 — `min()` 이 곧 `contain` 이다.
+*/
+.mirror {
+  position: relative;
+  width: min(100cqw, calc(100cqh * var(--mirror-aspect)));
+  height: min(100cqh, calc(100cqw / var(--mirror-aspect)));
+  margin: auto;
   overflow: hidden;
   background: #000;
   border-radius: 14px;
+}
+
+/*
+  카메라 영상의 원본 비율을 되돌리는 상자.
+
+  보내오는 트랙은 320×240 고정이라, 원본이 16:9인 기기에서는 세로로 늘어난 채로 도착한다
+  (`cameraFrames.ts`). 원본 비율의 상자를 만들고 그 안에서 영상을 늘려 채우면(`fill`) 그
+  늘어남이 정확히 되돌아간다.
+
+  그 상자를 거울보다 크게 잡아(`min-width`·`min-height` 100%) 넘치는 쪽을 잘라 낸다. 사용자
+  화면에서도 XR 컴포지터가 카메라를 화면에 맞춰 잘라 합성하므로, 같은 화각이 된다.
+
+  **실기기 확인이 필요하다.** 컴포지터가 정확히 이렇게 자르는지는 문서로 확정되지 않았다.
+*/
+.mirrorCameraCrop {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  min-width: 100%;
+  min-height: 100%;
+  aspect-ratio: var(--mirror-camera-aspect);
+  transform: translate(-50%, -50%);
+}
+
+/* 원본 비율 상자를 그대로 채운다. `contain` 이면 여백이 생겨 화각이 달라진다. */
+.mirrorCamera {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/*
+  사용자 화면 아래쪽. 카메라를 가리는 크림색 바탕이며, 자리는 사용자가 잰 값이다.
+  사용자 화면의 `.lower` 와 같은 배경을 쓴다 — 색이 다르면 어디까지가 지도인지 헷갈린다.
+*/
+.mirrorLower {
+  position: absolute;
+  z-index: 2;
+  background: var(--color-cream);
+}
+
+/*
+  거울 안의 지도. **읽기 전용이다.**
+
+  포인터를 받지 않는다. 상담자가 여기서 확대하거나 밀면 사용자 화면과 다른 곳을 비추게 되고,
+  그 위에 그은 선은 사용자 화면의 엉뚱한 자리에 찍힌다. 탐색은 왼쪽 지도에서 한다.
+*/
+.mirrorMap {
+  position: absolute;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  background: #eef1f5;
 }
 
 .canvas {

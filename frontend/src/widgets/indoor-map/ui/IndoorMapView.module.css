@@ -85,3 +85,43 @@
   border-radius: 50%;
   box-shadow: 0 4px 12px -6px rgb(15 44 34 / 55%);
 }
+
+/*
+  확대·축소. (S15P11A206-89)
+
+  **오른쪽 위에 둔다.** 처음에는 복귀 버튼 위(오른쪽 아래)에 쌓았는데, 상담자 화면은 시설 칩이
+  지도 아래쪽 띠를 통째로 쓰기 때문에(`SessionPage.module.css` 의 `.facilityFilters` 는
+  `left`·`right` 를 모두 잡고 줄바꿈한다) 확대 버튼이 칩 위에 얹혀 칩을 눌를 수 없었다.
+  위쪽은 두 화면 모두 비어 있다 — 사용자 화면의 층 버튼은 왼쪽 위다.
+
+  작게 두는 것은 늘 쓰는 조작이 아니기 때문이다. 기본은 사용자가 보내온 화면을 그대로 보는
+  것이고, 확대는 짚어 줄 곳을 찾을 때만 쓴다.
+*/
+.zoomControls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 92%);
+  border-radius: 9px;
+  box-shadow: 0 4px 12px -6px rgb(15 44 34 / 55%);
+}
+
+.zoomButton {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  font: 800 14px/1 var(--font-family-base);
+  color: var(--color-mint-forest);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.zoomButton:hover {
+  background: rgb(15 44 34 / 8%);
+}

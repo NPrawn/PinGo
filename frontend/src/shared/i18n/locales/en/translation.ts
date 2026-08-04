@@ -212,6 +212,8 @@ export const en = {
       },
       consultEnded: {
         title: 'The consultation has ended', description: 'Leave a rating to return to destination search',
+        /* 경로 안내에서 상담에 들어온 사용자는 안내로 돌아간다. (S15P11A206-89) */
+        descriptionNavigation: 'Leave a rating to return to route guidance',
         score: '{{score}} stars', error: 'Could not save your rating. Please select it again.',
         rating1: 'Poor', rating2: 'Fair', rating3: 'Okay', rating4: 'Good', rating5: 'Excellent',
       },
@@ -233,6 +235,13 @@ export const en = {
         cameraOn: 'Connected · Sharing camera', voiceOnly: 'Connected · Voice only', end: 'End consultation',
         reconnecting: 'Trying to reconnect', myCamera: 'My camera', retryingStatus: 'Connection: retrying',
         status: 'Connection: {{status}}', routeLabel: 'Consultation route', removeWaypoint: 'Remove {{name}} waypoint',
+        /* XR 카메라 공유 상태. 붙는 과정과 카메라 준비 과정이 따로 진행된다. (S15P11A206-89) */
+        connecting: 'Connecting', connected: 'Connected', retrying: 'Reconnecting',
+        cameraSharing: 'Sharing camera', cameraPreparing: 'Preparing camera',
+        cameraUnsupported: 'This device cannot send its camera',
+        /* 지도 동기화는 DataChannel 이 열려야 간다. 피어 연결과 따로 실패하므로 함께 적는다. */
+        statusWithChannel: 'Connection: {{status}} · Event channel {{channel}}',
+        channelOpen: 'open', channelClosed: 'closed',
         waypoint: 'Stop {{order}}', noDestination: 'No destination selected', captionLabel: 'Live captions · Agent',
         captionWaiting: 'The agent’s speech will appear here.', captionUnsupported: 'Speech captions are not supported in this browser.',
         mapSync: 'The agent is guiding you using the same map',
@@ -283,6 +292,7 @@ export const en = {
       imageAlt: '{{floorCode}} indoor map',
       resetView: 'Reset map',
       recenter: 'My location',
+      zoom: { group: 'Zoom the map', in: 'Zoom in', out: 'Zoom out' },
       overlay: {
         currentLocation: 'Current location',
         destination: 'Destination',

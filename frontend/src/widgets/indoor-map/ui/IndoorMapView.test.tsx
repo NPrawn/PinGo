@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useStationFloorMaps, type FloorMap } from '@/entities/floor-map';
 import { IndoorMapView } from './IndoorMapView';
 
@@ -231,6 +231,168 @@ describe('IndoorMapView 오버레이 연결', () => {
     const marker = screen.getByRole('img', { name: '현재 위치' });
     expect(marker.querySelector('circle')).toHaveAttribute('cx', '622');
     expect(marker.querySelector('circle')).toHaveAttribute('cy', '512');
+  });
+});
+
+/**
+ * 추종과 회전을 따로 끌 수 있어야 한다. (S15P11A206-89)
+ *
+ * 상담자 화면은 사용자를 좇아 보되 지도는 북쪽에 고정한다. 한 플래그가 둘을 함께 하면, 사용자
+ * 방향이 상담자에게 전달되기 시작하는 순간 상담자 지도까지 같이 돌아 도면을 읽을 수 없게 된다.
+ */
+describe('IndoorMapView 시점 추종과 회전', () => {
+  /**
+   * 추종은 화면 크기를 ResizeObserver로 읽고, 크기가 0이면 스스로 꺼진다. jsdom에는 그 관찰자가
+   * 없어 크기가 영원히 0이므로, 심어 주지 않으면 회전 여부와 무관하게 늘 변환이 없다.
+   */
+  beforeEach(() => {
+    mockedHook.mockReturnValue(hookState({ isPending: false, isError: false, data: [framedMap] }));
+
+    class ResizeObserverStub {
+      callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+
+      observe() {
+        this.callback(
+          [{ contentRect: { width: 314, height: 291 } } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+
+      unobserve() {}
+      disconnect() {}
+    }
+
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * 회전각은 프레임 루프에서 붙는다. 값을 읽기 전에 프레임을 흘려보낸다.
+   *
+   * `waitFor`로 조건이 참이 되기를 기다리면 "돌지 않는다"를 검사할 수 없다 — 0은 처음부터
+   * 참이라 기다림이 즉시 끝나고, 회전이 나중에 붙었어도 통과한다. 두 경우를 같은 시간만큼
+   * 지나 보낸 뒤 읽어야 비교가 성립한다. 첫 방향은 붙여서 들어오므로 한 프레임으로 충분하지만
+   * 두 번 돌려 여유를 둔다.
+   */
+  async function stageRotationDeg(element: HTMLElement): Promise<number> {
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    const matched = /rotate\((-?[\d.]+)deg\)/.exec(element.parentElement?.style.transform ?? '');
+
+    expect(matched).not.toBeNull();
+
+    return Number(matched?.[1]);
+  }
+
+  it('추종 중에는 진행 방향이 위를 향하도록 지도를 돌린다', async () => {
+    render(
+      <IndoorMapView
+        stationId={1}
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+        currentHeadingDeg={30}
+        followCamera
+      />,
+    );
+
+    // B2 프레임 -21.28도. -90 - (30 + (-21.28)) = -98.72
+    const rotation = await stageRotationDeg(screen.getByRole('img', { name: 'B2 실내 지도' }));
+    expect(rotation).toBeCloseTo(-98.72, 6);
+  });
+
+  it('회전을 끄면 추종은 유지한 채 지도를 돌리지 않는다', async () => {
+    render(
+      <IndoorMapView
+        stationId={1}
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+        currentHeadingDeg={30}
+        followCamera
+        rotateWithHeading={false}
+      />,
+    );
+
+    const plan = screen.getByRole('img', { name: 'B2 실내 지도' });
+    expect(await stageRotationDeg(plan)).toBe(0);
+
+    /**
+     * 방향 자체는 그대로 전달된다. 지도를 돌리지 않는 것과 방향을 모르는 것은 다르다 —
+     * 상담자는 사용자가 어디를 보고 있는지 부채꼴로 읽는다.
+     */
+    const beam = screen.getByRole('img', { name: '현재 위치' }).querySelector('path');
+    const beamRotation = /rotate\((-?[\d.]+) /.exec(beam?.getAttribute('transform') ?? '');
+    expect(Number(beamRotation?.[1])).toBeCloseTo(8.72, 6);
+  });
+
+  /**
+   * 추종을 다시 켜면 시점이 사용자에게 돌아와야 한다. (S15P11A206-89)
+   *
+   * 제스처 훅의 추종은 손으로 밀면 풀리고 **스스로 다시 붙지 않는다** — 사용자가 다른 곳을 보는
+   * 동안 시점이 도로 끌려가면 안 되기 때문이다. 그래서 예전에는 호출부가 `followCamera` 를 다시
+   * 켜도 아무 일이 없었다. 상담자 화면에서 지도를 한 번 밀어 본 뒤 `사용자 시점 따라가기` 를
+   * 누르면 버튼만 켜지고 지도는 사용자를 따라가지 않았다.
+   */
+  it('추종을 다시 켜면 밀어 둔 시점을 버리고 사용자를 다시 좇는다', async () => {
+    function view(followCamera: boolean) {
+      return (
+        <IndoorMapView
+          stationId={1}
+          currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+          currentHeadingDeg={30}
+          followCamera={followCamera}
+        />
+      );
+    }
+
+    const { rerender } = render(view(true));
+    const plan = screen.getByRole('img', { name: 'B2 실내 지도' });
+    const stage = () => plan.parentElement?.style.transform ?? '';
+    const scaleOf = () => Number(/scale\(([\d.]+)\)/.exec(stage())?.[1]);
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    const followedScale = scaleOf();
+    expect(followedScale).toBeGreaterThan(1);
+
+    // 자유 탐색으로 바꾼 뒤 지도를 밀어 시점을 옮긴다. 추종이 풀린다.
+    rerender(view(false));
+    await act(async () => {
+      fireEvent.pointerDown(plan, { pointerId: 1, clientX: 100, clientY: 100 });
+      fireEvent.pointerMove(plan, { pointerId: 1, clientX: 170, clientY: 140 });
+      fireEvent.pointerUp(plan, { pointerId: 1 });
+    });
+
+    // 다시 따라가기. 여기서 아무 일도 없으면 지도는 밀어 둔 자리에 남는다.
+    rerender(view(true));
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    expect(scaleOf()).toBeCloseTo(followedScale, 6);
+  });
+
+  /** 추종 자체가 꺼져 있으면 회전 여부를 물을 일이 없다. 조망 화면은 늘 북쪽 고정이다. */
+  it('추종이 꺼져 있으면 방향을 알아도 돌리지 않는다', async () => {
+    render(
+      <IndoorMapView
+        stationId={1}
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+        currentHeadingDeg={30}
+      />,
+    );
+
+    const rotation = await stageRotationDeg(screen.getByRole('img', { name: 'B2 실내 지도' }));
+    expect(rotation).toBe(0);
   });
 });
 

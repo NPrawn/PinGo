@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -9,7 +10,7 @@ import {
   useCounselorQueueStore,
   waitedLabel,
 } from '@/entities/consult';
-import { FACILITY_MAP_FILTERS, type Facility } from '@/entities/facility';
+import { FACILITY_MAP_FILTERS, useStationFacilities, type Facility } from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
   describeRemoteCaptionTrouble,
@@ -17,7 +18,12 @@ import {
   useConsultSignaling,
   useTranslatedSpeech,
 } from '@/features/consult-signaling';
-import type { ConsultDataEvent, ConsultEventBody, MapSyncPayload } from '@/shared/types';
+import type {
+  ConsultDataEvent,
+  ConsultEventBody,
+  MapSyncPayload,
+  NormalizedRect,
+} from '@/shared/types';
 import { useScreenDraw } from '@/features/shared-screen-draw';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import {
@@ -36,18 +42,45 @@ import styles from './SessionPage.module.css';
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
 
-/** 재시도 중에는 원인 코드 대신 재시도 중임을 알린다. 그 문구는 로딩 화면이 대신 보여 준다. */
-function statusMessage(reconnecting: boolean, failure: string | null, status: string): string {
-  if (reconnecting) return '연결 상태: 재시도 중';
-  if (failure) return `${failure} · 연결 상태: ${status}`;
-  return `연결 상태: ${status}`;
-}
-
 type DrawStrokeStart = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_START' }>['payload'];
 type DrawStrokeMove = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_MOVE' }>['payload'];
 type DrawStrokeEnd = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_END' }>['payload'];
 
 /* 층 목록은 더 이상 상수로 두지 않는다. 사용자가 보고 있는 역의 실제 지도에서 만든다. */
+
+/**
+ * 배치가 아직 도착하지 않았을 때 쓸 화면 비율. `PhoneFrame` 의 기준 크기(342×726)다.
+ *
+ * **어림값이라는 것을 분명히 한다.** 실제 비율은 사용자가 재서 보내며, 이 값은 첫 스냅숏이
+ * 오기 전 몇 백 밀리초를 위한 것이다. 비율이 틀린 동안에도 0~1 좌표는 축마다 따로 나뉘므로
+ * 그은 자리는 맞고 모양만 늘어난다.
+ */
+const FALLBACK_MIRROR_ASPECT = 342 / 726;
+
+/**
+ * 카메라 원본 규격을 모르는 동안 쓸 비율.
+ *
+ * 받는 트랙은 320×240 고정이므로 이 값을 쓰면 늘어난 그대로 보여 준다 — 되돌릴 근거가 없을 때
+ * 임의로 자르면 사용자가 보는 것과 다른 장면을 보여 주게 된다.
+ */
+const FALLBACK_CAMERA_ASPECT = 320 / 240;
+
+/**
+ * 0~1 값을 백분율 문자열로. 끝자리를 자른다 — `0.041 * 100` 은 `4.1000000000000005` 다.
+ */
+function percent(value: number): string {
+  return `${Number((value * 100).toFixed(4))}%`;
+}
+
+/** 화면 기준 0~1 사각형을 거울 안의 자리로 옮긴다. */
+function rectStyle(rect: NormalizedRect): CSSProperties {
+  return {
+    left: percent(rect.x),
+    top: percent(rect.y),
+    width: percent(rect.width),
+    height: percent(rect.height),
+  };
+}
 
 /** Screen 30 (FR-C-004 / FR-W-002) — the counselor's live consultation view. */
 export function SessionPage() {
@@ -144,12 +177,22 @@ export function SessionPage() {
    * dropping the new pin needs the map coordinate contract.
    */
   const [repinning, setRepinning] = useState<'dest' | 'origin' | null>(null);
+  /**
+   * 거울 전체에 그린다. **영상 요소를 기준으로 삼지 않는다.** (S15P11A206-89)
+   *
+   * 예전에는 `remoteVideoRef` 를 넘겼다. 그러면 좌표가 `object-fit: contain` 으로 맞춰진
+   * **영상 안쪽**을 기준으로 정규화되는데, 영상은 카메라 부분만 차지하므로 지도 위에 그은 선이
+   * 1을 넘는 값으로 나가 사용자 화면 밖에 찍혔다.
+   *
+   * 캔버스는 거울 전체를 덮고, 거울은 사용자 화면과 같은 비율이다. 그래서 캔버스 기준 0~1 이
+   * 곧 사용자 화면 기준 0~1 이다.
+   */
   const {
     canvasRef,
     enabled: drawing,
     toggle: toggleDraw,
     clear: clearDraw,
-  } = useScreenDraw(drawEmitter, remoteVideoRef);
+  } = useScreenDraw(drawEmitter);
 
   /**
    * 층 목록은 사용자가 보고 있는 역의 실제 지도에서 만든다.
@@ -168,8 +211,72 @@ export function SessionPage() {
    */
   const displayedFloorId =
     (synced ? null : pickedFloorId) ?? mapSync?.floorId ?? floorMaps[0]?.floorId;
-  /** 지도에 켜 둔 시설 유형. 안내 화면과 같은 목록에서 고른다. */
-  const [facilityType, setFacilityType] = useState<string | null>(null);
+
+  /**
+   * 지도에 켜 둔 시설 표시. **사용자 화면과 같은 세 상태 모델이다.**
+   *
+   * - `all` — 그 층 시설을 모두 보여 준다. **첫 화면이 이것이다.**
+   * - `none` — 아무것도 보여 주지 않는다.
+   * - 그 외 — 그 `facilityType` 만.
+   *
+   * 셋을 한 값에 담는다. 유형과 숨김을 따로 두면 "숨김인데 유형도 켜져 있는" 조합이 생긴다.
+   *
+   * 예전에는 `null` 로 시작해 아무 시설도 그리지 않았다. 상담자는 역에 무엇이 어디 있는지부터
+   * 봐야 짚어 줄 수 있는데, 빈 도면에서 시작하면 유형 칩을 하나씩 눌러 가며 찾아야 했다.
+   * 사용자 화면은 처음부터 전체를 보여 주므로 두 화면이 서로 다른 지도를 보고 있었다.
+   * (S15P11A206-89)
+   */
+  const [facilityView, setFacilityView] = useState<string>('all');
+
+  /**
+   * 표시 층에 실제로 있는 시설 유형. 칩의 진하기를 가르는 값이다. (S15P11A206-89)
+   *
+   * **사용자 화면은 없는 유형을 아예 빼지만 여기서는 연하게 남긴다.** 상담자는 층을 오가며
+   * 보는 사람이라 칩이 층마다 나타나고 사라지면 누르려던 자리가 계속 바뀐다. 연하게 두면 줄이
+   * 고정되고, 그 층에 없다는 것도 눌러 보지 않고 알 수 있다 — 역삼역 B3 에는 승차권 충전기가
+   * 없는데 예전에는 눌러서 빈 지도를 봐야만 알 수 있었다.
+   */
+  const facilities = useStationFacilities(mapSync?.stationId ?? 0).data;
+  const floorFacilityTypes = new Set(
+    (facilities ?? [])
+      .filter((facility) => facility.floorId === displayedFloorId)
+      .map((facility) => facility.facilityType),
+  );
+
+  /**
+   * 켜 둔 유형이 표시 층에 없으면 전체 표시로 친다. 고른 값 자체는 지우지 않는다 — 층을 넘길
+   * 때마다 사라지면 돌아왔을 때 매번 다시 눌러야 한다. 숨김은 층과 무관하므로 그대로 둔다.
+   */
+  const effectiveView =
+    facilityView !== 'all' &&
+    facilityView !== 'none' &&
+    facilities !== undefined &&
+    !floorFacilityTypes.has(facilityView)
+      ? 'all'
+      : facilityView;
+  /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
+  const facilityType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
+  /**
+   * 사용자 화면 거울의 배치. 사용자가 직접 재서 보낸 값을 그대로 쓴다. (S15P11A206-89)
+   *
+   * **여기서 계산하지 않는다.** 카메라와 지도가 나뉘는 자리는 화면 높이에 따라 달라지고 카메라
+   * 원본 규격도 기기마다 달라서, 이쪽에서 짐작하면 어느 기기에서는 맞고 어느 기기에서는
+   * 어긋난다. 어긋나는 쪽에서는 상담자가 짚어 준 자리가 사용자 화면의 다른 곳에 찍힌다.
+   */
+  const screen = mapSync?.screen ?? null;
+  const mirrorStyle = {
+    '--mirror-aspect': screen ? screen.width / screen.height : FALLBACK_MIRROR_ASPECT,
+    /**
+     * 카메라 영상의 원본 비율.
+     *
+     * 트랙은 320×240 고정이라 원본이 16:9면 늘어난 채로 도착한다. 원본 비율의 상자에 영상을
+     * 늘려 채우면(`object-fit: fill`) 그 늘어남이 정확히 되돌아가고, 그 상자를 거울에 맞춰
+     * 잘라 내면 사용자가 보는 것과 같은 화각이 된다.
+     */
+    '--mirror-camera-aspect': screen?.cameraSource
+      ? screen.cameraSource.width / screen.cameraSource.height
+      : FALLBACK_CAMERA_ASPECT,
+  } as CSSProperties;
   /** 방금 사용자에게 보낸 변경. 상담자가 무엇을 눌렀는지 화면에 남긴다. */
   const [lastPick, setLastPick] = useState<string | null>(null);
 
@@ -370,16 +477,24 @@ export function SessionPage() {
         <div className={styles.main}>
           {/* 사용자 영상은 오른쪽 패널이 맡는다. 상담자 자신의 카메라는 되비추지 않는다. */}
           {/*
-            실패했을 때도 peer 상태를 함께 남긴다. 'new'(협상 시작 못 함)인지
+            연결이 정상일 때는 아무것도 적지 않는다. (S15P11A206-89)
+
+            예전에는 `연결 상태: connected` 가 늘 떠 있었다. 잘 되고 있다는 말을 계속 하는 표시는
+            읽을 이유가 없는데도 지도 오른쪽 아래를 덮고 있었다. 상담자가 알아야 하는 것은 연결이
+            **깨졌을 때**이고, 붙어 있는 동안에는 사용자 영상이 흐르는 것으로 이미 보인다.
+
+            실패는 남긴다. peer 상태를 함께 적는 이유는 'new'(협상 시작 못 함)인지
             'connecting'(상대를 못 찾음)인지 'failed'(ICE 실패)인지에 따라 볼 곳이 완전히
-            달라서, 문구만으로는 어디부터 봐야 할지 알 수 없다.
+            달라서, 문구만으로는 어디부터 봐야 할지 알 수 없기 때문이다.
+
+            재시도 중에는 적지 않는다 — 거울의 로딩 화면이 그 사실을 대신 보여 주고, 곧 결론이
+            나므로 원인 코드를 두 곳에 띄울 이유가 없다.
           */}
-          <span
-            className={styles.connectionStatus}
-            role={!reconnecting && (error ?? tokenError) ? 'alert' : undefined}
-          >
-            {statusMessage(reconnecting, error ?? tokenError, status)}
-          </span>
+          {!reconnecting && (error ?? tokenError) && (
+            <span className={styles.connectionStatus} role="alert">
+              {`${error ?? tokenError} · 연결 상태: ${status}`}
+            </span>
+          )}
           <div className={styles.summary}>
             <div className={styles.summaryBody}>
               <div className={styles.summaryHead}>
@@ -492,13 +607,15 @@ export function SessionPage() {
           </div>
 
           <div className={styles.legend}>
+            {/* 색 이름을 적지 않는다. 스와치가 지도 마커와 같은 변수를 쓰므로 색은 그것이
+                보여 주고, 글자로 적으면 색이 바뀔 때 조용히 거짓이 된다. */}
             <span className={styles.legendItem}>
               <span className={`${styles.legendDot} ${styles.legendMe}`} />
-              파란점: 사용자 현 위치
+              사용자 현 위치
             </span>
             <span className={styles.legendItem}>
               <span className={`${styles.legendDot} ${styles.legendDest}`} />
-              빨간점: 목적지
+              목적지
             </span>
           </div>
 
@@ -532,7 +649,11 @@ export function SessionPage() {
                       destination={mapSync.destination}
                       destinationLabel={mapSync.destinationLabel}
                       pathNodes={mapSync.pathNodes}
+                      /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
+                      showZoomControls
                       facilityType={facilityType}
+                      /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼진다. */
+                      showAllFacilities={effectiveView === 'all'}
                       /*
                         재지정 모드일 때만 시설 선택을 사용자에게 보낸다. 켜지 않은 채로
                         지도를 훑어보다 잘못 눌러 사용자의 목적지가 바뀌면 안 된다.
@@ -540,30 +661,14 @@ export function SessionPage() {
                       onSelectFacility={repinning ? pickOnMap : undefined}
                       /* 따라가기일 때만 사용자 위치를 좇는다. 자유 탐색은 층 전체를 본다. */
                       followCamera={synced}
-                      useMockData
+                      /*
+                        사용자를 좇되 지도는 돌리지 않는다.
+                        사용자 화면은 진행 방향이 위를 향하게 돌아가지만(네비게이션 모드), 상담자
+                        화면까지 같이 돌면 도면의 방위가 계속 바뀌어 역 구조를 짚어 줄 수 없다.
+                        사용자가 보고 있는 방향은 마커의 부채꼴로 그대로 나타난다.
+                      */
+                      rotateWithHeading={false}
                     />
-                  </div>
-
-                  {/*
-                    시설 유형은 한 번에 하나만 켠다. 한 층 시설을 모두 그리면 마커가 서로를
-                    덮어 아무것도 짚을 수 없다. 목록은 안내 화면과 같은 것을 쓴다 — 사용자
-                    화면에 없는 유형을 상담자가 짚으면 현장에서 찾을 수 없다.
-                  */}
-                  <div className={styles.facilityFilters} role="group" aria-label="시설 표시">
-                    {FACILITY_MAP_FILTERS.map((filter) => (
-                      <MapToggle
-                        key={filter.facilityType}
-                        on={facilityType === filter.facilityType}
-                        onClick={() =>
-                          setFacilityType(
-                            facilityType === filter.facilityType ? null : filter.facilityType,
-                          )
-                        }
-                      >
-                        <Icon name={filter.icon} size={13} />
-                        {filter.name}
-                      </MapToggle>
-                    ))}
                   </div>
                 </>
               ) : (
@@ -571,6 +676,73 @@ export function SessionPage() {
               )}
             </MapPreview>
           </div>
+
+          {/*
+            시설 표시 칩. **지도 밖, 지도 아래에 둔다.**
+
+            예전에는 지도 위에 얹혀 있었다(`position: absolute`). 유형이 일곱 개로 늘자 세 줄이
+            되어 도면의 절반 가까이를 덮었고, 상담자가 역 구조를 보려면 먼저 시설을 숨겨야 했다.
+            가리는 것을 치우려고 누르는 버튼이 그 자리를 가리고 있었다. (S15P11A206-89)
+
+            처음에는 그 층 시설을 모두 보여 주고, 유형을 누르면 그것만 남긴다. 전체 표시는 마커가
+            서로 겹친다 — 역삼역 B2 는 1m 가 몇 px 이라 36개가 붙어 선다. 훑어보는 용도이고,
+            짚으려면 유형으로 좁힌다. 목록은 안내 화면과 같은 것을 쓴다 — 사용자 화면에 없는
+            유형을 상담자가 짚으면 현장에서 찾을 수 없다.
+          */}
+          {mapSync && (
+            <div className={styles.facilityBar} role="group" aria-label="시설 표시">
+              <div className={styles.facilityFilters}>
+                {FACILITY_MAP_FILTERS.map((filter) => {
+                  const active = effectiveView === filter.facilityType;
+                  /*
+                    이 층에 없는 유형. 조회가 오기 전에는 판정하지 않는다 — 아직 모르는 것을
+                    없다고 그리면 모든 칩이 잠깐 연해진다.
+                  */
+                  const absent =
+                    facilities !== undefined && !floorFacilityTypes.has(filter.facilityType);
+
+                  return (
+                    <MapToggle
+                      key={filter.facilityType}
+                      on={active}
+                      className={absent ? styles.facilityFilterAbsent : undefined}
+                      /* 없는 유형은 누를 수 없다. 눌러도 빈 지도가 나오므로 고장으로 읽힌다. */
+                      disabled={absent}
+                      title={absent ? `이 층에는 ${filter.name}이 없어요` : undefined}
+                      /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
+                         누르기를 망설이게 된다. */
+                      onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
+                    >
+                      <Icon name={filter.icon} size={13} />
+                      {filter.name}
+                    </MapToggle>
+                  );
+                })}
+              </div>
+
+              {/*
+                전부 감추기. **유형 칩과 다른 칸에 둔다.**
+
+                이것은 유형이 아니라 표시 모드다. 같은 줄에 섞어 두면 여덜 번째 유형처럼 보여,
+                누르면 그 유형만 남는 것으로 읽힌다. 유형이 줄바꿈으로 늘어나도 이 칩은 첫 줄
+                오른쪽에 그대로 있어 찾는 자리가 바뀌지 않는다. (S15P11A206-89)
+
+                유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 겹쳐 선 마커가 도면을
+                가려 역 구조나 경로선을 확인하기 어려울 때 쓴다. 다시 누르면 전체 표시로
+                돌아온다. 현재 위치·목적지·경로는 그대로 둔다 — 안내에 필요한 표시까지 사라지면
+                상담자가 짚어 줄 근거가 없어진다.
+              */}
+              <div className={styles.facilityVisibility}>
+                <MapToggle
+                  on={effectiveView === 'none'}
+                  onClick={() => setFacilityView(effectiveView === 'none' ? 'all' : 'none')}
+                >
+                  <Icon name={effectiveView === 'none' ? 'eye' : 'eye-off'} size={13} />
+                  {effectiveView === 'none' ? '다시 보기' : '숨기기'}
+                </MapToggle>
+              </div>
+            </div>
+          )}
 
           <div className={styles.mapActions}>
             <PillButton
@@ -719,54 +891,108 @@ export function SessionPage() {
           </div>
 
           {/*
-            사용자가 실제로 보내오는 영상. 예전에는 이 자리에 사용자 화면을 흉내 낸 고정
-            그림(안내 문구·화살표·축소 지도)이 있었는데, 무엇을 보고 안내하는지 알 수 없는
-            화면이라 실제 수신 영상으로 바꿨다.
+            사용자 화면의 거울. **위가 카메라, 아래가 사용자와 공유되는 지도다.** (S15P11A206-89)
+
+            예전에는 이 자리에 수신 영상만 있었고, 사용자가 보는 지도는 왼쪽 넓은 지도에만
+            있었다. 그래서 상담자가 그림을 그릴 수 있는 곳은 카메라뿐이었다 — 지도 위에 길을
+            그어 주려면 왼쪽 지도에 그려야 하는데 그쪽은 상담자가 자유롭게 확대·이동하는 탐색용
+            지도라 사용자 화면과 자리가 맞지 않는다.
+
+            거울은 사용자 화면 전체를 같은 비율로 비춘다. 그래서 이 위에 그은 선은 카메라든
+            지도든 사용자 화면의 같은 자리에 찍힌다 — 좌표계를 따로 둘 필요가 없다.
           */}
-          <div className={styles.stream}>
-            {/*
-              signaling이 붙기 전에 끊기면(1009 등) 원인 코드만 화면에 남아 있었다. 자동으로
-              다시 맺는 동안에는 그 문구 대신 로딩 화면을 보여 준다 — 재시도가 곧 이어지므로
-              상담자가 새로고침 말고는 손쓸 방법이 없다고 오해하지 않게 한다.
-            */}
-            {reconnecting && (
-              <div className={styles.reconnecting} role="status">
-                <span className={styles.reconnectingSpinner} aria-hidden />
-                <span>연결을 다시 시도하고 있어요</span>
+          <div className={styles.mirrorFit}>
+            <div className={styles.mirror} style={mirrorStyle}>
+              {/*
+                카메라는 **거울 전체**에 깔린다. 사용자 화면에서도 XR 컴포지터가 카메라를 화면
+                전체에 합성하고, 아래쪽 지도 영역이 그것을 덮어 가리는 구조다. 카메라를 위쪽
+                영역에만 넣으면 같은 장면이 다르게 잘려 보인다.
+              */}
+              <div className={styles.mirrorCameraCrop}>
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className={styles.mirrorCamera}
+                  aria-label="사용자가 공유 중인 화면"
+                />
               </div>
-            )}
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className={styles.sharedScreen}
-              aria-label="사용자가 공유 중인 화면"
-            />
-            {!sharing && !reconnecting && (
-              <p className={styles.streamPlaceholder}>
-                {error ?? tokenError ?? '사용자 화면을 기다리는 중입니다.'}
-              </p>
-            )}
-            <canvas
-              ref={canvasRef}
-              className={styles.canvas}
-              style={{ pointerEvents: drawing ? 'auto' : 'none' }}
-            />
-            <div className={styles.drawTools}>
-              {drawing && (
-                <MapToggle className={styles.drawTool} onClick={clearDraw}>
-                  <Icon name="eraser" size={13} />
-                  지우기
-                </MapToggle>
+
+              {/*
+                signaling이 붙기 전에 끊기면(1009 등) 원인 코드만 화면에 남아 있었다. 자동으로
+                다시 맺는 동안에는 그 문구 대신 로딩 화면을 보여 준다 — 재시도가 곧 이어지므로
+                상담자가 새로고침 말고는 손쓸 방법이 없다고 오해하지 않게 한다.
+              */}
+              {reconnecting && (
+                <div className={styles.reconnecting} role="status">
+                  <span className={styles.reconnectingSpinner} aria-hidden />
+                  <span>연결을 다시 시도하고 있어요</span>
+                </div>
               )}
-              <MapToggle className={styles.drawTool} on={drawing} onClick={toggleDraw}>
-                <Icon name="pencil" size={13} />
-                그리기
-              </MapToggle>
+
+              {/*
+                사용자 화면 아래쪽. 배치를 받은 뒤에만 그린다 — 자리를 짐작해 그리면 상담자는
+                지도가 저기 있다고 믿고 그 위에 그리는데, 사용자 화면에서는 그 선이 카메라 위에
+                찍힌다. 배치가 도착하기 전 몇 백 밀리초는 카메라만 보여 주는 편이 정직하다.
+              */}
+              {screen && mapSync && (
+                <>
+                  <div className={styles.mirrorLower} style={rectStyle(screen.lower)} />
+                  <div className={styles.mirrorMap} style={rectStyle(screen.map)}>
+                    {/*
+                      사용자가 보는 것과 같은 시점이 나온다. 추종 배율은 `박스 너비 / 담을
+                      캔버스 폭`으로 정해지므로 **박스의 비율이 같으면 크기가 달라도 시점이
+                      같다**(`useMapGestures.computeFollowView`). 배치를 사용자가 재서 보내는
+                      덕에 이 상자의 비율이 사용자 지도와 정확히 같다.
+
+                      왼쪽 지도와 달리 조작할 것이 없다 — 층 버튼·시설 칩·확대 버튼을 달지
+                      않고 포인터도 받지 않는다(CSS). 여기서 시점을 바꾸면 거울이 아니게 된다.
+                    */}
+                    <IndoorMapView
+                      stationId={mapSync.stationId}
+                      floorId={mapSync.floorId ?? floorMaps[0]?.floorId}
+                      currentLocation={mapSync.current}
+                      currentHeadingDeg={mapSync.headingDeg}
+                      destination={mapSync.destination}
+                      destinationLabel={mapSync.destinationLabel}
+                      pathNodes={mapSync.pathNodes}
+                      /* 사용자 화면과 같은 값이어야 시점이 같아진다. 회전은 기본값(켬)이다. */
+                      connectCurrentToRoute
+                      followCamera
+                    />
+                  </div>
+                </>
+              )}
+
+              {!sharing && !reconnecting && (
+                <p className={styles.streamPlaceholder}>
+                  {error ?? tokenError ?? '사용자 화면을 기다리는 중입니다.'}
+                </p>
+              )}
+              <canvas
+                ref={canvasRef}
+                className={styles.canvas}
+                style={{ pointerEvents: drawing ? 'auto' : 'none' }}
+              />
+
+              {/* 그리기 도구는 거울 안에 둔다. 캔버스 위에 얹혀야 눌러서 끌 수 있다. */}
+              <div className={styles.drawTools}>
+                {drawing && (
+                  <MapToggle className={styles.drawTool} onClick={clearDraw}>
+                    <Icon name="eraser" size={13} />
+                    지우기
+                  </MapToggle>
+                )}
+                <MapToggle className={styles.drawTool} on={drawing} onClick={toggleDraw}>
+                  <Icon name="pencil" size={13} />
+                  그리기
+                </MapToggle>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
     </CounselorConsoleShell>
   );
 }

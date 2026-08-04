@@ -8,6 +8,13 @@
 
 export type ConsultEventSender = 'USER' | 'COUNSELOR' | 'SYSTEM';
 
+/**
+ * 공유 화면 기준 정규화 좌표(0~1). (명세 6장)
+ *
+ * 상담자 화면은 사용자 화면을 **같은 비율로 비춘 거울**이므로, 화면 기준 비율 하나로 두 화면의
+ * 같은 자리를 가리킬 수 있다. 상담자가 거울의 지도 부분에 그으면 사용자 화면의 지도 부분에
+ * 그려진다. (S15P11A206-89)
+ */
 export interface DrawPoint {
   x: number;
   y: number;
@@ -35,6 +42,41 @@ export interface MapPointPayload {
   mapY: number;
 }
 
+/** 화면 안의 한 영역. 좌표·크기 모두 화면 기준 0~1 이다. */
+export interface NormalizedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 사용자 화면이 실제로 어떻게 나뉘어 있는지. (S15P11A206-89)
+ *
+ * **상수로 둘 수 없어서 재서 보낸다.** 카메라와 지도가 나뉘는 자리는 CSS 비율(52:48)에 상단
+ * 여백 보정이 더해진 값이라 화면 높이에 따라 달라지고, 카메라 원본 규격도 기기마다 다르다.
+ * 상담자 화면에 같은 숫자를 박아 두면 어느 기기에서는 맞고 어느 기기에서는 어긋나는데,
+ * 어긋나는 쪽에서는 상담자가 짚어 준 자리가 사용자 화면의 다른 곳에 찍힌다.
+ *
+ * 재서 보내면 상담자 화면은 계산하지 않고 그대로 따라 그리면 된다.
+ */
+export interface ScreenGeometryPayload {
+  /** 화면 크기(CSS px). 상담자 쪽 거울의 가로세로 비를 이 값으로 맞춘다. */
+  width: number;
+  height: number;
+  /** 지도가 놓인 아래쪽 영역. 이 위쪽이 카메라가 보이는 부분이다. */
+  lower: NormalizedRect;
+  /** 도면이 그려지는 자리. 여기에 같은 비율의 지도를 넣으면 시점까지 같아진다. */
+  map: NormalizedRect;
+  /**
+   * XR 카메라 원본 크기.
+   *
+   * 보내는 트랙은 320×240 고정이라 원본이 16:9면 늘어난 채로 도착한다(`cameraFrames.ts`).
+   * 받는 쪽이 그것을 되돌리려면 원본 비율을 알아야 한다. `camera-access` 가 없으면 null 이다.
+   */
+  cameraSource: { width: number; height: number } | null;
+}
+
 /**
  * 사용자가 지금 보고 있는 지도 상태.
  *
@@ -54,6 +96,14 @@ export interface MapSyncPayload {
   destinationLabel: string | null;
   /** 경로가 지나는 노드. 상담자 화면도 같은 선을 그린다. */
   pathNodes: (MapPointPayload & { nodeId: number })[];
+  /**
+   * 화면이 나뉜 자리. 아직 재지 못했으면 null 이다.
+   *
+   * 지도 상태와 같이 보낸다. 따로 보내면 둘 중 하나만 늦게 도착하는 구간이 생기고, 그때
+   * 상담자 화면은 지도는 새 것인데 배치는 옛 것인 화면에 선을 그리게 된다. 화면 회전이나
+   * 창 크기 변화도 이 스냅숏이 다시 오면 그만이다.
+   */
+  screen: ScreenGeometryPayload | null;
 }
 
 /**

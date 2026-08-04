@@ -1,5 +1,5 @@
 import type { CoordinateFrame } from '../model/types';
-import { isRenderableCoordinate, meterToPixel } from './coordinates';
+import { isRenderableCoordinate, meterToPixel, pixelToMeter } from './coordinates';
 
 // docs/역삼역_FE_좌표연동_스펙.md §2의 B2 프레임.
 const b2Frame: CoordinateFrame = {
@@ -50,5 +50,47 @@ describe('meterToPixel', () => {
 
   it('mpp가 0이면 0으로 나누지 않고 null을 반환한다', () => {
     expect(meterToPixel(1, 1, { ...b2Frame, mpp: 0 })).toBeNull();
+  });
+});
+
+/**
+ * 화면에서 짚은 자리를 좌표로 남기는 데 쓴다. (S15P11A206-89)
+ *
+ * 상담자가 지도 위에 그린 선이 그렇다. 화면 기준 값으로 남기면 두 사람의 확대·이동·회전·표시
+ * 층이 달라 같은 자리를 가리키지 못한다.
+ */
+describe('pixelToMeter', () => {
+  it('프레임 원점은 미터 원점으로 되돌아간다', () => {
+    const result = pixelToMeter(622, 512, b2Frame);
+    expect(result).not.toBeNull();
+    expect(result!.x).toBeCloseTo(0, 6);
+    expect(result!.y).toBeCloseTo(0, 6);
+  });
+
+  /**
+   * 왕복이 제자리로 와야 한다. 회전각과 배율 어느 하나만 부호가 어긋나도 오류 없이 조용히
+   * 틀린 좌표가 나오는데, 그 어긋남은 그린 선이 엉뚱한 자리에 뜨는 것으로만 드러난다.
+   */
+  it('meterToPixel 과 왕복하면 제자리로 돌아온다', () => {
+    for (const [x, y] of [
+      [0, 0],
+      [-0.4, 27.2],
+      [12.5, -8.75],
+      [-30, -30],
+    ]) {
+      const pixel = meterToPixel(x, y, b2Frame);
+      expect(pixel).not.toBeNull();
+
+      const meter = pixelToMeter(pixel!.px, pixel!.py, b2Frame);
+      expect(meter).not.toBeNull();
+      expect(meter!.x).toBeCloseTo(x, 6);
+      expect(meter!.y).toBeCloseTo(y, 6);
+    }
+  });
+
+  it('잘못된 좌표와 mpp 0 은 null 을 반환한다', () => {
+    expect(pixelToMeter(Number.NaN, 0, b2Frame)).toBeNull();
+    expect(pixelToMeter(0, Number.NaN, b2Frame)).toBeNull();
+    expect(pixelToMeter(1, 1, { ...b2Frame, mpp: 0 })).toBeNull();
   });
 });

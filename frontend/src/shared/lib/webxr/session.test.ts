@@ -121,6 +121,22 @@ function pose(x: number, z: number, y = 0): XRViewerPose {
   } as unknown as XRViewerPose;
 }
 
+/**
+ * 뷰를 실은 pose. 카메라 송출 검증용이다.
+ *
+ * 실제 `XRViewerPose.views`에는 뷰 하나(단안 AR)가 들어 있고, `camera-access`가 부여되면 그
+ * 뷰에 `camera`가 붙는다. 부여되지 않으면 뷰는 있고 `camera`만 없다.
+ */
+function poseWithViews(views: object[]): XRViewerPose {
+  return {
+    transform: {
+      position: { x: 0, y: 0, z: 0 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+    },
+    views,
+  } as unknown as XRViewerPose;
+}
+
 /** +Y축 기준으로 회전한 pose. 방향 채널 검증용이다. */
 function poseYaw(yawDeg: number): XRViewerPose {
   const half = (yawDeg * Math.PI) / 360;
@@ -868,6 +884,225 @@ describe('createXrSessionController', () => {
       fake.emitFrame(1200, pose(0, 0));
 
       expect(snapshots).toHaveLength(0);
+    });
+  });
+});
+
+/**
+ * 세션 카메라 송출. (S15P11A206-89)
+ *
+ * **`streaming`까지 가는 경로는 여기서 검사할 수 없다.** 프레임을 실제로 읽으려면 GL 컨텍스트가
+ * 있어야 하는데 jsdom 에는 WebGL 이 없고, 이 파일의 컨트롤러는 렌더 레이어 연결을 가짜로
+ * 성공시켜 컨텍스트를 만들지 않는다. 축소 렌더와 읽기 자체는 `cameraFrames.test.ts`가 가짜 GL로
+ * 검사하고, 둘이 실제로 맞물리는지는 실기기 확인 항목이다.
+ *
+ * 그래서 이 그룹이 고정하는 것은 **트랙의 수명과 실패 통보**다 — 세션보다 먼저 켜도 트랙이
+ * 나오는지, 기능이 없는 기기에 그 사실이 전달되는지, 세션이 다시 열려도 트랙이 유지되는지.
+ */
+describe('카메라 송출', () => {
+  /** jsdom 에는 2d 컨텍스트도 captureStream 도 없다. */
+  function stubCanvas() {
+    const track = { stop: vi.fn() } as unknown as MediaStreamTrack;
+    const stream = { getTracks: () => [track] } as unknown as MediaStream;
+
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      createImageData: (width: number, height: number) => ({
+        data: new Uint8ClampedArray(width * height * 4),
+      }),
+      putImageData: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+
+    HTMLCanvasElement.prototype.captureStream = vi.fn(() => stream);
+
+    return { track, stream };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (HTMLCanvasElement.prototype as { captureStream?: unknown }).captureStream;
+  });
+
+  /** 세션이 열리기 전에 트랙이 있어야 협상에 실을 수 있다. 나중에 붙이면 검은 화면이 된다. */
+  it('세션을 열기 전에도 트랙을 돌려준다', () => {
+    const { stream } = stubCanvas();
+    const controller = createController();
+
+    const handle = controller.startCameraStream();
+
+    expect(handle?.stream).toBe(stream);
+    expect(controller.getCameraStreamState()).toBe('waiting');
+  });
+
+  it('두 번 켜도 같은 트랙을 쓴다', () => {
+    stubCanvas();
+    const controller = createController();
+
+    const first = controller.startCameraStream();
+    const second = controller.startCameraStream();
+
+    expect(second?.stream).toBe(first?.stream);
+    expect(HTMLCanvasElement.prototype.captureStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('트랙을 만들 수 없는 환경에서는 null 이다', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      {} as unknown as CanvasRenderingContext2D,
+    );
+
+    expect(createController().startCameraStream()).toBeNull();
+  });
+
+  it('stop 은 트랙을 멈추고 idle 로 되돌린다', () => {
+    const { track } = stubCanvas();
+    const controller = createController();
+    const handle = controller.startCameraStream();
+
+    handle?.stop();
+
+    expect(track.stop).toHaveBeenCalledTimes(1);
+    expect(controller.getCameraStreamState()).toBe('idle');
+  });
+
+  it('구독하면 지금 상태를 즉시 알려주고 이후 전이를 이어서 알린다', () => {
+    stubCanvas();
+    const controller = createController();
+    const seen: string[] = [];
+
+    controller.subscribeCameraStream((state) => seen.push(state));
+    controller.startCameraStream();
+
+    expect(seen).toEqual(['idle', 'waiting']);
+  });
+
+  /**
+   * 트랙을 만들 수 없는 기기에서도 구독 한 길로 사실이 전달된다.
+   *
+   * 반환값이 null 인 것만으로 알리면, 화면은 반환값 검사와 구독 두 가지 경로를 각각 처리해야
+   * 한다. 그중 하나를 빠뜨리면 영원히 "카메라 준비 중"에 머문다.
+   */
+  it('트랙을 만들지 못하면 구독자에게 unsupported 를 알린다', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      {} as unknown as CanvasRenderingContext2D,
+    );
+    const controller = createController();
+    const seen: string[] = [];
+
+    controller.subscribeCameraStream((state) => seen.push(state));
+    controller.startCameraStream();
+
+    expect(seen).toEqual(['idle', 'unsupported']);
+  });
+
+  /**
+   * `camera-access`는 optional 로 요청하므로 부여되지 않아도 세션은 열린다. 그때 뷰에 카메라가
+   * 없다 — 이것이 A 경로가 불가능한 기기라는 유일한 신호이며, 화면은 이걸 보고 다른 방법을
+   * 택해야 한다. 조용히 `waiting`에 머물면 사용자는 영상이 곧 올 것이라고 오해한다.
+   */
+  it('뷰에 카메라가 없으면 unsupported 로 알린다', async () => {
+    stubCanvas();
+    const fake = createFakeSession();
+    const controller = createController({ xr: fakeXr(async () => fake.session) });
+    const seen: string[] = [];
+
+    controller.subscribeCameraStream((state) => seen.push(state));
+    controller.startCameraStream();
+    await controller.start();
+
+    fake.emitFrame(1200, poseWithViews([{}]));
+
+    expect(seen).toEqual(['idle', 'waiting', 'unsupported']);
+  });
+
+  /** 프레임에 뷰가 없는 것은 결론이 아니다. 다음 프레임에 올 수 있다. */
+  it('뷰가 아예 없는 프레임으로는 결론을 내지 않는다', async () => {
+    stubCanvas();
+    const fake = createFakeSession();
+    const controller = createController({ xr: fakeXr(async () => fake.session) });
+    controller.startCameraStream();
+
+    await controller.start();
+    fake.emitFrame(1200, poseWithViews([]));
+
+    expect(controller.getCameraStreamState()).toBe('waiting');
+  });
+
+  /**
+   * 세션이 끝나면 GL 자원은 버리지만 트랙은 남긴다. 트랙까지 새로 만들면 WebRTC 협상을 다시
+   * 해야 하고 상담자 화면에서 영상이 한 번 끊긴다.
+   */
+  it('세션이 끝나도 트랙은 유지하고 waiting 으로 되돌린다', async () => {
+    const { track } = stubCanvas();
+    const fake = createFakeSession();
+    const controller = createController({ xr: fakeXr(async () => fake.session) });
+    controller.startCameraStream();
+
+    await controller.start();
+    await controller.stop();
+
+    expect(track.stop).not.toHaveBeenCalled();
+    expect(controller.getCameraStreamState()).toBe('waiting');
+  });
+
+  /**
+   * 위치 재인식에 보낼 정지 화상. (S15P11A206-89)
+   *
+   * **어느 경로로든 반드시 결론이 난다는 것이 이 묶음의 요지다.** 상담 화면은 이 응답을 받은
+   * 뒤에 다음 재인식 주기를 잡으므로, 풀리지 않는 Promise 가 하나 생기면 상담이 끝날 때까지
+   * 재인식이 다시 돌지 않는다. 실패를 알리는 것이 조용히 멈추는 것보다 낫다.
+   */
+  describe('정지 화상', () => {
+    it('세션이 없으면 기다리지 않고 null 이다', async () => {
+      await expect(createController().captureStillFrame()).resolves.toBeNull();
+    });
+
+    /**
+     * `camera-access` 가 부여되지 않은 기기. 다음 프레임에도 같은 결과이므로 여기서 끝낸다 —
+     * 기다리게 두면 부른 쪽이 영원히 응답을 받지 못한다.
+     */
+    it('뷰에 카메라가 없으면 그 프레임에서 null 로 끝낸다', async () => {
+      const fake = createFakeSession();
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
+
+      await controller.start();
+
+      const pending = controller.captureStillFrame();
+      fake.emitFrame(1200, poseWithViews([{}]));
+
+      await expect(pending).resolves.toBeNull();
+    });
+
+    /**
+     * 겹쳐 부르면 앞의 요청을 끝낸다.
+     *
+     * 큐에 쌓아 나중에 채워 주면 이미 지난 장면으로 위치를 확정한다. 위치 인식은 "지금 보이는
+     * 곳"을 묻는 것이라 늦게 온 답은 틀린 답이다.
+     */
+    it('새 요청이 오면 앞의 요청은 null 로 끝낸다', async () => {
+      const fake = createFakeSession();
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
+
+      await controller.start();
+
+      const first = controller.captureStillFrame();
+      const second = controller.captureStillFrame();
+
+      await expect(first).resolves.toBeNull();
+
+      fake.emitFrame(1200, poseWithViews([{}]));
+      await expect(second).resolves.toBeNull();
+    });
+
+    /** 세션이 닫히면 채워 줄 프레임이 없다. 기다리는 요청을 남겨 두지 않는다. */
+    it('기다리는 중에 세션이 끝나면 null 로 끝낸다', async () => {
+      const fake = createFakeSession();
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
+
+      await controller.start();
+
+      const pending = controller.captureStillFrame();
+      await controller.stop();
+
+      await expect(pending).resolves.toBeNull();
     });
   });
 });
