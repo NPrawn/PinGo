@@ -31,7 +31,8 @@ interface XrTrackingBadgeProps {
  * 얼어붙은 것처럼 보이지 않게 하는 것이 이 표시의 목적이다.
  */
 export function XrTrackingBadge({ status, anchorStatus, source }: XrTrackingBadgeProps) {
-  const { label, tone } = describe(status, anchorStatus, source);
+  const { t } = useTranslation();
+  const { label, tone } = describe(status, anchorStatus, source, t);
 
   return (
     /**
@@ -52,11 +53,12 @@ function describe(
   status: XrTrackingStatus,
   anchorStatus: XrAnchorStatus,
   source: XrMapPositionSource,
+  t: TFunction,
 ): { label: string; tone: Tone } {
-  if (status === 'failed') return { label: '추적 미지원 · 재인식 필요', tone: 'off' };
-  if (status === 'idle' || status === 'ended') return { label: '추적 꺼짐', tone: 'off' };
+  if (status === 'failed') return { label: t('user.xr.badge.failed'), tone: 'off' };
+  if (status === 'idle' || status === 'ended') return { label: t('user.xr.badge.off'), tone: 'off' };
   if (status === 'starting' || status === 'warming-up') {
-    return { label: '추적 준비 중', tone: 'waiting' };
+    return { label: t('user.xr.badge.preparing'), tone: 'waiting' };
   }
 
   /**
@@ -65,12 +67,14 @@ function describe(
    */
   if (status === 'lost') {
     return source === 'last-known'
-      ? { label: '위치 확인 중', tone: 'waiting' }
-      : { label: '위치 인식 필요', tone: 'waiting' };
+      ? { label: t('user.xr.badge.checking'), tone: 'waiting' }
+      : { label: t('user.xr.badge.locate'), tone: 'waiting' };
   }
 
   // status === 'tracking'
   return anchorStatus === 'none'
-    ? { label: '위치 인식 필요', tone: 'waiting' }
-    : { label: '실시간 추적 중', tone: 'live' };
+    ? { label: t('user.xr.badge.locate'), tone: 'waiting' }
+    : { label: t('user.xr.badge.live'), tone: 'live' };
 }
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { PermissionKey } from '@/entities/permission';
 import { Icon, Icon3d } from '@/shared/ui';
 import { PERMISSION_CATALOG } from '../model/permissionCatalog';
@@ -18,12 +19,6 @@ type PermissionListProps = {
   states?: Partial<Record<PermissionKey, PermissionRowState>>;
 };
 
-const STATE_LABEL: Record<PermissionRowState, string> = {
-  idle: '미요청',
-  granted: '허용됨',
-  blocked: '거부됨',
-};
-
 const indicatorClass: Record<PermissionRowState, string> = {
   idle: styles.indicatorIdle,
   granted: styles.indicatorGranted,
@@ -37,6 +32,8 @@ const indicatorClass: Record<PermissionRowState, string> = {
  * fills in as its permission comes back.
  */
 export function PermissionList({ states }: PermissionListProps) {
+  const { t, i18n } = useTranslation();
+  const english = i18n.resolvedLanguage === 'en';
   return (
     <ul className={styles.list}>
       {PERMISSION_CATALOG.map((permission) => {
@@ -46,14 +43,14 @@ export function PermissionList({ states }: PermissionListProps) {
           <li key={permission.key} className={styles.row}>
             <Icon3d name={permission.icon} tone={permission.tone} />
             <span className={styles.labels}>
-              <b className={styles.name}>{permission.name}</b>
+              <b className={styles.name}>{english ? permission.nameEn : permission.name}</b>
               <br />
-              <span className={styles.desc}>{permission.desc}</span>
+              <span className={styles.desc}>{english ? permission.descEn : permission.desc}</span>
             </span>
             <span className={[styles.indicator, indicatorClass[state]].join(' ')}>
               {state === 'granted' && <Icon name="check" size={13} />}
               {state === 'blocked' && <Icon name="x" size={13} />}
-              <span className="sr-only">{STATE_LABEL[state]}</span>
+              <span className="sr-only">{t(`user.permission.state.${state}`)}</span>
             </span>
           </li>
         );

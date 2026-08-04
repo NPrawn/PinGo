@@ -179,7 +179,8 @@ public class StationService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 
-        return stationRepository.findAllByActiveTrueAndLatitudeIsNotNullAndLongitudeIsNotNull().stream()
+        List<StationNearbyResponse> results = stationRepository
+                .findAllByActiveTrueAndLatitudeIsNotNullAndLongitudeIsNotNull().stream()
                 .map(station -> StationNearbyResponse.of(
                         station,
                         GeoDistanceCalculator.distanceMeters(
@@ -189,6 +190,42 @@ public class StationService {
                                 station.getLongitude()
                         )
                 ))
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        Set<String> registeredNames = results.stream()
+                .map(StationNearbyResponse::nameKo)
+                .collect(Collectors.toSet());
+
+        List<KakaoPlaceSearchResult> externalStations;
+        try {
+            externalStations = kakaoLocalClient.searchNearbySubwayStations(
+                    java.math.BigDecimal.valueOf(longitude),
+                    java.math.BigDecimal.valueOf(latitude)
+            );
+        } catch (BusinessException exception) {
+            if (exception.getErrorCode() != ErrorCode.EXTERNAL_PLACE_SEARCH_FAILED) {
+                throw exception;
+            }
+            log.warn("카카오 주변 지하철역 검색에 실패해 등록된 역만 반환합니다.");
+            externalStations = List.of();
+        }
+
+        groupByStationName(externalStations).forEach((stationName, group) -> {
+            if (registeredNames.contains(stationName)) {
+                return;
+            }
+            KakaoPlaceSearchResult nearest = group.stream()
+                    .min(Comparator.comparingLong(place ->
+                            place.distanceMeters() == null ? Long.MAX_VALUE : place.distanceMeters()))
+                    .orElse(group.get(0));
+            results.add(StationNearbyResponse.fromKakaoStation(
+                    stationName,
+                    lineInfoOf(group),
+                    nearest
+            ));
+        });
+
+        return results.stream()
                 .sorted(Comparator.comparingLong(StationNearbyResponse::distanceM))
                 .toList();
     }

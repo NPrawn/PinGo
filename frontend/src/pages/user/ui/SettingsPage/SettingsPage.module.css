@@ -68,3 +68,51 @@
   font-weight: 700;
   text-align: left;
 }
+
+@media (height >= 700px) {
+  :global(html[lang='en']) .body {
+    overflow-y: hidden;
+  }
+}
+
+/* Fit the complete English settings screen inside the same phone viewport. */
+:global(html[lang='en']) .title {
+  margin-top: 14px;
+  font-size: 23px;
+}
+
+:global(html[lang='en']) .sectionLabel {
+  margin-top: 14px;
+  margin-bottom: 7px;
+}
+
+:global(html[lang='en']) .helpSectionLabel {
+  margin-top: 30px;
+}
+
+:global(html[lang='en']) .language {
+  padding: 10px;
+  font-size: 12px;
+}
+
+:global(html[lang='en']) .list {
+  padding-block: 3px;
+}
+
+:global(html[lang='en']) .row {
+  padding-block: 8px;
+}
+
+:global(html[lang='en']) .rowLabel {
+  font-size: 12px;
+}
+
+:global(html[lang='en']) .permissionNote {
+  margin-top: 8px;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+:global(html[lang='en']) .consult {
+  margin-bottom: 4px;
+}

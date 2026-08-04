@@ -312,6 +312,27 @@ class StationServiceTest {
     }
 
     @Test
+    void getNearbyStationsAddsExternalStationsAndRemovesRegisteredDuplicates() {
+        Station yeoksam = createStationAt(1L, "역삼역", "37.5007000", "127.0365000");
+        when(stationRepository.findAllByActiveTrueAndLatitudeIsNotNullAndLongitudeIsNotNull())
+                .thenReturn(List.of(yeoksam));
+        when(kakaoLocalClient.searchNearbySubwayStations(any(), any())).thenReturn(List.of(
+                new KakaoPlaceSearchResult("1", "역삼역 2호선", "지하철역", "", new BigDecimal("37.5"), new BigDecimal("127.03"), 252L),
+                new KakaoPlaceSearchResult("2", "선릉역 2호선", "지하철역", "", new BigDecimal("37.50"), new BigDecimal("127.04"), 420L),
+                new KakaoPlaceSearchResult("3", "선릉역 수인분당선", "지하철역", "", new BigDecimal("37.50"), new BigDecimal("127.04"), 425L)
+        ));
+
+        List<StationNearbyResponse> responses = stationService.getNearbyStations(37.5000, 127.0360);
+
+        assertThat(responses).hasSize(2);
+        assertThat(responses)
+                .extracting(StationNearbyResponse::nameKo, StationNearbyResponse::stationId)
+                .containsExactly(tuple("역삼역", 1L), tuple("선릉역", null));
+        assertThat(responses.get(1).lineInfo()).isEqualTo("2호선·수인분당선");
+        assertThat(responses.get(1).distanceM()).isEqualTo(420L);
+    }
+
+    @Test
     void getNearbyStationsThrowsWhenCoordinatesAreNull() {
         assertThatThrownBy(() -> stationService.getNearbyStations(null, 127.0))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->

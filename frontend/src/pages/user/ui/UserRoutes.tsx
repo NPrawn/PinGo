@@ -1,6 +1,8 @@
+import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
-import { useUserSessionBootstrap } from '@/entities/user-session';
+import { useUserSessionBootstrap, useUserSessionStore } from '@/entities/user-session';
 import { RequirePermissions } from '@/features/permissions';
 import { USER_ROUTES } from '@/shared/config';
 import { ArrivalPage } from './ArrivalPage/ArrivalPage';
@@ -35,6 +37,26 @@ const rel = (path: string) => path.slice('/user/'.length);
  */
 export function UserRoutes() {
   const clearConsultation = useConsultStore((state) => state.clearConsultation);
+  const { i18n } = useTranslation();
+  const sessionLanguage = useUserSessionStore((state) => state.language);
+  const previousLanguage = useRef(i18n.resolvedLanguage ?? i18n.language);
+  const previousDocumentLanguage = useRef(document.documentElement.lang);
+
+  useEffect(() => {
+    const restoreLanguage = previousLanguage.current;
+    const restoreDocumentLanguage = previousDocumentLanguage.current;
+    return () => {
+      void i18n.changeLanguage(restoreLanguage);
+      document.documentElement.lang = restoreDocumentLanguage;
+    };
+  }, [i18n]);
+
+  useEffect(() => {
+    const language = sessionLanguage ?? 'ko';
+    document.documentElement.lang = language;
+    void i18n.changeLanguage(language);
+  }, [i18n, sessionLanguage]);
+
   useUserSessionBootstrap({ onSessionExpired: clearConsultation });
 
   return (

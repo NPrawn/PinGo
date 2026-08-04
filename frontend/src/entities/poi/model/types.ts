@@ -4,6 +4,8 @@ import type { IconName } from '@/shared/ui';
 export type Poi = {
   id?: number;
   name: string;
+  nameKo?: string;
+  nameEn?: string;
   icon: IconName;
   /** Floor and walking-time note shown under the name. */
   meta: string;

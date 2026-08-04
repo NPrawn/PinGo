@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { Blob, BlobHero, ButtonLink, HeadingMarker, Icon, MapPreview } from '@/shared/ui';
@@ -14,6 +15,7 @@ const FLOORS = ['1F', 'B1', 'B2'];
  * screen; that framing is kept so the context stays visible.
  */
 export function ReroutePage() {
+  const { t } = useTranslation();
   return (
     <PhoneFrame
       dark
@@ -45,9 +47,9 @@ export function ReroutePage() {
         </div>
 
         <div className={styles.scrim}>
-          <div className={styles.dialog} role="alertdialog" aria-label="경로를 이탈했어요">
+          <div className={styles.dialog} role="alertdialog" aria-label={t('user.reroute.label')}>
             <Link to={USER_ROUTES.NAVIGATION} className={styles.dismiss}>
-              <span className={styles.dismissLabel}>무시하고 계속</span>
+              <span className={styles.dismissLabel}>{t('user.reroute.ignore')}</span>
               <span className={styles.dismissIcon} aria-hidden>
                 ✕
               </span>
@@ -70,8 +72,8 @@ export function ReroutePage() {
               </div>
             </BlobHero>
 
-            <h2 className={styles.heading}>경로를 이탈했어요</h2>
-            <p className={styles.lede}>주변 환경 때문에 위치를 다시 잡기 어려워요.</p>
+            <h2 className={styles.heading}>{t('user.reroute.title')}</h2>
+            <p className={styles.lede}>{t('user.reroute.description')}</p>
 
             <div className={styles.actions}>
               <ButtonLink
@@ -80,7 +82,7 @@ export function ReroutePage() {
                 className={styles.action}
               >
                 <Icon name="refresh" size={15} />
-                위치 재인식
+                {t('user.reroute.relocalize')}
               </ButtonLink>
               <ConsultCta className={styles.action} />
             </div>

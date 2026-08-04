@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
 import { resolveDestination, useDestinationSearch } from '@/entities/poi';
@@ -14,18 +15,39 @@ import styles from './DestinationSearch.module.css';
 
 const RESULT_TONES: readonly Icon3dTone[] = ['mint', 'sky', 'coral', 'lilac', 'gold'];
 
-const QUICK_DESTINATIONS: readonly Poi[] = [
-  { name: '올리브영 역삼중앙점', icon: 'cosmetics', meta: '빠른 목적지', kind: 'place' },
-  { name: '차지 역삼점', icon: 'store', meta: '빠른 목적지', kind: 'place' },
-  { name: '스타벅스 아크플레이스점', icon: 'coffee', meta: '빠른 목적지', kind: 'place' },
-  { name: '블리스 라운드 역삼점', icon: 'store', meta: '빠른 목적지', kind: 'place' },
-];
-
-const QUICK_DESTINATION_LABELS: Readonly<Record<string, readonly string[]>> = {
-  '올리브영 역삼중앙점': ['올리브영', '역삼중앙점'],
-  '스타벅스 아크플레이스점': ['스타벅스', '아크플레이스점'],
-  '블리스 라운드 역삼점': ['블리스 라운드', '역삼점'],
+type QuickDestination = {
+  poi: Poi;
+  nameEn: string;
+  labelsKo: readonly string[];
+  labelsEn: readonly string[];
 };
+
+const QUICK_DESTINATIONS: readonly QuickDestination[] = [
+  {
+    poi: { name: '올리브영 역삼중앙점', icon: 'cosmetics', meta: '빠른 목적지', kind: 'place' },
+    nameEn: 'Olive Young Yeoksam Jungang',
+    labelsKo: ['올리브영', '역삼중앙점'],
+    labelsEn: ['Olive Young', 'Yeoksam Jungang'],
+  },
+  {
+    poi: { name: '차지 역삼점', icon: 'store', meta: '빠른 목적지', kind: 'place' },
+    nameEn: 'Chaji Yeoksam',
+    labelsKo: ['차지 역삼점'],
+    labelsEn: ['Chaji Yeoksam'],
+  },
+  {
+    poi: { name: '스타벅스 아크플레이스점', icon: 'coffee', meta: '빠른 목적지', kind: 'place' },
+    nameEn: 'Starbucks Arc Place',
+    labelsKo: ['스타벅스', '아크플레이스점'],
+    labelsEn: ['Starbucks', 'Arc Place'],
+  },
+  {
+    poi: { name: '블리스 라운드 역삼점', icon: 'store', meta: '빠른 목적지', kind: 'place' },
+    nameEn: 'Bliss Lounge Yeoksam',
+    labelsKo: ['블리스 라운드', '역삼점'],
+    labelsEn: ['Bliss Lounge', 'Yeoksam'],
+  },
+];
 
 type DestinationSearchProps = {
   nextRoute?: string;
@@ -45,6 +67,7 @@ export function DestinationSearch({
   deferNavigation = false,
   onSelect,
 }: DestinationSearchProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const startNewJourney = useNavigationStore((state) => state.startNewJourney);
   const stationId = useStationStore((state) => state.stationId);
@@ -83,7 +106,7 @@ export function DestinationSearch({
     setSearched(false);
   };
 
-  const choose = async (poi: Poi) => {
+  const choose = async (poi: Poi, searchName = poi.name) => {
     // 처리 중에는 새 선택을 받지 않는다. 화면도 함께 막지만 이중으로 지킨다.
     if (choosing !== null) return;
     setChoosing(poi.name);
@@ -104,8 +127,15 @@ export function DestinationSearch({
         selectedPoi.longitude == null &&
         stationId != null
       ) {
-        selectedPoi =
-          (await resolveDestination(stationId, selectedPoi.name, language)) ?? selectedPoi;
+        const resolvedPoi = await resolveDestination(stationId, searchName, language);
+        if (resolvedPoi) {
+          selectedPoi = {
+            ...resolvedPoi,
+            // External providers may only return a Korean name. Preserve the
+            // English quick-tile label selected by the user in that case.
+            name: language === 'en' ? poi.name : resolvedPoi.name,
+          };
+        }
       }
 
       if (selectedPoi.id != null && selectedPoi.kind === 'facility') {
@@ -158,6 +188,8 @@ export function DestinationSearch({
       destinationLatitude: selectedPoi.latitude,
       destinationLongitude: selectedPoi.longitude,
       destinationAddress: selectedPoi.address,
+      destinationNameKo: selectedPoi.nameKo,
+      destinationNameEn: selectedPoi.nameEn,
     });
     if (userSessionId && selectedPoi.id != null) {
       void updateUserSession(userSessionId, {
@@ -182,8 +214,8 @@ export function DestinationSearch({
         <Field
           big
           className={styles.searchField}
-          placeholder="어디로 가세요? (역, 출구, 시설)"
-          aria-label="목적지 검색"
+          placeholder={t('user.destinationSearch.placeholder')}
+          aria-label={t('user.destinationSearch.label')}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -212,16 +244,18 @@ export function DestinationSearch({
           </svg>
         </span>
         <button type="button" className={styles.searchSubmit} onClick={submitSearch}>
-          검색
+          {t('user.destinationSearch.search')}
         </button>
       </div>
 
       {searched ? (
         <>
           <div className={styles.resultsHead}>
-            <Kicker className={styles.resultsKicker}>검색 결과 · &quot;{query}&quot;</Kicker>
+            <Kicker className={styles.resultsKicker}>
+              {t('user.destinationSearch.results', { query })}
+            </Kicker>
             <button type="button" className={styles.quickReturn} onClick={showQuickDestinations}>
-              빠른 목적지로 돌아가기
+              {t('user.destinationSearch.backToQuick')}
             </button>
           </div>
           <div className={styles.results}>
@@ -246,7 +280,7 @@ export function DestinationSearch({
                     <b className={styles.resultName}>{poi.name}</b>
                     <br />
                     <span className={styles.resultMeta}>
-                      {busy ? '경로를 준비하고 있어요…' : poi.meta}
+                      {busy ? t('user.destinationSearch.preparing') : poi.meta}
                     </span>
                   </span>
                   {busy ? (
@@ -257,33 +291,43 @@ export function DestinationSearch({
                 </SelectRow>
               );
             })}
-            {destinationSearch.isPending && <div className={styles.empty}>검색하고 있어요…</div>}
+            {destinationSearch.isPending && (
+              <div className={styles.empty}>{t('user.destinationSearch.searching')}</div>
+            )}
             {destinationSearch.isError && (
-              <div className={styles.empty}>목적지를 불러오지 못했어요.</div>
+              <div className={styles.empty}>{t('user.destinationSearch.error')}</div>
             )}
             {!destinationSearch.isPending && !destinationSearch.isError && results.length === 0 && (
-              <div className={styles.empty}>
-                일치하는 목적지가 없어요. 다른 이름으로 검색해보세요.
-              </div>
+              <div className={styles.empty}>{t('user.destinationSearch.empty')}</div>
             )}
           </div>
         </>
       ) : (
         <>
           <div className={styles.quickHead}>
-            <Kicker className={styles.quickKicker}>빠른 목적지</Kicker>
+            <Kicker className={styles.quickKicker}>{t('user.destinationSearch.quick')}</Kicker>
           </div>
           <div className={styles.tiles}>
-            {QUICK_DESTINATIONS.map((poi, index) => (
+            {QUICK_DESTINATIONS.map((quickDestination, index) => {
+              const poi = {
+                ...quickDestination.poi,
+                name: language === 'en' ? quickDestination.nameEn : quickDestination.poi.name,
+                nameKo: quickDestination.poi.name,
+                nameEn: quickDestination.nameEn,
+              };
+              const labels =
+                language === 'en' ? quickDestination.labelsEn : quickDestination.labelsKo;
+
+              return (
               <button
-                key={poi.name}
+                key={quickDestination.poi.name}
                 type="button"
                 className={styles.tile}
                 aria-label={poi.name}
                 /* 검색 결과와 같은 이유로 잠근다. 타일도 같은 `choose`를 탄다. */
                 disabled={choosing !== null}
                 onClick={() => {
-                  void choose(poi);
+                  void choose(poi, quickDestination.poi.name);
                 }}
               >
                 <Icon3d
@@ -296,20 +340,21 @@ export function DestinationSearch({
                 <div className={styles.tileBody}>
                   <div>
                     <div className={styles.tileTitle}>
-                      {(QUICK_DESTINATION_LABELS[poi.name] ?? [poi.name]).map((line) => (
+                      {labels.map((line) => (
                         <span key={line} className={styles.tileTitleLine}>
                           {line}
                         </span>
                       ))}
                     </div>
-                    <div className={styles.tileMeta}>{poi.meta}</div>
+                    <div className={styles.tileMeta}>{t('user.destinationSearch.quickMeta')}</div>
                   </div>
                   <span className={styles.tileArrow} aria-hidden>
                     ›
                   </span>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

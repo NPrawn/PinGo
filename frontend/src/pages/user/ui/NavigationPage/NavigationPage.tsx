@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -23,6 +24,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { useApiLanguage } from '@/shared/i18n';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
@@ -60,13 +62,6 @@ const MAP_FILTERS = FACILITY_MAP_FILTERS;
  * 아래 안내 카드의 문구(`25m 직진하세요`)와 겹치지 않게 **방향만** 말한다. 거리는 카드가, 방향은
  * 여기가 담당한다 — 같은 말을 두 곳에 쓰면 둘이 어긋날 여지만 생긴다.
  */
-const CAM_CAPTIONS = {
-  straight: '정면 통로를 따라 직진하세요',
-  left: '왼쪽으로 도세요',
-  right: '오른쪽으로 도세요',
-  around: '뒤로 돌아가세요',
-} as const;
-
 /**
  * 초를 분으로. **모르면 `null`이고, 모른다고 말한다.**
  *
@@ -97,6 +92,8 @@ function matchExitByName(exits: readonly Facility[], name: string): Facility | n
 
 /** Camera guidance with an interactive indoor map and up to two stops. */
 export function NavigationPage() {
+  const { t } = useTranslation();
+  const language = useApiLanguage();
   const station = useStationStore((state) => state.station);
   /**
    * 확정된 역의 백엔드 id. 예전에는 이 화면이 `1`을 직접 적어 썼다.
@@ -106,12 +103,15 @@ export function NavigationPage() {
    */
   const stationId = useStationStore((state) => state.stationId);
   const setFloor = useStationStore((state) => state.setFloor);
-  const destination = useNavigationStore((state) => state.destination) ?? '강남파이낸스센터';
+  const destination =
+    useNavigationStore((state) => state.destination) ?? t('user.navigation.defaultDestination');
   const route = useNavigationStore((state) => state.route);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const displayedOrigin = localizeUserLabel(currentLocationLabel ?? station, language);
+  const displayedDestination = localizeUserLabel(destination, language);
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
@@ -151,7 +151,7 @@ export function NavigationPage() {
    * 지워지는데, 되돌리기 버튼은 처음 출구로 돌아가는 수단이라 그 이름을 계속 알아야 한다.
    * `initialDestination`을 ref로 잡아 두는 것과 같은 이유다.
    */
-  const [exit] = useState(() => targetExitLabel ?? '출입구');
+  const [exit] = useState(() => targetExitLabel ?? t('user.navigation.defaultExit'));
   /** 되돌리기가 복원할 도착 노드. `exit`과 같은 이유로 진입 시점 값에 고정한다. */
   const [initialTarget] = useState(() => ({ nodeId: targetNodeId, label: targetExitLabel }));
   const initialDestination = useRef(destination);
@@ -192,7 +192,6 @@ export function NavigationPage() {
    * 보내지 않으면 백엔드가 `Language.DEFAULT`(=EN)로 떨어져, 한국어를 골라도 "Go straight"가
    * 나온다. 조회 키에도 넣어야 언어를 바꿀 때 새로 받는다. (S15P11A206-339)
    */
-  const language = useApiLanguage();
   const routeQuery = useQuery({
     queryKey: [
       'indoor-route',
@@ -391,7 +390,10 @@ export function NavigationPage() {
   const camGuide =
     progress.offRoute || verticalMove || bearing === null
       ? null
-      : { relativeDeg: bearing.relativeDeg, caption: CAM_CAPTIONS[bearing.turn] };
+      : {
+          relativeDeg: bearing.relativeDeg,
+          caption: t(`user.navigation.cameraDirection.${bearing.turn}`),
+        };
 
   /**
    * 목적지 마커. **이름과 좌표가 같은 곳을 가리켜야 한다.**
@@ -420,6 +422,14 @@ export function NavigationPage() {
    */
   const facilitiesQuery = useStationFacilities(stationId ?? 0);
   const facilitiesLoaded = facilitiesQuery.data !== undefined;
+  const waypointName = (waypoint: (typeof waypoints)[number]) => {
+    if (language !== 'en') return waypoint.nameKo;
+
+    const facilityNameEn = (facilitiesQuery.data ?? []).find(
+      (facility) => facility.linkedNodeId === waypoint.nodeId,
+    )?.nameEn;
+    return facilityNameEn?.trim() || localizeUserLabel(waypoint.nameKo, language);
+  };
   const floorFacilityTypes = new Set(
     (facilitiesQuery.data ?? [])
       .filter((facility) => facility.floorId === displayedFloorId)
@@ -462,51 +472,55 @@ export function NavigationPage() {
   const instruction = ((): { eyebrow: string; title: string; meta: string } => {
     if (currentNodeId == null) {
       return {
-        eyebrow: '안내 준비 중',
-        title: '현재 위치를 확인해 주세요',
-        meta: '어디서 출발하는지 알아야 경로를 계산할 수 있어요.',
+        eyebrow: t('user.navigation.preparing'),
+        title: t('user.navigation.confirmLocation'),
+        meta: t('user.navigation.confirmLocationMeta'),
       };
     }
     if (targetNodeId == null) {
       return {
-        eyebrow: '안내 준비 중',
-        title: '목적지를 선택해 주세요',
-        meta: '어디로 갈지 정하면 경로를 안내해 드려요.',
+        eyebrow: t('user.navigation.preparing'),
+        title: t('user.navigation.chooseDestination'),
+        meta: t('user.navigation.chooseDestinationMeta'),
       };
     }
     if (routeQuery.isLoading) {
       return {
-        eyebrow: '다음 안내 · 계산 중',
-        title: '경로를 찾고 있어요',
-        meta: '잠시만 기다려 주세요.',
+        eyebrow: t('user.navigation.calculating'),
+        title: t('user.navigation.findingRoute'),
+        meta: t('user.navigation.wait'),
       };
     }
     if (routeQuery.isError) {
       return {
-        eyebrow: '다음 안내 · -',
-        title: '경로를 불러오지 못했어요',
-        meta: '잠시 후 다시 시도해 주세요.',
+        eyebrow: t('user.navigation.nextUnknown'),
+        title: t('user.navigation.routeError'),
+        meta: t('user.navigation.tryAgain'),
       };
     }
     if (routeResult && routeResult.available === false) {
       return {
-        eyebrow: '다음 안내 · -',
+        eyebrow: t('user.navigation.nextUnknown'),
         // 경유지를 넣은 뒤 막혔다면 원인은 그쪽일 가능성이 크다. 무엇을 되돌리면 되는지 알린다.
-        title: waypoints.length > 0 ? '경유지를 지나는 길이 없어요' : '이 경로로는 갈 수 없어요',
+        title:
+          waypoints.length > 0
+            ? t('user.navigation.noWaypointRoute')
+            : t('user.navigation.unavailableRoute'),
         meta:
           routeUnavailableText(
             (routeResult.unavailableReason ?? null) as RouteUnavailableReason | null,
+            language === 'en' ? 'en' : 'ko',
           ) ??
           (waypoints.length > 0
-            ? '경유지를 지우면 원래 경로로 안내해 드려요.'
-            : '다른 경로를 선택해 주세요.'),
+            ? t('user.navigation.removeWaypointHint')
+            : t('user.navigation.otherRouteHint')),
       };
     }
     if (!activeStep) {
       return {
-        eyebrow: '다음 안내 · -',
-        title: '안내할 구간이 없어요',
-        meta: '출발지와 목적지가 같은 지점일 수 있어요.',
+        eyebrow: t('user.navigation.nextUnknown'),
+        title: t('user.navigation.noSegment'),
+        meta: t('user.navigation.samePoint'),
       };
     }
 
@@ -537,13 +551,13 @@ export function NavigationPage() {
       */
       eyebrow:
         recalculated && routeQuery.isFetching
-          ? '다음 안내 · 경로 다시 계산 중'
-          : `다음 안내 · ${Math.round(nextDistance)}m`,
-      title: activeStep.instruction ?? '경로를 따라 이동하세요',
+          ? t('user.navigation.recalculating')
+          : t('user.navigation.nextDistance', { distance: Math.round(nextDistance) }),
+      title: activeStep.instruction ?? t('user.navigation.followRoute'),
       meta:
         totalMinutes === null
-          ? `총 ${totalDistance}m`
-          : `총 ${totalDistance}m · 약 ${totalMinutes}분`,
+          ? t('user.navigation.totalDistance', { distance: totalDistance })
+          : t('user.navigation.total', { distance: totalDistance, minutes: totalMinutes }),
     };
   })();
 
@@ -554,6 +568,11 @@ export function NavigationPage() {
   const selectedFacilityIsDestination = selectedFacility
     ? selectedFacility.nameKo === activeDestination
     : false;
+  const selectedFacilityName = selectedFacility
+    ? language === 'en'
+      ? selectedFacility.nameEn?.trim() || selectedFacility.nameKo
+      : selectedFacility.nameKo
+    : '';
   /**
    * 노드를 모르는 시설은 경유지가 될 수 없다.
    *
@@ -589,7 +608,7 @@ export function NavigationPage() {
           />
         ) : selectedFacility ? (
           <Sheet
-            label={`${selectedFacility.nameKo} 경로 설정`}
+            label={t('user.navigation.facilityRoute', { name: selectedFacilityName })}
             onDismiss={() => setSelectedFacility(null)}
           >
             <div className={styles.sheetHandle} aria-hidden />
@@ -598,18 +617,18 @@ export function NavigationPage() {
                 <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
               </span>
               <div>
-                <h2>{selectedFacility.nameKo}</h2>
+                <h2>{selectedFacilityName}</h2>
                 {/* 목업이던 거리·층 설명 대신 응답에 있는 값을 쓴다. 거리는 경로 계산(297)이
                     붙으면 넣는다 — 지금 임의로 만들면 틀린 숫자를 보여주게 된다. */}
                 <p>
                   {selectedFacility.isAccessible
-                    ? '계단 없이 갈 수 있어요'
-                    : '계단 구간이 있을 수 있어요'}
+                    ? t('user.navigation.accessible')
+                    : t('user.navigation.mayHaveStairs')}
                 </p>
               </div>
             </div>
             <p className={styles.sheetNote}>
-              경유지는 최대 2개까지 추가할 수 있어요. 변경하면 현재 위치에서 경로를 다시 계산합니다.
+              {t('user.navigation.waypointNote')}
             </p>
             <div className={styles.sheetActions}>
               <Button
@@ -631,14 +650,14 @@ export function NavigationPage() {
                 }}
               >
                 {selectedFacilityIsDestination
-                  ? '현재 목적지는 추가 불가'
+                  ? t('user.navigation.cannotAddDestination')
                   : selectedFacilityIsWaypoint
-                    ? '이미 추가된 경유지'
+                    ? t('user.navigation.alreadyWaypoint')
                     : !selectedFacilityRoutable
-                      ? '경유지로 지정할 수 없는 곳'
+                      ? t('user.navigation.notRoutable')
                       : waypoints.length >= 2
-                        ? '경유지 2개 추가 완료'
-                        : '경유지로 추가'}
+                        ? t('user.navigation.waypointLimit')
+                        : t('user.navigation.addWaypoint')}
               </Button>
               <Button
                 variant="secondary"
@@ -665,10 +684,10 @@ export function NavigationPage() {
                 }}
               >
                 {selectedFacilityIsWaypoint
-                  ? '경유지로 등록된 장소'
+                  ? t('user.navigation.registeredWaypoint')
                   : selectedFacilityIsDestination
-                    ? '현재 목적지'
-                    : '새 목적지로 설정'}
+                    ? t('user.navigation.currentDestination')
+                    : t('user.navigation.setDestination')}
               </Button>
             </div>
           </Sheet>
@@ -687,14 +706,14 @@ export function NavigationPage() {
             className={[styles.journeyHeader, waypoints.length > 0 && styles.journeyHeaderCompact]
               .filter(Boolean)
               .join(' ')}
-            aria-label="현재 경로"
+            aria-label={t('user.navigation.currentRoute')}
           >
             <div className={styles.routePoint}>
               <span className={styles.routeLabel}>
                 <span className={styles.pointDot} aria-hidden />
-                <small>출발지</small>
+                <small>{t('user.station.origin')}</small>
               </span>
-              <strong>{currentLocationLabel ?? station}</strong>
+              <strong>{displayedOrigin}</strong>
             </div>
             {waypoints.map((waypoint, index) => (
               <Fragment key={waypoint.nodeId}>
@@ -709,16 +728,20 @@ export function NavigationPage() {
                       removeWaypoint(waypoint.nodeId);
                       setRecalculated(true);
                     }}
-                    aria-label={`${waypoint.nameKo} 경유지 삭제`}
-                    title={`${waypoint.nameKo} 경유지 삭제`}
+                    aria-label={t('user.navigation.removeWaypoint', {
+                      name: waypointName(waypoint),
+                    })}
+                    title={t('user.navigation.removeWaypoint', {
+                      name: waypointName(waypoint),
+                    })}
                   >
                     ×
                   </button>
                   <span className={styles.routeLabel}>
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
-                    <small>경유 {index + 1}</small>
+                    <small>{t('user.navigation.waypoint', { order: index + 1 })}</small>
                   </span>
-                  <strong title={waypoint.nameKo}>{waypoint.nameKo}</strong>
+                  <strong title={waypointName(waypoint)}>{waypointName(waypoint)}</strong>
                 </div>
               </Fragment>
             ))}
@@ -740,17 +763,19 @@ export function NavigationPage() {
                     }
                     setRecalculated(true);
                   }}
-                  aria-label={`목적지를 ${exit}로 되돌리기`}
-                  title={`처음 목적지 ${exit}로 되돌리기`}
+                  aria-label={t('user.navigation.restoreDestination', { destination: exit })}
+                  title={t('user.navigation.restoreDestinationTitle', { destination: exit })}
                 >
                   <Icon name="refresh" size={10} />
                 </button>
               )}
               <span className={styles.routeLabel}>
                 <span className={`${styles.pointDot} ${styles.pointDotDestination}`} aria-hidden />
-                <small>목적지</small>
+                <small>{t('user.station.destination')}</small>
               </span>
-              <strong title={activeDestination}>{activeDestination}</strong>
+              <strong title={localizeUserLabel(activeDestination, language)}>
+                {localizeUserLabel(activeDestination, language)}
+              </strong>
             </div>
           </div>
 
@@ -820,7 +845,7 @@ export function NavigationPage() {
                   destinationLabel={
                     (effectiveType == null || effectiveType === 'exit') &&
                     destinationFacility !== null
-                      ? destinationFacility.nameKo
+                      ? localizeUserLabel(destinationFacility.nameKo, language)
                       : null
                   }
                   /* 실제로 안내 중인 경로를 그린다. 조회 전이거나 실패하면 빈 배열이라
@@ -870,17 +895,17 @@ export function NavigationPage() {
               <button
                 type="button"
                 className={styles.relocalize}
-                aria-label="현재 위치 다시 인식"
+                aria-label={t('user.navigation.relocalize')}
                 onClick={() => {
                   beginRelocalize();
                   navigate(USER_ROUTES.CAPTURE_PORTRAIT);
                 }}
               >
                 <Icon name="refresh" size={14} />
-                재인식
+                {t('user.navigation.relocalizeShort')}
               </button>
 
-              <div className={styles.floorButtons} role="group" aria-label="층 선택">
+              <div className={styles.floorButtons} role="group" aria-label={t('user.navigation.floorSelect')}>
                 {floorMaps.map((map) => {
                   const on = map.floorCode === displayedFloorCode;
 
@@ -907,7 +932,7 @@ export function NavigationPage() {
               </div>
 
               {/* 표시 층에 있는 유형만 둔다. 눌러서 아무것도 안 나오는 칩은 두지 않는다. */}
-              <div className={styles.facilityFilters} role="group" aria-label="시설 필터">
+              <div className={styles.facilityFilters} role="group" aria-label={t('user.navigation.facilityFilter')}>
                 {availableFilters.map((filter) => {
                   const active = effectiveView === filter.facilityType;
 
@@ -918,7 +943,7 @@ export function NavigationPage() {
                       className={[styles.facilityFilter, active && styles.facilityFilterOn]
                         .filter(Boolean)
                         .join(' ')}
-                      aria-label={`${filter.name} ${active ? '필터 해제' : '필터 적용'}`}
+                      aria-label={t(active ? 'user.navigation.filterOff' : 'user.navigation.filterOn', { name: filter.name })}
                       aria-pressed={active}
                       title={filter.name}
                       onClick={() => {
@@ -951,10 +976,10 @@ export function NavigationPage() {
                     .filter(Boolean)
                     .join(' ')}
                   aria-label={
-                    effectiveView === 'none' ? '시설 아이콘 다시 보기' : '시설 아이콘 모두 숨기기'
+                    effectiveView === 'none' ? t('user.navigation.showFacilities') : t('user.navigation.hideFacilities')
                   }
                   aria-pressed={effectiveView === 'none'}
-                  title={effectiveView === 'none' ? '시설 아이콘 다시 보기' : '시설 아이콘 숨기기'}
+                  title={effectiveView === 'none' ? t('user.navigation.showFacilities') : t('user.navigation.hideFacilities')}
                   onClick={() => {
                     setFacilityView(effectiveView === 'none' ? 'all' : 'none');
                     setSelectedFacility(null);
@@ -970,7 +995,7 @@ export function NavigationPage() {
             </MapPreview>
 
             <div className={styles.mapLegend}>
-              <span>지도 시설을 눌러 경유지 추가</span>
+              <span>{t('user.navigation.mapHint')}</span>
               <strong>{waypoints.length}/2</strong>
             </div>
 
@@ -1034,8 +1059,8 @@ export function NavigationPage() {
                       <span className={styles.stepIcon}>
                         {passed ? <Icon name="check" size={13} /> : <Icon name="pin" size={14} />}
                       </span>
-                      <b>{waypoint.nameKo}</b>
-                      <span>경유 {index + 1}</span>
+                      <b>{waypointName(waypoint)}</b>
+                      <span>{t('user.navigation.waypoint', { order: index + 1 })}</span>
                     </div>
                   );
                 })}
@@ -1043,8 +1068,8 @@ export function NavigationPage() {
                   <span className={styles.stepIcon}>
                     <Icon name="flag" size={14} />
                   </span>
-                  <b>{exit} 도착</b>
-                  <span>{destination} 방면</span>
+                  <b>{t('user.navigation.arriveExit', { exit })}</b>
+                  <span>{t('user.navigation.toward', { destination: displayedDestination })}</span>
                 </div>
               </div>
             )}
@@ -1058,10 +1083,10 @@ export function NavigationPage() {
                 aria-expanded={stepsOpen}
               >
                 <Icon name="list" size={15} />
-                상세 경로
+                {t('user.navigation.details')}
               </Button>
               <ButtonLink to={USER_ROUTES.ARRIVAL} size="sm" className={styles.action}>
-                도착
+                {t('user.navigation.arrived')}
               </ButtonLink>
             </div>
           </div>

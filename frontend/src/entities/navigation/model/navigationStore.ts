@@ -33,6 +33,8 @@ const MAX_WAYPOINTS = 2;
 type NavigationStore = {
   /** Destination name the user picked from search. */
   destination: string | null;
+  destinationNameKo: string | null;
+  destinationNameEn: string | null;
   destinationId: number | null;
   destinationType: string | null;
   destinationLatitude: number | null;
@@ -95,6 +97,8 @@ type NavigationStore = {
       destinationLatitude?: number;
       destinationLongitude?: number;
       destinationAddress?: string;
+      destinationNameKo?: string;
+      destinationNameEn?: string;
     },
   ) => void;
   setDestination: (destination: string) => void;
@@ -140,6 +144,8 @@ export const useNavigationStore = create<NavigationStore>()(
   persist(
     (set) => ({
       destination: null,
+      destinationNameKo: null,
+      destinationNameEn: null,
       destinationId: null,
       destinationType: null,
       destinationLatitude: null,
@@ -164,6 +170,8 @@ export const useNavigationStore = create<NavigationStore>()(
       startNewJourney: (destination, details) =>
         set({
           destination,
+          destinationNameKo: details?.destinationNameKo ?? null,
+          destinationNameEn: details?.destinationNameEn ?? null,
           destinationId: details?.destinationId ?? null,
           destinationType: details?.destinationType ?? null,
           destinationLatitude: details?.destinationLatitude ?? null,
@@ -178,6 +186,8 @@ export const useNavigationStore = create<NavigationStore>()(
       setDestination: (destination) =>
         set({
           destination,
+          destinationNameKo: null,
+          destinationNameEn: null,
           destinationId: null,
           destinationType: null,
           destinationLatitude: null,

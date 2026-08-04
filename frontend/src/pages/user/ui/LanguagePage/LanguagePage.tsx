@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ensureUserSession } from '@/entities/user-session';
+import { ensureUserSession, useUserSessionStore } from '@/entities/user-session';
 import { USER_ROUTES } from '@/shared/config';
+import { en, ko } from '@/shared/i18n';
 import { Blob, BlobHero, Button, LivePill, Spring, Sub, Title } from '@/shared/ui';
 import { LanguageSelect } from '@/features/language-select';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -12,13 +13,20 @@ import styles from './LanguagePage.module.css';
 export function LanguagePage() {
   const { i18n } = useTranslation();
   const navigate = useNavigate();
+  const setLanguage = useUserSessionStore((state) => state.setLanguage);
+  // The language picker itself always opens in English, just like the intro splash.
+  // Once the user makes a choice, its labels immediately follow that selection.
+  const [selectedLanguage, setSelectedLanguage] = useState<'ko' | 'en'>('en');
   const [isStarting, setIsStarting] = useState(false);
+  const copy = selectedLanguage === 'en' ? en.translation.user.language : ko.translation.user.language;
 
   const startSession = async () => {
     if (isStarting) return;
     setIsStarting(true);
-    const userSessionId = await ensureUserSession(i18n.language);
+    const userSessionId = await ensureUserSession(selectedLanguage);
     if (userSessionId) {
+      setLanguage(selectedLanguage);
+      await i18n.changeLanguage(selectedLanguage);
       navigate(USER_ROUTES.PERMISSION);
       return;
     }
@@ -39,20 +47,21 @@ export function LanguagePage() {
         </div>
       </BlobHero>
 
-      <Title center>
-        사용할 언어를
-        <br />
-        선택해 주세요
+      <Title center style={{ whiteSpace: 'pre-line' }}>
+        {copy.heading}
       </Title>
       <Sub center style={{ marginTop: 8 }}>
-        Please select your language
+        {copy.description}
       </Sub>
 
-      <LanguageSelect />
+      <LanguageSelect
+        value={selectedLanguage}
+        onChange={setSelectedLanguage}
+      />
 
       <Spring />
       <Button disabled={isStarting} onClick={() => void startSession()}>
-        계속하기 · Continue
+        {copy.continue}
       </Button>
     </PhoneFrame>
   );

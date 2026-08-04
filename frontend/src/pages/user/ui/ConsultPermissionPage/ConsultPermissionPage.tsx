@@ -14,7 +14,7 @@ import {
   holdConsultMedia,
   releaseConsultMedia,
 } from '@/features/consult-signaling';
-import { ApiError, createConsultation } from '@/shared/api';
+import { createConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import {
   BackLink,
@@ -99,7 +99,7 @@ const PROBLEM_TYPES = [
 /** Screen 18 (FR-U-013) — consent to share camera and microphone. */
 export function ConsultPermissionPage() {
   const navigate = useNavigate();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const issue = useConsultStore((state) => state.issue);
   const setConsultation = useConsultStore((state) => state.setConsultation);
   const stationId = useStationStore((state) => state.stationId);
@@ -149,7 +149,7 @@ export function ConsultPermissionPage() {
     }
     // 상담은 역 단위로 배정된다. 등록되지 않은 역이면 보낼 상담자가 없다.
     if (stationId == null) {
-      setErrorMessage('이 역은 아직 상담을 지원하지 않습니다.');
+      setErrorMessage(t('user.consultPermission.unsupportedStation'));
       return;
     }
 
@@ -183,14 +183,10 @@ export function ConsultPermissionPage() {
       }
       setConsultation(consultation.consultationId);
       void navigate(USER_ROUTES.CONSULT_WAITING);
-    } catch (error) {
+    } catch {
       // 상담으로 이어지지 못했으니 잡아 둔 카메라·마이크를 놓아 준다.
       releaseConsultMedia();
-      setErrorMessage(
-        error instanceof ApiError && error.code === 'CONSULTATION_ALREADY_IN_PROGRESS'
-          ? '이미 진행 중인 상담이 있습니다.'
-          : '상담 요청을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.',
-      );
+      setErrorMessage(t('user.consultPermission.requestError'));
     } finally {
       setSubmitting(false);
     }
@@ -239,7 +235,7 @@ export function ConsultPermissionPage() {
       await requestConsultation(readyUserSessionId, camera !== null);
     } catch {
       setShared({ mic: false, cam: false });
-      setErrorMessage('상담하려면 마이크를 허용해 주세요.');
+      setErrorMessage(t('user.consultPermission.microphoneRequired'));
       setReminderOpen(true);
     } finally {
       setRequestingPermissions(false);
@@ -259,7 +255,7 @@ export function ConsultPermissionPage() {
     }
 
     if (!readyUserSessionId) {
-      setErrorMessage('상담 연결을 준비하지 못했습니다. 백엔드 연결을 확인한 뒤 다시 시도해 주세요.');
+      setErrorMessage(t('user.consultPermission.prepareError'));
       return;
     }
 
@@ -269,18 +265,16 @@ export function ConsultPermissionPage() {
   return (
     <PhoneFrame>
       <div className={styles.topSpacer} />
-      <BackLink to={USER_ROUTES.CONSULT_REQUEST}>문제 유형 다시 선택</BackLink>
+      <BackLink to={USER_ROUTES.CONSULT_REQUEST}>{t('user.consultPermission.back')}</BackLink>
 
       <div className={styles.header}>
         <Icon3d name="headset" tone="lilac" iconSize={24} className={styles.headerIcon} />
         <div>
-          <Kicker className={styles.kicker}>상담 연결 준비</Kicker>
-          <Title className={styles.title}>무엇을 공유할지 정해주세요</Title>
+          <Kicker className={styles.kicker}>{t('user.consultPermission.kicker')}</Kicker>
+          <Title className={styles.title}>{t('user.consultPermission.title')}</Title>
         </div>
       </div>
-      <Sub className={styles.lede}>
-        상담원이 실시간으로 현재 상황을 보고 안내할 수 있도록 아래 항목이 전달돼요.
-      </Sub>
+      <Sub className={styles.lede}>{t('user.consultPermission.description')}</Sub>
 
       <div className={styles.options}>
         {SHARES.map((share) =>
@@ -293,24 +287,26 @@ export function ConsultPermissionPage() {
             <div key={share.key} className={styles.option}>
               <Icon3d name={share.icon} tone={share.tone} />
               <span className={styles.labels}>
-                <b className={styles.name}>{share.name}</b>
+                <b className={styles.name}>{t(`user.consultPermission.${share.key}.name`)}</b>
                 <br />
-                <span className={styles.desc}>{share.desc}</span>
+                <span className={styles.desc}>{t(`user.consultPermission.${share.key}.desc`)}</span>
               </span>
-              <Pill className={styles.requiredMark}>필수</Pill>
+              <Pill className={styles.requiredMark}>{t('user.consultPermission.required')}</Pill>
             </div>
           ) : (
             <div key={share.key} className={styles.option}>
               <Icon3d name={share.icon} tone={share.tone} />
               <span className={styles.labels}>
-                <b className={styles.name}>{share.name}</b>
+                <b className={styles.name}>{t(`user.consultPermission.${share.key}.name`)}</b>
                 <br />
-                <span className={styles.desc}>{share.desc}</span>
+                <span className={styles.desc}>{t(`user.consultPermission.${share.key}.desc`)}</span>
               </span>
               <Toggle
                 checked={cameraConsent}
                 onCheckedChange={setCameraConsent}
-                label={`${share.name} 공유`}
+                label={t('user.consultPermission.shareLabel', {
+                  item: t(`user.consultPermission.${share.key}.name`),
+                })}
               />
             </div>
           ),
@@ -318,7 +314,7 @@ export function ConsultPermissionPage() {
       </div>
 
       {/* 저장 정책을 동의 시점에 알린다(비기능_요구사항_명세서 NFR-PR-002). */}
-      <Sub className={styles.retention}>상담 영상과 음성은 저장하지 않아요.</Sub>
+      <Sub className={styles.retention}>{t('user.consultPermission.retention')}</Sub>
 
       <Spring />
       {errorMessage && <p role="alert">{errorMessage}</p>}
@@ -329,31 +325,27 @@ export function ConsultPermissionPage() {
       >
         {!userSessionId
           ? preparingSession
-            ? '상담 연결 준비 중…'
-            : '상담 연결 준비하기'
+            ? t('user.consultPermission.preparing')
+            : t('user.consultPermission.prepare')
           : requestingPermissions
-            ? '권한 확인 중…'
+            ? t('user.consultPermission.checking')
             : submitting
-              ? '요청 중…'
-              : '동의하고 상담 연결'}
+              ? t('user.consultPermission.requesting')
+              : t('user.consultPermission.connect')}
       </Button>
 
       {reminderOpen && (
         <Sheet
           placement="center"
-          label="음성 공유가 필요해요"
+          label={t('user.consultPermission.reminderTitle')}
           onDismiss={() => setReminderOpen(false)}
         >
           <div className={styles.panel}>
             <div className={styles.mark}>
               <Icon name="warning" size={28} />
             </div>
-            <h2 className={styles.heading}>음성 공유가 필요해요</h2>
-            <p className={styles.body}>
-              상담원과 이야기하려면
-              <br />
-              <b>마이크를 허용해주세요.</b>
-            </p>
+            <h2 className={styles.heading}>{t('user.consultPermission.reminderTitle')}</h2>
+            <p className={styles.body}>{t('user.consultPermission.reminderBody')}</p>
             {/* 위치는 여기 없다. 브라우저에 요청해 확보하는 것이 아니라 늘 함께 가는 값이다. */}
             <div className={styles.chips}>
               {CAPTURED_SHARES.map((share) => {
@@ -364,7 +356,7 @@ export function ConsultPermissionPage() {
                     style={{ background: chip.bg, color: chip.fg, borderColor: chip.bg }}
                   >
                     <Icon name={share.icon} size={14} />
-                    {share.short}
+                    {t(`user.consultPermission.${share.key}.short`)}
                   </Pill>
                 );
               })}
@@ -375,10 +367,10 @@ export function ConsultPermissionPage() {
               disabled={!userSessionId || requestingPermissions || submitting}
             >
               {!userSessionId
-                ? '상담 연결 준비 중…'
+                ? t('user.consultPermission.preparing')
                 : requestingPermissions
-                  ? '권한 확인 중…'
-                  : '모두 동의하고 연결'}
+                  ? t('user.consultPermission.checking')
+                  : t('user.consultPermission.connectAll')}
             </Button>
           </div>
         </Sheet>
