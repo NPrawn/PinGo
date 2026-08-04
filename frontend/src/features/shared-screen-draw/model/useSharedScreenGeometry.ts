@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import type { RefObject } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { NormalizedRect, ScreenGeometryPayload } from '@/shared/types';
 
 /**
@@ -15,11 +14,11 @@ import type { NormalizedRect, ScreenGeometryPayload } from '@/shared/types';
  */
 export interface SharedScreenTargets {
   /** 그리기 좌표(0~1)의 기준. 화면 전체를 덮는 요소여야 한다. */
-  screen: RefObject<HTMLElement | null>;
+  screen: HTMLElement | null;
   /** 카메라 아래 영역. 이 위쪽이 카메라가 보이는 부분이다. */
-  lower: RefObject<HTMLElement | null>;
+  lower: HTMLElement | null;
   /** 도면이 그려지는 자리. */
-  map: RefObject<HTMLElement | null>;
+  map: HTMLElement | null;
 }
 
 /**
@@ -44,23 +43,55 @@ function normalize(rect: DOMRect, screen: DOMRect): NormalizedRect {
   };
 }
 
+export interface SharedScreenGeometry {
+  /** 잰 배치. 아직 재지 못했으면 null. */
+  geometry: ScreenGeometryPayload | null;
+  /**
+   * 재야 할 요소에 붙이는 콜백 ref 세 개.
+   *
+   * **`useRef` 대신 콜백 ref 를 쓴다.** `RefObject` 는 렌더가 반복돼도 같은 객체라
+   * `.current` 가 채워지는 것을 의존성 배열이 알아채지 못한다. 요소가 조건부로 렌더되거나
+   * 늦게 마운트되면 관찰이 붙지 않은 채로 굳고, **아무 오류도 없이 배치가 영원히 null 로**
+   * 남는다. 상담자 화면은 그동안 어림 비율로 그리므로 화면상으로도 티가 나지 않는다.
+   *
+   * 콜백 ref 로 받으면 요소가 붙는 순간 상태가 바뀌어 관찰 effect 가 그때 돈다. 호출부가
+   * 어떻게 렌더하든 상관없어진다 — `useMapGestures` 가 같은 이유로 이미 이 방식이다.
+   * (S15P11A206-89 리뷰)
+   */
+  screenRef: (node: HTMLElement | null) => void;
+  lowerRef: (node: HTMLElement | null) => void;
+  mapRef: (node: HTMLElement | null) => void;
+}
+
 export function useSharedScreenGeometry(
-  targets: SharedScreenTargets,
   /** XR 카메라 원본 크기. 아직 모르면 null 을 넘긴다. */
   cameraSource: { width: number; height: number } | null,
-): ScreenGeometryPayload | null {
-  const { screen, lower, map } = targets;
+): SharedScreenGeometry {
+  const [targets, setTargets] = useState<SharedScreenTargets>({
+    screen: null,
+    lower: null,
+    map: null,
+  });
   const [geometry, setGeometry] = useState<ScreenGeometryPayload | null>(null);
 
+  const screenRef = useCallback((node: HTMLElement | null) => {
+    setTargets((previous) => (previous.screen === node ? previous : { ...previous, screen: node }));
+  }, []);
+  const lowerRef = useCallback((node: HTMLElement | null) => {
+    setTargets((previous) => (previous.lower === node ? previous : { ...previous, lower: node }));
+  }, []);
+  const mapRef = useCallback((node: HTMLElement | null) => {
+    setTargets((previous) => (previous.map === node ? previous : { ...previous, map: node }));
+  }, []);
+
+  const { screen, lower, map } = targets;
+
   useEffect(() => {
+    // 셋 다 붙어야 잴 수 있다. 하나라도 빠지면 기준이나 대상이 없다.
+    if (!screen || !lower || !map) return;
+
     const measure = (): void => {
-      const screenElement = screen.current;
-      const lowerElement = lower.current;
-      const mapElement = map.current;
-
-      if (!screenElement || !lowerElement || !mapElement) return;
-
-      const box = screenElement.getBoundingClientRect();
+      const box = screen.getBoundingClientRect();
 
       // 아직 배치되지 않았다. 0으로 나누면 NaN 이 상담자 화면까지 건너간다.
       if (!(box.width > 0) || !(box.height > 0)) return;
@@ -68,8 +99,8 @@ export function useSharedScreenGeometry(
       const next: ScreenGeometryPayload = {
         width: round(box.width),
         height: round(box.height),
-        lower: normalize(lowerElement.getBoundingClientRect(), box),
-        map: normalize(mapElement.getBoundingClientRect(), box),
+        lower: normalize(lower.getBoundingClientRect(), box),
+        map: normalize(map.getBoundingClientRect(), box),
         cameraSource,
       };
 
@@ -103,14 +134,12 @@ export function useSharedScreenGeometry(
 
     const observer = new ResizeObserver(measure);
 
-    [screen.current, lower.current, map.current].forEach((element) => {
-      if (element) observer.observe(element);
-    });
+    [screen, lower, map].forEach((element) => observer.observe(element));
 
     return () => {
       observer.disconnect();
     };
   }, [cameraSource, lower, map, screen]);
 
-  return geometry;
+  return { geometry, screenRef, lowerRef, mapRef };
 }

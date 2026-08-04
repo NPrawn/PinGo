@@ -17,7 +17,6 @@ import { useUserSessionStore } from '@/entities/user-session';
 import {
   describeRemoteCaptionTrouble,
   releaseConsultMedia,
-  swapConsultVideoTrack,
   useCaptionTranslation,
   useConsultSignaling,
   useTranslatedSpeech,
@@ -257,9 +256,9 @@ export function ConsultSessionPage() {
   /**
    * 세션을 열기 직전에 `getUserMedia` 카메라를 세션 카메라로 갈아 끼운다. (11.8)
    *
-   * 두 가지를 함께 해야 한다. `replaceLocalVideoTrack`은 **지금 맺어진 연결**의 트랙을 재협상
-   * 없이 바꾸고, `swapConsultVideoTrack`은 **맡겨 둔 스트림**을 바꿔 재연결에서도 같은 트랙이
-   * 실리게 한다. 하나만 하면 지금은 되고 재연결에서 검은 화면이 되거나, 그 반대가 된다.
+   * **한 번만 부른다.** `replaceLocalVideoTrack` 이 지금 맺어진 연결과 재연결에 실릴 스트림을
+   * 함께 바꾼다. 예전에는 이 화면이 `swapConsultVideoTrack` 을 따로 이어 불렀는데, 짝을 맞추는
+   * 책임이 호출부에 있으면 한쪽을 빠뜨린 것을 아무도 알아채지 못한다. (S15P11A206-89 리뷰)
    *
    * 옛 카메라 트랙을 멈추는 것이 이 콜백의 본래 임무다. 남겨 두면 세션은 오류 없이 열리고
    * pose 만 영원히 들어오지 않는다.
@@ -267,9 +266,7 @@ export function ConsultSessionPage() {
   const handOverCameraToSession = useCallback(async () => {
     const track = cameraStreamRef.current?.stream.getVideoTracks()[0] ?? null;
 
-    // 연결이 먼저다. 트랙을 멈춘 뒤에 바꾸면 그 사이 프레임이 검게 나간다.
     await replaceLocalVideoTrack(track);
-    swapConsultVideoTrack(track);
   }, [replaceLocalVideoTrack]);
 
   /**
@@ -367,8 +364,6 @@ export function ConsultSessionPage() {
    * 기준은 `overlayRef` 다. 상담원이 그린 선을 받는 캔버스가 이 요소를 덮고 있으므로, 0~1 의
    * 기준도 정확히 이 요소여야 한다.
    */
-  const lowerRef = useRef<HTMLDivElement>(null);
-  const mapBoxRef = useRef<HTMLDivElement>(null);
   /**
    * 카메라 원본 크기. 첫 프레임을 잡은 뒤에야 알 수 있다.
    *
@@ -378,9 +373,26 @@ export function ConsultSessionPage() {
     () => (cameraStreamState === 'streaming' ? xrSessionController.getCameraSourceSize() : null),
     [cameraStreamState],
   );
-  const screenGeometry = useSharedScreenGeometry(
-    { screen: overlayRef, lower: lowerRef, map: mapBoxRef },
-    cameraSourceSize,
+  const {
+    geometry: screenGeometry,
+    screenRef: geometryScreenRef,
+    lowerRef,
+    mapRef: mapBoxRef,
+  } = useSharedScreenGeometry(cameraSourceSize);
+
+  /**
+   * 오버레이 루트에 ref 를 둘 붙인다.
+   *
+   * XR 훅은 `dom-overlay` 루트로 이 요소를 쓰고, 배치 측정은 0~1 좌표의 기준으로 같은 요소를
+   * 쓴다. 같은 요소를 두 곳이 필요로 하므로 한 콜백에서 둘 다 채운다 — 측정 쪽이 콜백 ref 인
+   * 이유는 `useSharedScreenGeometry` 주석에 있다.
+   */
+  const setOverlayNode = useCallback(
+    (node: HTMLDivElement | null) => {
+      overlayRef.current = node;
+      geometryScreenRef(node);
+    },
+    [geometryScreenRef, overlayRef],
   );
 
   /**
@@ -853,7 +865,7 @@ export function ConsultSessionPage() {
         ) : undefined
       }
     >
-      <div className={styles.overlayRoot} ref={overlayRef}>
+      <div className={styles.overlayRoot} ref={setOverlayNode}>
         {/* 상담원이 카메라 영상 위에 그린 선. 좌표는 0~1 정규화 값이라 화면을 덮어 얹는다. */}
         <canvas ref={annotationRef} className={styles.annotation} aria-hidden />
         <div className={styles.bar}>
