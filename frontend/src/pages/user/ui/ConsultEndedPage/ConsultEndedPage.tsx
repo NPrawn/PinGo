@@ -21,6 +21,7 @@ export function ConsultEndedPage() {
   const rate = useConsultStore((state) => state.rate);
   const clearConsultation = useConsultStore((state) => state.clearConsultation);
   const consultationId = useConsultStore((state) => state.consultationId);
+  const entryRoute = useConsultStore((state) => state.entryRoute);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const [rated, setRated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -44,6 +45,20 @@ export function ConsultEndedPage() {
   const [ratingConsultationId] = useState(consultationId);
 
   /**
+   * 상담이 끝나고 돌아갈 자리. (S15P11A206-89)
+   *
+   * **경로 안내에서 시작한 상담만 안내로 되돌린다.** 그 화면은 목적지와 경로를 이미 들고 있어
+   * 돌아가면 걷던 자리에서 이어진다. 다른 화면에서 시작했다면 되돌릴 안내가 없으므로 역 선택으로
+   * 간다 — 목적지도 경로도 없는 빈 안내 화면을 띄우면 사용자는 무엇이 잘못됐는지 알 수 없다.
+   *
+   * 위 `ratingConsultationId` 와 같은 이유로 마운트 시점 값에 고정한다. 아래 effect 가 store 를
+   * 비우기 전의 값이어야 한다.
+   */
+  const [returnRoute] = useState<string>(() =>
+    entryRoute === USER_ROUTES.NAVIGATION ? USER_ROUTES.NAVIGATION : USER_ROUTES.STATION,
+  );
+
+  /**
    * 상담이 끝났으니 공유하던 화면과 마이크를 놓아 주고, 상담 정보도 곧바로 비운다.
    *
    * 상담 화면의 언마운트에 맡기지 않는 이유는, 개발 모드의 StrictMode 가 정리 함수를 마운트
@@ -60,9 +75,9 @@ export function ConsultEndedPage() {
 
   useEffect(() => {
     if (!rated) return;
-    const timer = setTimeout(() => void navigate(USER_ROUTES.STATION), DISMISS_MS);
+    const timer = setTimeout(() => void navigate(returnRoute), DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [rated, navigate]);
+  }, [rated, navigate, returnRoute]);
 
   const submitRating = async (score: number) => {
     // 서버 응답을 기다리는 동안에도 고른 별은 바로 보여 준다.
@@ -126,8 +141,12 @@ export function ConsultEndedPage() {
               <Icon name="chat" size={28} />
             </div>
             <h2 className={styles.heading}>상담이 종료되었어요</h2>
+            {/* 어디로 가는지 그대로 적는다. 안내로 돌아가는데 목적지 검색이라고 쓰면
+                걷던 사용자는 경로가 사라진 줄로 읽는다. */}
             <Sub center className={styles.lede}>
-              별점을 남기면 목적지 검색으로 이동해요
+              {returnRoute === USER_ROUTES.NAVIGATION
+                ? '별점을 남기면 경로 안내로 돌아가요'
+                : '별점을 남기면 목적지 검색으로 이동해요'}
             </Sub>
 
             <div className={styles.stars}>
