@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { queryKeys } from '@/shared/api';
 import { getIndoorRouteOptions } from './getIndoorRouteOptions';
 import type { RouteOptionsQuery } from '../model/types';
@@ -13,6 +14,8 @@ import type { RouteOptionsQuery } from '../model/types';
  * `useStationFloorMaps`가 유효하지 않은 stationId에서 요청을 걸지 않는 것과 같은 방식이다.
  */
 export function useIndoorRouteOptions(query: Partial<RouteOptionsQuery>) {
+  const { i18n } = useTranslation();
+  const language = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
   const { stationId, startNodeId, targetNodeId, currentMapX, currentMapY } = query;
   /**
    * 사용자 좌표는 조건에 넣지 않는다. **선택 필드다.**
@@ -32,6 +35,7 @@ export function useIndoorRouteOptions(query: Partial<RouteOptionsQuery>) {
       targetNodeId ?? 0,
       currentMapX,
       currentMapY,
+      language,
     ),
     queryFn: () =>
       getIndoorRouteOptions({
@@ -40,6 +44,7 @@ export function useIndoorRouteOptions(query: Partial<RouteOptionsQuery>) {
         targetNodeId: targetNodeId as number,
         currentMapX,
         currentMapY,
+        language,
       }),
     enabled: ready,
   });

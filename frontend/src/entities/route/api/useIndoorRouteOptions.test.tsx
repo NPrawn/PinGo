@@ -55,7 +55,7 @@ describe('useIndoorRouteOptions', () => {
     const { result } = mount({ stationId: 1, startNodeId: 205, targetNodeId: 44 });
 
     await waitFor(() => expect(result.current.data).toHaveLength(2));
-    expect(received).toEqual({ stationId: 1, startNodeId: 205, targetNodeId: 44 });
+    expect(received).toEqual({ stationId: 1, startNodeId: 205, targetNodeId: 44, language: 'ko' });
     expect(result.current.data?.[0]).toMatchObject({
       routeType: 'fastest',
       totalDistanceM: 180,
@@ -120,7 +120,7 @@ describe('useIndoorRouteOptions', () => {
     rerender({ start: 226 });
 
     await waitFor(() =>
-      expect(received).toEqual({ stationId: 1, startNodeId: 226, targetNodeId: 44 }),
+      expect(received).toEqual({ stationId: 1, startNodeId: 226, targetNodeId: 44, language: 'ko' }),
     );
   });
 });

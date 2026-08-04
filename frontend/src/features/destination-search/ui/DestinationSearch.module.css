@@ -310,3 +310,33 @@
   background: color-mix(in srgb, var(--color-ink) 6%, transparent);
   border-radius: 50%;
 }
+
+:global(html[lang='en']) .searchSubmit {
+  right: 10px;
+  padding-inline: 9px;
+  font-size: 9.5px;
+}
+
+:global(html[lang='en']) .compact .tile {
+  gap: 6px;
+  padding-inline: 8px;
+}
+
+:global(html[lang='en']) .compact .tileTitle {
+  font-size: 9.5px;
+  line-height: 1.18;
+  overflow-wrap: normal;
+}
+
+:global(html[lang='en']) .tileTitleLine {
+  white-space: normal;
+}
+
+:global(html[lang='en']) .quickKicker {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+:global(html[lang='en']) .resultName {
+  font-size: 12.5px;
+}

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 // 경로 조회는 `entities/route`를 쓴다. `shared/api`의 생성 타입과 달리 응답 필드가 모두 있다.
 import { getIndoorRouteOptions, type RouteOption, type RouteOrigin } from '@/entities/route';
 import { ApiError, findNearestExit, getFacility } from '@/shared/api';
@@ -39,10 +40,18 @@ interface UseExitRouteParams {
  *
  * `exitNumber`는 `7`처럼 번호만 오거나 `GFC몰`처럼 이름이 올 수 있다.
  */
-function formatExitLabel(exitNumber: string | undefined, fallbackName: string | undefined): string {
+function formatExitLabel(
+  exitNumber: string | undefined,
+  fallbackName: string | undefined,
+  language: 'ko' | 'en',
+): string {
   const trimmed = exitNumber?.trim();
-  if (!trimmed) return fallbackName?.trim() || '출입구';
-  return /^\d+$/.test(trimmed) ? `${trimmed}번 출입구` : trimmed;
+  if (!trimmed) return fallbackName?.trim() || (language === 'en' ? 'Entrance' : '출입구');
+  return /^\d+$/.test(trimmed)
+    ? language === 'en'
+      ? `Exit ${trimmed}`
+      : `${trimmed}번 출입구`
+    : trimmed;
 }
 
 /**
@@ -61,6 +70,8 @@ function formatExitLabel(exitNumber: string | undefined, fallbackName: string | 
  * 모두 성공해야 카드 한 장이 완성되기 때문이다. 부분 성공 상태를 화면이 따로 다룰 것이 없다.
  */
 export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
+  const { i18n } = useTranslation();
+  const language = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
   const { stationId, startNodeId, destinationLatitude, destinationLongitude, origin } = params;
   const accessibleOnly = routeType === 'elevator_only';
   const ready =
@@ -81,6 +92,7 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
          키에 없으면 재인식으로 좌표만 바뀐 경우 옛 거리가 카드에 남는다. */
       origin?.currentMapX ?? null,
       origin?.currentMapY ?? null,
+      language,
     ],
     queryFn: async (): Promise<ExitRoute | null> => {
       /**
@@ -109,11 +121,16 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
         startNodeId: startNodeId!,
         targetNodeId: facility.linkedNodeId,
         ...(origin ?? {}),
+        language,
       });
 
       return {
         targetNodeId: facility.linkedNodeId,
-        exitLabel: formatExitLabel(exit.exitNumber, facility.nameKo),
+        exitLabel: formatExitLabel(
+          exit.exitNumber,
+          language === 'en' ? facility.nameEn : facility.nameKo,
+          language,
+        ),
         option: options.find((item) => item.routeType === routeType) ?? null,
       };
     },

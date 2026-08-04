@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Blob, BlobHero, Button, Icon, Sheet } from '@/shared/ui';
 import styles from './OfflineConnectionModal.module.css';
 
@@ -12,11 +13,12 @@ type OfflineConnectionModalProps = {
  * screen where connectivity was lost.
  */
 export function OfflineConnectionModal({ onRetry }: OfflineConnectionModalProps) {
+  const { t } = useTranslation();
   return (
-    <Sheet placement="center" label="인터넷 연결 중">
+    <Sheet placement="center" label={t('user.offline.label')}>
       <div className={styles.status}>
         <span className={styles.statusDot} aria-hidden />
-        인터넷 연결 확인 중
+        {t('user.offline.checking')}
       </div>
 
       <BlobHero className={styles.hero}>
@@ -29,22 +31,18 @@ export function OfflineConnectionModal({ onRetry }: OfflineConnectionModalProps)
         </span>
       </BlobHero>
 
-      <h2 className={styles.heading}>인터넷에 다시 연결하고 있어요</h2>
-      <p className={styles.lede}>
-        연결 상태를 확인하고 있어요.
-        <br />
-        잠시만 기다려 주세요.
-      </p>
+      <h2 className={styles.heading}>{t('user.offline.title')}</h2>
+      <p className={styles.lede}>{t('user.offline.description')}</p>
 
       <div className={styles.notice}>
         <span className={styles.noticeSpinner} aria-hidden />
-        <span>인터넷이 연결되면 현재 화면에서 자동으로 계속할게요.</span>
+        <span>{t('user.offline.autoResume')}</span>
       </div>
 
       <div className={styles.actions}>
         <Button className={styles.action} onClick={onRetry}>
           <Icon name="refresh" size={15} />
-          다시 연결
+          {t('user.offline.retry')}
         </Button>
       </div>
     </Sheet>

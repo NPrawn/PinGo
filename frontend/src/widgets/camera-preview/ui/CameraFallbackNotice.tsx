@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { CameraStatus } from '../model/cameraStream';
 import styles from './CameraFallbackNotice.module.css';
 
@@ -9,12 +10,6 @@ import styles from './CameraFallbackNotice.module.css';
  * 그 경우에만 행동을 안내하고, 나머지는 카메라를 쓸 수 없다는 사실만 알린다. 진단에 필요한
  * 구분은 개발 빌드의 콘솔 경고(`cameraStream`)가 맡는다.
  */
-const REASON: Partial<Record<CameraStatus, string>> = {
-  denied: '카메라 권한을 허용하면 주변을 비춰 위치를 찾을 수 있어요.',
-  unsupported: '이 기기에서는 카메라를 사용할 수 없어요.',
-  error: '카메라를 열 수 없어요. 잠시 후 다시 시도해 주세요.',
-};
-
 type CameraFallbackNoticeProps = {
   status: CameraStatus;
   className?: string;
@@ -27,7 +22,10 @@ type CameraFallbackNoticeProps = {
  * 대부분 수백 ms 뒤에 사라져 깜빡이는 것으로만 보인다.
  */
 export function CameraFallbackNotice({ status, className }: CameraFallbackNoticeProps) {
-  const reason = REASON[status];
+  const { t } = useTranslation();
+  const reason = ['denied', 'unsupported', 'error'].includes(status)
+    ? t(`user.camera.${status}`)
+    : undefined;
   if (!reason) return null;
 
   /**

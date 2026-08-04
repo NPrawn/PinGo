@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { usePermissionStore, type PermissionKey } from '@/entities/permission';
 import { Button, GhostButton, Icon, Pill, Sheet } from '@/shared/ui';
 import { PERMISSION_CATALOG, permissionNamesOf } from '../model/permissionCatalog';
@@ -46,6 +47,8 @@ export function PermissionReminder({
   onDismiss,
   onAllowAll,
 }: PermissionReminderProps) {
+  const { t, i18n } = useTranslation();
+  const english = i18n.resolvedLanguage === 'en';
   const granted = usePermissionStore((state) => state.granted);
 
   const incomplete = variant === 'incomplete';
@@ -55,12 +58,12 @@ export function PermissionReminder({
    * 이 화면에서 할 수 있는 일이 없다는 뜻이라, 안내도 버튼도 전부 달라진다.
    */
   const settingsOnly = blockedKeys.length > 0;
-  const blockedNames = permissionNamesOf(blockedKeys);
+  const blockedNames = permissionNamesOf(blockedKeys, english ? 'en' : 'ko');
   const heading = settingsOnly
-    ? '브라우저에서 권한을 켜 주세요'
+    ? t('user.permission.reminder.settingsTitle')
     : incomplete
-      ? '모든 권한이 필요해요'
-      : '권한 없이는 이용할 수 없어요';
+      ? t('user.permission.reminder.allTitle')
+      : t('user.permission.reminder.requiredTitle');
 
   return (
     <Sheet placement="center" onDismiss={onDismiss} label={heading}>
@@ -83,23 +86,15 @@ export function PermissionReminder({
             설정을 바꾸면 화면이 알아서 넘어간다 — 훅이 권한 변화를 구독하고 있다. 새로고침을
             시키지 않는 이유는, 되돌아온 자리가 이 화면이 아닐 수 있어서다.
           */
-          <p className={styles.body}>
-            {blockedNames} 권한이 차단되어 있어요. 주소창의 자물쇠(또는 <b>ⓘ</b>) 아이콘을 눌러{' '}
-            <b>사이트 설정</b>에서 허용으로 바꿔 주세요.
-            <span className={styles.finalLine}>바꾸면 이 화면이 자동으로 넘어가요.</span>
+          <p className={styles.body} style={{ whiteSpace: 'pre-line' }}>
+            {t('user.permission.reminder.blockedBody', { permissions: blockedNames })}
           </p>
         ) : reason ? (
           <p className={styles.body}>{reason}</p>
         ) : incomplete ? (
-          <p className={styles.body}>
-            위치 정보·카메라·마이크 권한을 <b>모두 선택</b>해야 서비스를 시작할 수 있어요.
-            <span className={styles.finalLine}>남은 권한을 허용해주세요.</span>
-          </p>
+          <p className={styles.body}>{t('user.permission.reminder.incompleteBody')}</p>
         ) : (
-          <p className={styles.body}>
-            PinGo는 카메라·위치·마이크 권한으로 실내 위치를 찾고 길을 안내해요. 권한을 허용해야
-            서비스를 시작할 수 있어요.
-          </p>
+          <p className={styles.body}>{t('user.permission.reminder.requiredBody')}</p>
         )}
 
         {incomplete && (
@@ -112,7 +107,7 @@ export function PermissionReminder({
                   style={{ background: chip.bg, color: chip.fg, borderColor: chip.bg }}
                 >
                   <Icon name={permission.icon} size={14} />
-                  {permission.short}
+                  {english ? permission.shortEn : permission.short}
                 </Pill>
               );
             })}
@@ -127,7 +122,11 @@ export function PermissionReminder({
         */}
         {canPrompt && (
           <Button className={styles.primary} onClick={onAllowAll}>
-            {settingsOnly ? '남은 권한 허용하기' : incomplete ? '모두 허용하기' : '권한 허용하기'}
+            {settingsOnly
+              ? t('user.permission.reminder.allowRemaining')
+              : incomplete
+                ? t('user.permission.reminder.allowAll')
+                : t('user.permission.reminder.allow')}
           </Button>
         )}
         {/*
@@ -140,7 +139,9 @@ export function PermissionReminder({
         */}
         {(!incomplete || reason || settingsOnly) && (
           <GhostButton className={styles.secondary} onClick={onDismiss}>
-            {incomplete ? '닫기' : '돌아가기'}
+            {incomplete
+              ? t('user.permission.reminder.close')
+              : t('user.permission.reminder.back')}
           </GhostButton>
         )}
       </div>

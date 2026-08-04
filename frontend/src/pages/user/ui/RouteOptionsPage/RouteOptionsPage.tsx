@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigationStore } from '@/entities/navigation';
 import { routeOriginOf, routeUnavailableText, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import type { RouteType } from '@/shared/types';
 import { ButtonLink, Icon, SelectRow } from '@/shared/ui';
 import type { IconName } from '@/shared/ui';
@@ -20,16 +22,14 @@ import styles from './RouteOptionsPage.module.css';
  * 고르는 자리라(라벨이 `추천 출입구 선택`이다) 카드 이름도 그 어휘를 따른다. 백엔드의
  * `빠른 경로`·`엘리베이터 이용 경로`는 경로 그 자체를 가리키는 말이라 결이 다르다.
  */
-const ROUTE_PRESENTATION: Record<RouteType, { icon: IconName; name: string; summary: string }> = {
+const ROUTE_PRESENTATION: Record<RouteType, { icon: IconName; key: string }> = {
   fastest: {
     icon: 'bolt',
-    name: '최단 경로',
-    summary: '목적지에서 가장 가까운 출입구',
+    key: 'fastest',
   },
   elevator_only: {
     icon: 'elevator',
-    name: '엘리베이터 우선',
-    summary: '엘리베이터를 이용하는 편안한 경로',
+    key: 'elevator',
   },
 };
 
@@ -37,9 +37,10 @@ const ROUTE_PRESENTATION: Record<RouteType, { icon: IconName; name: string; summ
 const ROUTE_ORDER: readonly RouteType[] = ['fastest', 'elevator_only'];
 
 /** 초를 화면 단위로. 예상 시간이 없는 경로가 있으므로 null을 그대로 받는다. */
-function formatDuration(seconds: number | null): string | null {
+function formatDuration(seconds: number | null, language: string): string | null {
   if (seconds === null) return null;
-  return `${Math.max(1, Math.round(seconds / 60))}분`;
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return language === 'en' ? `${minutes} min` : `${minutes}분`;
 }
 
 /** 거리를 화면 단위로. 백엔드가 BigDecimal이라 소수가 올 수 있다. */
@@ -50,6 +51,8 @@ function formatDistance(meters: number | null): string | null {
 
 /** Compare exit strategies in a visible list while keeping the rear camera active. */
 export function RouteOptionsPage() {
+  const { t, i18n } = useTranslation();
+  const language = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
   const destination = useNavigationStore((state) => state.destination);
@@ -64,6 +67,8 @@ export function RouteOptionsPage() {
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
+  const locationLabel = localizeUserLabel(currentLocationLabel ?? station, language);
+  const destinationLabel = destination ? localizeUserLabel(destination, language) : null;
 
   /**
    * 카드에 적을 거리를 서버가 계산할 때 쓰는 입력.
@@ -145,17 +150,17 @@ export function RouteOptionsPage() {
     if (stationId === null) {
       return {
         icon: 'pin',
-        title: '이 역은 아직 실내 경로가 없어요',
-        body: '실내 안내가 준비된 역에서만 경로를 찾을 수 있어요.',
-        action: { label: '다른 역 선택하기', to: USER_ROUTES.STATION },
+        title: t('user.routeOptions.noRouteTitle'),
+        body: t('user.routeOptions.noRouteBody'),
+        action: { label: t('user.routeOptions.otherStation'), to: USER_ROUTES.STATION },
       };
     }
     if (currentNodeId === null) {
       return {
         icon: 'target',
-        title: '현재 위치를 확인하지 못했어요',
-        body: '어디서 출발하는지 알아야 경로를 계산할 수 있어요.',
-        action: { label: '위치 다시 인식하기', to: USER_ROUTES.CAPTURE_PORTRAIT },
+        title: t('user.routeOptions.noLocationTitle'),
+        body: t('user.routeOptions.noLocationBody'),
+        action: { label: t('user.routeOptions.relocalize'), to: USER_ROUTES.CAPTURE_PORTRAIT },
         alert: true,
       };
     }
@@ -163,23 +168,23 @@ export function RouteOptionsPage() {
       return destination
         ? {
             icon: 'flag',
-            title: '목적지 위치를 알 수 없어요',
-            body: `${destination}의 좌표를 확인할 수 없어 어느 출입구로 나갈지 정하지 못했어요.`,
-            action: { label: '목적지 다시 선택하기', to: USER_ROUTES.STATION },
+            title: t('user.routeOptions.noDestinationLocationTitle'),
+            body: t('user.routeOptions.noDestinationLocationBody', { destination }),
+            action: { label: t('user.routeOptions.reselectDestination'), to: USER_ROUTES.STATION },
             alert: true,
           }
         : {
             icon: 'flag',
-            title: '목적지를 먼저 선택해 주세요',
-            body: '어디로 갈지 정하면 나갈 출입구와 경로를 찾아 드려요.',
-            action: { label: '목적지 선택하기', to: USER_ROUTES.STATION },
+            title: t('user.routeOptions.chooseDestinationTitle'),
+            body: t('user.routeOptions.chooseDestinationBody'),
+            action: { label: t('user.routeOptions.chooseDestination'), to: USER_ROUTES.STATION },
           };
     }
     if (fastestQuery.isError && elevatorQuery.isError) {
       return {
         icon: 'refresh',
-        title: '경로를 불러오지 못했어요',
-        body: '잠시 후 다시 시도해 주세요.',
+        title: t('user.routeOptions.loadErrorTitle'),
+        body: t('user.routeOptions.loadErrorBody'),
         alert: true,
       };
     }
@@ -201,10 +206,10 @@ export function RouteOptionsPage() {
             <div className={styles.routePoint}>
               <span className={styles.routeLabel}>
                 <span className={styles.pointDot} aria-hidden />
-                <small>출발지</small>
+                <small>{t('user.station.origin')}</small>
               </span>
               {/* 위치 인식이 준 노드 이름이 역 이름보다 구체적이다. */}
-              <strong>{currentLocationLabel ?? station}</strong>
+              <strong>{locationLabel}</strong>
             </div>
             <span className={styles.routeArrow} aria-hidden>
               <Icon name="arrow-right" size={16} />
@@ -212,9 +217,9 @@ export function RouteOptionsPage() {
             <div className={styles.routePoint}>
               <span className={styles.routeLabel}>
                 <span className={`${styles.pointDot} ${styles.pointDotDestination}`} aria-hidden />
-                <small>목적지</small>
+                <small>{t('user.station.destination')}</small>
               </span>
-              <strong>{destination ?? '목적지 미선택'}</strong>
+              <strong>{destinationLabel ?? t('user.routeOptions.noDestination')}</strong>
             </div>
           </div>
 
@@ -263,7 +268,7 @@ export function RouteOptionsPage() {
 
           <div className={styles.cameraHint}>
             <Icon name="camera" size={14} />
-            카메라를 정면에 맞춰주세요
+            {t('user.routeOptions.cameraHint')}
           </div>
 
           {confirmation && (
@@ -276,8 +281,8 @@ export function RouteOptionsPage() {
         <div className={styles.panel}>
           <div className={styles.panelHead}>
             <div>
-              <span className={styles.eyebrow}>추천 출입구 선택</span>
-              <h1>어떤 경로로 안내할까요?</h1>
+              <span className={styles.eyebrow}>{t('user.routeOptions.eyebrow')}</span>
+              <h1>{t('user.routeOptions.title')}</h1>
             </div>
           </div>
 
@@ -286,9 +291,9 @@ export function RouteOptionsPage() {
             오는 순간 다시 벌어져 화면이 튄다.
           */}
           {loading ? (
-            <div className={styles.optionList} aria-label="경로 선택 목록" aria-busy="true">
+            <div className={styles.optionList} aria-label={t('user.routeOptions.listLabel')} aria-busy="true">
               <p className={styles.srOnly} role="status">
-                경로를 찾고 있어요
+                {t('user.routeOptions.loading')}
               </p>
               <span className={styles.optionSkeleton} aria-hidden />
               <span className={styles.optionSkeleton} aria-hidden />
@@ -308,20 +313,22 @@ export function RouteOptionsPage() {
             </div>
           ) : (
             <>
-              <div className={styles.optionList} aria-label="경로 선택 목록">
+              <div className={styles.optionList} aria-label={t('user.routeOptions.listLabel')}>
                 {ROUTE_ORDER.map((type) => (
                   <RouteOptionRow
                     key={type}
                     routeType={type}
                     exitRoute={queries[type].data ?? null}
                     failed={queries[type].isError}
-                    destination={destination}
+                    destination={destinationLabel}
                     selected={selectedType === type}
                     onSelect={() => {
                       setRoute(type);
                       setConfirmation({
                         id: Date.now(),
-                        message: `${ROUTE_PRESENTATION[type].name}로 설정했습니다.`,
+                        message: t('user.routeOptions.selected', {
+                          route: t(`user.routeOptions.${ROUTE_PRESENTATION[type].key}.name`),
+                        }),
                       });
                     }}
                   />
@@ -331,7 +338,7 @@ export function RouteOptionsPage() {
               {selected && (
                 <div className={styles.cta}>
                   <ButtonLink to={USER_ROUTES.NAVIGATION}>
-                    {selected.exitLabel} 길 안내 시작
+                    {t('user.routeOptions.start', { exit: selected.exitLabel })}
                   </ButtonLink>
                 </div>
               )}
@@ -372,10 +379,11 @@ function RouteOptionRow({
   selected,
   onSelect,
 }: RouteOptionRowProps) {
+  const { t, i18n } = useTranslation();
   const presentation = ROUTE_PRESENTATION[routeType];
   const option = exitRoute?.option ?? null;
   const usable = option?.available === true;
-  const duration = formatDuration(option?.estimatedTimeSec ?? null);
+  const duration = formatDuration(option?.estimatedTimeSec ?? null, i18n.resolvedLanguage ?? 'ko');
   const distance = formatDistance(option?.totalDistanceM ?? null);
 
   /**
@@ -385,12 +393,15 @@ function RouteOptionRow({
    * "계단 없이 나갈 수 있는 출구가 없다"는 뜻이라 사용자가 알아야 할 사실이다.
    */
   const unavailableText = failed
-    ? '경로를 불러오지 못했어요.'
+    ? t('user.routeOptions.rowLoadError')
     : !exitRoute
       ? routeType === 'elevator_only'
-        ? '계단 없이 나갈 수 있는 출입구가 없어요.'
-        : '나갈 수 있는 출입구를 찾지 못했어요.'
-      : (routeUnavailableText(option?.unavailableReason ?? null) ?? '이 경로는 이용할 수 없어요.');
+        ? t('user.routeOptions.noAccessibleExit')
+        : t('user.routeOptions.noExit')
+      : (routeUnavailableText(
+          option?.unavailableReason ?? null,
+          i18n.resolvedLanguage === 'en' ? 'en' : 'ko',
+        ) ?? t('user.routeOptions.unavailable'));
 
   return (
     <SelectRow
@@ -405,7 +416,7 @@ function RouteOptionRow({
       </span>
       <span className={styles.optionBody}>
         <span className={styles.optionHead}>
-          <b className={styles.optionName}>{presentation.name}</b>
+          <b className={styles.optionName}>{t(`user.routeOptions.${presentation.key}.name`)}</b>
           {usable && (
             <span className={styles.optionMetrics}>
               {/* 거리는 있는데 예상 시간만 없는 경로가 실제로 있다. 그 자리는 비운다. */}
@@ -416,14 +427,18 @@ function RouteOptionRow({
           )}
         </span>
 
-        <span className={styles.optionMeta}>{usable ? presentation.summary : unavailableText}</span>
+        <span className={styles.optionMeta}>
+          {usable ? t(`user.routeOptions.${presentation.key}.summary`) : unavailableText}
+        </span>
 
         {usable && exitRoute && (
           /* 이 경로로 나가면 어디로 나오는지. 유형을 고르는 실제 판단 근거다. */
           <span className={styles.optionRoute}>
             <strong className={styles.optionExit}>{exitRoute.exitLabel}</strong>
             <Icon name="arrow-right" size={13} className={styles.optionArrow} aria-hidden />
-            <strong className={styles.optionDestination}>{destination ?? '목적지'}</strong>
+            <strong className={styles.optionDestination}>
+              {destination ?? t('user.station.destination')}
+            </strong>
           </span>
         )}
       </span>

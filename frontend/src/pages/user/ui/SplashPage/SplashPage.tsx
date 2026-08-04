@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { USER_ROUTES } from '@/shared/config';
 import { ButtonLink, Icon } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -5,6 +6,8 @@ import styles from './SplashPage.module.css';
 
 /** Screen 01 — intro animation with a three-scene feature preview. */
 export function SplashPage() {
+  const { i18n } = useTranslation();
+  const t = i18n.getFixedT('en');
   return (
     <PhoneFrame dark layout="flush">
       <>
@@ -61,15 +64,11 @@ export function SplashPage() {
                 <Icon name="question" size={26} />
               </div>
             </div>
-            <div className={styles.sceneTitle}>
-              Need directions
-              <br />
-              inside the subway?
+            <div className={styles.sceneTitle} style={{ whiteSpace: 'pre-line' }}>
+              {t('user.splash.scene1Title')}
             </div>
-            <div className={styles.sceneBody}>
-              In complex stations where GPS cannot reach,
-              <br />
-              PinGo guides you all the way to your exit.
+            <div className={styles.sceneBody} style={{ whiteSpace: 'pre-line' }}>
+              {t('user.splash.scene1Body')}
             </div>
           </div>
 
@@ -77,17 +76,13 @@ export function SplashPage() {
             <div className={styles.phoneMock}>
               <div className={styles.phoneMockLens} />
               <div className={styles.phoneMockArrow}>↑</div>
-              <div className={styles.phoneMockCaption}>Go straight to Exit 3</div>
+              <div className={styles.phoneMockCaption}>{t('user.splash.scene2Caption')}</div>
             </div>
-            <div className={styles.sceneTitle}>
-              Point your camera
-              <br />
-              and follow the arrows
+            <div className={styles.sceneTitle} style={{ whiteSpace: 'pre-line' }}>
+              {t('user.splash.scene2Title')}
             </div>
-            <div className={styles.sceneBody}>
-              Scan your surroundings to find your location
-              <br />
-              and get real-time directions.
+            <div className={styles.sceneBody} style={{ whiteSpace: 'pre-line' }}>
+              {t('user.splash.scene2Body')}
             </div>
           </div>
 
@@ -98,31 +93,25 @@ export function SplashPage() {
                   <span className={styles.chatAvatar}>
                     <Icon name="person" size={22} />
                   </span>
-                  <span className={styles.chatBubbleUser}>Where is exit 3?</span>
+                  <span className={styles.chatBubbleUser}>{t('user.splash.userMessage')}</span>
                 </div>
                 <div className={styles.chatStatus}>
                   <span className={styles.chatSpinner} />
-                  Translating live…
+                  {t('user.splash.translating')}
                 </div>
                 <div className={`${styles.chatRow} ${styles.chatRowAgent}`}>
-                  <span className={styles.chatBubbleAgent}>
-                    I&apos;ll guide you to the elevator on your left.
-                  </span>
+                  <span className={styles.chatBubbleAgent}>{t('user.splash.agentMessage')}</span>
                   <span className={styles.chatAvatar}>
                     <Icon name="headset" size={22} />
                   </span>
                 </div>
               </div>
             </div>
-            <div className={styles.sceneTitle}>
-              Get help even without
-              <br />
-              a shared language
+            <div className={styles.sceneTitle} style={{ whiteSpace: 'pre-line' }}>
+              {t('user.splash.scene3Title')}
             </div>
-            <div className={styles.sceneBody}>
-              Share your screen and voice with an agent
-              <br />
-              for guidance with live translation.
+            <div className={styles.sceneBody} style={{ whiteSpace: 'pre-line' }}>
+              {t('user.splash.scene3Body')}
             </div>
           </div>
         </div>
@@ -134,7 +123,7 @@ export function SplashPage() {
         </div>
 
         <div className={styles.action}>
-          <ButtonLink to={USER_ROUTES.LANGUAGE}>Get Started</ButtonLink>
+          <ButtonLink to={USER_ROUTES.LANGUAGE}>{t('user.splash.start')}</ButtonLink>
         </div>
       </>
     </PhoneFrame>

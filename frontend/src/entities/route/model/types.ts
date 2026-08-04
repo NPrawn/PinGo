@@ -43,6 +43,7 @@ export interface RouteOptionsQuery {
   startNodeId: number;
   /** 도착 실내 노드. 외부 목적지 검색·출구 추천은 이 API 범위 밖이다. */
   targetNodeId: number;
+  language?: 'ko' | 'en';
   /**
    * 사용자의 실제 캐노니컬 좌표. 선택이며 **짝으로 있어야** 쓰인다. (`routeOriginOf`)
    *

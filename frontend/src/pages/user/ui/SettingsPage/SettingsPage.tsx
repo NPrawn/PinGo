@@ -1,8 +1,10 @@
 import { useTranslation } from 'react-i18next';
+import { useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
 import { PERMISSION_CATALOG } from '@/features/permission-request';
 import { useBrowserPermissionStates } from '@/features/permissions';
 import type { BrowserPermissionState } from '@/features/permissions';
+import { updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { BackLink, Card, Kicker, Pill, SelectRow, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -23,13 +25,6 @@ const BLOCKED_CHIP = { bg: '#fdeaea', fg: '#a33a3a' };
  * 조회할 수 없는 브라우저에서는 아무 말도 하지 않는다. 모르는 것을 `허용 안 됨`이라고 적으면
  * 권한이 멀쩡한 사용자에게 문제가 있다고 알리는 셈이다.
  */
-const PERMISSION_LABEL: Record<BrowserPermissionState, string> = {
-  granted: '허용됨',
-  prompt: '허용 안 됨',
-  denied: '차단됨',
-  unknown: '확인 불가',
-};
-
 function chipOf(state: BrowserPermissionState) {
   if (state === 'granted') return GRANTED_CHIP;
   return state === 'denied' ? BLOCKED_CHIP : PENDING_CHIP;
@@ -37,7 +32,10 @@ function chipOf(state: BrowserPermissionState) {
 
 /** Screen 24 (FR-U-016) — language and permissions. */
 export function SettingsPage() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const english = i18n.resolvedLanguage === 'en';
+  const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  const setLanguage = useUserSessionStore((state) => state.setLanguage);
   /**
    * 브라우저에 직접 묻는다.
    *
@@ -52,14 +50,22 @@ export function SettingsPage() {
     mic: permissionStates.microphone,
   };
 
-  return (
-    <PhoneFrame>
-      <div className={styles.topSpacer} />
-      <BackLink to={USER_ROUTES.STATION}>홈으로</BackLink>
-      <Title className={styles.title}>설정</Title>
-      <Sub>언어를 바꾸고 현재 권한 상태를 확인할 수 있어요.</Sub>
+  const changeLanguage = async (language: 'ko' | 'en') => {
+    await i18n.changeLanguage(language);
+    setLanguage(language);
+    if (!userSessionId) return;
+    const session = await updateUserSession(userSessionId, { language });
+    setLanguage(language, session.expiresAt);
+  };
 
-      <Kicker className={styles.sectionLabel}>언어</Kicker>
+  return (
+    <PhoneFrame bodyClassName={styles.body}>
+      <div className={styles.topSpacer} />
+      <BackLink to={USER_ROUTES.STATION}>{t('user.settings.back')}</BackLink>
+      <Title className={styles.title}>{t('user.settings.title')}</Title>
+      <Sub>{t('user.settings.description')}</Sub>
+
+      <Kicker className={styles.sectionLabel}>{t('user.settings.language')}</Kicker>
       <div className={styles.languages}>
         {LANGUAGES.map((language) => (
           <SelectRow
@@ -67,14 +73,14 @@ export function SettingsPage() {
             className={styles.language}
             indicator="none"
             selected={i18n.language === language.code}
-            onClick={() => void i18n.changeLanguage(language.code)}
+            onClick={() => void changeLanguage(language.code as 'ko' | 'en')}
           >
             {language.label}
           </SelectRow>
         ))}
       </div>
 
-      <Kicker className={styles.sectionLabel}>권한</Kicker>
+      <Kicker className={styles.sectionLabel}>{t('user.settings.permissions')}</Kicker>
       <Card className={styles.list}>
         {PERMISSION_CATALOG.map((permission, index) => {
           const state = stateOf[permission.key];
@@ -86,22 +92,22 @@ export function SettingsPage() {
                 .filter(Boolean)
                 .join(' ')}
             >
-              <span className={styles.rowLabel}>{permission.short}</span>
+              <span className={styles.rowLabel}>
+                {english ? permission.shortEn : permission.short}
+              </span>
               <Pill style={{ background: chip.bg, color: chip.fg, borderColor: chip.bg }}>
-                {PERMISSION_LABEL[state]}
+                {t(`user.settings.${state}`)}
               </Pill>
             </div>
           );
         })}
       </Card>
-      <Sub className={styles.permissionNote}>
-        권한은 브라우저 설정에서만 바꿀 수 있어요.
-        <br />
-        주소창의 자물쇠 아이콘을 눌러 사이트 설정을 여세요.
+      <Sub className={styles.permissionNote} style={{ whiteSpace: 'pre-line' }}>
+        {t('user.settings.permissionNote')}
       </Sub>
 
       <Kicker className={`${styles.sectionLabel} ${styles.helpSectionLabel}`}>
-        도움이 필요하신가요?
+        {t('user.settings.help')}
       </Kicker>
       <ConsultCta size="sm" className={styles.consult} />
     </PhoneFrame>

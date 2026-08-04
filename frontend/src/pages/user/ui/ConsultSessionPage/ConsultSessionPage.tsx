@@ -18,6 +18,7 @@ import { usePermissionsRevoked } from '@/features/permissions';
 import { useRemoteScreenDraw } from '@/features/shared-screen-draw';
 import { endConsultationByUser, getConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import type { ConsultDataEvent } from '@/shared/types';
 import { Icon, MapPreview } from '@/shared/ui';
 import { IndoorMapView } from '@/widgets/indoor-map';
@@ -30,7 +31,7 @@ const CONSULTATION_WATCH_MS = 4000;
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
   const navigate = useNavigate();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const userLanguage = i18n.resolvedLanguage ?? i18n.language ?? 'en';
   const consultationId = useConsultStore((state) => state.consultationId);
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
@@ -143,7 +144,11 @@ export function ConsultSessionPage() {
   /** 큰 자리와 같은 말이면 두 번 쓰지 않는다(아직 옮기지 못해 원문이 위에 올라간 경우다). */
   const captionSource = remoteCaption && remoteCaption !== captionPrimary ? remoteCaption : '';
   /** 상담원 쪽 자막이 죽었다는 사실. 이쪽 마이크 문제와 섞이지 않게 따로 띄운다. */
-  const remoteCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '상담원');
+  const remoteCaptionNotice = describeRemoteCaptionTrouble(
+    remoteCaptionError,
+    t('user.consultSession.agent'),
+    i18n.resolvedLanguage === 'en' ? 'en' : 'ko',
+  );
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
   /**
@@ -154,6 +159,11 @@ export function ConsultSessionPage() {
    */
   const destination = useNavigationStore((state) => state.destination);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
+  const displayedOrigin = localizeUserLabel(currentLocationLabel ?? station, displayLanguage);
+  const displayedDestination = destination
+    ? localizeUserLabel(destination, displayLanguage)
+    : null;
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
@@ -247,13 +257,13 @@ export function ConsultSessionPage() {
     void getConsultation(consultationId, userSessionId)
       .then((consultation) => {
         if (!consultation.signalingRoomId || !consultation.signalingAccessToken) {
-          setTokenError('상담 연결 정보를 받지 못했습니다.');
+          setTokenError(t('user.consultSession.tokenError'));
           return;
         }
         setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
       })
-      .catch(() => setTokenError('상담 연결 정보를 받지 못했습니다.'));
-  }, [consultationId, setSignalingRoom, signalingAccessToken, signalingRoomId, userSessionId]);
+      .catch(() => setTokenError(t('user.consultSession.tokenError')));
+  }, [consultationId, setSignalingRoom, signalingAccessToken, signalingRoomId, t, userSessionId]);
 
   /**
    * 상담자가 먼저 끊었는지 지켜본다.
@@ -320,11 +330,11 @@ export function ConsultSessionPage() {
             </span>
             {/* 무엇이 건너가고 있는지 그대로 적는다. 카메라를 끈 사용자에게 켜져 있다고
                 말하면 안 된다. */}
-            {cameraOn ? '상담 연결됨 · 카메라 공유 중' : '상담 연결됨 · 음성만'}
+            {cameraOn ? t('user.consultSession.cameraOn') : t('user.consultSession.voiceOnly')}
             <span className={styles.liveShine} />
           </span>
           <button type="button" className={styles.endCall} onClick={() => void endCall()}>
-            상담 종료
+            {t('user.consultSession.end')}
           </button>
         </div>
 
@@ -337,7 +347,7 @@ export function ConsultSessionPage() {
           {reconnecting && (
             <div className={styles.reconnecting} role="status">
               <span className={styles.reconnectingSpinner} aria-hidden />
-              <span>연결을 다시 시도하고 있어요</span>
+              <span>{t('user.consultSession.reconnecting')}</span>
             </div>
           )}
           {/*
@@ -352,7 +362,7 @@ export function ConsultSessionPage() {
             playsInline
             muted
             className={[styles.selfView, !cameraOn && styles.selfViewOff].filter(Boolean).join(' ')}
-            aria-label="내 카메라"
+            aria-label={t('user.consultSession.myCamera')}
           />
           <span
             className={styles.connectionStatus}
@@ -360,22 +370,22 @@ export function ConsultSessionPage() {
           >
             {/* 재시도 중에는 위 로딩 화면이 안내를 대신하므로 원인 코드를 여기 또 띄우지 않는다. */}
             {reconnecting
-              ? '연결 상태: 재시도 중'
-              : (error ?? tokenError ?? `연결 상태: ${status}`)}
+              ? t('user.consultSession.retryingStatus')
+              : (error ?? tokenError ?? t('user.consultSession.status', { status }))}
           </span>
           <div
             className={[styles.routeHeader, waypoints.length > 0 && styles.routeHeaderCompact]
               .filter(Boolean)
               .join(' ')}
-            aria-label="상담 중인 경로"
+            aria-label={t('user.consultSession.routeLabel')}
           >
             <div className={styles.routePoint}>
               <span className={styles.routeLabel}>
                 <span className={styles.pointDot} aria-hidden />
-                <small>출발지</small>
+                <small>{t('user.station.origin')}</small>
               </span>
               {/* 위치 인식이 확정한 지점. 아직 모르면 역 이름만 적고 층을 지어내지 않는다. */}
-              <strong>{currentLocationLabel ?? station}</strong>
+              <strong>{displayedOrigin}</strong>
             </div>
             {waypoints.map((waypoint, index) => (
               <Fragment key={waypoint.nodeId}>
@@ -387,16 +397,18 @@ export function ConsultSessionPage() {
                     type="button"
                     className={styles.removeWaypoint}
                     onClick={() => removeWaypoint(waypoint.nodeId)}
-                    aria-label={`${waypoint.nameKo} 경유지 삭제`}
-                    title={`${waypoint.nameKo} 경유지 삭제`}
+                    aria-label={t('user.consultSession.removeWaypoint', { name: waypoint.nameKo })}
+                    title={t('user.consultSession.removeWaypoint', { name: waypoint.nameKo })}
                   >
                     ×
                   </button>
                   <span className={styles.routeLabel}>
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
-                    <small>경유 {index + 1}</small>
+                    <small>{t('user.consultSession.waypoint', { order: index + 1 })}</small>
                   </span>
-                  <strong title={waypoint.nameKo}>{waypoint.nameKo}</strong>
+                  <strong title={localizeUserLabel(waypoint.nameKo, displayLanguage)}>
+                    {localizeUserLabel(waypoint.nameKo, displayLanguage)}
+                  </strong>
                 </div>
               </Fragment>
             ))}
@@ -406,15 +418,17 @@ export function ConsultSessionPage() {
             <div className={styles.routePoint}>
               <span className={styles.routeLabel}>
                 <span className={`${styles.pointDot} ${styles.pointDotDestination}`} aria-hidden />
-                <small>목적지</small>
+                <small>{t('user.station.destination')}</small>
               </span>
-              <strong title={destination ?? undefined}>{destination ?? '목적지 미지정'}</strong>
+              <strong title={displayedDestination ?? undefined}>
+                {displayedDestination ?? t('user.consultSession.noDestination')}
+              </strong>
             </div>
           </div>
           <div className={styles.translation}>
             <div className={styles.translationLabel}>
               <Icon name="globe" size={13} />
-              실시간 자막 · 상담원
+              {t('user.consultSession.captionLabel')}
             </div>
             {/*
               상담원 쪽 자막이 죽었다는 사실은 자막이 있든 없든 보여야 한다. 아래 본문
@@ -437,8 +451,8 @@ export function ConsultSessionPage() {
                 remoteCaptionNotice ||
                 (captionError ??
                   (captionsSupported
-                    ? '상담원이 말하면 이 자리에 표시됩니다.'
-                    : '이 브라우저에서는 음성 자막을 지원하지 않습니다.'))}
+                    ? t('user.consultSession.captionWaiting')
+                    : t('user.consultSession.captionUnsupported')))}
             </div>
             {/*
               상담원이 말하는 중에는 이 줄이 한 마디씩 흘러간다. 위의 옮긴 문장은 말이
@@ -481,7 +495,7 @@ export function ConsultSessionPage() {
           <div className={styles.syncNote}>
             <span className={styles.syncDot} aria-hidden />
             <p className={styles.syncText}>
-              상담원이 <b>같은 지도</b>를 보며 안내 중이에요
+              {t('user.consultSession.mapSync')}
             </p>
           </div>
         </div>

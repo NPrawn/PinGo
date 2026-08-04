@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
+import { i18n } from '@/shared/i18n';
 import { DestinationSearch } from './DestinationSearch';
 
 const apiMocks = vi.hoisted(() => ({
@@ -64,6 +65,7 @@ function renderSearch() {
 
 describe('DestinationSearch', () => {
   beforeEach(() => {
+    void i18n.changeLanguage('ko');
     useStationStore.setState({ stationId: 1 });
     useNavigationStore.setState({ destination: null, targetNodeId: null });
     searchMocks.useDestinationSearch.mockReturnValue({
@@ -75,7 +77,32 @@ describe('DestinationSearch', () => {
   });
 
   afterEach(() => {
+    void i18n.changeLanguage('ko');
     vi.clearAllMocks();
+  });
+
+  it('영어 화면에서는 빠른 목적지 이름을 영어로 표시한다', async () => {
+    await i18n.changeLanguage('en');
+    searchMocks.resolveDestination.mockResolvedValue({
+      name: '차지 역삼점',
+      icon: 'store',
+      meta: '외부 장소',
+      kind: 'place',
+      latitude: 37.5,
+      longitude: 127.03,
+    });
+    apiMocks.findNearestExit.mockResolvedValue({ exitFacilityId: 25 });
+    apiMocks.getFacility.mockResolvedValue({ linkedNodeId: 325 });
+    renderSearch();
+
+    expect(screen.getByRole('button', { name: 'Olive Young Yeoksam Jungang' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chaji Yeoksam' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Starbucks Arc Place' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Bliss Lounge Yeoksam' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chaji Yeoksam' }));
+    await waitFor(() => expect(useNavigationStore.getState().destination).toBe('Chaji Yeoksam'));
+    expect(searchMocks.resolveDestination).toHaveBeenCalledWith(1, '차지 역삼점', 'en');
   });
 
   it('빈 검색어로 Enter를 눌러도 빠른 목적지 화면을 유지한다', () => {
@@ -178,7 +205,7 @@ describe('DestinationSearch', () => {
     fireEvent.click(screen.getByRole('button', { name: /올리브영 역삼중앙점/ }));
 
     await waitFor(() =>
-      expect(searchMocks.resolveDestination).toHaveBeenCalledWith(1, '올리브영 역삼중앙점'),
+      expect(searchMocks.resolveDestination).toHaveBeenCalledWith(1, '올리브영 역삼중앙점', 'ko'),
     );
     expect(apiMocks.findNearestExit).toHaveBeenCalledWith({
       stationId: 1,

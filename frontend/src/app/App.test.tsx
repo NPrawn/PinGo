@@ -7,6 +7,7 @@ import { useNavigationStore } from '@/entities/navigation';
 import { useConsultStore } from '@/entities/consult';
 import { usePermissionStore } from '@/entities/permission';
 import { DEFAULT_STATION, DEFAULT_STATION_ID, useStationStore } from '@/entities/station';
+import { useUserSessionStore } from '@/entities/user-session';
 import { setAuthSession } from '@/shared/api';
 import { i18n } from '@/shared/i18n';
 import { App } from './App';
@@ -98,6 +99,7 @@ afterEach(() => {
   // 언어 전환 테스트가 영어로 바꿔 둔 것을 되돌린다. 남으면 뒤 테스트가 영어 라벨을 만난다.
   void i18n.changeLanguage('ko');
   usePermissionStore.setState({ granted: { loc: false, cam: false, mic: false } });
+  useUserSessionStore.setState({ userSessionId: null, language: undefined, expiresAt: undefined });
   // 등록되지 않은 역을 세워 둔 테스트가 뒤 테스트의 지도·시설·경로 조회를 끄지 않도록 되돌린다.
   useStationStore.setState({ station: DEFAULT_STATION, stationId: DEFAULT_STATION_ID });
 });
@@ -213,7 +215,97 @@ describe('user routes', () => {
 
   it('renders the language screen', async () => {
     await renderSection('/user/language');
-    expect(await screen.findByRole('heading', { name: /사용할 언어를/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /Select your\s+preferred language/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('사용자 웹앱에서 고른 영어를 새 세션과 다음 화면에 적용한다', async () => {
+    let requestedLanguage: string | undefined;
+    // The backend currently serializes its UTC LocalDateTime without a `Z`.
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1_000)
+      .toISOString()
+      .replace(/Z$/, '');
+    server.use(
+      http.post('*/api/user-sessions', async ({ request }) => {
+        requestedLanguage = ((await request.json()) as { language?: string }).language;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            userSessionId: 'english-user-session',
+            language: 'en',
+            expiresAt,
+          },
+        });
+      }),
+      http.get('*/api/user-sessions/english-user-session', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            userSessionId: 'english-user-session',
+            language: 'en',
+            expiresAt,
+          },
+        }),
+      ),
+    );
+
+    await renderSection('/user/language');
+    fireEvent.click(await screen.findByRole('button', { name: /English/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+
+    expect(await screen.findByRole('heading', { name: /Allow the permissions/ })).toBeInTheDocument();
+    expect(requestedLanguage).toBe('en');
+    expect(useUserSessionStore.getState()).toMatchObject({
+      userSessionId: 'english-user-session',
+      language: 'en',
+    });
+  });
+
+  it('기존 한국어 세션이 있어도 첫 언어 선택에서 영어로 갱신한다', async () => {
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1_000).toISOString();
+    const requestedLanguages: string[] = [];
+    useUserSessionStore.getState().setSession({
+      userSessionId: 'existing-user-session',
+      language: 'ko',
+      expiresAt,
+    });
+    server.use(
+      http.get('*/api/user-sessions/existing-user-session', async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+        return HttpResponse.json({
+          success: true,
+          data: {
+            userSessionId: 'existing-user-session',
+            language: 'ko',
+            expiresAt,
+          },
+        });
+      }),
+      http.patch('*/api/user-sessions/existing-user-session', async ({ request }) => {
+        const language = ((await request.json()) as { language?: string }).language;
+        if (language) requestedLanguages.push(language);
+        return HttpResponse.json({
+          success: true,
+          data: {
+            userSessionId: 'existing-user-session',
+            language: language ?? 'ko',
+            expiresAt,
+          },
+        });
+      }),
+    );
+
+    await renderSection('/user/language');
+    fireEvent.click(await screen.findByRole('button', { name: /English/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+
+    expect(await screen.findByRole('heading', { name: /Allow the permissions/ })).toBeInTheDocument();
+    expect(requestedLanguages).toContain('en');
+    expect(useUserSessionStore.getState()).toMatchObject({
+      userSessionId: 'existing-user-session',
+      language: 'en',
+    });
   });
 
   it('continues to the station screen once the browser grants every permission', async () => {

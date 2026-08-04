@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
@@ -20,23 +21,17 @@ import styles from './CapturePortraitPage.module.css';
 const CAPTURE_SECONDS = 15;
 const CAPTURE_RETRY_DELAY_MS = 1200;
 
-const DIRECTIONS = [
+const DIRECTION_KEYS = [
   {
-    label: '왼쪽',
-    instruction: '몸을 왼쪽으로 천천히 돌려주세요',
-    cameraHint: '왼쪽 표지판과 기둥이 보이게 비춰주세요',
+    key: 'left',
     arrow: '←',
   },
   {
-    label: '정면',
-    instruction: '다시 정면을 바라봐 주세요',
-    cameraHint: '정면을 향한 채 잠시 멈춰주세요',
+    key: 'front',
     arrow: '↑',
   },
   {
-    label: '오른쪽',
-    instruction: '이제 오른쪽을 천천히 비춰주세요',
-    cameraHint: '오른쪽 통로가 충분히 보이게 담아주세요',
+    key: 'right',
     arrow: '→',
   },
 ] as const;
@@ -48,6 +43,13 @@ const DIRECTIONS = [
  * `LOCATE_SUCCESS` as soon as one VPS matching response succeeds.
  */
 export function CapturePortraitPage() {
+  const { t } = useTranslation();
+  const directions = DIRECTION_KEYS.map((item) => ({
+    ...item,
+    label: t(`user.capture.${item.key}.label`),
+    instruction: t(`user.capture.${item.key}.instruction`),
+    cameraHint: t(`user.capture.${item.key}.hint`),
+  }));
   const navigate = useNavigate();
   const stationId = useStationStore((state) => state.stationId);
   const setFloor = useStationStore((state) => state.setFloor);
@@ -66,7 +68,7 @@ export function CapturePortraitPage() {
   const [attempt, setAttempt] = useState(0);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
   const [currentDirection, setCurrentDirection] = useState(1);
-  const direction = DIRECTIONS[currentDirection];
+  const direction = directions[currentDirection];
   const remaining = Math.max(CAPTURE_SECONDS - elapsed, 0);
   /**
    * 카메라를 켤 수 없는 상태. 거부·미지원·실패를 함께 다룬다.
@@ -221,7 +223,7 @@ export function CapturePortraitPage() {
     if (noticeOpen) return;
 
     const guideTimer = window.setTimeout(() => {
-      setCurrentDirection((value) => (value + 1) % DIRECTIONS.length);
+      setCurrentDirection((value) => (value + 1) % DIRECTION_KEYS.length);
     }, 2500);
 
     return () => window.clearTimeout(guideTimer);
@@ -241,7 +243,7 @@ export function CapturePortraitPage() {
       bodyClassName={styles.body}
       overlay={
         noticeOpen ? (
-          <Sheet placement="center" label="현재 위치를 찾지 못했어요">
+          <Sheet placement="center" label={t('user.capture.notFound')}>
             <BlobHero className={styles.timeoutHero}>
               <Blob tone="coral" slot="main" style={{ width: 76, height: 76 }} />
               <Blob
@@ -258,18 +260,14 @@ export function CapturePortraitPage() {
                 <Icon name="warning" size={30} />
               </div>
             </BlobHero>
-            <h2 className={styles.timeoutTitle}>아직 현재 위치를 찾지 못했어요</h2>
-            <p className={styles.timeoutDescription}>
-              주변과 위치가 매칭되지 않았어요.
-              <br />
-              다시 촬영하거나 상담을 요청해 주세요.
-            </p>
+            <h2 className={styles.timeoutTitle}>{t('user.capture.notFoundYet')}</h2>
+            <p className={styles.timeoutDescription}>{t('user.capture.notFoundDescription')}</p>
             <div className={styles.timeoutActions}>
               <Button variant="secondary" onClick={retryCapture}>
                 <Icon name="refresh" size={17} />
-                다시 촬영하기
+                {t('user.capture.retry')}
               </Button>
-              <ConsultCta label="상담 연결" className={styles.timeoutAction} />
+              <ConsultCta label={t('user.capture.consult')} className={styles.timeoutAction} />
             </div>
           </Sheet>
         ) : undefined
@@ -278,7 +276,7 @@ export function CapturePortraitPage() {
       <>
         <div className={styles.topBar}>
           <ViewfinderBack to={USER_ROUTES.CAPTURE_GUIDE} />
-          <RecordingBadge label={`LIVE · ${remaining}초 남음`} />
+          <RecordingBadge label={t('user.capture.remaining', { seconds: remaining })} />
           <ConsultCta variant="icon" />
         </div>
 
@@ -339,7 +337,7 @@ export function CapturePortraitPage() {
 
           <div className={styles.matchingBadge}>
             <span className={styles.matchingSpinner} aria-hidden />
-            촬영과 동시에 현재 위치를 찾고 있어요
+            {t('user.capture.matching')}
           </div>
         </div>
 
@@ -349,13 +347,13 @@ export function CapturePortraitPage() {
               <Icon name="camera" size={18} />
             </span>
             <div>
-              <strong className={styles.guideTitle}>세 방향을 자유롭게 비춰주세요</strong>
-              <p className={styles.guideText}>발은 움직이지 않고 천천히 촬영해 주세요.</p>
+              <strong className={styles.guideTitle}>{t('user.capture.guideTitle')}</strong>
+              <p className={styles.guideText}>{t('user.capture.guideDescription')}</p>
             </div>
           </div>
 
-          <div className={styles.motionGuide} aria-label="촬영 방향 가이드">
-            {DIRECTIONS.map((item, index) => {
+          <div className={styles.motionGuide} aria-label={t('user.capture.directionGuide')}>
+            {directions.map((item, index) => {
               return (
                 <button
                   key={item.label}
@@ -383,13 +381,13 @@ export function CapturePortraitPage() {
 
           <div className={styles.timerRow}>
             <div className={styles.timerText}>
-              <span>주변 촬영 및 위치 매칭</span>
-              <strong>{remaining}초</strong>
+              <span>{t('user.capture.progress')}</span>
+              <strong>{t('user.capture.seconds', { seconds: remaining })}</strong>
             </div>
             <div
               className={styles.timerTrack}
               role="progressbar"
-              aria-label="촬영 및 위치 매칭 진행률"
+              aria-label={t('user.capture.progressLabel')}
               aria-valuemin={0}
               aria-valuemax={CAPTURE_SECONDS}
               aria-valuenow={elapsed}
@@ -400,7 +398,7 @@ export function CapturePortraitPage() {
 
           <p className={styles.safetyNote}>
             <Icon name="info" size={13} />
-            주변 사람과 장애물을 확인하며 천천히 움직여 주세요.
+            {t('user.capture.safety')}
           </p>
         </div>
       </>

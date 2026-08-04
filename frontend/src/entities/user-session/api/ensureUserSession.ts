@@ -1,4 +1,5 @@
-import { createUserSession, getUserSession } from '@/shared/api';
+import { createUserSession, updateUserSession } from '@/shared/api';
+import { sessionExpiryMs } from '../lib/sessionExpiry';
 import { useUserSessionStore } from '../model/userSessionStore';
 
 export type UserSessionLanguage = 'ko' | 'en' | 'ja' | 'zh';
@@ -9,7 +10,7 @@ const SUPPORTED: readonly string[] = ['ko', 'en', 'ja', 'zh'];
 let creationPromise: Promise<string | null> | undefined;
 
 function isUsable(expiresAt?: string) {
-  return !expiresAt || new Date(expiresAt).getTime() > Date.now();
+  return !expiresAt || sessionExpiryMs(expiresAt) > Date.now();
 }
 
 function normalizeLanguage(language: string): UserSessionLanguage {
@@ -25,11 +26,14 @@ function normalizeLanguage(language: string): UserSessionLanguage {
  * 예외를 삼키지 않고 결과로 알린다.
  */
 export async function ensureUserSession(language: string): Promise<string | null> {
-  const { userSessionId, expiresAt, setSession, clearSession } = useUserSessionStore.getState();
+  const { userSessionId, expiresAt, setSession, setLanguage, clearSession } =
+    useUserSessionStore.getState();
+  const requestedLanguage = normalizeLanguage(language);
 
   if (userSessionId && isUsable(expiresAt)) {
     try {
-      await getUserSession(userSessionId);
+      const session = await updateUserSession(userSessionId, { language: requestedLanguage });
+      setLanguage(requestedLanguage as 'ko' | 'en', session.expiresAt);
       return userSessionId;
     } catch {
       clearSession();
@@ -38,10 +42,14 @@ export async function ensureUserSession(language: string): Promise<string | null
     clearSession();
   }
 
-  creationPromise ??= createUserSession({ language: normalizeLanguage(language) })
+  creationPromise ??= createUserSession({ language: requestedLanguage })
     .then((session) => {
       if (!session.userSessionId) return null;
-      setSession({ userSessionId: session.userSessionId, expiresAt: session.expiresAt });
+      setSession({
+        userSessionId: session.userSessionId,
+        language: requestedLanguage as 'ko' | 'en',
+        expiresAt: session.expiresAt,
+      });
       return session.userSessionId;
     })
     .finally(() => {

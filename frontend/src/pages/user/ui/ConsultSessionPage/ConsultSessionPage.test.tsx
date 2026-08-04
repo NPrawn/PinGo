@@ -118,7 +118,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('상담 연결됨 · 음성만')).toBeInTheDocument();
+    expect(await screen.findByText('Connected · Voice only')).toBeInTheDocument();
     expect(screen.queryByText('상담 종료 화면')).toBeNull();
   });
 
@@ -127,7 +127,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByText('상담 연결됨 · 음성만');
+    await screen.findByText('Connected · Voice only');
     expect(apiMocks.useCaptionTranslation).toHaveBeenCalledWith('cs_1', '', 'en');
   });
 
@@ -148,7 +148,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByText('상담 연결됨 · 음성만');
+    await screen.findByText('Connected · Voice only');
     // 읽어야 하는 것은 자기 언어로 된 쪽이라 옮긴 문장이 큰 자리를 지킨다.
     expect(screen.getByText('Go to exit 3')).toBeInTheDocument();
     // 그 아래로 지금 들어오는 말이 흘러간다. 이것이 없으면 화면은 멈춰 보인다.
@@ -163,7 +163,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByText('상담 연결됨 · 음성만');
+    await screen.findByText('Connected · Voice only');
     expect(screen.getAllByText('3번 출구로 가세요')).toHaveLength(1);
   });
 
@@ -178,9 +178,9 @@ describe('ConsultSessionPage', () => {
     renderPage();
 
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('상담원 쪽 브라우저가 음성 인식을 지원하지 않아');
+    expect(alert).toHaveTextContent('Agent captions are unavailable');
     // 목소리까지 끊긴 것으로 오해해 상담을 끊으면 안 된다.
-    expect(alert).toHaveTextContent('목소리는 그대로 들립니다');
+    expect(alert).toHaveTextContent('You can still hear their voice');
   });
 
   /** 상담 도중에 인식이 멈춘 경우. 마지막 문장에 가려 경고가 묻히면 알아챌 방법이 없다. */
@@ -196,10 +196,10 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByText('상담 연결됨 · 음성만');
+    await screen.findByText('Connected · Voice only');
     expect(screen.getByText('Go to exit 3')).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      '상담원 쪽 음성 인식 서버에 연결하지 못해',
+      'speech-recognition service is unavailable',
     );
   });
 
@@ -215,7 +215,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('상담 연결됨 · 카메라 공유 중')).toBeInTheDocument();
+    expect(await screen.findByText('Connected · Sharing camera')).toBeInTheDocument();
   });
 
   /**

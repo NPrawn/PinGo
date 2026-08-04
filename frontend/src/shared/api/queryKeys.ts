@@ -4,8 +4,8 @@ export const queryKeys = {
     ['pingo', 'stations', 'search', keyword, language] as const,
   /** 검색어 없이 조회하는 등록된 역 목록. 검색 결과와 캐시를 섞지 않도록 키를 따로 둔다. */
   registeredStations: (language: string) => ['pingo', 'stations', 'registered', language] as const,
-  nearbyStations: (latitude: number, longitude: number) =>
-    ['pingo', 'stations', 'nearby', latitude, longitude] as const,
+  nearbyStations: (latitude: number, longitude: number, language: string) =>
+    ['pingo', 'stations', 'nearby', latitude, longitude, language] as const,
   destinationSearch: (stationId: number, keyword: string, language: string) =>
     ['pingo', 'destinations', stationId, keyword, language] as const,
   stationFloorMaps: (stationId: number) => ['pingo', 'stations', stationId, 'maps'] as const,
@@ -38,6 +38,7 @@ export const queryKeys = {
     targetNodeId: number,
     currentMapX?: number | null,
     currentMapY?: number | null,
+    language?: string,
   ) =>
     [
       'pingo',
@@ -49,6 +50,7 @@ export const queryKeys = {
       targetNodeId,
       currentMapX ?? null,
       currentMapY ?? null,
+      language ?? null,
     ] as const,
   consultationSummary: (consultationId: string) =>
     ['pingo', 'consultations', consultationId, 'summary'] as const,
