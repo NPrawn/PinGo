@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
+import logging
 import math
 import time
 from io import BytesIO
@@ -15,8 +16,8 @@ from starlette.concurrency import run_in_threadpool
 from app.core.config import AppSettings
 from app.core.inference_limiter import InferenceLimiter
 from app.engine.localizer import (
+    ImageLocalizer,
     LocalizationResult,
-    MapLocalizationResult,
     MultiMapLocalizationResult,
     MultiMapLocalizer,
 )
@@ -30,6 +31,7 @@ from app.schemas.localization import (
 )
 
 router = APIRouter(prefix="/internal/v1/maps", tags=["localization"])
+logger = logging.getLogger(__name__)
 
 LocalizerFactory = Callable[[Mapping[str, MapContext]], MultiMapLocalizer]
 
@@ -138,6 +140,11 @@ async def localize(
             )
         )
     except Exception:
+        logger.exception(
+            "Localization inference failed (request_id=%s, map_version=%s)",
+            request_id,
+            map_version,
+        )
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return _failure(
             request_id,
@@ -286,7 +293,22 @@ def _quality(
         retrievedImages=len(result.candidates),
         supportingImages=result.supporting_reference_images,
         intrinsicsSource=intrinsics_source,
+        confidenceScore=_confidence_score(result),
     )
+
+
+def _confidence_score(result: LocalizationResult) -> float:
+    """강한 기준을 1로 두고 가장 약한 기하 지표에 맞춰 후보 가중치를 정한다."""
+    if result.median_reprojection_error is None:
+        return 0.0
+    inliers = min(max(result.num_inliers / ImageLocalizer.MIN_INLIERS, 0.0), 1.0)
+    ratio = min(max(result.inlier_ratio / ImageLocalizer.MIN_INLIER_RATIO, 0.0), 1.0)
+    error = min(
+        ImageLocalizer.MAX_MEDIAN_REPROJECTION_ERROR
+        / max(result.median_reprojection_error, 1e-6),
+        1.0,
+    )
+    return min(inliers, ratio, error)
 
 
 def _requested_map_versions(
