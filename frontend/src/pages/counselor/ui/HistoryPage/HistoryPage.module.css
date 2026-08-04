@@ -1,7 +1,8 @@
 /* Screen 31 — consultation history. Ported from prototype `#c-history`. */
 
 .body {
-  height: 558px;
+  height: 100%;
+  min-height: 0;
   padding: 26px 30px;
   overflow: auto;
   background: var(--color-cream);
@@ -23,7 +24,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-end;
   margin: 18px 0;
 }
@@ -41,9 +42,13 @@
   gap: 8px;
   align-items: center;
   justify-content: flex-start;
+  min-height: 40px;
 }
 
 .count {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
   font-size: 12.5px;
   font-weight: 700;
   color: var(--color-sub);
@@ -183,12 +188,17 @@
   display: flex;
   flex-direction: column;
   gap: 9px;
+  max-height: clamp(300px, 46dvh, 440px);
   padding: 12px;
   margin-top: 10px;
+  overflow-y: auto;
   font-size: 12px;
   line-height: 1.5;
   background: #1a1a20;
   border-radius: 10px;
+  overscroll-behavior: contain;
+  scrollbar-color: #62626e #24242b;
+  scrollbar-width: thin;
 }
 
 .transcriptLabel {

@@ -92,7 +92,7 @@ export function ConsultEndedPage() {
   };
 
   return (
-    <PhoneFrame layout="flush" bodyClassName={styles.body} statusBarClassName={styles.statusBar}>
+    <PhoneFrame layout="flush" bodyClassName={styles.body}>
       <>
         <div className={styles.backdrop} aria-hidden>
           <div className={styles.cam}>

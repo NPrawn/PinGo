@@ -239,7 +239,6 @@ export function CapturePortraitPage() {
     <PhoneFrame
       layout="flush"
       bodyClassName={styles.body}
-      statusBarClassName={styles.statusBar}
       overlay={
         noticeOpen ? (
           <Sheet placement="center" label="현재 위치를 찾지 못했어요">
@@ -351,9 +350,7 @@ export function CapturePortraitPage() {
             </span>
             <div>
               <strong className={styles.guideTitle}>세 방향을 자유롭게 비춰주세요</strong>
-              <p className={styles.guideText}>
-                발은 움직이지 않고 왼쪽·정면·오른쪽을 천천히 오가며 촬영해 주세요.
-              </p>
+              <p className={styles.guideText}>발은 움직이지 않고 천천히 촬영해 주세요.</p>
             </div>
           </div>
 

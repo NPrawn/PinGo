@@ -4,14 +4,17 @@
 .layout {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 /* DesktopWindow가 갖고 있던 종이-크림 그라디언트를 본문으로 옮긴다. */
 .content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: linear-gradient(180deg, var(--color-paper) 0%, var(--color-cream) 100%);
 }
 

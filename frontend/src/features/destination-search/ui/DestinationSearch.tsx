@@ -1,30 +1,31 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
-import { PLACES, useDestinationSearch } from '@/entities/poi';
+import { resolveDestination, useDestinationSearch } from '@/entities/poi';
 import type { Poi } from '@/entities/poi';
 import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
 import { findNearestExit, getFacility, getRecommendedExits, updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { useApiLanguage } from '@/shared/i18n';
 import { Field, Icon3d, Kicker, SelectRow } from '@/shared/ui';
-import type { Icon3dTone, IconName } from '@/shared/ui';
+import type { Icon3dTone } from '@/shared/ui';
 import styles from './DestinationSearch.module.css';
 
 const RESULT_TONES: readonly Icon3dTone[] = ['mint', 'sky', 'coral', 'lilac', 'gold'];
 
-/** Shortcuts shown before the user types anything. */
-const QUICK_TILES = PLACES.slice(0, 4).map((place, index) => ({
-  title: place.name,
-  meta: place.meta,
-  tone: RESULT_TONES[index % RESULT_TONES.length],
-  icon: place.icon,
-})) satisfies readonly {
-  title: string;
-  meta: string;
-  tone: Icon3dTone;
-  icon: IconName;
-}[];
+const QUICK_DESTINATIONS: readonly Poi[] = [
+  { name: '올리브영 역삼중앙점', icon: 'cosmetics', meta: '빠른 목적지', kind: 'place' },
+  { name: '차지 역삼점', icon: 'store', meta: '빠른 목적지', kind: 'place' },
+  { name: '스타벅스 아크플레이스점', icon: 'coffee', meta: '빠른 목적지', kind: 'place' },
+  { name: '블리스 라운드 역삼점', icon: 'store', meta: '빠른 목적지', kind: 'place' },
+];
+
+const QUICK_DESTINATION_LABELS: Readonly<Record<string, readonly string[]>> = {
+  '올리브영 역삼중앙점': ['올리브영', '역삼중앙점'],
+  '스타벅스 아크플레이스점': ['스타벅스', '아크플레이스점'],
+  '블리스 라운드 역삼점': ['블리스 라운드', '역삼점'],
+};
 
 type DestinationSearchProps = {
   nextRoute?: string;
@@ -48,6 +49,8 @@ export function DestinationSearch({
   const startNewJourney = useNavigationStore((state) => state.startNewJourney);
   const stationId = useStationStore((state) => state.stationId);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  /** `resolveDestination`은 훅이 아니라 직접 넘겨받아야 한다. */
+  const language = useApiLanguage();
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
   /**
@@ -65,6 +68,21 @@ export function DestinationSearch({
   const destinationSearch = useDestinationSearch(stationId, query, searched);
   const results = destinationSearch.data ?? [];
 
+  const submitSearch = () => {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      setSearched(false);
+      return;
+    }
+    setQuery(normalizedQuery);
+    setSearched(true);
+  };
+
+  const showQuickDestinations = () => {
+    setQuery('');
+    setSearched(false);
+  };
+
   const choose = async (poi: Poi) => {
     // 처리 중에는 새 선택을 받지 않는다. 화면도 함께 막지만 이중으로 지킨다.
     if (choosing !== null) return;
@@ -76,16 +94,27 @@ export function DestinationSearch({
      * 경로 옵션 화면이 유형별로 다시 정하지만(최단·엘리베이터 우선의 출구가 다르다) 그 전에
      * 목적지가 실내 경로에 닿는지 알아야 하므로 여기서 한 번 구해 둔다.
      */
+    let selectedPoi = poi;
     let targetNodeId: number | undefined;
 
     try {
-      if (poi.id != null && poi.kind === 'facility') {
-        const facility = await getFacility(poi.id);
+      if (
+        selectedPoi.id == null &&
+        selectedPoi.latitude == null &&
+        selectedPoi.longitude == null &&
+        stationId != null
+      ) {
+        selectedPoi =
+          (await resolveDestination(stationId, selectedPoi.name, language)) ?? selectedPoi;
+      }
+
+      if (selectedPoi.id != null && selectedPoi.kind === 'facility') {
+        const facility = await getFacility(selectedPoi.id);
         targetNodeId = facility.linkedNodeId;
       }
 
-      if (poi.id != null && poi.kind === 'place') {
-        const exits = await getRecommendedExits(poi.id);
+      if (selectedPoi.id != null && selectedPoi.kind === 'place') {
+        const exits = await getRecommendedExits(selectedPoi.id);
         const primaryExit = exits.find((exit) => exit.isPrimary) ?? exits[0];
         if (primaryExit?.exitFacilityId != null) {
           const facility = await getFacility(primaryExit.exitFacilityId);
@@ -102,11 +131,16 @@ export function DestinationSearch({
        *
        * 이것이 없으면 targetNodeId가 비어 경로 옵션 화면이 아무것도 못 그린다.
        */
-      if (poi.id == null && poi.latitude != null && poi.longitude != null && stationId != null) {
+      if (
+        selectedPoi.id == null &&
+        selectedPoi.latitude != null &&
+        selectedPoi.longitude != null &&
+        stationId != null
+      ) {
         const nearestExit = await findNearestExit({
           stationId,
-          destinationLatitude: poi.latitude,
-          destinationLongitude: poi.longitude,
+          destinationLatitude: selectedPoi.latitude,
+          destinationLongitude: selectedPoi.longitude,
         });
         if (nearestExit.exitFacilityId != null) {
           const facility = await getFacility(nearestExit.exitFacilityId);
@@ -117,22 +151,22 @@ export function DestinationSearch({
       targetNodeId = undefined;
     }
 
-    startNewJourney(poi.name, {
-      destinationId: poi.id,
-      destinationType: poi.destinationType ?? poi.kind,
+    startNewJourney(selectedPoi.name, {
+      destinationId: selectedPoi.id,
+      destinationType: selectedPoi.destinationType ?? selectedPoi.kind,
       targetNodeId,
-      destinationLatitude: poi.latitude,
-      destinationLongitude: poi.longitude,
-      destinationAddress: poi.address,
+      destinationLatitude: selectedPoi.latitude,
+      destinationLongitude: selectedPoi.longitude,
+      destinationAddress: selectedPoi.address,
     });
-    if (userSessionId && poi.id != null) {
+    if (userSessionId && selectedPoi.id != null) {
       void updateUserSession(userSessionId, {
         selectedStationId: stationId ?? undefined,
-        destinationId: poi.id,
-        destinationType: poi.destinationType?.toLowerCase() ?? poi.kind,
+        destinationId: selectedPoi.id,
+        destinationType: selectedPoi.destinationType?.toLowerCase() ?? selectedPoi.kind,
       }).catch(() => undefined);
     }
-    onSelect?.(poi.name);
+    onSelect?.(selectedPoi.name);
     if (deferNavigation) {
       // 화면을 떠나지 않으므로 다음 선택을 받을 수 있게 되돌린다.
       setChoosing(null);
@@ -156,7 +190,10 @@ export function DestinationSearch({
             setSearched(false);
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') setSearched(true);
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submitSearch();
+            }
           }}
         />
         <span className={styles.searchIcon}>
@@ -174,14 +211,19 @@ export function DestinationSearch({
             <path d="M20 20l-3.6-3.6" />
           </svg>
         </span>
-        <button type="button" className={styles.searchSubmit} onClick={() => setSearched(true)}>
+        <button type="button" className={styles.searchSubmit} onClick={submitSearch}>
           검색
         </button>
       </div>
 
       {searched ? (
         <>
-          <Kicker className={styles.resultsKicker}>검색 결과 · &quot;{query}&quot;</Kicker>
+          <div className={styles.resultsHead}>
+            <Kicker className={styles.resultsKicker}>검색 결과 · &quot;{query}&quot;</Kicker>
+            <button type="button" className={styles.quickReturn} onClick={showQuickDestinations}>
+              빠른 목적지로 돌아가기
+            </button>
+          </div>
           <div className={styles.results}>
             {results.map((poi, index) => {
               const busy = choosing === poi.name;
@@ -232,29 +274,35 @@ export function DestinationSearch({
             <Kicker className={styles.quickKicker}>빠른 목적지</Kicker>
           </div>
           <div className={styles.tiles}>
-            {QUICK_TILES.map((tile) => (
+            {QUICK_DESTINATIONS.map((poi, index) => (
               <button
-                key={tile.title}
+                key={poi.name}
                 type="button"
                 className={styles.tile}
+                aria-label={poi.name}
                 /* 검색 결과와 같은 이유로 잠근다. 타일도 같은 `choose`를 탄다. */
                 disabled={choosing !== null}
                 onClick={() => {
-                  const poi = PLACES.find((place) => place.name === tile.title);
-                  if (poi) void choose(poi);
+                  void choose(poi);
                 }}
               >
                 <Icon3d
-                  name={tile.icon}
-                  tone={tile.tone}
+                  name={poi.icon}
+                  tone={RESULT_TONES[index % RESULT_TONES.length]}
                   size={compact ? 28 : 52}
                   iconSize={compact ? 14 : 26}
                   className={styles.tileIcon}
                 />
                 <div className={styles.tileBody}>
                   <div>
-                    <div className={styles.tileTitle}>{tile.title}</div>
-                    <div className={styles.tileMeta}>{tile.meta}</div>
+                    <div className={styles.tileTitle}>
+                      {(QUICK_DESTINATION_LABELS[poi.name] ?? [poi.name]).map((line) => (
+                        <span key={line} className={styles.tileTitleLine}>
+                          {line}
+                        </span>
+                      ))}
+                    </div>
+                    <div className={styles.tileMeta}>{poi.meta}</div>
                   </div>
                   <span className={styles.tileArrow} aria-hidden>
                     ›

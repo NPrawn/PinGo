@@ -1,20 +1,14 @@
 .body {
   position: relative;
+  overflow: visible;
   background: #071712;
-}
-
-.statusBar {
-  position: relative;
-  z-index: 5;
-  color: #f4fbf5;
-  background: #061310;
 }
 
 .camera {
   position: relative;
-  flex: 1 1 50%;
-  min-height: 320px;
-  overflow: hidden;
+  flex: 0 0 var(--camera-region-ratio);
+  min-height: 0;
+  overflow: visible;
   background: radial-gradient(120% 90% at 50% 20%, #2b3833, #08120e);
   border-bottom: 1px solid rgb(127 239 195 / 16%);
 }
@@ -27,14 +21,16 @@
   justify-content: space-between;
   height: 54px;
   padding: 8px 16px 0;
-  background: linear-gradient(180deg, rgb(6 19 16 / 92%), transparent);
 }
 
 .scene {
   position: absolute;
-  inset: 0;
+  top: -46px;
+  right: 0;
+  bottom: auto;
+  left: 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% + 46px);
   opacity: 0.58;
 }
 
@@ -46,9 +42,12 @@
  */
 .feed {
   position: absolute;
-  inset: 0;
+  top: -46px;
+  right: 0;
+  bottom: auto;
+  left: 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% + 46px);
   object-fit: cover;
 }
 
@@ -162,16 +161,16 @@
   position: relative;
   z-index: 3;
   display: flex;
-  flex: 1 1 50%;
+  flex: 0 0 var(--content-region-ratio);
   flex-direction: column;
   justify-content: space-between;
-  min-height: 340px;
+  min-height: 0;
   padding: 24px 18px 26px;
   color: var(--color-ink);
   background:
     radial-gradient(220px 170px at 100% 0%, rgb(196 181 253 / 16%), transparent 68%),
     var(--color-paper);
-  border-radius: 24px 24px 0 0;
+  border-radius: 0;
 }
 
 .panelHead {

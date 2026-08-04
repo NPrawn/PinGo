@@ -1,13 +1,10 @@
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { useUserSessionStore } from '@/entities/user-session';
 import { ConsultCta } from '@/features/consult-request';
 import { PERMISSION_CATALOG } from '@/features/permission-request';
 import { useBrowserPermissionStates } from '@/features/permissions';
 import type { BrowserPermissionState } from '@/features/permissions';
 import { USER_ROUTES } from '@/shared/config';
-import { deleteUserSession } from '@/shared/api';
-import { BackLink, Button, Card, Kicker, Pill, SelectRow, Sub, Title } from '@/shared/ui';
+import { BackLink, Card, Kicker, Pill, SelectRow, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './SettingsPage.module.css';
 
@@ -41,9 +38,6 @@ function chipOf(state: BrowserPermissionState) {
 /** Screen 24 (FR-U-016) — language and permissions. */
 export function SettingsPage() {
   const { i18n } = useTranslation();
-  const navigate = useNavigate();
-  const userSessionId = useUserSessionStore((state) => state.userSessionId);
-  const clearSession = useUserSessionStore((state) => state.clearSession);
   /**
    * 브라우저에 직접 묻는다.
    *
@@ -101,24 +95,15 @@ export function SettingsPage() {
         })}
       </Card>
       <Sub className={styles.permissionNote}>
-        권한은 브라우저 설정에서만 바꿀 수 있어요. 주소창의 자물쇠 아이콘을 눌러 사이트 설정을
-        여세요.
+        권한은 브라우저 설정에서만 바꿀 수 있어요.
+        <br />
+        주소창의 자물쇠 아이콘을 눌러 사이트 설정을 여세요.
       </Sub>
 
-      <Kicker className={styles.sectionLabel}>도움이 필요하신가요?</Kicker>
+      <Kicker className={`${styles.sectionLabel} ${styles.helpSectionLabel}`}>
+        도움이 필요하신가요?
+      </Kicker>
       <ConsultCta size="sm" className={styles.consult} />
-      <Button
-        variant="secondary"
-        onClick={() => {
-          void (async () => {
-            if (userSessionId) await deleteUserSession(userSessionId).catch(() => undefined);
-            clearSession();
-            navigate(USER_ROUTES.SPLASH, { replace: true });
-          })();
-        }}
-      >
-        현재 이용 세션 종료
-      </Button>
     </PhoneFrame>
   );
 }

@@ -1,6 +1,15 @@
 /* dom-overlay root. XR 세션이 그리는 카메라 영상 위에 이 요소가 통째로 얹힌다.
    root는 세션을 열 때 한 번 정해지고 도중에 바꿀 수 없어, 세션 전부터 DOM에 있어야 한다.
    PhoneFrame의 .body가 flex column이므로 그 배치를 그대로 이어받는다. */
+.body {
+  overflow: visible;
+}
+
+/* XR 카메라 합성 화면이 상태바 공간까지 비치도록 셸 배경을 투명하게 둔다. */
+.phone {
+  background: transparent;
+}
+
 .overlayRoot {
   display: flex;
   flex: 1;
@@ -11,7 +20,8 @@
 .cam {
   position: relative;
   display: flex;
-  flex: 0 0 50%;
+  /* 다른 카메라 화면의 46px 상단 공간을 없앤 만큼 비율 높이를 보정한다. */
+  flex: 0 0 calc(var(--camera-region-ratio) + 22.08px);
   align-items: center;
   justify-content: center;
   min-height: 0;
@@ -31,7 +41,7 @@
 
 .topBar {
   position: absolute;
-  top: 0;
+  top: 46px;
   right: 0;
   left: 0;
   z-index: 8;
@@ -45,7 +55,7 @@
 
 .journeyHeader {
   position: absolute;
-  top: 54px;
+  top: 100px;
   right: 10px;
   left: 10px;
   z-index: 7;
@@ -337,7 +347,7 @@
 
 .lower {
   display: flex;
-  flex: 0 0 50%;
+  flex: 0 0 calc(var(--content-region-ratio) - 22.08px);
   flex-direction: column;
   min-height: 0;
   overflow: hidden;

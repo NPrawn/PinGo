@@ -646,20 +646,6 @@ export function SessionPage() {
               </div>
             )}
             <div className={styles.notesBody}>
-              {/* 확정된 말은 순서대로 쌓아 둔다. 상담자가 앞의 내용을 되짚어 볼 수 있어야 한다. */}
-              {transcript.map((segment) => (
-                <div key={segment.seq}>
-                  <span
-                    className={
-                      segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
-                    }
-                  >
-                    {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
-                  </span>
-                  <br />
-                  <span className={styles.line}>{segment.content}</span>
-                </div>
-              ))}
               <div>
                 <span className={styles.speakerUser}>사용자</span>
                 <br />
@@ -694,6 +680,20 @@ export function SessionPage() {
                       : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                 </span>
               </div>
+              {/* 최신 확정 발화부터 보여 주고, 이전 대화는 아래로 스크롤해 확인한다. */}
+              {[...transcript].reverse().map((segment) => (
+                <div key={segment.seq}>
+                  <span
+                    className={
+                      segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
+                    }
+                  >
+                    {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
+                  </span>
+                  <br />
+                  <span className={styles.line}>{segment.content}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
