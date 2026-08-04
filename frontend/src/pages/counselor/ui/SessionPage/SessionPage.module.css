@@ -299,10 +299,16 @@
   z-index: 4;
 }
 
-/* 시설 유형 칩. 지도 위 오른쪽 아래에 깔린다. */
+/*
+  시설 유형 칩. 지도 위 오른쪽 아래에 깔린다.
+
+  오른쪽 끝을 복귀 버튼(위젯의 `.resetView`, 32px + 여백) 만큼 비워 둔다. 예전에는 `right: 8px`
+  이라 마지막 칩이 그 버튼 아래로 들어가 눌리지 않았다. 칩은 줄바꿈되므로 폭이 줄면 위로 한 줄
+  더 쌓일 뿐이고, 가려지는 것보다는 낫다.
+*/
 .facilityFilters {
   position: absolute;
-  right: 8px;
+  right: 48px;
   bottom: 8px;
   left: 8px;
   z-index: 5;
