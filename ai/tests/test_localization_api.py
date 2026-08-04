@@ -129,6 +129,7 @@ class LocalizationApiTest(unittest.TestCase):
         self.assertEqual(payload["floor"], "B2")
         self.assertEqual(payload["pose"]["cameraCenter"], [1.0, 2.0, 3.0])
         self.assertEqual(payload["quality"]["intrinsicsSource"], "DEVICE_PROFILE")
+        self.assertEqual(payload["quality"]["confidenceScore"], 1.0)
         self.assertIsInstance(payload["timingMs"]["validation"], int)
         self.assertIsInstance(payload["timingMs"]["queue"], int)
         self.assertIsInstance(payload["timingMs"]["inference"], int)

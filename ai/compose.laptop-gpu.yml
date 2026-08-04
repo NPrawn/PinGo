@@ -17,6 +17,7 @@ services:
       AI_MAX_CONCURRENT_INFERENCES: ${AI_MAX_CONCURRENT_INFERENCES:-1}
       AI_MAX_QUEUE_SIZE: ${AI_MAX_QUEUE_SIZE:-2}
       AI_DEFAULT_TOP_K: ${AI_DEFAULT_TOP_K:-5}
+      AI_INPUT_SIZE: ${AI_INPUT_SIZE:-768}
     volumes:
       - ${AI_MAPS_HOST_PATH:-./runtime_maps}:/maps:ro
       - ${AI_MODEL_CACHE_HOST_PATH:-./model-cache}:/opt/pingo/model-cache:ro

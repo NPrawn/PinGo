@@ -28,6 +28,7 @@ class LocalizationResponseTest {
                         new java.math.BigDecimal("0.497")),
                 123L,
                 "B2-B3 엘리베이터 A",
+                null,
                 List.of(),
                 2310
         );
@@ -61,6 +62,7 @@ class LocalizationResponseTest {
                         new java.math.BigDecimal("0.497")),
                 123L,
                 "B2-B3 엘리베이터 A",
+                null,
                 List.of(),
                 2310
         );
@@ -78,6 +80,7 @@ class LocalizationResponseTest {
                 "loc_01JABC",
                 LocalizationResultStatus.LOW_CONFIDENCE,
                 "YS-2026-07-23.1",
+                null,
                 null,
                 null,
                 null,

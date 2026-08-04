@@ -11,6 +11,7 @@ import com.pingo.backend.localization.client.AiLocalizationProperties;
 import com.pingo.backend.localization.client.dto.AiLocalizationResponse;
 import com.pingo.backend.localization.dto.request.LocalizationRequestMetadata;
 import com.pingo.backend.localization.dto.response.LocalizationResponse;
+import com.pingo.backend.localization.dto.response.LocalizationCandidateResponse;
 import com.pingo.backend.localization.dto.response.LocalizedPositionResponse;
 import com.pingo.backend.localization.dto.response.LocalizationResultStatus;
 import com.pingo.backend.localization.dto.response.PlanarDirectionResponse;
@@ -79,7 +80,13 @@ public class LocalizationService {
                     aiResponse.failureReason()
             );
 
-            Optional<AnchoredLocation> anchored = anchor(resultStatus, aiResponse, metadata);
+            Optional<AnchoredLocation> resolved = anchor(resultStatus, aiResponse, metadata);
+            Optional<AnchoredLocation> anchored = resultStatus == LocalizationResultStatus.SUCCESS
+                    ? resolved
+                    : Optional.empty();
+            LocalizationCandidateResponse candidate = resultStatus == LocalizationResultStatus.LOW_CONFIDENCE
+                    ? toCandidate(resolved, aiResponse)
+                    : null;
             LocalizationResultStatus finalStatus = withAnchoringOutcome(resultStatus, anchored);
             return new LocalizationResponse(
                     requestId,
@@ -88,6 +95,7 @@ public class LocalizationService {
                     anchored.map(LocalizationService::toPosition).orElse(null),
                     anchored.map(AnchoredLocation::startNodeId).orElse(null),
                     anchored.map(AnchoredLocation::startNodeLabel).orElse(null),
+                    candidate,
                     fallbackPolicy.optionsFor(finalStatus),
                     processingTimeMs(aiResponse)
             );
@@ -112,8 +120,8 @@ public class LocalizationService {
      *     <li>층이나 노드를 찾지 못한 경우</li>
      * </ul>
      *
-     * <p>{@code LOW_CONFIDENCE} 는 여기 오지 않는다. AI 가 그 상태를 낼 때
-     * ({@code LOW_GEOMETRIC_QUALITY}) 카메라 중심을 {@code null} 로 비우기 때문이다.
+     * <p>{@code LOW_CONFIDENCE}도 최소 후보 품질을 통과해 pose가 있으면 같은 방식으로 앵커링한다.
+     * 이 결과는 확정 위치가 아니라 여러 프레임 투표용 {@code candidate}에만 담긴다.
      *
      * <p><b>방향은 실패해도 앵커링을 막지 않는다.</b> 방향이 없으면 FE 가 WebXR 정렬만 못 하고
      * 지도에 위치를 찍는 것은 그대로 된다. 좌표까지 버리면 잃는 게 더 크다.
@@ -123,7 +131,9 @@ public class LocalizationService {
             AiLocalizationResponse aiResponse,
             LocalizationRequestMetadata metadata
     ) {
-        if (resultStatus != LocalizationResultStatus.SUCCESS || aiResponse.pose() == null) {
+        if ((resultStatus != LocalizationResultStatus.SUCCESS
+                && resultStatus != LocalizationResultStatus.LOW_CONFIDENCE)
+                || aiResponse.pose() == null) {
             return Optional.empty();
         }
 
@@ -175,6 +185,26 @@ public class LocalizationService {
         );
     }
 
+    private static LocalizationCandidateResponse toCandidate(
+            Optional<AnchoredLocation> anchored,
+            AiLocalizationResponse aiResponse
+    ) {
+        if (anchored.isEmpty() || aiResponse.quality() == null) {
+            return null;
+        }
+        Double score = aiResponse.quality().confidenceScore();
+        if (score == null || !Double.isFinite(score) || score <= 0.0 || score > 1.0) {
+            return null;
+        }
+        AnchoredLocation value = anchored.orElseThrow();
+        return new LocalizationCandidateResponse(
+                toPosition(value),
+                value.startNodeId(),
+                value.startNodeLabel(),
+                score
+        );
+    }
+
     /**
      * 방향 두 성분을 응답 객체로 묶는다. 산출하지 못했으면 {@code null} 이다.
      *
@@ -198,6 +228,7 @@ public class LocalizationService {
                 requestId,
                 resultStatus,
                 mapVersion,
+                null,
                 null,
                 null,
                 null,
