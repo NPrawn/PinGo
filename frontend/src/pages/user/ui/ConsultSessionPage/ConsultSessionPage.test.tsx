@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -469,6 +469,42 @@ describe('ConsultSessionPage', () => {
 
       await screen.findByRole('img', { name: 'Current location' });
       expect(apiMocks.createIndoorRoute).not.toHaveBeenCalled();
+    });
+
+    /**
+     * 상담 중에 위치가 바뀌면 화면도 따라와야 한다. (S15P11A206-89)
+     *
+     * 예전에는 마운트 시점 값에 고정돼 있었다(`confirmedLocation` 은 앵커 기준점이라 첫 렌더
+     * 값을 지킨다). 그래서 상담자가 `CURRENT_LOCATION_CORRECTED` 로 자리를 고쳐 주면 스토어는
+     * 바뀌는데 화면은 그 자리에 머물렀다 — 상담자는 고쳐 줬다고 믿고 사용자는 옛 자리를 본다.
+     * 진입 시점에 위치가 없었으면 마커가 뜰 길이 아예 없었다.
+     */
+    it('상담 중에 현재 위치가 바뀌면 지도가 따라온다', async () => {
+      useNavigationStore.setState({
+        currentFloorId: null,
+        currentMapX: null,
+        currentMapY: null,
+        currentNodeId: null,
+        targetNodeId: null,
+        routeResult: null,
+      } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+      renderPage();
+
+      await screen.findByRole('button', { name: '상담 종료' });
+      expect(screen.queryByRole('img', { name: 'Current location' })).toBeNull();
+
+      await act(async () => {
+        useNavigationStore.getState().setCurrentLocation({
+          nodeId: 7,
+          floorId: 1,
+          label: '2번 출입구',
+          mapX: 3,
+          mapY: -4,
+        });
+      });
+
+      expect(await screen.findByRole('img', { name: 'Current location' })).toBeInTheDocument();
     });
 
     it('층 목록을 지도 응답에서 만들어 버튼으로 둔다', async () => {

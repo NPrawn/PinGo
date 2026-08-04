@@ -244,12 +244,34 @@ export function ConsultSessionPage() {
   });
 
   /**
-   * 지도에 그릴 현재 위치. 추적 값을 우선하고, 없으면 진입 시점 확정 위치를 쓴다.
+   * 스토어에 들어 있는 지금의 확정 위치. **마운트 시점 값이 아니라 현재 값이다.**
+   *
+   * `confirmedLocation` 은 앵커의 기준점이라 첫 렌더 값에 고정돼 있다. 그것만 읽으면 상담 중에
+   * 위치가 바뀌어도 화면이 따라오지 않는다.
+   */
+  const storedLocation = useMemo<IndoorPoint | null>(
+    () =>
+      currentFloorId != null && currentMapX != null && currentMapY != null
+        ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
+        : null,
+    [currentFloorId, currentMapX, currentMapY],
+  );
+
+  /**
+   * 지도에 그릴 현재 위치. 추적 값을 우선하고, 없으면 스토어의 확정 위치를 쓴다.
    *
    * 추적이 잡히기 전(warming-up)이나 세션을 열지 않기로 한 경우에도 위치는 보여야 한다.
    * 그 구간에 마커를 지우면 사용자와 상담자 양쪽에서 위치가 사라진다.
+   *
+   * **예전에는 `confirmedLocation` 을 썼다.** 그 값은 앵커 기준점이라 마운트 시점에 고정돼
+   * 있어서, 상담 중에 위치가 바뀌어도 화면이 그 자리에 머물렀다. 상담자가
+   * `CURRENT_LOCATION_CORRECTED` 로 자리를 고쳐 주면 `handleDataEvent` 가 스토어에 써 넣는데,
+   * 화면은 그것을 읽지 않아 사용자 지도가 움직이지 않았다 — 상담자는 고쳐 줬다고 믿고 사용자는
+   * 옛 자리를 보는 상태가 된다. 진입 시점에 위치가 없었던 경우에는 아예 마커가 뜰 길이 없었다.
+   *
+   * 추적이 살아 있는 동안에는 추적 값이 이긴다. 실제로 걷고 있는 사람의 좌표가 더 최신이다.
    */
-  const currentLocation = trackedLocation ?? confirmedLocation;
+  const currentLocation = trackedLocation ?? storedLocation;
 
   /**
    * 층 선택과 시설 필터. 안내 화면과 같은 조작을 상담 중에도 쓸 수 있어야 한다.
