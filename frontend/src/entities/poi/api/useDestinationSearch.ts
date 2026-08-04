@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys, searchDestinations } from '@/shared/api';
 import { localizedNameOf, useApiLanguage } from '@/shared/i18n';
@@ -51,14 +52,24 @@ export function useDestinationSearch(stationId: number | null, keyword: string, 
    * `queryKeys.stationSearch`에 적어 두었다. (S15P11A206-339)
    */
   const language = useApiLanguage();
+  /**
+   * 이름 선택을 **`select`에서** 한다. `queryFn`에서 하면 언어를 바꿔도 화면이 안 바뀐다.
+   *
+   * 언어는 조회 키에 없으므로 언어를 바꿔도 리액트 쿼리가 `queryFn`을 다시 부르지 않는다.
+   * 그래서 `queryFn` 안에서 고른 이름은 캐시에 박혀 이전 언어로 남는다. `select`는 렌더
+   * 시점에 돌아가므로 언어에 반응하고, 서버 응답은 캐시에 그대로 남아 요청도 늘지 않는다.
+   * (S15P11A206-339 리뷰)
+   */
+  const select = useCallback(
+    (destinations: Awaited<ReturnType<typeof searchDestinations>>): Poi[] =>
+      destinations.map((destination) => toPoi(destination, language)),
+    [language],
+  );
 
   return useQuery({
     queryKey: queryKeys.destinationSearch(stationId ?? 0, normalizedKeyword),
-    queryFn: async (): Promise<Poi[]> => {
-      const destinations = await searchDestinations(stationId!, normalizedKeyword);
-
-      return destinations.map((destination) => toPoi(destination, language));
-    },
+    queryFn: () => searchDestinations(stationId!, normalizedKeyword),
+    select,
     enabled: enabled && stationId != null && stationId > 0 && normalizedKeyword.length > 0,
   });
 }
