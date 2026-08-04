@@ -29,7 +29,7 @@ import {
   submitConsultationTranscript,
 } from '@/shared/api';
 /* 실기기 검사 패널. 임시다 — 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89) */
-import { DevProbe, useDevProbe } from '@/shared/devprobe';
+import { countDevProbe, DevProbe, useDevProbe } from '@/shared/devprobe';
 import { Badge, Button, FloorRail, Icon, MapPreview, MapToggle, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import { IndoorMapView } from '@/widgets/indoor-map';
@@ -80,6 +80,8 @@ export function SessionPage() {
   const [mapSync, setMapSync] = useState<MapSyncPayload | null>(null);
   const handleDataEvent = useCallback((event: ConsultDataEvent) => {
     if (event.eventType !== 'MAP_SYNC') return;
+    /* 검사 패널용. 임시다 — `shared/devprobe/README.md`. (S15P11A206-89) */
+    countDevProbe('MAP_SYNC 받음');
     setMapSync(event.payload);
   }, []);
   const {
@@ -382,6 +384,11 @@ export function SessionPage() {
     영상: sharing,
     방: signalingRoomId,
     지도수신: mapSync ? `${mapSync.pathNodes?.length ?? 0}노드` : '없음',
+    /* 값이 오는데 null 인 것과 아예 오지 않는 것을 가른다. */
+    받은방향: mapSync?.headingDeg ?? null,
+    받은위치: mapSync?.current
+      ? `${mapSync.current.mapX.toFixed(1)},${mapSync.current.mapY.toFixed(1)}`
+      : null,
     오류: error ?? tokenError,
   });
 

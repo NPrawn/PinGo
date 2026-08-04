@@ -27,6 +27,7 @@ type DevProbeProps = {
 export function DevProbe({ actions }: DevProbeProps) {
   const [open, setOpen] = useState(false);
   const fields = useDevProbeStore((state) => state.fields);
+  const counts = useDevProbeStore((state) => state.counts);
   const lines = useDevProbeStore((state) => state.lines);
 
   /**
@@ -97,6 +98,13 @@ export function DevProbe({ actions }: DevProbeProps) {
           <div key={name} className={styles.field}>
             <dt className={styles.fieldName}>{name}</dt>
             <dd className={styles.fieldValue}>{value}</dd>
+          </div>
+        ))}
+        {/* 횟수는 값 뒤에 이어 붙인다. 흐르고 있는지는 이 숫자가 오르는지로만 보인다. */}
+        {Object.entries(counts).map(([name, count]) => (
+          <div key={name} className={styles.field}>
+            <dt className={styles.fieldName}>{name}</dt>
+            <dd className={styles.fieldValue}>{count}</dd>
           </div>
         ))}
       </dl>

@@ -27,7 +27,7 @@ import {
 } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 /* 실기기 검사 패널. 임시다 — 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89) */
-import { DevProbe, useDevProbe } from '@/shared/devprobe';
+import { countDevProbe, DevProbe, useDevProbe } from '@/shared/devprobe';
 import {
   xrSessionController,
   type XrCameraStreamHandle,
@@ -470,6 +470,9 @@ export function ConsultSessionPage() {
    */
   useEffect(() => {
     if (stationId == null) return;
+
+    /* 검사 패널용. 임시다 — `shared/devprobe/README.md`. (S15P11A206-89) */
+    countDevProbe('MAP_SYNC 보냄');
 
     sendConsultEvent({
       eventType: 'MAP_SYNC',
