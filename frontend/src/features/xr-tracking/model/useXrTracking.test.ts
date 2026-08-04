@@ -79,6 +79,7 @@ function createFakeController({ opensSession = true } = {}): FakeController {
     subscribeCameraStream: () => () => undefined,
     getCameraStreamState: () => 'idle' as const,
     getCameraSourceSize: () => null,
+    captureStillFrame: () => Promise.resolve(null),
 
     async stop() {
       stopCalls += 1;

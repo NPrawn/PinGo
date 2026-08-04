@@ -23,12 +23,14 @@ import {
   useTranslatedSpeech,
 } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
+import { readForwardMap } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import {
   createIndoorRoute,
   endConsultationByUser,
   getConsultation,
   getIceServers,
+  localize,
 } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 /* 실기기 검사 패널. 임시다 — 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89) */
@@ -42,12 +44,25 @@ import {
 import type { ConsultDataEvent } from '@/shared/types';
 import { Icon, MapPreview } from '@/shared/ui';
 import { IndoorMapView } from '@/widgets/indoor-map';
+import { VPS_FRAME_SIZE } from '@/widgets/camera-preview';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
 import styles from './ConsultSessionPage.module.css';
 
 /** 상담자가 끊었는지 확인하는 간격. 끊긴 걸 알아채기까지 사용자가 기다리는 시간이기도 하다. */
 const CONSULTATION_WATCH_MS = 4000;
+
+/**
+ * 세션 안 위치 재인식 주기. (S15P11A206-89)
+ *
+ * **30초로 둔 이유.** 재인식 한 장은 GPU 리드백과 업로드를 함께 요구한다. 리드백은 추적과 같은
+ * GPU를 쓰므로(11.8) 잦으면 pose 품질이 떨어지고, 업로드는 상담 영상과 대역폭을 다툰다. 반대로
+ * 너무 드물면 상대 이동 오차가 그만큼 쌓인 뒤에야 바로잡힌다.
+ *
+ * 걸어서 30초면 20~30m다. 그 사이 누적되는 오차는 역 안에서 방향을 잃을 정도가 아니고, 상담자가
+ * 짚어 주는 자리를 찾는 데도 지장이 없다.
+ */
+const RELOCALIZE_INTERVAL_MS = 30_000;
 
 /**
  * 검사 패널이 쓰는 방향. 출발점에서 도착점을 향한 단위 벡터다. 임시다 —
@@ -350,6 +365,8 @@ export function ConsultSessionPage() {
     headingDeg,
     source,
     anchorStatus,
+    /* 재인식이 확정한 좌표·방향으로 앵커를 다시 세우는 길. 아래 재인식 effect 가 쓴다. */
+    setAnchor,
   } = useXrNavigationSession({
     currentIndoorLocation: storedLocation,
     /**
@@ -393,6 +410,138 @@ export function ConsultSessionPage() {
     { screen: overlayRef, lower: lowerRef, map: mapBoxRef },
     cameraSourceSize,
   );
+
+  /**
+   * 세션 안 위치 재인식. (S15P11A206-89)
+   *
+   * **왜 필요한가.** 앵커는 진입 시점의 좌표와 방향으로 한 번 만들어지고, 그 뒤 위치는 WebXR
+   * 상대 이동을 앵커에 더해 만든다. 상대 이동은 걸을수록 오차가 누적되므로 상담이 길어지면 마커가
+   * 실제 위치에서 점점 벗어난다. 상담자는 그 어긋난 자리를 기준으로 안내하게 된다.
+   *
+   * 재인식은 그 누적을 초기화한다. 카메라 한 장을 위치 인식에 보내고, 확정되면 그 좌표·방향으로
+   * 앵커를 다시 세운다.
+   *
+   * **성공만 받아들인다.** 촬영 화면은 여러 프레임의 가중 투표로 저신뢰 응답까지 확정하지만,
+   * 상담 중에는 이미 표시되고 있는 위치가 있다. 확실하지 않은 값으로 그것을 흔드는 것이 가만히
+   * 두는 것보다 나쁘다.
+   */
+  const relocalize = useCallback(async () => {
+    if (!userSessionId || stationId == null) return;
+
+    /**
+     * 세션 카메라에서 큰 프레임 한 장을 뽑는다. 상담자에게 가는 320×240 트랙과 별개다 —
+     * 그 크기로는 특징점 매칭이 되지 않는다.
+     */
+    const still = await xrSessionController.captureStillFrame({ maxSide: VPS_FRAME_SIZE });
+
+    if (!still) return;
+
+    const result = await localize(
+      new File([still.blob], 'relocalize.jpg', { type: 'image/jpeg' }),
+      {
+        userSessionId,
+        stationId,
+        capturedAt: new Date().toISOString(),
+        camera: {
+          model: 'PINHOLE',
+          // 보낸 그림과 같은 크기를 적는다. 어긋나면 내부 파라미터가 맞지 않아 좌표가 틀어진다.
+          width: still.width,
+          height: still.height,
+          intrinsicsSource: 'browser',
+        },
+      },
+    );
+
+    const position = result.position;
+
+    if (
+      result.resultStatus !== 'success' ||
+      result.startNodeId == null ||
+      position?.floorId == null ||
+      position.mapX == null ||
+      position.mapY == null
+    ) {
+      return;
+    }
+
+    const forwardMap = readForwardMap(position);
+
+    /**
+     * 앵커를 다시 세운다. **이것이 재인식의 본체다.**
+     *
+     * 스토어의 확정 위치만 바꾸면 아무 일도 일어나지 않는다 — 추적 훅은 앵커가 생긴 뒤의
+     * `currentIndoorLocation` 변경을 조용히 무시하고(296 계약), 계속 옛 앵커로 좌표를 만든다.
+     *
+     * 방향이 없으면(정합되지 않은 층 등) 앵커를 만들지 못한다. 그때는 지금 앵커를 그대로 두는
+     * 편이 낫다 — 오차가 남더라도 방향 없는 앵커보다는 정확하다.
+     */
+    setAnchor(
+      { floorId: position.floorId, mapX: position.mapX, mapY: position.mapY },
+      forwardMap,
+    );
+
+    /**
+     * 경로 시작 노드가 달라졌을 때만 스토어를 건드린다.
+     *
+     * `setCurrentLocation` 은 `routeResult` 를 비운다. 30초마다 부르면 같은 자리인데도 경로가
+     * 매번 지워지고, 다시 조회되는 사이 `pathNodes` 가 비어 상담자 화면에서 경로선이 깜빡인다.
+     * 노드가 그대로면 다시 계산할 경로도 같으므로 건드릴 이유가 없다.
+     */
+    if (result.startNodeId !== currentNodeId) {
+      setCurrentLocation({
+        nodeId: result.startNodeId,
+        floorId: position.floorId,
+        label: result.startNodeLabel ?? undefined,
+        mapX: position.mapX,
+        mapY: position.mapY,
+        forwardMap,
+      });
+    }
+  }, [currentNodeId, setAnchor, setCurrentLocation, stationId, userSessionId]);
+
+  useEffect(() => {
+    // 세션이 열려야 카메라 프레임이 나온다. 추적을 포기한 사용자에게는 재인식할 것도 없다.
+    if (!isSessionOpen) return;
+
+    let disposed = false;
+    let timer: number | undefined;
+
+    const schedule = () => {
+      if (disposed) return;
+
+      timer = window.setTimeout(() => void run(), RELOCALIZE_INTERVAL_MS);
+    };
+
+    const run = async () => {
+      try {
+        await relocalize();
+      } catch {
+        /*
+          한 장 실패는 넘긴다. 사용자가 벽을 보고 있거나 망이 잠깐 끊긴 것일 수 있고, 다음
+          주기에 다시 시도한다. 여기서 화면에 오류를 띄우면 상담 중에 손쓸 수 없는 경고가
+          30초마다 뜬다.
+        */
+      }
+
+      /* 검사 패널용. 임시다 — `shared/devprobe/README.md`. (S15P11A206-89) */
+      countDevProbe('재인식 시도');
+
+      if (!disposed) schedule();
+    };
+
+    /**
+     * 첫 재인식도 한 주기 뒤다.
+     *
+     * 진입 직후에는 촬영 화면에서 확정한 값이 아직 신선하고, 그때는 세션이 막 열려 추적이
+     * 잡히기 전(warming-up)이라 앵커를 다시 세울 수도 없다.
+     */
+    schedule();
+
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
+  }, [isSessionOpen, relocalize]);
 
   /**
    * 지도에 그릴 현재 위치. 추적 값을 우선하고, 없으면 스토어의 확정 위치를 쓴다.

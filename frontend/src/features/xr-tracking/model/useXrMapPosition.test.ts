@@ -69,6 +69,7 @@ function createFakeController(): FakeController {
     subscribeCameraStream: () => () => undefined,
     getCameraStreamState: () => 'idle' as const,
     getCameraSourceSize: () => null,
+    captureStillFrame: () => Promise.resolve(null),
 
     async stop() {
       state = { status: 'ended' };

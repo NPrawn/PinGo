@@ -1042,6 +1042,69 @@ describe('카메라 송출', () => {
     expect(track.stop).not.toHaveBeenCalled();
     expect(controller.getCameraStreamState()).toBe('waiting');
   });
+
+  /**
+   * 위치 재인식에 보낼 정지 화상. (S15P11A206-89)
+   *
+   * **어느 경로로든 반드시 결론이 난다는 것이 이 묶음의 요지다.** 상담 화면은 이 응답을 받은
+   * 뒤에 다음 재인식 주기를 잡으므로, 풀리지 않는 Promise 가 하나 생기면 상담이 끝날 때까지
+   * 재인식이 다시 돌지 않는다. 실패를 알리는 것이 조용히 멈추는 것보다 낫다.
+   */
+  describe('정지 화상', () => {
+    it('세션이 없으면 기다리지 않고 null 이다', async () => {
+      await expect(createController().captureStillFrame()).resolves.toBeNull();
+    });
+
+    /**
+     * `camera-access` 가 부여되지 않은 기기. 다음 프레임에도 같은 결과이므로 여기서 끝낸다 —
+     * 기다리게 두면 부른 쪽이 영원히 응답을 받지 못한다.
+     */
+    it('뷰에 카메라가 없으면 그 프레임에서 null 로 끝낸다', async () => {
+      const fake = createFakeSession();
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
+
+      await controller.start();
+
+      const pending = controller.captureStillFrame();
+      fake.emitFrame(1200, poseWithViews([{}]));
+
+      await expect(pending).resolves.toBeNull();
+    });
+
+    /**
+     * 겹쳐 부르면 앞의 요청을 끝낸다.
+     *
+     * 큐에 쌓아 나중에 채워 주면 이미 지난 장면으로 위치를 확정한다. 위치 인식은 "지금 보이는
+     * 곳"을 묻는 것이라 늦게 온 답은 틀린 답이다.
+     */
+    it('새 요청이 오면 앞의 요청은 null 로 끝낸다', async () => {
+      const fake = createFakeSession();
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
+
+      await controller.start();
+
+      const first = controller.captureStillFrame();
+      const second = controller.captureStillFrame();
+
+      await expect(first).resolves.toBeNull();
+
+      fake.emitFrame(1200, poseWithViews([{}]));
+      await expect(second).resolves.toBeNull();
+    });
+
+    /** 세션이 닫히면 채워 줄 프레임이 없다. 기다리는 요청을 남겨 두지 않는다. */
+    it('기다리는 중에 세션이 끝나면 null 로 끝낸다', async () => {
+      const fake = createFakeSession();
+      const controller = createController({ xr: fakeXr(async () => fake.session) });
+
+      await controller.start();
+
+      const pending = controller.captureStillFrame();
+      await controller.stop();
+
+      await expect(pending).resolves.toBeNull();
+    });
+  });
 });
 
 describe('xrSessionController 싱글턴', () => {

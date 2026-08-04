@@ -11,6 +11,8 @@ export {
   xrSessionController,
 } from './session';
 export type {
+  XrCameraStillFrame,
+  XrCameraStillFrameOptions,
   XrCameraStreamHandle,
   XrCameraStreamOptions,
   XrCameraStreamState,
