@@ -24,7 +24,24 @@ export type RouteOptionResponse = Schemas['RouteOptionResponse'];
 export type RouteCreateRequest = Schemas['RouteCreateRequest'];
 export type RouteResponse = Schemas['RouteResponse'];
 export type LocalizationRequestMetadata = Schemas['LocalizationRequestMetadata'];
-export type LocalizationResponse = Schemas['LocalizationResponse'];
+type GeneratedLocalizationResponse = Schemas['LocalizationResponse'];
+export type LocalizationCandidatePositionResponse = NonNullable<
+  GeneratedLocalizationResponse['position']
+> & {
+  floorId: number;
+  floorCode: string;
+  mapX: number;
+  mapY: number;
+};
+export type LocalizationCandidateResponse = {
+  position: LocalizationCandidatePositionResponse;
+  startNodeId: number;
+  startNodeLabel?: string | null;
+  confidenceScore: number;
+};
+export type LocalizationResponse = GeneratedLocalizationResponse & {
+  candidate?: LocalizationCandidateResponse | null;
+};
 export type ExternalDirectionRequest = Schemas['ExternalDirectionRequest'];
 export type ExternalDirectionResponse = Schemas['ExternalDirectionResponse'];
 
