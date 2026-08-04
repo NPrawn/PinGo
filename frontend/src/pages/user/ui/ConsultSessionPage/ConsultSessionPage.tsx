@@ -293,7 +293,23 @@ export function ConsultSessionPage() {
   const effectiveType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
 
   /**
-   * 지금 상담자에게 무엇이 건너가고 있는지.
+   * 연결이 지금 어떤 상태인지. **`상담 연결됨`을 고정으로 쓰지 않는다.**
+   *
+   * 예전에는 세 갈래 모두 `상담 연결됨`으로 시작했다. `status`를 보지 않았으므로 협상 중이거나
+   * 실패한 상담에서도 연결됐다고 적혔고, 사용자는 상담자가 자기 말을 듣고 있다고 믿은 채
+   * 기다렸다. 아래 `연결 상태:` 줄에 사실이 적혀 있었지만 그 둘이 서로 어긋났다.
+   */
+  const connected = status === 'connected' && !reconnecting;
+  const connectionLabel = reconnecting
+    ? '연결 다시 시도 중'
+    : (error ?? tokenError)
+      ? '연결 실패'
+      : connected
+        ? '상담 연결됨'
+        : '연결 중';
+
+  /**
+   * 카메라가 지금 어디까지 왔는지.
    *
    * `unsupported`를 숨기지 않는다. 이 기기에서는 세션 카메라를 얻을 수 없다는 뜻이고, 그 상태로
    * 상담을 이어 가면 상담자는 검은 화면을 보면서 사용자는 보이고 있다고 믿는다. 무엇이 막혔는지
@@ -301,12 +317,20 @@ export function ConsultSessionPage() {
    *
    * TODO(S15P11A206-89): `unsupported`인 기기의 대체 경로가 아직 없다. 실기기 확인 뒤 정한다.
    */
-  const cameraShareLabel =
+  const cameraLabel =
     cameraStreamState === 'streaming'
-      ? '상담 연결됨 · 카메라 공유 중'
+      ? '카메라 공유 중'
       : cameraStreamState === 'unsupported'
-        ? '상담 연결됨 · 이 기기는 카메라를 보낼 수 없어요'
-        : '상담 연결됨 · 카메라 준비 중';
+        ? '이 기기는 카메라를 보낼 수 없어요'
+        : '카메라 준비 중';
+
+  /**
+   * 붙지 않은 상담에서는 카메라 이야기를 하지 않는다.
+   *
+   * 트랙이 준비됐든 아니든 건너가는 곳이 없다. `연결 중 · 카메라 공유 중`은 사용자에게 영상이
+   * 이미 가고 있다고 읽힌다.
+   */
+  const cameraShareLabel = connected ? `${connectionLabel} · ${cameraLabel}` : connectionLabel;
   /**
    * 경로를 이 화면에서도 직접 조회한다. (S15P11A206-89)
    *
@@ -560,10 +584,16 @@ export function ConsultSessionPage() {
         {/* 상담원이 카메라 영상 위에 그린 선. 좌표는 0~1 정규화 값이라 화면을 덮어 얹는다. */}
         <canvas ref={annotationRef} className={styles.annotation} aria-hidden />
         <div className={styles.bar}>
-          <span className={styles.liveChip}>
+          {/* 붙지 않았으면 초록으로 칠하지 않는다. 색도 문구와 같은 말을 해야 한다. */}
+          <span
+            className={[styles.liveChip, !connected && styles.liveChipOff]
+              .filter(Boolean)
+              .join(' ')}
+          >
             <span className={styles.liveDotWrap}>
               <span className={styles.liveDot} />
-              <span className={styles.liveRing} />
+              {/* 퍼지는 고리는 살아 있는 연결에만 둔다. */}
+              {connected && <span className={styles.liveRing} />}
             </span>
             {/* 무엇이 건너가고 있는지 그대로 적는다. 준비 중인 것을 공유 중이라고 말하면
                 사용자는 상담자가 이미 보고 있다고 믿는다. */}

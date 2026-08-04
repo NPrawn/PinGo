@@ -72,6 +72,23 @@
   border-radius: var(--radius-pill);
 }
 
+/*
+  아직 붙지 않은 상담. 초록을 걷어 낸다.
+
+  문구만 바꾸고 색을 그대로 두면 초록 라이브 칩이 여전히 "연결됨"이라고 말한다. 글자보다 색이
+  먼저 읽히므로 둘이 어긋나면 색을 믿는다.
+*/
+.liveChipOff {
+  color: #b9b8c4;
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 18%);
+}
+
+.liveChipOff .liveDot {
+  background: #8d8c99;
+  box-shadow: none;
+}
+
 .liveDotWrap {
   position: relative;
   display: flex;

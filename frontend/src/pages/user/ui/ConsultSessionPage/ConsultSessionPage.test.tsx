@@ -21,7 +21,7 @@ const apiMocks = vi.hoisted(() => ({
   useCaptionTranslation: vi.fn(() => ''),
 }));
 
-/** 자막 상태만 테스트마다 갈아 끼운다. 나머지 연결 값은 붙어 있는 것으로 둔다. */
+/** 자막·연결 상태를 테스트마다 갈아 끼운다. 기본은 붙어 있는 상담이다. */
 const signaling = vi.hoisted(() => ({
   state: {
     remoteCaption: '',
@@ -29,7 +29,7 @@ const signaling = vi.hoisted(() => ({
     remoteCaptionFinal: true,
     remoteCaptionError: null as string | null,
     captionError: null as string | null,
-  },
+  } as Record<string, unknown>,
 }));
 
 /** 권한 조회는 이 화면의 관심사가 아니다. 사라졌는지 여부만 테스트가 정한다. */
@@ -252,6 +252,33 @@ describe('ConsultSessionPage', () => {
     expect(await screen.findByText('상담 연결됨 · 카메라 준비 중')).toBeInTheDocument();
 
     delete (HTMLCanvasElement.prototype as { captureStream?: unknown }).captureStream;
+  });
+
+  /**
+   * 붙지 않은 상담을 연결됐다고 적지 않는다. (S15P11A206-89)
+   *
+   * 예전에는 `상담 연결됨`이 고정 문구였다. `status` 를 보지 않았으므로 협상 중이거나 실패한
+   * 상담에서도 연결됐다고 적혔고, 사용자는 상담자가 자기 말을 듣고 있다고 믿은 채 기다렸다.
+   * 아래 `연결 상태:` 줄에는 사실이 적혀 있어 같은 화면의 두 표시가 서로 어긋났다.
+   */
+  it('아직 붙지 않았으면 연결 중이라고 적고 카메라 이야기를 하지 않는다', async () => {
+    apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
+    signaling.state = { ...signaling.state, status: 'signaling' };
+
+    renderPage();
+
+    expect(await screen.findByText('연결 중')).toBeInTheDocument();
+    // 건너가는 곳이 없는데 카메라 준비 상태를 적으면 영상이 이미 간다고 읽힌다.
+    expect(screen.queryByText(/카메라/)).toBeNull();
+  });
+
+  it('다시 붙는 중이면 그 사실을 적는다', async () => {
+    apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
+    signaling.state = { ...signaling.state, status: 'connected', reconnecting: true };
+
+    renderPage();
+
+    expect(await screen.findByText('연결 다시 시도 중')).toBeInTheDocument();
   });
 
   /**
