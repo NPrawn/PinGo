@@ -102,6 +102,44 @@ public class RestClientKakaoLocalClient implements KakaoLocalClient {
         }
     }
 
+    @Override
+    public KakaoWalkingRouteResult findWalkingRoute(
+            BigDecimal startLongitude,
+            BigDecimal startLatitude,
+            BigDecimal endLongitude,
+            BigDecimal endLatitude
+    ) {
+        if (isApiKeyMissing()) {
+            logMissingApiKeyOnce();
+            throw new BusinessException(ErrorCode.EXTERNAL_WALKING_ROUTE_FAILED);
+        }
+
+        try {
+            KakaoWalkingRouteResponse response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/v2/routing/walk")
+                            .queryParam("start_x", startLongitude.toPlainString())
+                            .queryParam("start_y", startLatitude.toPlainString())
+                            .queryParam("end_x", endLongitude.toPlainString())
+                            .queryParam("end_y", endLatitude.toPlainString())
+                            .queryParam("input_coord", "WGS84")
+                            .queryParam("output_coord", "WGS84")
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, "KakaoAK " + properties.restApiKey())
+                    .retrieve()
+                    .body(KakaoWalkingRouteResponse.class);
+
+            if (response == null || response.route() == null || response.route().properties() == null) {
+                throw new BusinessException(ErrorCode.EXTERNAL_WALKING_ROUTE_FAILED);
+            }
+
+            KakaoWalkingRouteProperties route = response.route().properties();
+            return new KakaoWalkingRouteResult(route.totalDistance(), route.totalTime(), response.landingUrl());
+        } catch (RestClientException exception) {
+            throw new BusinessException(ErrorCode.EXTERNAL_WALKING_ROUTE_FAILED);
+        }
+    }
+
     private KakaoPlaceSearchResult toSearchResult(KakaoPlaceDocument document) {
         return new KakaoPlaceSearchResult(
                 document.id(),
@@ -149,6 +187,23 @@ public class RestClientKakaoLocalClient implements KakaoLocalClient {
             String x,
             String y,
             String distance
+    ) {
+    }
+
+    private record KakaoWalkingRouteResponse(
+            KakaoWalkingRoute route,
+            String landingUrl
+    ) {
+    }
+
+    private record KakaoWalkingRoute(
+            KakaoWalkingRouteProperties properties
+    ) {
+    }
+
+    private record KakaoWalkingRouteProperties(
+            long totalDistance,
+            long totalTime
     ) {
     }
 }

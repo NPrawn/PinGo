@@ -17,6 +17,44 @@ import org.springframework.web.client.RestClient;
 class RestClientKakaoLocalClientTest {
 
     @Test
+    void findWalkingRouteMapsKakaoRouteMetrics() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        RestClientKakaoLocalClient client = new RestClientKakaoLocalClient(
+                builder.build(),
+                new KakaoLocalProperties("https://dapi.kakao.com", "test-key", 1000, 3000)
+        );
+
+        server.expect(requestTo(containsString("/v2/routing/walk")))
+                .andExpect(requestTo(containsString("start_x=127.0365")))
+                .andExpect(requestTo(containsString("end_y=37.5012")))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "KakaoAK test-key"))
+                .andRespond(withSuccess("""
+                        {
+                          "route": {
+                            "properties": {
+                              "totalDistance": 2450,
+                              "totalTime": 2295
+                            }
+                          },
+                          "landingUrl": "https://map.kakao.com/example"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KakaoWalkingRouteResult result = client.findWalkingRoute(
+                new BigDecimal("127.0365"),
+                new BigDecimal("37.5007"),
+                new BigDecimal("127.0401"),
+                new BigDecimal("37.5012")
+        );
+
+        assertThat(result.distanceMeters()).isEqualTo(2450L);
+        assertThat(result.estimatedTimeSeconds()).isEqualTo(2295L);
+        assertThat(result.landingUrl()).isEqualTo("https://map.kakao.com/example");
+        server.verify();
+    }
+
+    @Test
     void searchPlacesMapsKakaoLocalResponse() {
         RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

@@ -186,6 +186,10 @@ describe('user routes', () => {
    */
   beforeEach(() => {
     useNavigationStore.setState({
+      destination: '강남파이낸스센터',
+      destinationId: 3,
+      destinationType: 'place',
+      destinationAddress: '서울 강남구 테헤란로 152',
       currentNodeId: 205,
       targetNodeId: 325,
       targetExitLabel: '7번 출입구',
@@ -528,10 +532,12 @@ describe('user routes', () => {
    * 하나도 바뀌지 않았다.
    */
   it('경유지를 추가하면 그 노드를 실어 경로를 다시 계산한다', async () => {
-    const routeRequests: { waypointNodeIds?: number[] }[] = [];
+    const routeRequests: { waypointNodeIds?: number[]; language?: string }[] = [];
     server.use(
       http.post('*/api/routes/indoor', async ({ request }) => {
-        routeRequests.push((await request.json()) as { waypointNodeIds?: number[] });
+        routeRequests.push(
+          (await request.json()) as { waypointNodeIds?: number[]; language?: string },
+        );
         return HttpResponse.json({ success: true, data: {}, message: null });
       }),
     );
@@ -542,6 +548,14 @@ describe('user routes', () => {
     // 첫 조회에는 경유지가 없다.
     await waitFor(() => expect(routeRequests).not.toHaveLength(0));
     expect(routeRequests[0]?.waypointNodeIds).toEqual([]);
+    /*
+      선택한 언어가 함께 실린다. (S15P11A206-339)
+
+      상세 안내 문장(`instruction`)은 서버가 이 값으로 조립한다. 실리지 않으면 백엔드가
+      `Language.DEFAULT`(=EN)로 떨어져 한국어를 골라도 "Go straight"가 나온다. 빠뜨린 쪽은
+      아무 오류도 보지 못하므로 여기서 붙잡는다.
+    */
+    expect(routeRequests[0]?.language).toBe('ko');
 
     fireEvent.click(await screen.findByRole('button', { name: '승차권 충전' }));
     fireEvent.click(await screen.findByRole('button', { name: '경유지로 추가' }));
@@ -609,17 +623,18 @@ describe('user routes', () => {
   });
 
   /**
-   * 사용자 좌표. (S15P11A206-83 / S15P11A206-337)
+   * 사용자 좌표. (S15P11A206-83 / S15P11A206-337 / S15P11A206-338)
    *
-   * 좌표를 보내면 서버가 진입 노드를 목적지 기준으로 다시 고르는데, 그 기준이 **직선 거리**라
-   * 선로를 모른다. 역삼역 B3는 선로 양쪽에 승강장이 있어(y≈24와 y≈2) 반대편 계단이 직선으로 더
-   * 가깝게 나오고, 실제로 관통하는 경로가 나왔다 — 같은 승강장 계단 5가 27.7m인데 건너편 계단 7
-   * (35.6m)이 뽑혔다.
+   * 좌표를 보내면 서버가 진입 노드를 목적지 기준으로 다시 고른다. 한동안 껐던 배선이다 — 서버가
+   * 후보를 "같은 층 + 목적지에서 도달 가능"으로만 걸러서 선로 건너편 승강장이 뽑혔고, 화면에
+   * 선로를 관통하는 선이 그려졌다.
    *
-   * 배선은 남겨 두고 `SEND_CURRENT_POSITION`만 껐다. 백엔드가 그래프 거리로 고르게 되면 그 값을
-   * 되돌리고 이 테스트를 "좌표를 함께 보낸다"로 바꾼다.
+   * 338에서 후보를 그 층 간선으로 닿는 노드로 좁히고 직선 구간에 상한을 둬서 다시 켰다. 껐다
+   * 켠 값이라 요청 본문에 실리는지를 여기서 붙잡아 둔다 — 사유는 `SEND_CURRENT_POSITION`에 있다.
+   *
+   * 좌표는 조회 키와 본문에 **같은 반올림 값**으로 실린다(0.1m). 그래서 49.121은 49.1이다.
    */
-  it('지금은 좌표를 보내지 않는다', async () => {
+  it('좌표를 함께 보낸다', async () => {
     const routeRequests: Record<string, unknown>[] = [];
     server.use(
       http.post('*/api/routes/indoor', async ({ request }) => {
@@ -633,10 +648,11 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
 
     await waitFor(() => expect(routeRequests).not.toHaveLength(0));
-    expect(routeRequests[0]).not.toHaveProperty('currentMapX');
-    expect(routeRequests[0]).not.toHaveProperty('currentMapY');
-    // 좌표가 없으면 서버가 요청에 온 진입 노드를 그대로 쓴다. 내가 서 있는 노드에서 시작한다.
-    expect(routeRequests[0]).toMatchObject({ startNodeId: 205 });
+    expect(routeRequests[0]).toMatchObject({
+      startNodeId: 205,
+      currentMapX: 49.1,
+      currentMapY: 24.3,
+    });
   });
 
   /**
@@ -867,8 +883,8 @@ describe('user routes', () => {
   /**
    * 경로 옵션 화면. (S15P11A206-323)
    *
-   * 시간·거리는 `POST /api/routes/indoor/options` 응답에서 온다. 유형별로 도착 노드가
-   * 다르므로 조회도 유형별로 따로 나간다.
+   * 외부 목적지의 시간·거리는 출구 좌표에서 카카오 도보 경로를 조회한 응답에서 온다.
+   * 유형별로 출구가 다르므로 도보 경로도 유형별로 따로 조회한다.
    */
   it('경로 옵션을 조회 응답으로 그린다', async () => {
     await renderSection('/user/route');
@@ -876,12 +892,116 @@ describe('user routes', () => {
     const fastest = await screen.findByRole('button', { name: /최단 경로/ });
 
     expect(fastest).toHaveAttribute('aria-pressed', 'true');
-    // estimatedTimeSec 240 → 4분, totalDistanceM 180 → 180m
-    expect(within(fastest).getByText('4분')).toBeInTheDocument();
-    expect(within(fastest).getByText('180m')).toBeInTheDocument();
+    // 카카오 도보 응답 2295초 → 38분, 2450m → 2450m
+    expect(within(fastest).getByText('38분')).toBeInTheDocument();
+    expect(within(fastest).getByText('2450m')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '7번 출입구 길 안내 시작' })).toBeInTheDocument();
     expect(screen.getByText('출발지')).toBeInTheDocument();
     expect(screen.getByText('목적지')).toBeInTheDocument();
+  });
+
+  it('실내 목적지는 실제 목적지 노드까지의 거리만 그린다', async () => {
+    useNavigationStore.setState({
+      destination: '화장실',
+      destinationId: 50,
+      destinationType: 'facility',
+      destinationLatitude: null,
+      destinationLongitude: null,
+      destinationAddress: null,
+      targetNodeId: 130,
+    });
+
+    await renderSection('/user/route');
+
+    const fastest = await screen.findByRole('button', { name: /최단 경로/ });
+    expect(within(fastest).getByText('180m')).toBeInTheDocument();
+    expect(within(fastest).queryByText('4분')).toBeNull();
+    expect(screen.getByRole('link', { name: '화장실 길 안내 시작' })).toBeInTheDocument();
+  });
+
+  it('두 경로가 같은 출구를 쓰면 공통 하위 요청을 한 번만 호출한다', async () => {
+    let nearestExitCalls = 0;
+    let facilityCalls = 0;
+    let indoorOptionsCalls = 0;
+    let walkingDirectionCalls = 0;
+
+    server.use(
+      http.post('*/api/destinations/nearest-exit', () => {
+        nearestExitCalls += 1;
+        return HttpResponse.json({
+          success: true,
+          data: { exitFacilityId: 25, exitNumber: '7' },
+        });
+      }),
+      http.get('*/api/facilities/25', () => {
+        facilityCalls += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            facilityId: 25,
+            stationId: 1,
+            floorId: 3,
+            facilityType: 'exit',
+            nameKo: '7번 출구',
+            linkedNodeId: 325,
+            isAccessible: true,
+            exitDetail: {
+              exitNumber: '7',
+              outsideLatitude: 37.5002,
+              outsideLongitude: 127.0359,
+            },
+          },
+        });
+      }),
+      http.post('*/api/routes/indoor/options', () => {
+        indoorOptionsCalls += 1;
+        return HttpResponse.json({
+          success: true,
+          data: [
+            {
+              routeType: 'fastest',
+              displayName: '빠른 경로',
+              available: true,
+              totalDistanceM: 180,
+              estimatedTimeSec: 240,
+              hasStairsOrEscalator: false,
+            },
+            {
+              routeType: 'elevator_only',
+              displayName: '엘리베이터 이용 경로',
+              available: true,
+              totalDistanceM: 180,
+              estimatedTimeSec: 240,
+              hasStairsOrEscalator: false,
+            },
+          ],
+        });
+      }),
+      http.post('*/api/external-maps/directions', () => {
+        walkingDirectionCalls += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            provider: 'kakao',
+            appUrl: 'kakaomap://route?by=foot',
+            webUrl: 'https://map.kakao.com/example',
+            distanceM: 2450,
+            estimatedTimeSec: 2295,
+          },
+        });
+      }),
+    );
+
+    await renderSection('/user/route');
+
+    expect(await screen.findByRole('button', { name: /최단 경로/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /엘리베이터 우선/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(nearestExitCalls).toBe(2);
+      expect(facilityCalls).toBe(1);
+      expect(indoorOptionsCalls).toBe(1);
+      expect(walkingDirectionCalls).toBe(1);
+    });
   });
 
   /**

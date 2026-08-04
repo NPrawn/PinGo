@@ -1,8 +1,15 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { useConsultStore } from '@/entities/consult';
+import { isClosedConsultation, useConsultStore, useCounselorQueueStore } from '@/entities/consult';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { ButtonLink } from '@/shared/ui';
+import {
+  ApiError,
+  endConsultation,
+  getCounselorConsultations,
+  queryKeys,
+} from '@/shared/api';
+import { Button } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import styles from './ConnectingPage.module.css';
 
@@ -17,22 +24,74 @@ const CONNECT_TIMEOUT_MS = 20000;
 /** Screen 29-1 — connecting to the user. */
 export function ConnectingPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const consultationId = useConsultStore((state) => state.consultationId);
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
   const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
+  const clearConsultation = useConsultStore((state) => state.clearConsultation);
+  const selected = useCounselorQueueStore((state) => state.selected);
+  const complete = useCounselorQueueStore((state) => state.complete);
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const queueQuery = useQuery({
+    queryKey: queryKeys.counselorConsultations(),
+    queryFn: () => getCounselorConsultations(),
+    enabled: Boolean(consultationId),
+    refetchInterval: 2_000,
+  });
+  const consultation = queueQuery.data?.find((item) => item.consultationId === consultationId);
+  const closed = Boolean(consultation && isClosedConsultation(consultation.status));
+  const signalingReady = Boolean(signalingRoomId && signalingAccessToken);
+
+  const leave = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.counselorConsultations() });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.counselorMe() });
+    complete(selected);
+    clearConsultation();
+    void navigate(COUNSELOR_ROUTES.REQUESTS);
+  }, [clearConsultation, complete, navigate, queryClient, selected]);
+
+  useEffect(() => {
+    if (!closed) return;
+    leave();
+  }, [closed, leave]);
+
+  const cancelConnection = useCallback(async () => {
+    if (!consultationId || canceling) return;
+    setCanceling(true);
+    setCancelError(null);
+    try {
+      // ACCEPTED 상태를 남기면 상담원이 BUSY로 고정되므로 서버 상태도 종료한다.
+      await endConsultation(consultationId);
+      leave();
+    } catch (cause) {
+      const code = cause instanceof ApiError ? cause.code : undefined;
+      if (code === 'CONSULTATION_NOT_ENDABLE' || code === 'CONSULTATION_NOT_FOUND') {
+        leave();
+        return;
+      }
+
+      // Network failures must not clear the local consultation while the server
+      // may still keep the counselor BUSY.
+      setCanceling(false);
+      setCancelError('연결을 취소하지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요.');
+    }
+  }, [canceling, consultationId, leave]);
 
   /**
    * 상담 화면으로 넘어갈 조건은 signaling 방과 토큰이 준비된 것이다. 여기서 직접 연결을
    * 열면 상담 화면이 또 하나를 여는 셈이라, 방금 맺은 연결을 스스로 끊게 된다.
    */
   useEffect(() => {
-    if (signalingRoomId && signalingAccessToken) {
+    if (signalingReady) {
       void navigate(COUNSELOR_ROUTES.SESSION);
       return;
     }
 
-    const timer = setTimeout(() => void navigate(COUNSELOR_ROUTES.SESSION), CONNECT_TIMEOUT_MS);
+    const timer = setTimeout(() => void cancelConnection(), CONNECT_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [navigate, signalingAccessToken, signalingRoomId]);
+  }, [cancelConnection, navigate, signalingReady]);
 
   return (
     <CounselorConsoleShell>
@@ -47,14 +106,16 @@ export function ConnectingPage() {
             연결 중
           </span>
         </div>
-        <ButtonLink
-          to={COUNSELOR_ROUTES.REQUESTS}
+        <Button
           size="sm"
           variant="secondary"
           className={styles.cancel}
+          disabled={canceling}
+          onClick={() => void cancelConnection()}
         >
-          연결 취소
-        </ButtonLink>
+          {canceling ? '연결 취소 중...' : '연결 취소'}
+        </Button>
+        {cancelError && <p role="alert">{cancelError}</p>}
         <Link to={COUNSELOR_ROUTES.CONNECT_FAILED} className={styles.failureLink}>
           연결 실패 시 화면 보기 →
         </Link>

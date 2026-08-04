@@ -47,8 +47,51 @@ public class RouteInstructionWriter {
     /** 이보다 크게 꺾이면 좌우가 아니라 되돌아가는 것으로 본다. */
     private static final double TURN_MAX_DEGREES = 150.0;
 
+    /**
+     * 한 안내로 합칠 구간들이 처음 방향에서 벗어날 수 있는 최대 각도(도).
+     *
+     * <p>{@link #STRAIGHT_MAX_DEGREES} 는 <b>인접한 두 구간</b>만 본다. 그것만으로 이어 붙이면
+     * 45도 미만으로 조금씩 꺾이는 구간이 끝없이 합쳐진다. 42도씩 세 번 꺾여도 매번 직진으로
+     * 판정되므로 126도를 돈 길이 "직진하세요" 한 문장이 된다.
+     *
+     * <p>그래서 <b>구간의 첫 방향과도</b> 견준다. 역삼역 시드로 B3 출발 노드 43개 × 출구 9곳의
+     * 경로를 모두 뽑아, 합쳐지는 구간 938개의 첫 방향 대비 마지막 방향 차이를 재었다.
+     *
+     * <pre>
+     *   중앙 18.8도   90%분위 33.9도   최대 69.9도
+     *
+     *   상한 30도 -> 938개 중 150개(16.0%)가 더 쪼개진다
+     *   상한 45도 -> 71개(7.6%)
+     *   상한 60도 -> 45개(4.8%)
+     *   상한 90도 -> 0개 (상한이 없는 것과 같다)
+     * </pre>
+     *
+     * <p>{@link #STRAIGHT_MAX_DEGREES} 와 같은 45도로 둔다. "한 걸음을 직진으로 느끼는 한계" 와
+     * "여러 걸음을 합쳐 직진이라 부를 한계" 가 같은 값이면 설명할 것이 하나로 줄어든다. 가장
+     * 많이 휘는 곳은 GFC몰 연결통로(B1)로, 70도를 도는 세 구간이 여기서 끊긴다.
+     */
+    private static final double MAX_RUN_DRIFT_DEGREES = 45.0;
+
     /** 방향을 판단하기에 너무 짧은 구간(m). 좌표 오차가 각도를 지배한다. */
     private static final double MIN_TURN_BASELINE_M = 0.5;
+
+    /**
+     * 안내 문장에서 거리가 들어갈 자리.
+     *
+     * <p><b>왜 자리를 비운 문장도 함께 주는가.</b> 화면은 걷는 동안 <b>남은</b> 거리를 보여야
+     * 하는데, 완성된 문장에는 구간 전체 길이가 박혀 있어 손댈 수 없다. 한 안내가 여러 간선을
+     * 담게 되면서(S15P11A206-339) 이 차이가 커졌다 — 역삼역 B3 승강장은 한 구간이 197m 라,
+     * 절반을 걸으면 화면이 "197m 직진하세요" 라고 말하는 동안 실제로 남은 것은 98m 다.
+     *
+     * <p>거리 문자열을 클라이언트가 앞에 붙이는 방법은 쓸 수 없다. 숫자 위치가 언어마다 다르다
+     * — 한국어는 {@code "197m 직진하세요."} 로 앞이고 영어는 {@code "Go straight for 197m."}
+     * 로 중간이다. 클라이언트가 문장을 통째로 조립하는 방법도 조사 처리({@code 계단을/를},
+     * {@code 계단으로/에스컬레이터로})를 클라이언트에 다시 만들게 한다.
+     *
+     * <p>그래서 문구와 언어는 서버가 계속 소유하고 <b>거리 자리만</b> 비워 준다. 완성 문장과
+     * 같은 코드로 만들므로 둘이 어긋날 수 없다.
+     */
+    private static final String DISTANCE_PLACEHOLDER = "{distance}";
 
     private static final char HANGUL_FIRST = '가';
     private static final char HANGUL_LAST = '힣';
@@ -74,28 +117,42 @@ public class RouteInstructionWriter {
             Map<Long, Integer> floorOrders,
             Language language
     ) {
+        String distance = formatDistance(current.distanceM());
+
         RouteMoveType moveType = current.moveType();
         if (moveType == null) {
             Turn turn = turnOf(previous, current, nodes);
-            return new Guidance(move(turn, current.distanceM(), language), turn.code, null);
+            return new Guidance(
+                    move(turn, distance, language),
+                    move(turn, DISTANCE_PLACEHOLDER, language),
+                    turn.code,
+                    null);
         }
 
         return switch (moveType) {
             case WALKWAY -> {
                 Turn turn = turnOf(previous, current, nodes);
-                yield new Guidance(walkway(turn, current.distanceM(), language), turn.code, null);
+                yield new Guidance(
+                        walkway(turn, distance, language),
+                        walkway(turn, DISTANCE_PLACEHOLDER, language),
+                        turn.code,
+                        null);
             }
             case STAIR, ESCALATOR, ELEVATOR -> {
                 Integer floorDelta = floorDelta(current, nodes, floorOrders);
+                String sentence = vertical(moveType, floorDelta, language);
                 yield new Guidance(
-                        vertical(moveType, floorDelta, language),
+                        sentence,
+                        sentence,
                         turnOf(previous, current, nodes).code,
                         floorDelta);
             }
-            case GATE -> new Guidance(
-                    language == Language.KO ? "개찰구를 통과하세요." : "Go through the fare gate.",
-                    turnOf(previous, current, nodes).code,
-                    null);
+            case GATE -> {
+                String sentence = language == Language.KO
+                        ? "개찰구를 통과하세요."
+                        : "Go through the fare gate.";
+                yield new Guidance(sentence, sentence, turnOf(previous, current, nodes).code, null);
+            }
         };
     }
 
@@ -108,7 +165,79 @@ public class RouteInstructionWriter {
      * @param floorDelta  오르내리는 층수. 위로 가면 양수다. 층 이동이 아니거나 층을 모르면
      *                    {@code null}. 같은 층 안의 계단이면 0 이다
      */
-    public record Guidance(String instruction, String turn, Integer floorDelta) {
+    /**
+     * @param instruction         지금 이 구간의 거리가 박힌 완성 문장
+     * @param instructionTemplate 거리 자리를 {@link #DISTANCE_PLACEHOLDER} 로 비워 둔 같은 문장.
+     *                            거리가 들어가지 않는 문장(층 이동·개찰구)은 {@code instruction} 과
+     *                            같다
+     */
+    public record Guidance(String instruction, String instructionTemplate, String turn, Integer floorDelta) {
+    }
+
+    /**
+     * 앞 구간에 이어 붙여 한 안내로 합칠 수 있는지.
+     *
+     * <p>간선 하나가 안내 하나가 되면 긴 통로에서 같은 문장이 되풀이된다. 역삼역 승강장은 복도
+     * 노드가 평균 7.7m 마다 있어 B3 서쪽 끝에서 8번 출구까지 "직진하세요" 가 11번 연달아 나왔다.
+     * 노드가 있다는 것은 지도에 선을 그릴 꼭짓점이 있다는 뜻일 뿐, 사용자가 거기서 무엇을 하지
+     * 않는다. 그러면 한 번의 행동이므로 한 문장이어야 한다. (S15P11A206-339)
+     *
+     * <p>네 조건을 모두 만족할 때만 합친다.
+     *
+     * <ol>
+     *   <li>양쪽 다 통로다 — 계단·엘리베이터·개찰구는 각각 할 행동이 있다</li>
+     *   <li>직전 구간에서 꺾이지 않는다({@link #STRAIGHT_MAX_DEGREES})</li>
+     *   <li>구간의 첫 방향에서도 벗어나지 않는다({@link #MAX_RUN_DRIFT_DEGREES})</li>
+     *   <li>높이가 같다 — 역삼역 B1 은 개찰구 위 중간층이 별도 층이 아니라 같은 {@code floorId}
+     *       안의 {@code map_z=7.5} 노드로 돼 있어, 층만 보면 바닥과 중간층을 한 구간으로 합친다</li>
+     * </ol>
+     *
+     * <p>방향을 판단할 수 없으면({@link Turn#UNKNOWN}) 합치지 않는다. 모르는 것을 직진으로
+     * 취급하면 실제로 꺾이는 구간이 조용히 흡수된다.
+     *
+     * @param runStart  지금 묶고 있는 구간의 첫 간선
+     * @param previous  지금까지 묶은 마지막 간선
+     * @param candidate 이어 붙일지 판단할 간선
+     */
+    public boolean continuesStraightRun(
+            Segment runStart,
+            Segment previous,
+            Segment candidate,
+            Map<Long, RouteNode> nodes
+    ) {
+        if (previous.moveType() != RouteMoveType.WALKWAY || candidate.moveType() != RouteMoveType.WALKWAY) {
+            return false;
+        }
+        if (!sameHeight(runStart.fromNodeId(), candidate.toNodeId(), nodes)) {
+            return false;
+        }
+        if (turnOf(previous, candidate, nodes) != Turn.STRAIGHT) {
+            return false;
+        }
+
+        Double drift = deviationDegrees(runStart, candidate, nodes);
+        return drift != null && drift <= MAX_RUN_DRIFT_DEGREES;
+    }
+
+    /**
+     * 두 노드의 캐노니컬 높이가 같은지.
+     *
+     * <p>높이를 모르는 노드가 섞이면 합치지 않는다 — 관리자가 높이를 넣지 않은 노드가 중간층일
+     * 수도 있어서다. 둘 다 모르면 층 정보가 아예 없는 역이므로 같은 높이로 본다.
+     */
+    private boolean sameHeight(long fromNodeId, long toNodeId, Map<Long, RouteNode> nodes) {
+        RouteNode from = nodes.get(fromNodeId);
+        RouteNode to = nodes.get(toNodeId);
+        if (from == null || to == null) {
+            return false;
+        }
+
+        BigDecimal fromZ = from.getMapZ();
+        BigDecimal toZ = to.getMapZ();
+        if (fromZ == null || toZ == null) {
+            return fromZ == null && toZ == null;
+        }
+        return fromZ.compareTo(toZ) == 0;
     }
 
     /**
@@ -124,23 +253,34 @@ public class RouteInstructionWriter {
             return Turn.UNKNOWN;
         }
 
-        double[] before = direction(previous, nodes);
-        double[] after = direction(current, nodes);
-        if (before == null || after == null) {
+        Double degrees = deviationDegrees(previous, current, nodes);
+        if (degrees == null) {
             return Turn.UNKNOWN;
         }
-
-        double cross = before[0] * after[1] - before[1] * after[0];
-        double dot = before[0] * after[0] + before[1] * after[1];
-        double degrees = Math.toDegrees(Math.atan2(Math.abs(cross), dot));
-
         if (degrees <= STRAIGHT_MAX_DEGREES) {
             return Turn.STRAIGHT;
         }
         if (degrees >= TURN_MAX_DEGREES) {
             return Turn.AROUND;
         }
+
+        double[] before = direction(previous, nodes);
+        double[] after = direction(current, nodes);
+        double cross = before[0] * after[1] - before[1] * after[0];
         return cross > 0 ? Turn.RIGHT : Turn.LEFT;
+    }
+
+    /** 두 구간의 방향 차이(도). 좌우는 구분하지 않는다. 방향을 알 수 없으면 {@code null}. */
+    private Double deviationDegrees(Segment before, Segment after, Map<Long, RouteNode> nodes) {
+        double[] first = direction(before, nodes);
+        double[] second = direction(after, nodes);
+        if (first == null || second == null) {
+            return null;
+        }
+
+        double cross = first[0] * second[1] - first[1] * second[0];
+        double dot = first[0] * second[0] + first[1] * second[1];
+        return Math.toDegrees(Math.atan2(Math.abs(cross), dot));
     }
 
     /** 구간의 단위 방향. 노드가 없거나 너무 짧으면 {@code null}. */
@@ -160,8 +300,7 @@ public class RouteInstructionWriter {
         return new double[] {dx / length, dy / length};
     }
 
-    private String walkway(Turn turn, BigDecimal distanceM, Language language) {
-        String distance = formatDistance(distanceM);
+    private String walkway(Turn turn, String distance, Language language) {
         if (!turn.isTurning()) {
             return language == Language.KO
                     ? "%s 직진하세요.".formatted(distance)
@@ -173,8 +312,7 @@ public class RouteInstructionWriter {
     }
 
     /** 이동 수단을 모르는 간선. 방향만 붙이고 수단은 말하지 않는다. */
-    private String move(Turn turn, BigDecimal distanceM, Language language) {
-        String distance = formatDistance(distanceM);
+    private String move(Turn turn, String distance, Language language) {
         if (!turn.isTurning()) {
             return language == Language.KO
                     ? "%s 이동하세요.".formatted(distance)

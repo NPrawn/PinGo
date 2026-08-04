@@ -10,7 +10,13 @@ import type { IconName } from '@/shared/ui';
 import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { PhoneFrame } from '@/widgets/phone-frame';
-import { useExitRoute, type ExitRoute } from './useExitRoute';
+import {
+  distanceForDestination,
+  durationForDestination,
+  isExternalDestination,
+  useExitRoute,
+  type ExitRoute,
+} from './useExitRoute';
 import styles from './RouteOptionsPage.module.css';
 
 /**
@@ -53,6 +59,10 @@ export function RouteOptionsPage() {
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
   const destination = useNavigationStore((state) => state.destination);
+  const destinationId = useNavigationStore((state) => state.destinationId);
+  const destinationType = useNavigationStore((state) => state.destinationType);
+  const destinationAddress = useNavigationStore((state) => state.destinationAddress);
+  const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
@@ -64,6 +74,7 @@ export function RouteOptionsPage() {
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
+  const externalDestination = isExternalDestination(destinationType);
 
   /**
    * 카드에 적을 거리를 서버가 계산할 때 쓰는 입력.
@@ -77,6 +88,11 @@ export function RouteOptionsPage() {
     startNodeId: currentNodeId,
     destinationLatitude,
     destinationLongitude,
+    destinationType,
+    destinationId,
+    destinationName: destination,
+    destinationAddress,
+    targetNodeId,
     origin: SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null,
   };
   const fastestQuery = useExitRoute('fastest', lookup);
@@ -159,12 +175,18 @@ export function RouteOptionsPage() {
         alert: true,
       };
     }
-    if (destinationLatitude === null || destinationLongitude === null) {
+    if (
+      (externalDestination &&
+        (destinationLatitude === null || destinationLongitude === null)) ||
+      (!externalDestination && targetNodeId === null)
+    ) {
       return destination
         ? {
             icon: 'flag',
             title: '목적지 위치를 알 수 없어요',
-            body: `${destination}의 좌표를 확인할 수 없어 어느 출입구로 나갈지 정하지 못했어요.`,
+            body: externalDestination
+              ? `${destination}의 좌표를 확인할 수 없어 어느 출입구로 나갈지 정하지 못했어요.`
+              : `${destination}의 실내 목적지 노드를 확인할 수 없어 경로를 계산하지 못했어요.`,
             action: { label: '목적지 다시 선택하기', to: USER_ROUTES.STATION },
             alert: true,
           }
@@ -276,7 +298,9 @@ export function RouteOptionsPage() {
         <div className={styles.panel}>
           <div className={styles.panelHead}>
             <div>
-              <span className={styles.eyebrow}>추천 출입구 선택</span>
+              <span className={styles.eyebrow}>
+                {externalDestination ? '추천 출입구 선택' : '실내 경로 선택'}
+              </span>
               <h1>어떤 경로로 안내할까요?</h1>
             </div>
           </div>
@@ -316,6 +340,7 @@ export function RouteOptionsPage() {
                     exitRoute={queries[type].data ?? null}
                     failed={queries[type].isError}
                     destination={destination}
+                    destinationType={destinationType}
                     selected={selectedType === type}
                     onSelect={() => {
                       setRoute(type);
@@ -354,6 +379,7 @@ type RouteOptionRowProps = {
   /** 출구나 경로 조회가 실패했는지. 도달 불가와 구분해 문구를 다르게 낸다. */
   failed: boolean;
   destination: string | null;
+  destinationType: string | null;
   selected: boolean;
   onSelect: () => void;
 };
@@ -369,14 +395,28 @@ function RouteOptionRow({
   exitRoute,
   failed,
   destination,
+  destinationType,
   selected,
   onSelect,
 }: RouteOptionRowProps) {
   const presentation = ROUTE_PRESENTATION[routeType];
   const option = exitRoute?.option ?? null;
   const usable = option?.available === true;
-  const duration = formatDuration(option?.estimatedTimeSec ?? null);
-  const distance = formatDistance(option?.totalDistanceM ?? null);
+  const externalDestination = isExternalDestination(destinationType);
+  const summary =
+    !externalDestination && routeType === 'fastest'
+      ? '목적지까지 가장 짧은 실내 경로'
+      : presentation.summary;
+  const duration = formatDuration(
+    durationForDestination(destinationType, exitRoute?.outdoorEstimatedTimeSec ?? null),
+  );
+  const distance = formatDistance(
+    distanceForDestination(
+      destinationType,
+      option?.totalDistanceM ?? null,
+      exitRoute?.outdoorDistanceM ?? null,
+    ),
+  );
 
   /**
    * 이 경로를 쓸 수 없는 이유.
@@ -416,9 +456,9 @@ function RouteOptionRow({
           )}
         </span>
 
-        <span className={styles.optionMeta}>{usable ? presentation.summary : unavailableText}</span>
+        <span className={styles.optionMeta}>{usable ? summary : unavailableText}</span>
 
-        {usable && exitRoute && (
+        {usable && exitRoute && externalDestination && (
           /* 이 경로로 나가면 어디로 나오는지. 유형을 고르는 실제 판단 근거다. */
           <span className={styles.optionRoute}>
             <strong className={styles.optionExit}>{exitRoute.exitLabel}</strong>

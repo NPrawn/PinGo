@@ -41,7 +41,7 @@ class UserSessionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.userSessionId").value(userSessionId))
                 .andExpect(jsonPath("$.data.language").value("en"))
-                .andExpect(jsonPath("$.data.expiresAt").exists());
+                .andExpect(jsonPath("$.data.expiresAt").value(org.hamcrest.Matchers.endsWith("Z")));
     }
 
     @Test
@@ -82,7 +82,7 @@ class UserSessionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.userSessionId").exists())
                 .andExpect(jsonPath("$.data.language").value("en"))
-                .andExpect(jsonPath("$.data.expiresAt").exists());
+                .andExpect(jsonPath("$.data.expiresAt").value(org.hamcrest.Matchers.endsWith("Z")));
     }
 
     @Test

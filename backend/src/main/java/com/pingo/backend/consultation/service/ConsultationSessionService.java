@@ -10,6 +10,7 @@ import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
 import com.pingo.backend.consultation.event.ConsultationAcceptedEvent;
+import com.pingo.backend.consultation.event.ConsultationCanceledEvent;
 import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
@@ -87,21 +88,30 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationCancelResponse cancel(String consultationSessionId, String userSessionId){
-        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
-                .orElseThrow(()-> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        ConsultationSession session = findSessionForUpdate(consultationSessionId);
         validateOwner(session, userSessionId);
-        if(session.getStatus() != ConsultationStatus.WAITING){
+        if(session.getStatus() != ConsultationStatus.WAITING
+                && session.getStatus() != ConsultationStatus.ACCEPTED){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_CANCELABLE);
+        }
+
+        String signalingRoomId = session.getSignalingRoomId();
+        if (session.getStatus() == ConsultationStatus.ACCEPTED && session.getCounselorId() != null) {
+            accountRepository.findByIdForUpdate(session.getCounselorId())
+                    .ifPresent(counselor -> counselor.changeStatus(CounselorStatus.AVAILABLE));
         }
         session.cancel();
         consultationWaitingEventPublisher.publishCanceled(session.getConsultationId());
+        if (signalingRoomId != null) {
+            applicationEventPublisher.publishEvent(
+                    new ConsultationCanceledEvent(session.getConsultationId(), signalingRoomId));
+        }
         return ConsultationCancelResponse.from(session);
     }
 
     @Transactional
     public ConsultationAcceptResponse accept(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        ConsultationSession session = findSessionForUpdate(consultationSessionId);
 
         if(session.getStatus() != ConsultationStatus.WAITING){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_ACCEPTABLE);
@@ -129,8 +139,7 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationRejectResponse reject(String consultationSessionId, Long counselorAccountId){
-        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        ConsultationSession session = findSessionForUpdate(consultationSessionId);
 
         if(session.getStatus() != ConsultationStatus.WAITING){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_REJECTABLE);
@@ -172,8 +181,7 @@ public class ConsultationSessionService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 
-        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
+        ConsultationSession session = findSessionForUpdate(consultationSessionId);
 
         if (session.getStatus() != ConsultationStatus.ACCEPTED && session.getStatus() != ConsultationStatus.IN_PROGRESS) {
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_ENDABLE);
@@ -211,6 +219,15 @@ public class ConsultationSessionService {
             throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
         }
         return counselor;
+    }
+
+    /**
+     * 상담 상태를 변경하는 흐름의 잠금 순서를 상담 세션 -> 상담원 계정으로 고정한다.
+     * 상담원 상태를 함께 변경하는 흐름도 반드시 세션을 먼저 잠가 데드락을 방지한다.
+     */
+    private ConsultationSession findSessionForUpdate(String consultationSessionId) {
+        return consultationSessionRepository.findByIdForUpdate(consultationSessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
     }
 
     private Account findStationCounselor(Long counselorAccountId, Long stationId){

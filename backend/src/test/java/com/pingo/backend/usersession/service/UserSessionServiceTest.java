@@ -18,7 +18,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -73,12 +74,12 @@ public class UserSessionServiceTest {
 
     @Test
     void expiresAt은_생성_시점_기준_6시간_뒤로_설정된다() {
-        LocalDateTime before = LocalDateTime.now();
+        Instant before = Instant.now();
         UserSessionCreateResponse response = userSessionService.create(Language.KO);
-        LocalDateTime after = LocalDateTime.now();
+        Instant after = Instant.now();
 
-        assertTrue(response.expiresAt().isAfter(before.plusHours(6).minusSeconds(5)));
-        assertTrue(response.expiresAt().isBefore(after.plusHours(6).plusSeconds(5)));
+        assertTrue(response.expiresAt().isAfter(before.plus(Duration.ofHours(6)).minusSeconds(5)));
+        assertTrue(response.expiresAt().isBefore(after.plus(Duration.ofHours(6)).plusSeconds(5)));
     }
 
     // ---------- 조회 ----------
@@ -206,8 +207,8 @@ public class UserSessionServiceTest {
     void 수정_요청마다_lastActiveAt과_expiresAt이_갱신된다() throws InterruptedException {
         String userSessionId = createSession();
         UserSession before = userSessionRepository.findById(userSessionId).orElseThrow();
-        LocalDateTime firstLastActiveAt = before.getLastActiveAt();
-        LocalDateTime firstExpiresAt = before.getExpiresAt();
+        Instant firstLastActiveAt = before.getLastActiveAt();
+        Instant firstExpiresAt = before.getExpiresAt();
 
         Thread.sleep(10);
 

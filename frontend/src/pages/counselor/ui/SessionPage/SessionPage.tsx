@@ -25,6 +25,7 @@ import {
   endConsultation,
   getCounselorConsultation,
   getCounselorConsultations,
+  queryKeys,
   submitConsultationTranscript,
 } from '@/shared/api';
 import { Badge, Button, FloorRail, Icon, MapPreview, MapToggle, PillButton } from '@/shared/ui';
@@ -246,7 +247,7 @@ export function SessionPage() {
    * signaling 토큰을 새로 발급하기 때문이다. 상태만 알면 되는 자리에서 쓸 요청이 아니다.
    */
   const queueQuery = useQuery({
-    queryKey: ['counselor-consultations'],
+    queryKey: queryKeys.counselorConsultations(),
     queryFn: () => getCounselorConsultations(),
     enabled: Boolean(consultationId),
     refetchInterval: CONSULTATION_WATCH_MS,
@@ -285,6 +286,8 @@ export function SessionPage() {
         await submitConsultationTranscript(consultationId, { transcript }).catch(() => undefined);
       }
       complete(selected);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.counselorConsultations() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.counselorMe() });
       clearConsultation();
       void navigate(COUNSELOR_ROUTES.REQUESTS);
     };
@@ -296,6 +299,7 @@ export function SessionPage() {
     consultationId,
     ending,
     navigate,
+    queryClient,
     selected,
     transcript,
     clearConsultation,
@@ -353,8 +357,8 @@ export function SessionPage() {
      * 목록을 서버에서 다시 읽게 한다. 캐시에 남은 옛 목록에는 방금 끝낸 상담이 그대로
      * 있어서, 목록으로 돌아간 순간 아직 진행 중인 것처럼 보인다.
      */
-    void queryClient.invalidateQueries({ queryKey: ['counselor-consultations'] });
-    void queryClient.invalidateQueries({ queryKey: ['counselor-me'] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.counselorConsultations() });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.counselorMe() });
     complete(selected);
     clearConsultation();
     void navigate(COUNSELOR_ROUTES.REQUESTS);

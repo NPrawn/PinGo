@@ -2,6 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
+import { i18n } from '@/shared/i18n';
 import { useIndoorRouteOptions } from './useIndoorRouteOptions';
 import type { RouteOptionsQuery } from '../model/types';
 
@@ -48,6 +49,11 @@ function wrapper({ children }: { children: React.ReactNode }) {
 const mount = (query: Partial<RouteOptionsQuery>) =>
   renderHook(() => useIndoorRouteOptions(query), { wrapper });
 
+// 언어를 바꿔 둔 케이스가 뒤 테스트로 넘어가지 않게 되돌린다.
+afterEach(async () => {
+  await i18n.changeLanguage('ko');
+});
+
 describe('useIndoorRouteOptions', () => {
   it('세 값이 모두 있으면 조회해서 옵션을 돌려준다', async () => {
     stubRouteOptions();
@@ -55,7 +61,7 @@ describe('useIndoorRouteOptions', () => {
     const { result } = mount({ stationId: 1, startNodeId: 205, targetNodeId: 44 });
 
     await waitFor(() => expect(result.current.data).toHaveLength(2));
-    expect(received).toEqual({ stationId: 1, startNodeId: 205, targetNodeId: 44 });
+    expect(received).toEqual({ stationId: 1, startNodeId: 205, targetNodeId: 44, language: 'ko' });
     expect(result.current.data?.[0]).toMatchObject({
       routeType: 'fastest',
       totalDistanceM: 180,
@@ -104,6 +110,41 @@ describe('useIndoorRouteOptions', () => {
     expect(result.current.data).toBeUndefined();
   });
 
+  /**
+   * 선택한 언어가 요청에 실린다.
+   *
+   * 실리지 않으면 백엔드가 `Language.DEFAULT`(=EN)로 떨어져 한국어를 골라도 이용 불가 사유
+   * 문구와 세부 안내가 영어로 나온다. 빠뜨린 쪽은 아무 오류도 보지 못하므로 여기서 붙잡는다.
+   * (S15P11A206-339)
+   */
+  it('선택한 언어를 요청에 싣는다', async () => {
+    stubRouteOptions();
+    await i18n.changeLanguage('en');
+
+    const { result } = mount({ stationId: 1, startNodeId: 205, targetNodeId: 44 });
+
+    await waitFor(() => expect(result.current.data).toHaveLength(2));
+    expect(received).toMatchObject({ language: 'en' });
+  });
+
+  /**
+   * 언어가 바뀌면 다시 받는다.
+   *
+   * `unavailableMessage`는 서버가 요청 언어로 쓰는 문장이라, 이름처럼 두 언어를 함께 받는 값이
+   * 아니다. 조회 키에 언어가 없으면 언어를 바꿔도 이전 언어의 문구가 그대로 보인다.
+   */
+  it('언어가 바뀌면 이전 언어의 응답을 그대로 쓰지 않는다', async () => {
+    stubRouteOptions();
+
+    const { result } = mount({ stationId: 1, startNodeId: 205, targetNodeId: 44 });
+    await waitFor(() => expect(received).toMatchObject({ language: 'ko' }));
+
+    await i18n.changeLanguage('en');
+
+    await waitFor(() => expect(received).toMatchObject({ language: 'en' }));
+    expect(result.current.data).toHaveLength(2);
+  });
+
   it('출발지가 바뀌면 이전 경로를 그대로 쓰지 않는다', async () => {
     stubRouteOptions();
 
@@ -120,7 +161,12 @@ describe('useIndoorRouteOptions', () => {
     rerender({ start: 226 });
 
     await waitFor(() =>
-      expect(received).toEqual({ stationId: 1, startNodeId: 226, targetNodeId: 44 }),
+      expect(received).toEqual({
+        stationId: 1,
+        startNodeId: 226,
+        targetNodeId: 44,
+        language: 'ko',
+      }),
     );
   });
 });
