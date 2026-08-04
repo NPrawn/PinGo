@@ -1,7 +1,9 @@
+import { useTranslation } from 'react-i18next';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { ButtonLink, Card, GhostLink, Icon, Icon3d } from '@/shared/ui';
 import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -10,11 +12,15 @@ import styles from './LocateSuccessPage.module.css';
 
 /** Keep the live camera visible while the user confirms the matched position. */
 export function LocateSuccessPage() {
+  const { t, i18n } = useTranslation();
   const station = useStationStore((state) => state.station);
   const floor = useStationStore((state) => state.floor);
   /** 위치 인식이 준 경로 시작 노드의 이름. 역·층 표기보다 구체적이다. */
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
-  const locationText = currentLocationLabel ?? `${station} · ${floor}`;
+  const locationText = localizeUserLabel(
+    currentLocationLabel ?? `${station} · ${floor}`,
+    i18n.resolvedLanguage === 'en' ? 'en' : 'ko',
+  );
   /** 안내 중 재인식으로 왔는지. 돌아갈 화면을 가른다. (S15P11A206-141) */
   const relocalizing = useNavigationStore((state) => state.relocalizing);
   const camera = useCameraPreview();
@@ -22,7 +28,7 @@ export function LocateSuccessPage() {
   return (
     <PhoneFrame layout="flush" bodyClassName={styles.body}>
       <>
-        <section className={styles.camera} aria-label="후면 카메라 화면">
+        <section className={styles.camera} aria-label={t('user.locateSuccess.camera')}>
           <div className={styles.topBar}>
             <ViewfinderBack to={USER_ROUTES.CAPTURE_PORTRAIT} />
             <ConsultCta variant="icon" />
@@ -76,16 +82,16 @@ export function LocateSuccessPage() {
             <span className={styles.cameraCheck}>
               <Icon name="check" size={22} />
             </span>
-            <strong>현재 위치를 찾았어요</strong>
+            <strong>{t('user.locateSuccess.found')}</strong>
             <span>{locationText}</span>
           </div>
 
           <div className={styles.cameraMeta}>
             <span>
               <span className={styles.confidenceDot} aria-hidden />
-              VPS 매칭 완료
+              {t('user.locateSuccess.matched')}
             </span>
-            <strong>신뢰도 92%</strong>
+            <strong>{t('user.locateSuccess.confidence')}</strong>
           </div>
         </section>
 
@@ -95,8 +101,8 @@ export function LocateSuccessPage() {
               <Icon name="target" size={18} />
             </span>
             <div>
-              <span className={styles.eyebrow}>현재 위치 확인</span>
-              <h1 id="location-confirm-title">여기가 맞는지 확인해 주세요</h1>
+              <span className={styles.eyebrow}>{t('user.locateSuccess.eyebrow')}</span>
+              <h1 id="location-confirm-title">{t('user.locateSuccess.title')}</h1>
             </div>
           </div>
 
@@ -105,16 +111,16 @@ export function LocateSuccessPage() {
               <Icon3d name="pin" iconSize={20} className={styles.mark} />
               <div className={styles.locationBody}>
                 <b>{locationText}</b>
-                <span>3번 출구 방면 · 12번 기둥 부근</span>
+                <span>{t('user.locateSuccess.nearby')}</span>
               </div>
               <span className={styles.confirmedBadge}>
                 <Icon name="check" size={11} />
-                인식 완료
+                {t('user.locateSuccess.recognized')}
               </span>
             </div>
             <div className={styles.locationMeta}>
-              <span>2호선 · 출구 1–8</span>
-              <span>오차 범위 약 1.2m</span>
+              <span>{t('user.locateSuccess.stationMeta')}</span>
+              <span>{t('user.locateSuccess.accuracy')}</span>
             </div>
           </Card>
 
@@ -127,12 +133,12 @@ export function LocateSuccessPage() {
               사용자가 목적지 선택부터 다시 밟는다.
             */}
             {relocalizing ? (
-              <ButtonLink to={USER_ROUTES.NAVIGATION}>이 위치에서 안내 계속하기 →</ButtonLink>
+              <ButtonLink to={USER_ROUTES.NAVIGATION}>{t('user.locateSuccess.continue')}</ButtonLink>
             ) : (
-              <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>이 위치에서 경로 선택하기 →</ButtonLink>
+              <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>{t('user.locateSuccess.chooseRoute')}</ButtonLink>
             )}
             <GhostLink to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.retake}>
-              이 위치가 아니에요 · 다시 촬영
+              {t('user.locateSuccess.retake')}
             </GhostLink>
           </div>
         </section>

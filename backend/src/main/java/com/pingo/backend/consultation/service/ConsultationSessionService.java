@@ -56,7 +56,11 @@ public class ConsultationSessionService {
 
         if(consultationSessionRepository.existsByUserSessionIdAndStatusIn(
                 request.userSessionId(), ACTIVE_STATUSES)){
-            throw new BusinessException(ErrorCode.CONSULTATION_ALREADY_IN_PROGRESS);
+            ConsultationSession activeSession = consultationSessionRepository
+                    .findFirstByUserSessionIdAndStatusInOrderByRequestedAtDesc(
+                            request.userSessionId(), ACTIVE_STATUSES)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_ALREADY_IN_PROGRESS));
+            return ConsultationCreateResponse.from(activeSession);
         }
 
         stationRepository.findById(request.stationId())

@@ -56,6 +56,12 @@ public record LocalizationResponse(
         )
         String startNodeLabel,
 
+        @Schema(
+                description = "낮은 신뢰도 응답에서만 제공하는 다중 프레임 투표용 위치 후보",
+                nullable = true
+        )
+        LocalizationCandidateResponse candidate,
+
         @ArraySchema(
                 schema = @Schema(
                         description = "사용자에게 제공할 fallback 동작",

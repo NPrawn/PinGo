@@ -2,7 +2,20 @@ import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getNearbyStations, queryKeys, searchStations } from '@/shared/api';
 import { localizedNameOf, useApiLanguage, type ApiLanguage } from '@/shared/i18n';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import type { Station } from '../model/types';
+
+const ENGLISH_LINES: Readonly<Record<string, string>> = {
+  '1호선': 'Line 1', '2호선': 'Line 2', '3호선': 'Line 3', '4호선': 'Line 4',
+  '5호선': 'Line 5', '6호선': 'Line 6', '7호선': 'Line 7', '8호선': 'Line 8',
+  '9호선': 'Line 9', 신분당선: 'Shinbundang Line', 수인분당선: 'Suin-Bundang Line',
+  경의중앙선: 'Gyeongui-Jungang Line', 공항철도: 'Airport Railroad',
+};
+
+function lineInfoOf(lineInfo: string | undefined, language: ApiLanguage) {
+  if (!lineInfo || language !== 'en') return lineInfo ?? '';
+  return lineInfo.split('·').map((line) => ENGLISH_LINES[line.trim()] ?? line.trim()).join(' · ');
+}
 
 /** 서버가 주는 역 한 건. 세 조회가 같은 모양을 돌려주므로 필요한 만큼만 좁게 받는다. */
 interface StationRow {
@@ -21,11 +34,13 @@ interface StationRow {
  * 서버가 `nameKo`·`nameEn`을 둘 다 주므로 조회 키에 언어를 넣지 않는다(`localizedNameOf`).
  */
 function stationName(language: ApiLanguage, nameKo?: string, nameEn?: string) {
-  return localizedNameOf(language, nameKo, nameEn) ?? '이름 없는 역';
+  const localized = localizedNameOf(language, nameKo, nameEn);
+  if (language === 'en' && localized) return nameEn?.trim() || localizeUserLabel(localized, 'en');
+  return localized ?? (language === 'en' ? 'Unnamed station' : '이름 없는 역');
 }
 
-function formatDistance(distanceM?: number) {
-  if (distanceM == null) return '주변 역';
+function formatDistance(distanceM: number | undefined, language: ApiLanguage) {
+  if (distanceM == null) return language === 'en' ? 'Nearby station' : '주변 역';
   return distanceM < 1_000 ? `${distanceM}m` : `${(distanceM / 1_000).toFixed(1)}km`;
 }
 
@@ -56,25 +71,25 @@ function useStationMapper(
 const toSearchResult = (row: StationRow, language: ApiLanguage): Station => ({
   stationId: row.stationId ?? null,
   name: stationName(language, row.nameKo, row.nameEn),
-  line: row.lineInfo ?? '',
+  line: lineInfoOf(row.lineInfo, language),
   // 외부 검색 결과는 주소를, 등록된 역은 그대로 검색 결과임을 보여준다.
-  dist: row.address ?? '검색 결과',
+  dist: row.address ?? (language === 'en' ? 'Search result' : '검색 결과'),
   serviceReady: row.serviceReady ?? true,
 });
 
 const toRegisteredStation = (row: StationRow, language: ApiLanguage): Station => ({
   stationId: row.stationId ?? null,
   name: stationName(language, row.nameKo, row.nameEn),
-  line: row.lineInfo ?? '',
-  dist: '실내 안내 가능',
+  line: lineInfoOf(row.lineInfo, language),
+  dist: language === 'en' ? 'Indoor guidance available' : '실내 안내 가능',
   serviceReady: true,
 });
 
 const toNearbyStation = (row: StationRow, language: ApiLanguage, index: number): Station => ({
   stationId: row.stationId ?? null,
   name: stationName(language, row.nameKo, row.nameEn),
-  line: row.lineInfo ?? '',
-  dist: formatDistance(row.distanceM),
+  line: lineInfoOf(row.lineInfo, language),
+  dist: formatDistance(row.distanceM, language),
   here: index === 0,
 });
 

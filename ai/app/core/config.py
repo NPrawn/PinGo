@@ -30,6 +30,7 @@ class AppSettings:
     max_top_k: int = 50
     max_concurrent_inferences: int = 1
     max_queue_size: int = 2
+    input_size: int = 768
 
     @classmethod
     def from_env(cls) -> AppSettings:
@@ -66,6 +67,7 @@ class AppSettings:
                 1,
             ),
             max_queue_size=_read_non_negative_int("AI_MAX_QUEUE_SIZE", 2),
+            input_size=_read_positive_int("AI_INPUT_SIZE", 768),
         )
 
     def configured_maps(self) -> tuple[MapSpec, ...]:

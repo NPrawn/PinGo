@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import styles from './CaptureViewfinder.module.css';
 
 export type CaptureDirection = {
@@ -18,14 +19,15 @@ const barClass: Record<CaptureDirection['state'], string> = {
 
 /** Four-direction rotation progress shown at the bottom of both capture screens. */
 export function CaptureProgress({ directions }: CaptureProgressProps) {
+  const { t } = useTranslation();
   const done = directions.filter((d) => d.state === 'done').length;
 
   return (
     <>
       <div className={styles.progressHead}>
-        <span className={styles.progressTitle}>회전 진행</span>
+        <span className={styles.progressTitle}>{t('user.capture.rotationProgress')}</span>
         <span className={styles.progressCount}>
-          {done} / {directions.length} 방향
+          {t('user.capture.directionCount', { done, total: directions.length })}
         </span>
       </div>
       <div className={styles.progress}>
@@ -66,9 +68,10 @@ type ViewfinderBackProps = {
 };
 
 /** Circular back control over the dark viewfinder. */
-export function ViewfinderBack({ to, label = '이전 화면으로 돌아가기' }: ViewfinderBackProps) {
+export function ViewfinderBack({ to, label }: ViewfinderBackProps) {
+  const { t } = useTranslation();
   return (
-    <Link to={to} className={styles.backButton} aria-label={label}>
+    <Link to={to} className={styles.backButton} aria-label={label ?? t('user.camera.back')}>
       <svg
         width="15"
         height="15"

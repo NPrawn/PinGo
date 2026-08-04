@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   useNearbyStations,
   useRegisteredStations,
@@ -16,24 +17,6 @@ import styles from './StationSearch.module.css';
 /** Accent cycle for the nearby list; the detected station stays mint. */
 const TONES: readonly BlobTone[] = ['mint', 'sky', 'coral', 'lilac'];
 
-/** Prototype GPS recommendations that are visible while indoor guidance is unavailable. */
-const DISPLAY_ONLY_NEARBY_STATIONS: readonly Station[] = [
-  {
-    stationId: null,
-    name: '선릉역',
-    line: '2호선·수인분당선',
-    dist: '420m',
-    serviceReady: false,
-  },
-  {
-    stationId: null,
-    name: '강남역',
-    line: '2호선·신분당선',
-    dist: '1.1km',
-    serviceReady: false,
-  },
-];
-
 type StationSearchProps = {
   onSelect?: (station: string) => void;
 };
@@ -46,6 +29,7 @@ type StationSearchProps = {
  * 없어 선택할 수 없고 "준비 중"으로만 보여준다.
  */
 export function StationSearch({ onSelect }: StationSearchProps) {
+  const { t } = useTranslation();
   const station = useStationStore((state) => state.station);
   const setStation = useStationStore((state) => state.setStation);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
@@ -60,14 +44,7 @@ export function StationSearch({ onSelect }: StationSearchProps) {
   const registeredStations = useRegisteredStations(!hasNearby);
   const results = stationSearch.data ?? [];
   const nearbyStations = hasNearby ? nearbySearch.data! : (registeredStations.data ?? []);
-  const visibleNearbyStations = hasNearby
-    ? [
-        ...nearbyStations,
-        ...DISPLAY_ONLY_NEARBY_STATIONS.filter(
-          (candidate) => !nearbyStations.some((item) => item.name === candidate.name),
-        ),
-      ].slice(0, 3)
-    : nearbyStations;
+  const visibleNearbyStations = hasNearby ? nearbyStations.slice(0, 3) : nearbyStations;
   // 검색어가 비면 쿼리를 켜지 않으므로 결과 영역도 열지 않는다.
   const showResults = searched && query.trim().length > 0;
   const hasUnavailableResult = results.some((item) => item.serviceReady === false);
@@ -119,15 +96,20 @@ export function StationSearch({ onSelect }: StationSearchProps) {
               }
         }
       >
-        <Blob tone={unavailable ? 'lilac' : tone} style={{ width: 28, height: 28 }} />
+        <Blob
+          tone={unavailable ? 'lilac' : tone}
+          className={styles.stationBlob}
+        />
         <span className={styles.rowBody}>
           <b className={styles.name}>{item.name}</b>{' '}
           <span className={styles.line}>{item.line}</span>
           <br />
           <span className={styles.dist}>{item.dist}</span>
         </span>
-        {item.here && <span className={styles.hereBadge}>현위치</span>}
-        {unavailable && <span className={styles.soonBadge}>준비 중</span>}
+        {item.here && <span className={styles.hereBadge}>{t('user.stationSearch.current')}</span>}
+        {unavailable && (
+          <span className={styles.soonBadge}>{t('user.stationSearch.comingSoon')}</span>
+        )}
       </SelectRow>
     );
   };
@@ -137,8 +119,8 @@ export function StationSearch({ onSelect }: StationSearchProps) {
       <div className={styles.searchWrap}>
         <Field
           big
-          placeholder="역 이름 검색 (예: 역삼)"
-          aria-label="역 이름 검색"
+          placeholder={t('user.stationSearch.placeholder')}
+          aria-label={t('user.stationSearch.label')}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -164,40 +146,44 @@ export function StationSearch({ onSelect }: StationSearchProps) {
           </svg>
         </span>
         <button type="button" className={styles.searchSubmit} onClick={() => setSearched(true)}>
-          검색
+          {t('user.stationSearch.search')}
         </button>
       </div>
 
       {showResults ? (
         <>
-          <Kicker className={styles.sectionLabel}>검색 결과 · &quot;{query}&quot;</Kicker>
+          <Kicker className={styles.sectionLabel}>
+            {t('user.stationSearch.results', { query })}
+          </Kicker>
           <div className={styles.list}>
             {results.map((item) => renderRow(item, 'lilac'))}
-            {stationSearch.isPending && <div className={styles.empty}>검색하고 있어요…</div>}
+            {stationSearch.isPending && (
+              <div className={styles.empty}>{t('user.stationSearch.searching')}</div>
+            )}
             {stationSearch.isError && (
-              <div className={styles.empty}>역 목록을 불러오지 못했어요.</div>
+              <div className={styles.empty}>{t('user.stationSearch.error')}</div>
             )}
             {!stationSearch.isPending && !stationSearch.isError && results.length === 0 && (
-              <div className={styles.empty}>일치하는 역이 없어요. 다른 이름으로 검색해보세요.</div>
+              <div className={styles.empty}>{t('user.stationSearch.empty')}</div>
             )}
             {hasUnavailableResult && (
-              <div className={styles.empty}>
-                &lsquo;준비 중&rsquo; 역은 실내 지도를 아직 준비하지 않아 선택할 수 없어요.
-              </div>
+              <div className={styles.empty}>{t('user.stationSearch.unavailable')}</div>
             )}
           </div>
         </>
       ) : (
         <>
           <Kicker className={styles.sectionLabel}>
-            {hasNearby ? '주변 역 · GPS 기반 추천' : '실내 안내가 준비된 역'}
+            {hasNearby
+              ? t('user.stationSearch.nearbyGps')
+              : t('user.stationSearch.registered')}
           </Kicker>
           <div className={styles.list}>
             {visibleNearbyStations.map((item, index) =>
               renderRow(item, item.here ? 'mint' : TONES[index % TONES.length]),
             )}
             {visibleNearbyStations.length === 0 && (
-              <div className={styles.empty}>역 이름을 검색해 출발지를 골라주세요.</div>
+              <div className={styles.empty}>{t('user.stationSearch.chooseOrigin')}</div>
             )}
           </div>
         </>

@@ -30,6 +30,7 @@ def create_app(
         lambda contexts: MultiMapLocalizer(
             dict(contexts),
             device=app_settings.device,
+            input_size=app_settings.input_size,
         )
     )
     limiter = inference_limiter or InferenceLimiter(

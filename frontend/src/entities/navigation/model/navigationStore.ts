@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { RouteResponse } from '@/shared/api';
 import type { RouteType } from '@/shared/types';
+import type { MapDirection } from './types';
 
 /**
  * 안내 도중 들르기로 한 곳.
@@ -32,6 +33,8 @@ const MAX_WAYPOINTS = 2;
 type NavigationStore = {
   /** Destination name the user picked from search. */
   destination: string | null;
+  destinationNameKo: string | null;
+  destinationNameEn: string | null;
   destinationId: number | null;
   destinationType: string | null;
   destinationLatitude: number | null;
@@ -45,6 +48,7 @@ type NavigationStore = {
   currentLocationLabel: string | null;
   currentMapX: number | null;
   currentMapY: number | null;
+  currentForwardMap: MapDirection | null;
   routeResult: RouteResponse | null;
   /**
    * 사용자가 고른 경로 유형.
@@ -93,6 +97,8 @@ type NavigationStore = {
       destinationLatitude?: number;
       destinationLongitude?: number;
       destinationAddress?: string;
+      destinationNameKo?: string;
+      destinationNameEn?: string;
     },
   ) => void;
   setDestination: (destination: string) => void;
@@ -102,6 +108,7 @@ type NavigationStore = {
     label?: string;
     mapX?: number;
     mapY?: number;
+    forwardMap?: MapDirection | null;
   }) => void;
   setRoute: (route: RouteType) => void;
   /**
@@ -137,6 +144,8 @@ export const useNavigationStore = create<NavigationStore>()(
   persist(
     (set) => ({
       destination: null,
+      destinationNameKo: null,
+      destinationNameEn: null,
       destinationId: null,
       destinationType: null,
       destinationLatitude: null,
@@ -149,6 +158,7 @@ export const useNavigationStore = create<NavigationStore>()(
       currentLocationLabel: null,
       currentMapX: null,
       currentMapY: null,
+      currentForwardMap: null,
       routeResult: null,
       route: 'fastest',
       stepsOpen: false,
@@ -160,6 +170,8 @@ export const useNavigationStore = create<NavigationStore>()(
       startNewJourney: (destination, details) =>
         set({
           destination,
+          destinationNameKo: details?.destinationNameKo ?? null,
+          destinationNameEn: details?.destinationNameEn ?? null,
           destinationId: details?.destinationId ?? null,
           destinationType: details?.destinationType ?? null,
           destinationLatitude: details?.destinationLatitude ?? null,
@@ -174,6 +186,8 @@ export const useNavigationStore = create<NavigationStore>()(
       setDestination: (destination) =>
         set({
           destination,
+          destinationNameKo: null,
+          destinationNameEn: null,
           destinationId: null,
           destinationType: null,
           destinationLatitude: null,
@@ -190,6 +204,7 @@ export const useNavigationStore = create<NavigationStore>()(
           currentLocationLabel: location.label ?? null,
           currentMapX: location.mapX ?? null,
           currentMapY: location.mapY ?? null,
+          currentForwardMap: location.forwardMap ?? null,
           routeResult: null,
         }),
       setRoute: (route) => set({ route }),

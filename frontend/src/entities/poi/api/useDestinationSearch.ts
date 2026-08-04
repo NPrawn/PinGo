@@ -29,6 +29,8 @@ function toPoi(
     id: destination.destinationId,
     /* 서버가 두 언어 이름을 함께 주므로 조회 키가 아니라 여기서 고른다(`localizedNameOf`). */
     name: localizedNameOf(language, destination.nameKo, destination.nameEn) ?? '이름 없는 목적지',
+    nameKo: destination.nameKo,
+    nameEn: destination.nameEn,
     icon: toIcon(destination.category),
     meta: destination.category ?? destination.destinationType ?? '',
     kind: toKind(destination.destinationType),

@@ -1,19 +1,22 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useConsultStore } from '@/entities/consult';
 import { ApiError, getUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { useUserSessionStore } from '../model/userSessionStore';
 import { parseUserSessionExpiry } from './parseUserSessionExpiry';
 import { syncPendingCurrentNode } from './syncCurrentNode';
 
+type UserSessionBootstrapOptions = {
+  onSessionExpired?: () => void;
+};
+
 /** 저장된 세션을 검증하고 최초 생성 시각 기준 만료 시점에 사용자 흐름을 초기화한다. */
-export function useUserSessionBootstrap() {
+export function useUserSessionBootstrap({ onSessionExpired }: UserSessionBootstrapOptions = {}) {
   const navigate = useNavigate();
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const setExpiresAt = useUserSessionStore((state) => state.setExpiresAt);
+  const setLanguage = useUserSessionStore((state) => state.setLanguage);
   const clearSession = useUserSessionStore((state) => state.clearSession);
-  const clearConsultation = useConsultStore((state) => state.clearConsultation);
 
   useEffect(() => {
     const retryPendingSync = () => void syncPendingCurrentNode();
@@ -26,7 +29,7 @@ export function useUserSessionBootstrap() {
 
     const expireSession = () => {
       clearSession();
-      clearConsultation();
+      onSessionExpired?.();
       navigate(USER_ROUTES.SPLASH, { replace: true });
     };
 
@@ -59,6 +62,13 @@ export function useUserSessionBootstrap() {
         }
 
         setExpiresAt(expiresAt);
+        const currentLanguage = useUserSessionStore.getState().language;
+        // sessionStorage의 언어는 사용자가 가장 최근에 선택한 값이다. 새로고침 직후
+        // 먼저 시작된 GET 응답이 설정 화면의 최신 선택을 이전 서버 값으로 덮지 않게 한다.
+        // 저장된 언어가 없는 구형 세션에서만 서버 값을 복원한다.
+        if (currentLanguage === null && (session.language === 'ko' || session.language === 'en')) {
+          setLanguage(session.language);
+        }
         scheduleExpiry(expiresAtMs);
         void syncPendingCurrentNode();
       })
@@ -73,5 +83,5 @@ export function useUserSessionBootstrap() {
       disposed = true;
       if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
     };
-  }, [clearConsultation, clearSession, navigate, setExpiresAt, userSessionId]);
+  }, [clearSession, navigate, onSessionExpired, setExpiresAt, setLanguage, userSessionId]);
 }

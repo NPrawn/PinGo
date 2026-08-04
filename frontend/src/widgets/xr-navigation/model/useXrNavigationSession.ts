@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IndoorPoint } from '@/entities/navigation';
-import {
-  resolveAnchorForwardMap,
-  useXrMapPosition,
-  type UseXrMapPositionValue,
-} from '@/features/xr-tracking';
+import { useXrMapPosition, type PlanarVector, type UseXrMapPositionValue } from '@/features/xr-tracking';
 import {
   detectXrSupport,
   xrSessionController,
@@ -30,6 +26,10 @@ export interface UseXrNavigationSessionOptions {
    * `UseXrMapPositionOptions.currentIndoorLocation` 주석에 있다.
    */
   currentIndoorLocation?: IndoorPoint | null;
+  /** Actual VPS direction paired with the confirmed indoor location. */
+  anchorForwardMap?: PlanarVector | null;
+  /** Map-coordinate units per physical XR meter. */
+  distanceScale?: number;
   /** 테스트에서 가짜 컨트롤러를 주입한다. */
   controller?: XrSessionController;
   /**
@@ -98,10 +98,12 @@ export interface UseXrNavigationSessionValue extends UseXrMapPositionValue {
  */
 export function useXrNavigationSession({
   currentIndoorLocation = null,
+  anchorForwardMap = null,
+  distanceScale = 1,
   controller = xrSessionController,
   releaseCamera,
 }: UseXrNavigationSessionOptions = {}): UseXrNavigationSessionValue {
-  const tracking = useXrMapPosition({ currentIndoorLocation, controller });
+  const tracking = useXrMapPosition({ currentIndoorLocation, distanceScale, controller });
 
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [phase, setPhase] = useState<GatePhase>('notice');
@@ -197,20 +199,22 @@ export function useXrNavigationSession({
    * 실패한다. 보류했다가 나중에 적용하는 대기 큐는 만들지 않는다 — 앵커는 지도 좌표와 pose를
    * **같은 순간의 값으로** 묶어야 하는데, 큐는 그 둘의 시점을 어긋나게 한다.
    *
-   * TODO(11.2, 12장 2·4번): 좌표는 세션 안 위치 인식(VPS) 응답에서 와야 한다. 지금은 그
-   * 엔드포인트가 `API_명세서.md`에 없고(`POST /navigation/relocalize` 미정) `camera-access`
-   * 프레임 리드백도 붙지 않아, **진입 시 확정 위치를 그 자리에 대신 넣는다.** 방향도
-   * `MOCK_ANCHOR_FORWARD_MAP` 목업이다. 즉 이 앵커는 실제 위치 인식 결과가 아니며, 사용자가
-   * 세션을 여는 사이 움직인 만큼 어긋난다. 응답이 붙으면 그 좌표와 방향을 넣는다.
+   * 진입 전 VPS 응답의 실제 `forwardMap`만 사용한다. 방향이 없으면 회전을 추정하지 않고
+   * 앵커를 만들지 않는다. 임의 방향을 사용하면 지도 경로를 가로지르는 오차가 생기기 때문이다.
    */
   useEffect(() => {
-    if (!isTracking || anchorFiredRef.current || !currentIndoorLocation) return;
-
-    const forwardMap = resolveAnchorForwardMap(null, { useMock: true });
+    if (
+      !isTracking ||
+      anchorFiredRef.current ||
+      !currentIndoorLocation ||
+      !anchorForwardMap
+    ) {
+      return;
+    }
 
     // 실패하면 다시 시도할 수 있게 표시를 남기지 않는다. 성공한 뒤에만 발화를 닫는다.
-    anchorFiredRef.current = setAnchor(currentIndoorLocation, forwardMap);
-  }, [isTracking, currentIndoorLocation, setAnchor]);
+    anchorFiredRef.current = setAnchor(currentIndoorLocation, anchorForwardMap);
+  }, [anchorForwardMap, isTracking, currentIndoorLocation, setAnchor]);
 
   /**
    * 세션 시작이 실패하면 안내를 다시 띄운다.

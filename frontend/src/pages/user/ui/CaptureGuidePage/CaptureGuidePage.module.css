@@ -166,6 +166,45 @@
   font-size: 15px;
 }
 
+:global(html[lang='en']) .guideLead {
+  min-height: 175px;
+}
+
+:global(html[lang='en']) .topSpacer {
+  height: 14px;
+}
+
+:global(html[lang='en']) .title {
+  margin-top: 10px;
+  font-size: 22px;
+  line-height: 1.08;
+}
+
+:global(html[lang='en']) .radar {
+  height: 165px;
+  margin-top: 14px;
+}
+
+:global(html[lang='en']) .tips {
+  gap: 9px;
+  padding: 13px 14px;
+  margin-top: 14px;
+}
+
+:global(html[lang='en']) .tipTitle {
+  font-size: 11.5px;
+}
+
+:global(html[lang='en']) .tipBody {
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+:global(html[lang='en']) .captureButton {
+  min-height: 52px;
+  font-size: 13px;
+}
+
 @keyframes radar-sweep {
   to {
     transform: rotate(360deg);

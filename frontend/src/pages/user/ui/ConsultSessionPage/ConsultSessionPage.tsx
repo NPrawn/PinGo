@@ -5,7 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { isClosedConsultation, useConsultStore } from '@/entities/consult';
 import { FACILITY_MAP_FILTERS, useStationFacilities, type Facility } from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
-import { routeProgressOf, useNavigationStore, type IndoorPoint } from '@/entities/navigation';
+import {
+  routeDistanceScaleOf,
+  routeProgressOf,
+  useNavigationStore,
+  type IndoorPoint,
+} from '@/entities/navigation';
 import { routeOriginOf, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
@@ -28,6 +33,7 @@ import {
 import { USER_ROUTES } from '@/shared/config';
 /* 실기기 검사 패널. 임시다 — 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89) */
 import { countDevProbe, DevProbe, useDevProbe } from '@/shared/devprobe';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import {
   xrSessionController,
   type XrCameraStreamHandle,
@@ -46,7 +52,7 @@ const CONSULTATION_WATCH_MS = 4000;
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
   const navigate = useNavigate();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const userLanguage = i18n.resolvedLanguage ?? i18n.language ?? 'en';
   const consultationId = useConsultStore((state) => state.consultationId);
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
@@ -154,7 +160,11 @@ export function ConsultSessionPage() {
   /** 큰 자리와 같은 말이면 두 번 쓰지 않는다(아직 옮기지 못해 원문이 위에 올라간 경우다). */
   const captionSource = remoteCaption && remoteCaption !== captionPrimary ? remoteCaption : '';
   /** 상담원 쪽 자막이 죽었다는 사실. 이쪽 마이크 문제와 섞이지 않게 따로 띄운다. */
-  const remoteCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '상담원');
+  const remoteCaptionNotice = describeRemoteCaptionTrouble(
+    remoteCaptionError,
+    t('user.consultSession.agent'),
+    i18n.resolvedLanguage === 'en' ? 'en' : 'ko',
+  );
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
   /**
@@ -165,6 +175,11 @@ export function ConsultSessionPage() {
    */
   const destination = useNavigationStore((state) => state.destination);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
+  const displayedOrigin = localizeUserLabel(currentLocationLabel ?? station, displayLanguage);
+  const displayedDestination = destination
+    ? localizeUserLabel(destination, displayLanguage)
+    : null;
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
@@ -195,6 +210,15 @@ export function ConsultSessionPage() {
    *
    * 앵커가 생긴 뒤의 변경은 훅이 조용히 무시한다(296 계약). 그 뒤로는 추적 좌표가 앞선다.
    */
+  /**
+   * 위치 인식이 확정한 방향. 앵커의 기준이라 첫 렌더 값에 고정한다. (343 병합)
+   *
+   * 안내 화면과 같은 값을 같은 방식으로 읽는다 — 두 화면이 같은 앵커를 만들어야 사용자가 화면을
+   * 오갈 때 마커가 튀지 않는다.
+   */
+  const currentForwardMap = useNavigationStore((state) => state.currentForwardMap);
+  const [confirmedForwardMap] = useState(() => currentForwardMap);
+
   const storedLocation = useMemo<IndoorPoint | null>(
     () =>
       currentFloorId != null && currentMapX != null && currentMapY != null
@@ -248,6 +272,51 @@ export function ConsultSessionPage() {
   }, [replaceLocalVideoTrack]);
 
   /**
+   * 경로를 이 화면에서도 직접 조회한다. (S15P11A206-89)
+   *
+   * **예전에는 스토어에 있는 것만 그렸다.** 안내 화면이 조회해 넣어 둔 값을 읽을 뿐이라, 그것이
+   * 비어 있으면 지도에 경로가 그려지지 않았다. 안내 화면을 거치지 않고 들어온 경우, 새로고침으로
+   * 스토어가 초기화된 경우, 그리고 **상담자가 목적지를 바꾼 경우**가 그렇다 — 마지막 것이 특히
+   * 문제였다. `DESTINATION_CHANGE_REQUESTED` 는 `targetNodeId` 만 바꾸는데 경로를 다시 받는
+   * 사람이 없어, 화면에 적힌 목적지와 지도에 그려진 길이 서로 다른 곳을 가리켰다.
+   *
+   * 조회 키와 조건은 안내 화면과 같다. 같은 키를 쓰므로 안내 화면에서 이미 받은 경로가 있으면
+   * 캐시에서 즉시 나오고 요청이 한 번 더 나가지 않는다.
+   */
+  const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
+  const origin = SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null;
+  const routeQuery = useQuery({
+    queryKey: [
+      'indoor-route',
+      stationId,
+      currentNodeId,
+      targetNodeId,
+      routeType,
+      waypointNodeIds,
+      origin?.currentMapX ?? null,
+      origin?.currentMapY ?? null,
+    ],
+    queryFn: () =>
+      createIndoorRoute({
+        stationId: stationId!,
+        startNodeId: currentNodeId!,
+        targetNodeId: targetNodeId!,
+        waypointNodeIds,
+        routeType,
+        ...(origin ?? {}),
+      }),
+    enabled: stationId != null && currentNodeId != null && targetNodeId != null,
+    retry: false,
+  });
+  /**
+   * 조회가 끝나기 전에는 스토어에 남은 경로를 그린다.
+   *
+   * 안내 화면에서 넘어온 순간에는 캐시가 있어 곧바로 나오지만, 새로고침 뒤에는 응답을 기다리는
+   * 동안 경로가 비어 있다. 그 사이에 선을 지우면 상담자가 짚어 주는 자리를 맞춰 볼 수 없다.
+   */
+  const routeResult = routeQuery.data ?? storedRouteResult;
+
+  /**
    * XR 세션. 안내 화면과 같은 게이트를 쓴다.
    *
    * 상담 화면도 세션을 열어야 위치와 방향이 실시간으로 갱신된다. 열지 않으면 상담자가 보는 것은
@@ -269,6 +338,19 @@ export function ConsultSessionPage() {
     anchorStatus,
   } = useXrNavigationSession({
     currentIndoorLocation: storedLocation,
+    /**
+     * 위치 인식이 준 실제 방향과 거리 배율. **안내 화면과 같은 값을 쓴다.** (343 병합)
+     *
+     * `343` 이 앵커 계약을 바꿨다 — 목업 방향(`MOCK_ANCHOR_FORWARD_MAP`)이 없어지고, 방향이
+     * 없으면 앵커를 아예 만들지 않는다("임의 방향을 쓰면 지도 경로를 가로지르는 오차가 생긴다").
+     * 그래서 이 두 값을 넘기지 않으면 상담 화면의 앵커가 영원히 만들어지지 않고, 방향과 이동이
+     * 다시 죽는다.
+     *
+     * 방향은 첫 렌더 값에 고정한다 — 앵커의 기준이라 도중에 바뀌면 짝이 어긋난다. 안내 화면도
+     * 같은 방식이다.
+     */
+    anchorForwardMap: confirmedForwardMap,
+    distanceScale: routeDistanceScaleOf(routeResult, storedLocation?.floorId),
     releaseCamera: handOverCameraToSession,
   });
 
@@ -349,10 +431,10 @@ export function ConsultSessionPage() {
    */
   const connected = status === 'connected' && !reconnecting;
   const connectionLabel = reconnecting
-    ? '연결 다시 시도 중'
+    ? t('user.consultSession.retrying')
     : connected
-      ? '상담 연결됨'
-      : '연결 중';
+      ? t('user.consultSession.connected')
+      : t('user.consultSession.connecting');
 
   /**
    * 카메라가 지금 어디까지 왔는지.
@@ -365,10 +447,10 @@ export function ConsultSessionPage() {
    */
   const cameraLabel =
     cameraStreamState === 'streaming'
-      ? '카메라 공유 중'
+      ? t('user.consultSession.cameraSharing')
       : cameraStreamState === 'unsupported'
-        ? '이 기기는 카메라를 보낼 수 없어요'
-        : '카메라 준비 중';
+        ? t('user.consultSession.cameraUnsupported')
+        : t('user.consultSession.cameraPreparing');
 
   /**
    * 붙지 않은 상담에서는 카메라 이야기를 하지 않는다.
@@ -390,51 +472,12 @@ export function ConsultSessionPage() {
    * 쪽인 사용자만 구독한다) **사용자→상담자 지도 동기화는 채널이 열려야 간다.** 그래서 이 표시가
    * 지도가 상담자 화면에 뜨는지와 직접 맞물린다.
    */
-  const connectionDetail = `연결 상태: ${status} · 이벤트 채널 ${eventChannelOpen ? '열림' : '닫힘'}`;
-  /**
-   * 경로를 이 화면에서도 직접 조회한다. (S15P11A206-89)
-   *
-   * **예전에는 스토어에 있는 것만 그렸다.** 안내 화면이 조회해 넣어 둔 값을 읽을 뿐이라, 그것이
-   * 비어 있으면 지도에 경로가 그려지지 않았다. 안내 화면을 거치지 않고 들어온 경우, 새로고침으로
-   * 스토어가 초기화된 경우, 그리고 **상담자가 목적지를 바꾼 경우**가 그렇다 — 마지막 것이 특히
-   * 문제였다. `DESTINATION_CHANGE_REQUESTED` 는 `targetNodeId` 만 바꾸는데 경로를 다시 받는
-   * 사람이 없어, 화면에 적힌 목적지와 지도에 그려진 길이 서로 다른 곳을 가리켰다.
-   *
-   * 조회 키와 조건은 안내 화면과 같다. 같은 키를 쓰므로 안내 화면에서 이미 받은 경로가 있으면
-   * 캐시에서 즉시 나오고 요청이 한 번 더 나가지 않는다.
-   */
-  const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
-  const origin = SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null;
-  const routeQuery = useQuery({
-    queryKey: [
-      'indoor-route',
-      stationId,
-      currentNodeId,
-      targetNodeId,
-      routeType,
-      waypointNodeIds,
-      origin?.currentMapX ?? null,
-      origin?.currentMapY ?? null,
-    ],
-    queryFn: () =>
-      createIndoorRoute({
-        stationId: stationId!,
-        startNodeId: currentNodeId!,
-        targetNodeId: targetNodeId!,
-        waypointNodeIds,
-        routeType,
-        ...(origin ?? {}),
-      }),
-    enabled: stationId != null && currentNodeId != null && targetNodeId != null,
-    retry: false,
+  const connectionDetail = t('user.consultSession.statusWithChannel', {
+    status,
+    channel: eventChannelOpen
+      ? t('user.consultSession.channelOpen')
+      : t('user.consultSession.channelClosed'),
   });
-  /**
-   * 조회가 끝나기 전에는 스토어에 남은 경로를 그린다.
-   *
-   * 안내 화면에서 넘어온 순간에는 캐시가 있어 곧바로 나오지만, 새로고침 뒤에는 응답을 기다리는
-   * 동안 경로가 비어 있다. 그 사이에 선을 지우면 상담자가 짚어 주는 자리를 맞춰 볼 수 없다.
-   */
-  const routeResult = routeQuery.data ?? storedRouteResult;
 
   /**
    * 경로의 마지막 노드를 목적지 마커로 쓴다.
@@ -553,13 +596,13 @@ export function ConsultSessionPage() {
     void getConsultation(consultationId, userSessionId)
       .then((consultation) => {
         if (!consultation.signalingRoomId || !consultation.signalingAccessToken) {
-          setTokenError('상담 연결 정보를 받지 못했습니다.');
+          setTokenError(t('user.consultSession.tokenError'));
           return;
         }
         setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
       })
-      .catch(() => setTokenError('상담 연결 정보를 받지 못했습니다.'));
-  }, [consultationId, setSignalingRoom, signalingAccessToken, signalingRoomId, userSessionId]);
+      .catch(() => setTokenError(t('user.consultSession.tokenError')));
+  }, [consultationId, setSignalingRoom, signalingAccessToken, signalingRoomId, t, userSessionId]);
 
   /**
    * 상담자가 먼저 끊었는지 지켜본다.
@@ -712,7 +755,7 @@ export function ConsultSessionPage() {
           {/* 추적 상태는 안내 화면과 같은 자리(상단 줄 가운데)에 둔다. */}
           <XrTrackingBadge status={xrStatus} anchorStatus={anchorStatus} source={source} />
           <button type="button" className={styles.endCall} onClick={() => void endCall()}>
-            상담 종료
+            {t('user.consultSession.end')}
           </button>
         </div>
 
@@ -725,7 +768,7 @@ export function ConsultSessionPage() {
           {reconnecting && (
             <div className={styles.reconnecting} role="status">
               <span className={styles.reconnectingSpinner} aria-hidden />
-              <span>연결을 다시 시도하고 있어요</span>
+              <span>{t('user.consultSession.reconnecting')}</span>
             </div>
           )}
           {/*
@@ -737,27 +780,33 @@ export function ConsultSessionPage() {
             셀프뷰를 두지 않는다. XR 세션이 그리는 카메라 영상이 이 화면의 배경이므로, 사용자가
             보고 있는 것이 곧 상담자에게 건너가는 것이다. 같은 그림을 작은 창으로 한 번 더
             겹쳐 보여 줄 이유가 없다.
+
+            **병합 판단(S15P11A206-89):** develop 이 셀프뷰를 다시 넣었는데 여기서는 걷어 냈다.
+            그쪽은 XR 카메라 경로가 없어 셀프뷰가 유일한 확인 수단이었지만, 이 화면은 카메라가
+            배경으로 깔린다. 사용자도 "셀프뷰는 필요 없다"고 확인했다.
           */}
           <span
             className={styles.connectionStatus}
             role={!reconnecting && (error ?? tokenError) ? 'alert' : undefined}
           >
             {/* 재시도 중에는 위 로딩 화면이 안내를 대신하므로 원인 코드를 여기 또 띄우지 않는다. */}
-            {reconnecting ? '연결 상태: 재시도 중' : (error ?? tokenError ?? connectionDetail)}
+            {reconnecting
+              ? t('user.consultSession.retryingStatus')
+              : (error ?? tokenError ?? connectionDetail)}
           </span>
           <div
             className={[styles.routeHeader, waypoints.length > 0 && styles.routeHeaderCompact]
               .filter(Boolean)
               .join(' ')}
-            aria-label="상담 중인 경로"
+            aria-label={t('user.consultSession.routeLabel')}
           >
             <div className={styles.routePoint}>
               <span className={styles.routeLabel}>
                 <span className={styles.pointDot} aria-hidden />
-                <small>출발지</small>
+                <small>{t('user.station.origin')}</small>
               </span>
               {/* 위치 인식이 확정한 지점. 아직 모르면 역 이름만 적고 층을 지어내지 않는다. */}
-              <strong>{currentLocationLabel ?? station}</strong>
+              <strong>{displayedOrigin}</strong>
             </div>
             {waypoints.map((waypoint, index) => (
               <Fragment key={waypoint.nodeId}>
@@ -769,16 +818,18 @@ export function ConsultSessionPage() {
                     type="button"
                     className={styles.removeWaypoint}
                     onClick={() => removeWaypoint(waypoint.nodeId)}
-                    aria-label={`${waypoint.nameKo} 경유지 삭제`}
-                    title={`${waypoint.nameKo} 경유지 삭제`}
+                    aria-label={t('user.consultSession.removeWaypoint', { name: waypoint.nameKo })}
+                    title={t('user.consultSession.removeWaypoint', { name: waypoint.nameKo })}
                   >
                     ×
                   </button>
                   <span className={styles.routeLabel}>
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
-                    <small>경유 {index + 1}</small>
+                    <small>{t('user.consultSession.waypoint', { order: index + 1 })}</small>
                   </span>
-                  <strong title={waypoint.nameKo}>{waypoint.nameKo}</strong>
+                  <strong title={localizeUserLabel(waypoint.nameKo, displayLanguage)}>
+                    {localizeUserLabel(waypoint.nameKo, displayLanguage)}
+                  </strong>
                 </div>
               </Fragment>
             ))}
@@ -788,15 +839,17 @@ export function ConsultSessionPage() {
             <div className={styles.routePoint}>
               <span className={styles.routeLabel}>
                 <span className={`${styles.pointDot} ${styles.pointDotDestination}`} aria-hidden />
-                <small>목적지</small>
+                <small>{t('user.station.destination')}</small>
               </span>
-              <strong title={destination ?? undefined}>{destination ?? '목적지 미지정'}</strong>
+              <strong title={displayedDestination ?? undefined}>
+                {displayedDestination ?? t('user.consultSession.noDestination')}
+              </strong>
             </div>
           </div>
           <div className={styles.translation}>
             <div className={styles.translationLabel}>
               <Icon name="globe" size={13} />
-              실시간 자막 · 상담원
+              {t('user.consultSession.captionLabel')}
             </div>
             {/*
               상담원 쪽 자막이 죽었다는 사실은 자막이 있든 없든 보여야 한다. 아래 본문
@@ -819,8 +872,8 @@ export function ConsultSessionPage() {
                 remoteCaptionNotice ||
                 (captionError ??
                   (captionsSupported
-                    ? '상담원이 말하면 이 자리에 표시됩니다.'
-                    : '이 브라우저에서는 음성 자막을 지원하지 않습니다.'))}
+                    ? t('user.consultSession.captionWaiting')
+                    : t('user.consultSession.captionUnsupported')))}
             </div>
             {/*
               상담원이 말하는 중에는 이 줄이 한 마디씩 흘러간다. 위의 옮긴 문장은 말이
@@ -964,7 +1017,7 @@ export function ConsultSessionPage() {
           <div className={styles.syncNote}>
             <span className={styles.syncDot} aria-hidden />
             <p className={styles.syncText}>
-              상담원이 <b>같은 지도</b>를 보며 안내 중이에요
+              {t('user.consultSession.mapSync')}
             </p>
           </div>
         </div>

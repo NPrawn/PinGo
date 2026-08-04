@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
@@ -6,16 +7,17 @@ import { ConsultCta } from '@/features/consult-request';
 import { DestinationSearch } from '@/features/destination-search';
 import { StationSearch } from '@/features/station-search';
 import { USER_ROUTES } from '@/shared/config';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { ButtonLink, Icon, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './StationPage.module.css';
 
 type SelectionStep = 'origin' | 'destination' | 'summary';
 
-const STEPS: readonly { id: SelectionStep; label: string }[] = [
-  { id: 'origin', label: '출발지' },
-  { id: 'destination', label: '목적지' },
-  { id: 'summary', label: '최종 확인' },
+const STEPS: readonly { id: SelectionStep; labelKey: string }[] = [
+  { id: 'origin', labelKey: 'user.station.origin' },
+  { id: 'destination', labelKey: 'user.station.destination' },
+  { id: 'summary', labelKey: 'user.station.confirm' },
 ];
 
 const STEP_INDEX: Record<SelectionStep, number> = {
@@ -26,8 +28,12 @@ const STEP_INDEX: Record<SelectionStep, number> = {
 
 /** Progressive origin and destination selection that keeps one task open at a time. */
 export function StationPage() {
+  const { t, i18n } = useTranslation();
   const station = useStationStore((state) => state.station);
   const destination = useNavigationStore((state) => state.destination);
+  const destinationLabel = destination
+    ? localizeUserLabel(destination, i18n.resolvedLanguage === 'en' ? 'en' : 'ko')
+    : null;
   const [step, setStep] = useState<SelectionStep>('origin');
   const activeIndex = STEP_INDEX[step];
 
@@ -35,7 +41,11 @@ export function StationPage() {
     <PhoneFrame bodyClassName={styles.body}>
       <div className={styles.mainHeader}>
         <span className={styles.wordmark}>PinGo</span>
-        <Link to={USER_ROUTES.SETTINGS} className={styles.settingsLink} aria-label="설정">
+        <Link
+          to={USER_ROUTES.SETTINGS}
+          className={styles.settingsLink}
+          aria-label={t('user.station.settings')}
+        >
           <span className={styles.settingsEmoji} aria-hidden>
             ⚙️
           </span>
@@ -44,17 +54,21 @@ export function StationPage() {
 
       <section className={styles.hero} aria-labelledby="home-title">
         <span className={styles.heroGlow} aria-hidden />
-        <span className={styles.heroEyebrow}>HOME · 지하철 실내 길찾기</span>
+        <span className={styles.heroEyebrow}>{t('user.station.eyebrow')}</span>
         <Title id="home-title" className={styles.title}>
-          오늘은 어디로 가시나요?
+          {t('user.station.title')}
         </Title>
         <Sub className={styles.description}>
-          출발지와 목적지만 고르면 역 안의 길을 안내해 드려요.
+          {t('user.station.description')}
         </Sub>
-        <ConsultCta variant="chip" label="상담 연결하기" className={styles.heroConsult} />
+        <ConsultCta
+          variant="chip"
+          label={t('user.station.consult')}
+          className={styles.heroConsult}
+        />
       </section>
 
-      <nav className={styles.progress} aria-label="출발지와 목적지 선택 단계">
+      <nav className={styles.progress} aria-label={t('user.station.progressLabel')}>
         {STEPS.map((item, index) => {
           const complete = index < activeIndex;
           const active = index === activeIndex;
@@ -74,7 +88,7 @@ export function StationPage() {
               <span className={styles.progressDot}>
                 {complete ? <Icon name="check" size={12} /> : index + 1}
               </span>
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
               {index < STEPS.length - 1 && (
                 <Icon name="arrow-right" size={13} className={styles.progressArrow} />
               )}
@@ -89,11 +103,11 @@ export function StationPage() {
             <Icon name="target" size={18} />
           </div>
           <div className={styles.completedBody}>
-            <span>출발지</span>
+            <span>{t('user.station.origin')}</span>
             <strong>{station}</strong>
           </div>
           <button type="button" className={styles.changeButton} onClick={() => setStep('origin')}>
-            변경
+            {t('user.station.change')}
           </button>
         </div>
       )}
@@ -107,9 +121,9 @@ export function StationPage() {
             <span className={styles.step}>1</span>
             <div>
               <h2 id="origin-heading" className={styles.sectionTitle}>
-                출발지 선택
+                {t('user.station.originTitle')}
               </h2>
-              <p className={styles.sectionMeta}>역을 선택하면 다음 단계가 열려요</p>
+              <p className={styles.sectionMeta}>{t('user.station.originHint')}</p>
             </div>
             <Icon name="target" size={18} className={styles.sectionIcon} />
           </div>
@@ -126,9 +140,9 @@ export function StationPage() {
             <span className={styles.step}>2</span>
             <div>
               <h2 id="destination-heading" className={styles.sectionTitle}>
-                목적지 선택
+                {t('user.station.destinationTitle')}
               </h2>
-              <p className={styles.sectionMeta}>장소를 고르면 최종 확인으로 이어져요</p>
+              <p className={styles.sectionMeta}>{t('user.station.destinationHint')}</p>
             </div>
             <Icon name="pin" size={18} className={styles.sectionIcon} />
           </div>
@@ -141,7 +155,7 @@ export function StationPage() {
         </section>
       )}
 
-      {step === 'summary' && destination && (
+      {step === 'summary' && destinationLabel && (
         <section
           className={`${styles.summaryCard} ${styles.sectionEntering}`}
           aria-labelledby="summary-heading"
@@ -152,16 +166,22 @@ export function StationPage() {
             </span>
             <div>
               <h2 id="summary-heading" className={styles.sectionTitle}>
-                출발지와 목적지
+                {t('user.station.summaryTitle')}
               </h2>
-              <p className={styles.sectionMeta}>선택이 완료되었어요</p>
+              <p className={styles.sectionMeta}>{t('user.station.summaryHint')}</p>
             </div>
           </div>
 
-          <div className={styles.routeSummary} aria-label={`${station}에서 ${destination}까지`}>
+          <div
+            className={styles.routeSummary}
+            aria-label={t('user.station.routeLabel', {
+              origin: station,
+              destination: destinationLabel,
+            })}
+          >
             <div className={styles.routePoint}>
               <div className={styles.routePointBody}>
-                <span>출발지</span>
+                <span>{t('user.station.origin')}</span>
                 <strong>{station}</strong>
               </div>
               <button
@@ -169,7 +189,7 @@ export function StationPage() {
                 className={styles.routeEditButton}
                 onClick={() => setStep('origin')}
               >
-                수정
+                {t('user.station.edit')}
               </button>
             </div>
             <span className={styles.routeArrow}>
@@ -177,21 +197,21 @@ export function StationPage() {
             </span>
             <div className={styles.routePoint}>
               <div className={styles.routePointBody}>
-                <span>목적지</span>
-                <strong>{destination}</strong>
+                <span>{t('user.station.destination')}</span>
+                <strong>{destinationLabel}</strong>
               </div>
               <button
                 type="button"
                 className={styles.routeEditButton}
                 onClick={() => setStep('destination')}
               >
-                수정
+                {t('user.station.edit')}
               </button>
             </div>
           </div>
 
           <ButtonLink to={USER_ROUTES.CAPTURE_GUIDE} className={styles.continueButton}>
-            이 경로로 촬영 시작
+            {t('user.station.startCapture')}
             <Icon name="arrow-right" size={17} />
           </ButtonLink>
         </section>

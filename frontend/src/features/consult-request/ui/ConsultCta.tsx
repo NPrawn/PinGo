@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { USER_ROUTES } from '@/shared/config';
@@ -22,8 +23,6 @@ type ConsultCtaProps = {
   className?: string;
 };
 
-const LABEL = '상담 요청';
-
 /**
  * The single entry point into the consultation flow.
  *
@@ -35,9 +34,11 @@ export function ConsultCta({
   variant = 'button',
   size,
   attention,
-  label = LABEL,
+  label,
   className,
 }: ConsultCtaProps) {
+  const { t } = useTranslation();
+  const visibleLabel = label ?? t('user.consultRequest.cta');
   const { pathname } = useLocation();
   const setEntryRoute = useConsultStore((state) => state.setEntryRoute);
   /**
@@ -57,8 +58,8 @@ export function ConsultCta({
         to={USER_ROUTES.CONSULT_REQUEST}
         onClick={rememberEntry}
         className={[styles.help, className].filter(Boolean).join(' ')}
-        aria-label="상담원 연결"
-        title="상담원 연결"
+        aria-label={t('user.consultRequest.connect')}
+        title={t('user.consultRequest.connect')}
       >
         <span aria-hidden>?</span>
       </Link>
@@ -75,7 +76,7 @@ export function ConsultCta({
         className={className}
       >
         <Icon name="headset" size={15} />
-        {label}
+        {visibleLabel}
       </ButtonLink>
     );
   }
@@ -96,7 +97,7 @@ export function ConsultCta({
       <span className={styles.icon}>
         <Icon name="headset" size={14} />
       </span>
-      <span className={styles.label}>{label}</span>
+      <span className={styles.label}>{visibleLabel}</span>
     </Link>
   );
 }

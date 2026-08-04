@@ -154,7 +154,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByRole('button', { name: '상담 종료' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'End consultation' })).toBeInTheDocument();
     expect(screen.queryByText('상담 종료 화면')).toBeNull();
   });
 
@@ -163,7 +163,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByRole('button', { name: '상담 종료' });
+    await screen.findByRole('button', { name: 'End consultation' });
     expect(apiMocks.useCaptionTranslation).toHaveBeenCalledWith('cs_1', '', 'en');
   });
 
@@ -184,7 +184,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByRole('button', { name: '상담 종료' });
+    await screen.findByRole('button', { name: 'End consultation' });
     // 읽어야 하는 것은 자기 언어로 된 쪽이라 옮긴 문장이 큰 자리를 지킨다.
     expect(screen.getByText('Go to exit 3')).toBeInTheDocument();
     // 그 아래로 지금 들어오는 말이 흘러간다. 이것이 없으면 화면은 멈춰 보인다.
@@ -199,7 +199,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByRole('button', { name: '상담 종료' });
+    await screen.findByRole('button', { name: 'End consultation' });
     expect(screen.getAllByText('3번 출구로 가세요')).toHaveLength(1);
   });
 
@@ -214,9 +214,10 @@ describe('ConsultSessionPage', () => {
     renderPage();
 
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('상담원 쪽 브라우저가 음성 인식을 지원하지 않아');
+    // 이 파일은 i18n 을 en 으로 두므로 안내 문구도 영어다.
+    expect(alert).toHaveTextContent('their browser does not support speech recognition');
     // 목소리까지 끊긴 것으로 오해해 상담을 끊으면 안 된다.
-    expect(alert).toHaveTextContent('목소리는 그대로 들립니다');
+    expect(alert).toHaveTextContent('You can still hear their voice');
   });
 
   /** 상담 도중에 인식이 멈춘 경우. 마지막 문장에 가려 경고가 묻히면 알아챌 방법이 없다. */
@@ -232,10 +233,10 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    await screen.findByRole('button', { name: '상담 종료' });
+    await screen.findByRole('button', { name: 'End consultation' });
     expect(screen.getByText('Go to exit 3')).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      '상담원 쪽 음성 인식 서버에 연결하지 못해',
+      'the speech-recognition service is unavailable',
     );
   });
 
@@ -261,7 +262,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('상담 연결됨 · 카메라 준비 중')).toBeInTheDocument();
+    expect(await screen.findByText('Connected · Preparing camera')).toBeInTheDocument();
 
     delete (HTMLCanvasElement.prototype as { captureStream?: unknown }).captureStream;
   });
@@ -279,9 +280,9 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('연결 중')).toBeInTheDocument();
+    expect(await screen.findByText('Connecting')).toBeInTheDocument();
     // 건너가는 곳이 없는데 카메라 준비 상태를 적으면 영상이 이미 간다고 읽힌다.
-    expect(screen.queryByText(/카메라/)).toBeNull();
+    expect(screen.queryByText(/camera/i)).toBeNull();
   });
 
   it('다시 붙는 중이면 그 사실을 적는다', async () => {
@@ -290,7 +291,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('연결 다시 시도 중')).toBeInTheDocument();
+    expect(await screen.findByText('Reconnecting')).toBeInTheDocument();
   });
 
   /**
@@ -307,7 +308,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('연결 상태: connected · 이벤트 채널 닫힘')).toBeInTheDocument();
+    expect(await screen.findByText('Connection: connected · Event channel closed')).toBeInTheDocument();
   });
 
   it('채널이 열리면 열렸다고 적는다', async () => {
@@ -316,7 +317,7 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('연결 상태: connected · 이벤트 채널 열림')).toBeInTheDocument();
+    expect(await screen.findByText('Connection: connected · Event channel open')).toBeInTheDocument();
   });
 
   /**
@@ -330,8 +331,8 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('연결 중')).toBeInTheDocument();
-    expect(screen.queryByText('연결 실패')).toBeNull();
+    expect(await screen.findByText('Connecting')).toBeInTheDocument();
+    expect(screen.queryByText('Connection failed')).toBeNull();
     // 사실 자체는 숨기지 않는다. 원인은 따로 보인다.
     expect(screen.getByRole('alert')).toHaveTextContent('연결 코드 1009');
   });
@@ -346,7 +347,7 @@ describe('ConsultSessionPage', () => {
     renderPage();
 
     expect(
-      await screen.findByText('상담 연결됨 · 이 기기는 카메라를 보낼 수 없어요'),
+      await screen.findByText('Connected · This device cannot send its camera'),
     ).toBeInTheDocument();
   });
 
@@ -503,7 +504,7 @@ describe('ConsultSessionPage', () => {
 
       renderPage();
 
-      await screen.findByRole('button', { name: '상담 종료' });
+      await screen.findByRole('button', { name: 'End consultation' });
       expect(screen.queryByRole('img', { name: 'Current location' })).toBeNull();
 
       await act(async () => {
@@ -529,7 +530,7 @@ describe('ConsultSessionPage', () => {
       useNavigationStore.setState({ currentFloorId: 1, currentMapX: 0, currentMapY: 0 });
 
       renderPage();
-      await screen.findByRole('button', { name: '상담 종료' });
+      await screen.findByRole('button', { name: 'End consultation' });
 
       await act(async () => {
         signaling.onDataEvent?.({
@@ -559,7 +560,7 @@ describe('ConsultSessionPage', () => {
       useNavigationStore.setState({ currentFloorId: 1, currentMapX: 0, currentMapY: 0 });
 
       renderPage();
-      await screen.findByRole('button', { name: '상담 종료' });
+      await screen.findByRole('button', { name: 'End consultation' });
 
       await act(async () => {
         signaling.onDataEvent?.({

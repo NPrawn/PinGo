@@ -193,6 +193,17 @@ describe('xrToMapPoint', () => {
     expect(Math.hypot(point.mapX - 100, point.mapY - 200)).toBeCloseTo(5, 6);
   });
 
+  it('지도 거리와 실측 거리의 보정 비율을 XR 이동량에 적용한다', () => {
+    const point = xrToMapPoint({ x: 3, z: -4 }, identityAnchor(), 1.25)!;
+
+    expect(Math.hypot(point.mapX - 100, point.mapY - 200)).toBeCloseTo(6.25, 6);
+  });
+
+  it('유효하지 않은 거리 보정값은 거부한다', () => {
+    expect(xrToMapPoint({ x: 3, z: -4 }, identityAnchor(), 0)).toBeNull();
+    expect(xrToMapPoint({ x: 3, z: -4 }, identityAnchor(), Number.NaN)).toBeNull();
+  });
+
   /**
    * 2차 실측 왕복 폐합: 28.7m 갔다가 돌아온 뒤 앵커로부터 0.76m였다. 변환은 이 오차를
    * 키우거나 줄이지 않고 그대로 옮겨야 한다.

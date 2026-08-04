@@ -21,6 +21,7 @@ import com.pingo.backend.localization.anchoring.IndoorPositionResolver;
 import com.pingo.backend.localization.anchoring.VpsAnchoringProperties;
 import com.pingo.backend.localization.anchoring.VpsAnchoringProperties.FloorFrame;
 import com.pingo.backend.localization.client.dto.AiPoseResponse;
+import com.pingo.backend.localization.client.dto.AiQualityResponse;
 import com.pingo.backend.localization.dto.request.LocalizationRequestMetadata;
 import com.pingo.backend.localization.dto.response.LocalizationFallbackOption;
 import com.pingo.backend.localization.dto.response.LocalizationResultStatus;
@@ -230,6 +231,44 @@ class LocalizationServiceTest {
         assertThat(response.position()).isNotNull();
         assertThat(response.position().mapX()).isEqualByComparingTo("-0.975");
         assertThat(response.position().forwardMap()).isNull();
+    }
+
+    @Test
+    void localizeReturnsAnchoredCandidateForWeakGeometricResult() {
+        MockMultipartFile image = image();
+        LocalizationService service = serviceWithFrame();
+        AiLocalizationResponse weak = new AiLocalizationResponse(
+                "loc-1",
+                AiLocalizationStatus.LOW_GEOMETRIC_QUALITY,
+                "YS-2026-07-23.1",
+                "b2-v1",
+                "B2",
+                new AiPoseResponse(
+                        "CAM_FROM_COLMAP_WORLD",
+                        List.of(0.0, 0.0, 0.0, 1.0),
+                        List.of(0.0, 0.0, 0.0),
+                        List.of(1.0736587455, -1.1765271796, 6.6548534318)
+                ),
+                new AiQualityResponse(30, 20, 18, 0.15, 9.0, 20, 2, "browser", 1.0),
+                List.of(),
+                new AiTimingResponse(1234, null, null, null),
+                "LOW_GEOMETRIC_QUALITY"
+        );
+
+        when(aiLocalizationClient.localize(eq("loc-1"), eq("YS-2026-07-23.1"), eq(image), any()))
+                .thenReturn(weak);
+        when(positionResolver.resolve(eq(1L), eq("B2"), any(), any(), anyDouble()))
+                .thenReturn(Optional.of(anchored()));
+
+        var response = service.localize("loc-1", image, metadata());
+
+        assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.LOW_CONFIDENCE);
+        assertThat(response.position()).isNull();
+        assertThat(response.startNodeId()).isNull();
+        assertThat(response.candidate()).isNotNull();
+        assertThat(response.candidate().confidenceScore()).isEqualTo(1.0);
+        assertThat(response.candidate().startNodeId()).isEqualTo(123L);
+        assertThat(response.candidate().position().floorCode()).isEqualTo("B2");
     }
 
     @Test

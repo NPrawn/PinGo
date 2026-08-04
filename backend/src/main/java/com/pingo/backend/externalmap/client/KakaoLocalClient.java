@@ -17,6 +17,12 @@ public interface KakaoLocalClient {
      */
     List<KakaoPlaceSearchResult> searchSubwayStations(String keyword);
 
+    /** 중심 좌표 반경 안의 지하철역을 거리순으로 검색한다. */
+    List<KakaoPlaceSearchResult> searchNearbySubwayStations(
+            BigDecimal centerLongitude,
+            BigDecimal centerLatitude
+    );
+
     KakaoWalkingRouteResult findWalkingRoute(
             BigDecimal startLongitude,
             BigDecimal startLatitude,

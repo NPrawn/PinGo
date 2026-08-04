@@ -6,7 +6,6 @@ import type {
   XrSessionController,
   XrSessionState,
 } from '@/shared/lib/webxr';
-import { MOCK_ANCHOR_FORWARD_MAP } from './anchorForward';
 import { useXrMapPosition } from './useXrMapPosition';
 
 /**
@@ -116,6 +115,7 @@ const CONFIRMED = { floorId: 2, mapX: 100, mapY: 200 };
 
 /** 전방(XR -z)이 지도 -Y와 같아 회전이 항등이 되는 방향. 좌표를 손으로 검산하기 쉽다. */
 const FORWARD_IDENTITY = { x: 0, y: -1 };
+const FORWARD_DIAGONAL = { x: 0.6, y: 0.8 };
 
 /** 평활을 끄고 변환 결과를 그대로 본다. 평활 자체는 displaySmoothing.test.ts가 검사한다. */
 const NO_SMOOTHING = { deadbandM: 0, followRatio: 1 };
@@ -411,7 +411,7 @@ describe('useXrMapPosition', () => {
 
       startTracking(fake);
       act(() => {
-        result.current.setAnchor(CONFIRMED, MOCK_ANCHOR_FORWARD_MAP);
+        result.current.setAnchor(CONFIRMED, FORWARD_DIAGONAL);
       });
       act(() => {
         fake.emitSnapshot(snapshot(0, -10));

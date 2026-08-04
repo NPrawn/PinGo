@@ -10,6 +10,7 @@ import torch
 
 from app.engine.feature_extractor import AlikedFeatureExtractor, LocalFeatures
 from app.engine.global_feature_extractor import NetVladFeatureExtractor
+from app.engine.image_preprocessor import prepare_query_image
 from app.maps.map_context import MapContext
 
 
@@ -77,6 +78,9 @@ class ImageLocalizer:
     MIN_INLIERS = 25
     MIN_INLIER_RATIO = 0.20
     MAX_MEDIAN_REPROJECTION_ERROR = 8.0
+    MIN_CANDIDATE_INLIERS = 12
+    MIN_CANDIDATE_INLIER_RATIO = 0.10
+    MAX_CANDIDATE_MEDIAN_REPROJECTION_ERROR = 12.0
 
     def __init__(
         self,
@@ -85,6 +89,7 @@ class ImageLocalizer:
         global_extractor: NetVladFeatureExtractor | None = None,
         local_extractor: AlikedFeatureExtractor | None = None,
         matcher: Any | None = None,
+        input_size: int = 768,
     ) -> None:
         if context.reference_features_path is None:
             raise ValueError("reference feature DB가 포함된 serving map이 필요합니다.")
@@ -103,6 +108,7 @@ class ImageLocalizer:
         )
         self.local_extractor = local_extractor or AlikedFeatureExtractor(device=self.device)
         self._matcher: Any | None = matcher
+        self.input_size = input_size
 
     def load(self) -> None:
         """서버 시작 시 세 모델을 한 번 로드하여 요청 경로에서 재사용한다."""
@@ -116,13 +122,14 @@ class ImageLocalizer:
         focal_length_px: float,
         top_k: int = 20,
     ) -> LocalizationResult:
+        canonical = prepare_query_image(image, focal_length_px, self.input_size)
         return self.localize_prepared(
-            self.prepare_query(image),
-            focal_length_px=focal_length_px,
+            self.prepare_query(canonical.pixels),
+            focal_length_px=canonical.focal_length_px,
             top_k=top_k,
         )
 
-    def prepare_query(self, image: bytes) -> PreparedQuery:
+    def prepare_query(self, image: bytes | np.ndarray) -> PreparedQuery:
         """Query 특징을 한 번 추출하여 여러 맵에서 재사용할 수 있게 한다."""
         return PreparedQuery(
             global_descriptor=self.global_extractor.extract(image),
@@ -170,9 +177,9 @@ class ImageLocalizer:
 
         num_inliers = int(pose["num_inliers"])
         inlier_ratio = num_inliers / len(selected)
-        rigid = pose["cam_from_world"]
+        estimated_rigid = pose["cam_from_world"]
         inlier_mask = np.asarray(pose["inlier_mask"], dtype=bool)
-        projected = camera.img_from_cam(rigid * points3d)
+        projected = camera.img_from_cam(estimated_rigid * points3d)
         reprojection_errors = np.linalg.norm(projected - points2d, axis=1)
         median_reprojection_error = (
             float(np.median(reprojection_errors[inlier_mask])) if inlier_mask.any() else None
@@ -183,6 +190,16 @@ class ImageLocalizer:
             or median_reprojection_error is None
             or median_reprojection_error > self.MAX_MEDIAN_REPROJECTION_ERROR
         ):
+            candidate_pose = self._is_candidate_quality(
+                num_inliers,
+                inlier_ratio,
+                median_reprojection_error,
+            )
+            center = (
+                np.asarray(estimated_rigid.inverse().translation, dtype=np.float64)
+                if candidate_pose
+                else None
+            )
             return LocalizationResult(
                 status="LOW_GEOMETRIC_QUALITY",
                 candidates=candidates,
@@ -192,10 +209,24 @@ class ImageLocalizer:
                 num_inliers=num_inliers,
                 inlier_ratio=inlier_ratio,
                 median_reprojection_error=median_reprojection_error,
-                camera_center=None,
-                cam_from_world=None,
+                camera_center=(
+                    tuple(float(value) for value in center) if center is not None else None
+                ),
+                cam_from_world=(
+                    {
+                        "rotation_xyzw": [
+                            float(value) for value in estimated_rigid.rotation.quat
+                        ],
+                        "translation": [
+                            float(value) for value in estimated_rigid.translation
+                        ],
+                    }
+                    if candidate_pose
+                    else None
+                ),
             )
 
+        rigid = estimated_rigid
         center = np.asarray(rigid.inverse().translation, dtype=np.float64)
         return LocalizationResult(
             status="LOCALIZED",
@@ -353,6 +384,21 @@ class ImageLocalizer:
             point3d_ids.add(item.point3d_id)
         return selected
 
+    @classmethod
+    def _is_candidate_quality(
+        cls,
+        num_inliers: int,
+        inlier_ratio: float,
+        median_reprojection_error: float | None,
+    ) -> bool:
+        return (
+            num_inliers >= cls.MIN_CANDIDATE_INLIERS
+            and inlier_ratio >= cls.MIN_CANDIDATE_INLIER_RATIO
+            and median_reprojection_error is not None
+            and median_reprojection_error
+            <= cls.MAX_CANDIDATE_MEDIAN_REPROJECTION_ERROR
+        )
+
     @staticmethod
     def _failed_result(
         status: str,
@@ -384,6 +430,7 @@ class MultiMapLocalizer:
         global_extractor: NetVladFeatureExtractor | None = None,
         local_extractor: AlikedFeatureExtractor | None = None,
         matcher: Any | None = None,
+        input_size: int = 768,
     ) -> None:
         if not contexts:
             raise ValueError("하나 이상의 serving map이 필요합니다.")
@@ -409,6 +456,7 @@ class MultiMapLocalizer:
         )
         self.local_extractor = local_extractor or AlikedFeatureExtractor(device=self.device)
         self._matcher = matcher
+        self.input_size = input_size
         self._localizers: dict[str, ImageLocalizer] = {}
 
     def load(self) -> None:
@@ -444,9 +492,10 @@ class MultiMapLocalizer:
         if unknown:
             raise ValueError(f"로드되지 않은 mapVersion입니다: {', '.join(unknown)}")
 
+        aspect = prepare_query_image(image, focal_length_px, self.input_size)
         prepared = PreparedQuery(
-            global_descriptor=self.global_extractor.extract(image),
-            local_features=self.local_extractor.extract(image),
+            global_descriptor=self.global_extractor.extract(aspect.pixels),
+            local_features=self.local_extractor.extract(aspect.pixels),
         )
         map_results = tuple(
             MapLocalizationResult(
@@ -454,16 +503,19 @@ class MultiMapLocalizer:
                 floor=self._floor(self.contexts[version]),
                 result=self._localizers[version].localize_prepared(
                     prepared,
-                    focal_length_px=focal_length_px,
+                    focal_length_px=aspect.focal_length_px,
                     top_k=top_k,
-                ),
+                )
             )
             for version in versions
         )
         localized = tuple(
             item for item in map_results if item.result.status == "LOCALIZED"
         )
-        ranked = localized or map_results
+        pose_candidates = tuple(
+            item for item in map_results if item.result.camera_center is not None
+        )
+        ranked = localized or pose_candidates or map_results
         best = max(
             ranked,
             key=lambda item: (
@@ -477,8 +529,8 @@ class MultiMapLocalizer:
             ),
         )
         return MultiMapLocalizationResult(
-            selected_map_version=best.map_version if localized else None,
-            floor=best.floor if localized else None,
+            selected_map_version=best.map_version if localized or pose_candidates else None,
+            floor=best.floor if localized or pose_candidates else None,
             result=best.result,
             map_results=map_results,
         )

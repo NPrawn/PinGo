@@ -6,9 +6,12 @@ export type PermissionCopy = {
   icon: IconName;
   tone: Icon3dTone;
   name: string;
+  nameEn: string;
   desc: string;
+  descEn: string;
   /** Short label used inside the "all permissions needed" reminder. */
   short: string;
+  shortEn: string;
 };
 
 /** Copy for the three permissions, as written in the prototype. */
@@ -18,32 +21,41 @@ export const PERMISSION_CATALOG: readonly PermissionCopy[] = [
     icon: 'pin',
     tone: 'mint',
     name: '위치 정보',
+    nameEn: 'Location',
     desc: '현재 역 확인과 지도 연결에 사용',
+    descEn: 'Used to find your station and connect the map',
     short: '위치',
+    shortEn: 'Location',
   },
   {
     key: 'cam',
     icon: 'camera',
     tone: 'coral',
     name: '카메라',
+    nameEn: 'Camera',
     desc: '실내 위치 확인과 길 안내에 사용',
+    descEn: 'Used for indoor positioning and directions',
     short: '카메라',
+    shortEn: 'Camera',
   },
   {
     key: 'mic',
     icon: 'mic',
     tone: 'lilac',
     name: '마이크',
+    nameEn: 'Microphone',
     desc: '영상 상담 음성 대화에 사용',
+    descEn: 'Used for voice during video consultation',
     short: '마이크',
+    shortEn: 'Microphone',
   },
 ];
 
 /**
  * 권한 이름을 문장에 넣을 수 있게 잇는다. 카탈로그 순서를 따르므로 늘 같은 차례로 읽힌다.
  */
-export function permissionNamesOf(keys: readonly PermissionKey[]): string {
+export function permissionNamesOf(keys: readonly PermissionKey[], language: string = 'ko'): string {
   return PERMISSION_CATALOG.filter((permission) => keys.includes(permission.key))
-    .map((permission) => permission.name)
-    .join('·');
+    .map((permission) => (language === 'en' ? permission.nameEn : permission.name))
+    .join(language === 'en' ? ', ' : '·');
 }

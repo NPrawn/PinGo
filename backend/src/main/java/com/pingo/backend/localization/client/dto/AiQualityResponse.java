@@ -8,7 +8,8 @@ public record AiQualityResponse(
         Double medianReprojectionErrorPx,
         Integer retrievedImages,
         Integer supportingImages,
-        String intrinsicsSource
+        String intrinsicsSource,
+        Double confidenceScore
 ) {
 
 }

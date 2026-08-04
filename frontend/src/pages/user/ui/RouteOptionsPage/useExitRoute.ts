@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getIndoorRouteOptions, type RouteOption, type RouteOrigin } from '@/entities/route';
 import { ApiError, findNearestExit, getExternalWalkingDirection, getFacility } from '@/shared/api';
 import { useApiLanguage, type ApiLanguage } from '@/shared/i18n';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import type { RouteType } from '@/shared/types';
 
 /** 조건에 맞는 출구가 없을 때 서버가 주는 코드. 통신 실패가 아니라 정상 결과다. */
@@ -100,10 +101,15 @@ interface UseExitRouteParams {
  *
  * `exitNumber`는 `7`처럼 번호만 오거나 `GFC몰`처럼 이름이 올 수 있다.
  */
-function formatExitLabel(exitNumber: string | undefined, fallbackName: string | undefined): string {
+function formatExitLabel(
+  exitNumber: string | undefined,
+  fallbackName: string | undefined,
+  language: ApiLanguage,
+): string {
   const trimmed = exitNumber?.trim();
-  if (!trimmed) return fallbackName?.trim() || '출입구';
-  return /^\d+$/.test(trimmed) ? `${trimmed}번 출입구` : trimmed;
+  if (!trimmed) return fallbackName?.trim() || (language === 'en' ? 'Exit' : '출입구');
+  if (/^\d+$/.test(trimmed)) return language === 'en' ? `Exit ${trimmed}` : `${trimmed}번 출입구`;
+  return language === 'en' ? localizeUserLabel(trimmed, language) : trimmed;
 }
 
 /**
@@ -185,7 +191,12 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
 
         return {
           targetNodeId: targetNodeId!,
-          exitLabel: destinationName ?? '목적지',
+          exitLabel:
+            destinationName != null
+              ? localizeUserLabel(destinationName, language)
+              : language === 'en'
+                ? 'Destination'
+                : '목적지',
           option: options.find((item) => item.routeType === routeType) ?? null,
           outdoorDistanceM: null,
           outdoorEstimatedTimeSec: null,
@@ -306,7 +317,11 @@ export function useExitRoute(routeType: RouteType, params: UseExitRouteParams) {
 
       return {
         targetNodeId: facility.linkedNodeId,
-        exitLabel: formatExitLabel(exit.exitNumber, facility.nameKo),
+        exitLabel: formatExitLabel(
+          exit.exitNumber,
+          language === 'en' ? facility.nameEn ?? facility.nameKo : facility.nameKo,
+          language,
+        ),
         option: options.find((item) => item.routeType === routeType) ?? null,
         outdoorDistanceM: walkingDirection?.distanceM ?? fallbackDistanceM,
         outdoorEstimatedTimeSec: walkingDirection?.estimatedTimeSec ?? null,
