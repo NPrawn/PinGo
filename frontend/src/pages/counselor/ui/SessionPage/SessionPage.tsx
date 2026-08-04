@@ -560,6 +560,8 @@ export function SessionPage() {
                       destination={mapSync.destination}
                       destinationLabel={mapSync.destinationLabel}
                       pathNodes={mapSync.pathNodes}
+                      /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
+                      showZoomControls
                       facilityType={facilityType}
                       /*
                         재지정 모드일 때만 시설 선택을 사용자에게 보낸다. 켜지 않은 채로

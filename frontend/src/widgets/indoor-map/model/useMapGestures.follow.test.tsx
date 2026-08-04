@@ -41,8 +41,9 @@ type Gestures = Omit<ReturnType<typeof useMapGestures>, 'ref'>;
 
 function Harness({ options, expose }: { options: FollowOptions; expose: (g: Gestures) => void }) {
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
-  const { ref, view, reset, isFollowing, isTransformed, handlers } = useMapGestures(options);
-  expose({ view, reset, isFollowing, isTransformed, handlers });
+  const { ref, view, reset, zoomBy, isFollowing, isTransformed, handlers } =
+    useMapGestures(options);
+  expose({ view, reset, zoomBy, isFollowing, isTransformed, handlers });
   // 실제 사용처와 같이 ref를 요소에 붙인다. 붙지 않으면 크기를 관찰하지 못해 추종이 꺼진다.
   return <div ref={ref} {...handlers} />;
 }

@@ -102,6 +102,14 @@ interface IndoorMapViewProps {
    */
   onRecenter?: () => void;
   /**
+   * 확대·축소 버튼을 지도 위에 둘지. 기본은 두지 않는다.
+   *
+   * 켜는 쪽은 상담자 콘솔이다. 마우스만 있는 화면에서는 휠이 유일한 확대 통로인데 휠은 화면에
+   * 보이지 않아 있는 줄도 모른다. 사용자 화면은 두 손가락으로 확대할 수 있고 이미 층 버튼·시설
+   * 필터가 지도를 덮고 있어 켜지 않는다.
+   */
+  showZoomControls?: boolean;
+  /**
    * 백엔드 데이터가 없는 상태에서 화면을 확인하기 위한 목업 모드.
    * 켜면 층별 지도 조회를 건너뛰고, 넘겨받지 않은 오버레이 데이터를 목업으로 채운다.
    *
@@ -139,6 +147,9 @@ const FOLLOW_SPAN_PX = 60 / 0.19;
 /** 내 위치를 화면 세로 68% 지점에 둔다. 위쪽 3분의 2를 진행 방향에 내주는 배치다. */
 const FOLLOW_ANCHOR_Y = 0.68;
 
+/** 확대 버튼 한 번의 배수. 휠(1.1)보다 크게 둔다 — 버튼은 여러 번 누르기 번거롭다. */
+const ZOOM_STEP = 1.4;
+
 /**
  * 특정 역·층의 실내 지도 이미지를 렌더링하고, 그 위에 현재 위치·목적지·경로를 겹쳐 그린다.
  *
@@ -164,6 +175,7 @@ export function IndoorMapView({
   followCamera = false,
   rotateWithHeading = true,
   onRecenter,
+  showZoomControls = false,
   useMockData = false,
 }: IndoorMapViewProps) {
   const { t } = useTranslation();
@@ -207,6 +219,7 @@ export function IndoorMapView({
     ref: mapRef,
     view: mapView,
     reset: resetMapView,
+    zoomBy: zoomMapBy,
     isFollowing: mapFollowing,
     isTransformed: mapTransformed,
     handlers: mapHandlers,
@@ -395,6 +408,27 @@ export function IndoorMapView({
         >
           <Icon name={followTarget ? 'target' : 'refresh'} size={18} />
         </button>
+      )}
+      {/* 확대·축소. 복귀 버튼 위에 세로로 쌓아 같은 모서리에 모아 둔다. */}
+      {showZoomControls && (
+        <div className={styles.zoomControls} role="group" aria-label={t('indoorMap.zoom.group')}>
+          <button
+            type="button"
+            className={styles.zoomButton}
+            onClick={() => zoomMapBy(ZOOM_STEP)}
+            aria-label={t('indoorMap.zoom.in')}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className={styles.zoomButton}
+            onClick={() => zoomMapBy(1 / ZOOM_STEP)}
+            aria-label={t('indoorMap.zoom.out')}
+          >
+            −
+          </button>
+        </div>
       )}
     </div>
   );

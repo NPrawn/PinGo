@@ -39,6 +39,7 @@ export const en = {
       imageAlt: '{{floorCode}} indoor map',
       resetView: 'Reset map',
       recenter: 'My location',
+      zoom: { group: 'Zoom the map', in: 'Zoom in', out: 'Zoom out' },
       overlay: {
         currentLocation: 'Current location',
         destination: 'Destination',

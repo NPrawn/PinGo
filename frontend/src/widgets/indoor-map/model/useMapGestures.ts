@@ -228,6 +228,23 @@ export function useMapGestures(follow?: FollowOptions) {
   );
 
   /**
+   * 버튼으로 배율을 바꾼다. (S15P11A206-89)
+   *
+   * 휠과 손가락만으로는 확대할 수 없는 자리가 있다. 상담자 콘솔은 마우스뿐이라 휠이 유일한
+   * 통로인데, 휠은 화면에 보이지 않아 있는 줄도 모른다. 한 번 누를 때의 배수는 휠보다 크게 둔다 —
+   * 버튼은 여러 번 누르기 번거롭다.
+   */
+  const zoomBy = useCallback(
+    (ratio: number) => {
+      if (!box) return;
+
+      releaseFollow();
+      setView((v) => clamp({ ...v, scale: v.scale * ratio }, box));
+    },
+    [box, clamp, releaseFollow],
+  );
+
+  /**
    * XR 세션 안에서 이 요소를 만지는 동안 XR `select`가 함께 발생하는 것을 막는다.
    *
    * React에 이 이벤트의 prop이 없어 직접 붙인다. 막지 않으면 지도를 밀 때마다 세션이 선택
@@ -263,6 +280,19 @@ export function useMapGestures(follow?: FollowOptions) {
     element.addEventListener('beforexrselect', block);
 
     /**
+     * 휠로 확대하는 동안 페이지가 함께 스크롤되지 않게 막는다. (S15P11A206-89)
+     *
+     * 확대 자체는 아래 `onWheel` 이 한다. 그런데 **React 는 루트에 `wheel` 을 passive 로 달기
+     * 때문에 그 핸들러에서 `preventDefault()` 를 불러도 통하지 않는다.** 그래서 상담자 콘솔에서
+     * 휠을 굴리면 지도 배율은 바뀌는데 페이지가 같이 위아래로 밀려 조작을 이어 갈 수 없었다.
+     * `touch-action: none` 은 손가락만 막고 휠은 막지 못한다.
+     *
+     * 여기서는 기본 동작만 막고 배율 계산에는 끼어들지 않는다 — 두 곳에서 배율을 바꾸면 한 번
+     * 굴릴 때 두 번 확대된다.
+     */
+    element.addEventListener('wheel', block, { passive: false });
+
+    /**
      * 시점 추종은 화면 크기를 알아야 계산된다.
      *
      * **먼저 한 번 직접 잰다.** ResizeObserver가 없거나(jsdom) 어떤 이유로 보고하지 않아도
@@ -283,6 +313,7 @@ export function useMapGestures(follow?: FollowOptions) {
     if (typeof ResizeObserver === 'undefined') {
       return () => {
         element.removeEventListener('beforexrselect', block);
+        element.removeEventListener('wheel', block);
       };
     }
 
@@ -294,6 +325,7 @@ export function useMapGestures(follow?: FollowOptions) {
 
     return () => {
       element.removeEventListener('beforexrselect', block);
+      element.removeEventListener('wheel', block);
       observer.disconnect();
     };
   }, [element]);
@@ -310,6 +342,8 @@ export function useMapGestures(follow?: FollowOptions) {
     ref,
     view: active,
     reset,
+    /** 버튼으로 배율만 바꾼다. 1보다 크면 확대, 작으면 축소다. */
+    zoomBy,
     /** 시점이 내 위치를 따라가는 중인지. 복귀 버튼을 보일지 판단하는 데 쓴다. */
     isFollowing: following && followView !== null,
     /** 추종이 없을 때 확대·이동된 상태인지. */

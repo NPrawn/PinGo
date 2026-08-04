@@ -33,6 +33,7 @@ export const ko = {
       imageAlt: '{{floorCode}} 실내 지도',
       resetView: '지도 초기화',
       recenter: '내 위치',
+      zoom: { group: '지도 확대·축소', in: '지도 확대', out: '지도 축소' },
       overlay: {
         currentLocation: '현재 위치',
         destination: '목적지',
