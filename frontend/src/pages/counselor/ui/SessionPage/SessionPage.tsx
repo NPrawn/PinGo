@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -17,7 +18,12 @@ import {
   useConsultSignaling,
   useTranslatedSpeech,
 } from '@/features/consult-signaling';
-import type { ConsultDataEvent, ConsultEventBody, MapSyncPayload } from '@/shared/types';
+import type {
+  ConsultDataEvent,
+  ConsultEventBody,
+  MapSyncPayload,
+  NormalizedRect,
+} from '@/shared/types';
 import { useScreenDraw } from '@/features/shared-screen-draw';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import {
@@ -50,6 +56,40 @@ type DrawStrokeMove = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_MOVE' 
 type DrawStrokeEnd = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_END' }>['payload'];
 
 /* 층 목록은 더 이상 상수로 두지 않는다. 사용자가 보고 있는 역의 실제 지도에서 만든다. */
+
+/**
+ * 배치가 아직 도착하지 않았을 때 쓸 화면 비율. `PhoneFrame` 의 기준 크기(342×726)다.
+ *
+ * **어림값이라는 것을 분명히 한다.** 실제 비율은 사용자가 재서 보내며, 이 값은 첫 스냅숏이
+ * 오기 전 몇 백 밀리초를 위한 것이다. 비율이 틀린 동안에도 0~1 좌표는 축마다 따로 나뉘므로
+ * 그은 자리는 맞고 모양만 늘어난다.
+ */
+const FALLBACK_MIRROR_ASPECT = 342 / 726;
+
+/**
+ * 카메라 원본 규격을 모르는 동안 쓸 비율.
+ *
+ * 받는 트랙은 320×240 고정이므로 이 값을 쓰면 늘어난 그대로 보여 준다 — 되돌릴 근거가 없을 때
+ * 임의로 자르면 사용자가 보는 것과 다른 장면을 보여 주게 된다.
+ */
+const FALLBACK_CAMERA_ASPECT = 320 / 240;
+
+/**
+ * 0~1 값을 백분율 문자열로. 끝자리를 자른다 — `0.041 * 100` 은 `4.1000000000000005` 다.
+ */
+function percent(value: number): string {
+  return `${Number((value * 100).toFixed(4))}%`;
+}
+
+/** 화면 기준 0~1 사각형을 거울 안의 자리로 옮긴다. */
+function rectStyle(rect: NormalizedRect): CSSProperties {
+  return {
+    left: percent(rect.x),
+    top: percent(rect.y),
+    width: percent(rect.width),
+    height: percent(rect.height),
+  };
+}
 
 /** Screen 30 (FR-C-004 / FR-W-002) — the counselor's live consultation view. */
 export function SessionPage() {
@@ -150,13 +190,22 @@ export function SessionPage() {
    * dropping the new pin needs the map coordinate contract.
    */
   const [repinning, setRepinning] = useState<'dest' | 'origin' | null>(null);
+  /**
+   * 거울 전체에 그린다. **영상 요소를 기준으로 삼지 않는다.** (S15P11A206-89)
+   *
+   * 예전에는 `remoteVideoRef` 를 넘겼다. 그러면 좌표가 `object-fit: contain` 으로 맞춰진
+   * **영상 안쪽**을 기준으로 정규화되는데, 영상은 카메라 부분만 차지하므로 지도 위에 그은 선이
+   * 1을 넘는 값으로 나가 사용자 화면 밖에 찍혔다.
+   *
+   * 캔버스는 거울 전체를 덮고, 거울은 사용자 화면과 같은 비율이다. 그래서 캔버스 기준 0~1 이
+   * 곧 사용자 화면 기준 0~1 이다.
+   */
   const {
     canvasRef,
     enabled: drawing,
     toggle: toggleDraw,
     clear: clearDraw,
-  } = useScreenDraw(drawEmitter, remoteVideoRef);
-
+  } = useScreenDraw(drawEmitter);
 
   /**
    * 층 목록은 사용자가 보고 있는 역의 실제 지도에서 만든다.
@@ -175,6 +224,27 @@ export function SessionPage() {
    */
   const displayedFloorId =
     (synced ? null : pickedFloorId) ?? mapSync?.floorId ?? floorMaps[0]?.floorId;
+  /**
+   * 사용자 화면 거울의 배치. 사용자가 직접 재서 보낸 값을 그대로 쓴다. (S15P11A206-89)
+   *
+   * **여기서 계산하지 않는다.** 카메라와 지도가 나뉘는 자리는 화면 높이에 따라 달라지고 카메라
+   * 원본 규격도 기기마다 달라서, 이쪽에서 짐작하면 어느 기기에서는 맞고 어느 기기에서는
+   * 어긋난다. 어긋나는 쪽에서는 상담자가 짚어 준 자리가 사용자 화면의 다른 곳에 찍힌다.
+   */
+  const screen = mapSync?.screen ?? null;
+  const mirrorStyle = {
+    '--mirror-aspect': screen ? screen.width / screen.height : FALLBACK_MIRROR_ASPECT,
+    /**
+     * 카메라 영상의 원본 비율.
+     *
+     * 트랙은 320×240 고정이라 원본이 16:9면 늘어난 채로 도착한다. 원본 비율의 상자에 영상을
+     * 늘려 채우면(`object-fit: fill`) 그 늘어남이 정확히 되돌아가고, 그 상자를 거울에 맞춰
+     * 잘라 내면 사용자가 보는 것과 같은 화각이 된다.
+     */
+    '--mirror-camera-aspect': screen?.cameraSource
+      ? screen.cameraSource.width / screen.cameraSource.height
+      : FALLBACK_CAMERA_ASPECT,
+  } as CSSProperties;
   /** 지도에 켜 둔 시설 유형. 안내 화면과 같은 목록에서 고른다. */
   const [facilityType, setFacilityType] = useState<string | null>(null);
   /** 방금 사용자에게 보낸 변경. 상담자가 무엇을 눌렀는지 화면에 남긴다. */
@@ -759,50 +829,104 @@ export function SessionPage() {
           </div>
 
           {/*
-            사용자가 실제로 보내오는 영상. 예전에는 이 자리에 사용자 화면을 흉내 낸 고정
-            그림(안내 문구·화살표·축소 지도)이 있었는데, 무엇을 보고 안내하는지 알 수 없는
-            화면이라 실제 수신 영상으로 바꿨다.
+            사용자 화면의 거울. **위가 카메라, 아래가 사용자와 공유되는 지도다.** (S15P11A206-89)
+
+            예전에는 이 자리에 수신 영상만 있었고, 사용자가 보는 지도는 왼쪽 넓은 지도에만
+            있었다. 그래서 상담자가 그림을 그릴 수 있는 곳은 카메라뿐이었다 — 지도 위에 길을
+            그어 주려면 왼쪽 지도에 그려야 하는데 그쪽은 상담자가 자유롭게 확대·이동하는 탐색용
+            지도라 사용자 화면과 자리가 맞지 않는다.
+
+            거울은 사용자 화면 전체를 같은 비율로 비춘다. 그래서 이 위에 그은 선은 카메라든
+            지도든 사용자 화면의 같은 자리에 찍힌다 — 좌표계를 따로 둘 필요가 없다.
           */}
-          <div className={styles.stream}>
-            {/*
-              signaling이 붙기 전에 끊기면(1009 등) 원인 코드만 화면에 남아 있었다. 자동으로
-              다시 맺는 동안에는 그 문구 대신 로딩 화면을 보여 준다 — 재시도가 곧 이어지므로
-              상담자가 새로고침 말고는 손쓸 방법이 없다고 오해하지 않게 한다.
-            */}
-            {reconnecting && (
-              <div className={styles.reconnecting} role="status">
-                <span className={styles.reconnectingSpinner} aria-hidden />
-                <span>연결을 다시 시도하고 있어요</span>
+          <div className={styles.mirrorFit}>
+            <div className={styles.mirror} style={mirrorStyle}>
+              {/*
+                카메라는 **거울 전체**에 깔린다. 사용자 화면에서도 XR 컴포지터가 카메라를 화면
+                전체에 합성하고, 아래쪽 지도 영역이 그것을 덮어 가리는 구조다. 카메라를 위쪽
+                영역에만 넣으면 같은 장면이 다르게 잘려 보인다.
+              */}
+              <div className={styles.mirrorCameraCrop}>
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className={styles.mirrorCamera}
+                  aria-label="사용자가 공유 중인 화면"
+                />
               </div>
-            )}
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className={styles.sharedScreen}
-              aria-label="사용자가 공유 중인 화면"
-            />
-            {!sharing && !reconnecting && (
-              <p className={styles.streamPlaceholder}>
-                {error ?? tokenError ?? '사용자 화면을 기다리는 중입니다.'}
-              </p>
-            )}
-            <canvas
-              ref={canvasRef}
-              className={styles.canvas}
-              style={{ pointerEvents: drawing ? 'auto' : 'none' }}
-            />
-            <div className={styles.drawTools}>
-              {drawing && (
-                <MapToggle className={styles.drawTool} onClick={clearDraw}>
-                  <Icon name="eraser" size={13} />
-                  지우기
-                </MapToggle>
+
+              {/*
+                signaling이 붙기 전에 끊기면(1009 등) 원인 코드만 화면에 남아 있었다. 자동으로
+                다시 맺는 동안에는 그 문구 대신 로딩 화면을 보여 준다 — 재시도가 곧 이어지므로
+                상담자가 새로고침 말고는 손쓸 방법이 없다고 오해하지 않게 한다.
+              */}
+              {reconnecting && (
+                <div className={styles.reconnecting} role="status">
+                  <span className={styles.reconnectingSpinner} aria-hidden />
+                  <span>연결을 다시 시도하고 있어요</span>
+                </div>
               )}
-              <MapToggle className={styles.drawTool} on={drawing} onClick={toggleDraw}>
-                <Icon name="pencil" size={13} />
-                그리기
-              </MapToggle>
+
+              {/*
+                사용자 화면 아래쪽. 배치를 받은 뒤에만 그린다 — 자리를 짐작해 그리면 상담자는
+                지도가 저기 있다고 믿고 그 위에 그리는데, 사용자 화면에서는 그 선이 카메라 위에
+                찍힌다. 배치가 도착하기 전 몇 백 밀리초는 카메라만 보여 주는 편이 정직하다.
+              */}
+              {screen && mapSync && (
+                <>
+                  <div className={styles.mirrorLower} style={rectStyle(screen.lower)} />
+                  <div className={styles.mirrorMap} style={rectStyle(screen.map)}>
+                    {/*
+                      사용자가 보는 것과 같은 시점이 나온다. 추종 배율은 `박스 너비 / 담을
+                      캔버스 폭`으로 정해지므로 **박스의 비율이 같으면 크기가 달라도 시점이
+                      같다**(`useMapGestures.computeFollowView`). 배치를 사용자가 재서 보내는
+                      덕에 이 상자의 비율이 사용자 지도와 정확히 같다.
+
+                      왼쪽 지도와 달리 조작할 것이 없다 — 층 버튼·시설 칩·확대 버튼을 달지
+                      않고 포인터도 받지 않는다(CSS). 여기서 시점을 바꾸면 거울이 아니게 된다.
+                    */}
+                    <IndoorMapView
+                      stationId={mapSync.stationId}
+                      floorId={mapSync.floorId ?? floorMaps[0]?.floorId}
+                      currentLocation={mapSync.current}
+                      currentHeadingDeg={mapSync.headingDeg}
+                      destination={mapSync.destination}
+                      destinationLabel={mapSync.destinationLabel}
+                      pathNodes={mapSync.pathNodes}
+                      /* 사용자 화면과 같은 값이어야 시점이 같아진다. 회전은 기본값(켬)이다. */
+                      connectCurrentToRoute
+                      followCamera
+                      useMockData
+                    />
+                  </div>
+                </>
+              )}
+
+              {!sharing && !reconnecting && (
+                <p className={styles.streamPlaceholder}>
+                  {error ?? tokenError ?? '사용자 화면을 기다리는 중입니다.'}
+                </p>
+              )}
+              <canvas
+                ref={canvasRef}
+                className={styles.canvas}
+                style={{ pointerEvents: drawing ? 'auto' : 'none' }}
+              />
+
+              {/* 그리기 도구는 거울 안에 둔다. 캔버스 위에 얹혀야 눌러서 끌 수 있다. */}
+              <div className={styles.drawTools}>
+                {drawing && (
+                  <MapToggle className={styles.drawTool} onClick={clearDraw}>
+                    <Icon name="eraser" size={13} />
+                    지우기
+                  </MapToggle>
+                )}
+                <MapToggle className={styles.drawTool} on={drawing} onClick={toggleDraw}>
+                  <Icon name="pencil" size={13} />
+                  그리기
+                </MapToggle>
+              </div>
             </div>
           </div>
         </div>

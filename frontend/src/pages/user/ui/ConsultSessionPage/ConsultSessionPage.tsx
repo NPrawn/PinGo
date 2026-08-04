@@ -23,7 +23,7 @@ import {
   useTranslatedSpeech,
 } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
-import { useRemoteScreenDraw } from '@/features/shared-screen-draw';
+import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import {
   createIndoorRoute,
   endConsultationByUser,
@@ -345,6 +345,32 @@ export function ConsultSessionPage() {
   });
 
   /**
+   * 이 화면이 어떻게 나뉘어 있는지 재서 상담자에게 알린다. (S15P11A206-89)
+   *
+   * 상담자 화면은 이 값으로 같은 배치의 거울을 만들고 그 위에 그린다. 재지 않고 상담자 쪽에
+   * 52:48 을 박아 두면 어긋난다 — 나뉘는 자리에 상단 여백 보정(`+22.08px`)이 더해져 있어 화면
+   * 높이마다 실제 비율이 다르고, 카메라 원본 규격도 기기마다 다르다.
+   *
+   * 기준은 `overlayRef` 다. 상담원이 그린 선을 받는 캔버스가 이 요소를 덮고 있으므로, 0~1 의
+   * 기준도 정확히 이 요소여야 한다.
+   */
+  const lowerRef = useRef<HTMLDivElement>(null);
+  const mapBoxRef = useRef<HTMLDivElement>(null);
+  /**
+   * 카메라 원본 크기. 첫 프레임을 잡은 뒤에야 알 수 있다.
+   *
+   * `streaming` 이 되는 순간이 그 시점이다 — 컨트롤러가 원본 크기를 남긴 다음 상태를 바꾼다.
+   */
+  const cameraSourceSize = useMemo(
+    () => (cameraStreamState === 'streaming' ? xrSessionController.getCameraSourceSize() : null),
+    [cameraStreamState],
+  );
+  const screenGeometry = useSharedScreenGeometry(
+    { screen: overlayRef, lower: lowerRef, map: mapBoxRef },
+    cameraSourceSize,
+  );
+
+  /**
    * 지도에 그릴 현재 위치. 추적 값을 우선하고, 없으면 스토어의 확정 위치를 쓴다.
    *
    * 추적이 잡히기 전(warming-up)이나 세션을 열지 않기로 한 경우에도 위치는 보여야 한다.
@@ -537,6 +563,13 @@ export function ConsultSessionPage() {
         destination: destinationPoint,
         destinationLabel: destination,
         pathNodes,
+        /**
+         * 이 화면이 나뉜 자리. 상담자 화면이 같은 배치의 거울을 만드는 근거다.
+         *
+         * 아직 재지 못했으면 null 로 간다 — 그 구간에도 지도는 보내야 하고, 상담자 화면은
+         * 배치를 모르는 동안 기본 비율로 그린 뒤 곧 오는 스냅숏으로 맞춘다.
+         */
+        screen: screenGeometry,
       },
     });
   }, [
@@ -552,6 +585,11 @@ export function ConsultSessionPage() {
      */
     headingDeg,
     pathNodes,
+    /**
+     * 배치가 바뀌면 다시 보낸다. 화면 회전이나 주소창 접힘으로 나뉘는 자리가 달라지는데,
+     * 그때 알리지 않으면 상담자는 옛 배치의 거울에 계속 그린다.
+     */
+    screenGeometry,
     sendConsultEvent,
     stationId,
     /**
@@ -881,7 +919,8 @@ export function ConsultSessionPage() {
           </div>
         </div>
 
-        <div className={styles.lower}>
+        {/* `ref` 는 상담자에게 보낼 배치를 재는 데 쓴다 — 카메라가 끝나는 자리다. */}
+        <div className={styles.lower} ref={lowerRef}>
           {/*
             안내 화면(/user/navigation)과 같은 실내 지도를 그대로 쓴다.
             예전에는 실제 도면과 아무 상관 없는 스키매틱 SVG와 `3번 출구` 라벨이 고정으로
@@ -889,7 +928,8 @@ export function ConsultSessionPage() {
             무관한 그림이라, 짚어 준 자리를 현장에서 찾을 수 없었다.
           */}
           <MapPreview className={styles.map}>
-            <div className={styles.mapCanvas}>
+            {/* 도면이 그려지는 자리. 상담자 거울의 지도도 정확히 이 비율·이 자리에 놓인다. */}
+            <div className={styles.mapCanvas} ref={mapBoxRef}>
               <IndoorMapView
                 stationId={stationId ?? 0}
                 floorId={displayedFloorId}
@@ -1003,9 +1043,7 @@ export function ConsultSessionPage() {
 
           <div className={styles.syncNote}>
             <span className={styles.syncDot} aria-hidden />
-            <p className={styles.syncText}>
-              {t('user.consultSession.mapSync')}
-            </p>
+            <p className={styles.syncText}>{t('user.consultSession.mapSync')}</p>
           </div>
         </div>
 

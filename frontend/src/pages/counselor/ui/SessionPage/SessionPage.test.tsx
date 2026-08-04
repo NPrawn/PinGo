@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
@@ -18,6 +18,8 @@ const signalingMocks = vi.hoisted(() => ({
     { seq: 1, speaker: 'USER' as const, content: '3번 출구가 어디예요' },
     { seq: 2, speaker: 'COUNSELOR' as const, content: '왼쪽으로 가시면 됩니다' },
   ],
+  /** 화면이 등록한 이벤트 수신 함수. 사용자가 보낸 것처럼 흘려 넣는 데 쓴다. */
+  onEvent: null as ((event: unknown) => void) | null,
 }));
 
 vi.mock('@/shared/api', async (importOriginal) => ({
@@ -37,20 +39,30 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
   describeRemoteCaptionTrouble: (
     await importOriginal<typeof import('@/features/consult-signaling')>()
   ).describeRemoteCaptionTrouble,
-  useConsultSignaling: () => ({
-    localVideoRef: { current: null },
-    remoteVideoRef: { current: null },
-    status: 'connected',
-    error: null,
-    localCaption: '',
-    remoteCaption: '',
-    remoteFinalCaption: '',
-    remoteCaptionFinal: true,
-    remoteCaptionError: null,
-    captionsSupported: true,
-    transcript: signalingMocks.transcript,
-    sendConsultEvent: vi.fn(() => true),
-  }),
+  useConsultSignaling: (
+    _room: unknown,
+    _role: unknown,
+    _token: unknown,
+    onEvent: (event: unknown) => void,
+  ) => {
+    /* 사용자가 보내오는 이벤트를 테스트가 직접 흘려 넣을 수 있게 붙잡아 둔다. */
+    signalingMocks.onEvent = onEvent;
+
+    return {
+      localVideoRef: { current: null },
+      remoteVideoRef: { current: null },
+      status: 'connected',
+      error: null,
+      localCaption: '',
+      remoteCaption: '',
+      remoteFinalCaption: '',
+      remoteCaptionFinal: true,
+      remoteCaptionError: null,
+      captionsSupported: true,
+      transcript: signalingMocks.transcript,
+      sendConsultEvent: vi.fn(() => true),
+    };
+  },
 }));
 
 function renderPage() {
@@ -194,5 +206,67 @@ describe('SessionPage', () => {
     renderPage();
 
     expect(await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.')).toBeInTheDocument();
+  });
+
+  /**
+   * 오른쪽 거울은 사용자 화면을 **사용자가 잰 비율로** 비춘다. (S15P11A206-89)
+   *
+   * 여기에 52:48 같은 숫자를 박아 두면 어긋난다 — 카메라와 지도가 나뉘는 자리에 상단 여백
+   * 보정이 더해져 화면 높이마다 실제 값이 다르고, 카메라 원본 규격도 기기마다 다르다. 어긋나면
+   * 상담자가 짚어 준 자리가 사용자 화면의 다른 곳에 찍힌다.
+   */
+  it('거울의 비율과 지도 자리를 사용자가 보내온 값으로 잡는다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
+    ]);
+
+    renderPage();
+    await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.');
+
+    /* 세로 844px 기기. 나뉘는 자리가 52%가 아니라 54.5%다. */
+    act(() => {
+      signalingMocks.onEvent?.({
+        eventType: 'MAP_SYNC',
+        eventId: 'evt_1',
+        sessionId: 'cs_1',
+        senderType: 'USER',
+        timestamp: '2026-08-03T00:00:00Z',
+        version: 1,
+        payload: {
+          stationId: 1,
+          floorId: null,
+          current: null,
+          headingDeg: null,
+          destination: null,
+          destinationLabel: null,
+          pathNodes: [],
+          screen: {
+            width: 390,
+            height: 844,
+            lower: { x: 0, y: 0.545, width: 1, height: 0.455 },
+            map: { x: 0.041, y: 0.5616, width: 0.9179, height: 0.3555 },
+            cameraSource: { width: 1920, height: 1080 },
+          },
+        },
+      });
+    });
+
+    const mirror = document.querySelector<HTMLElement>('[style*="--mirror-aspect"]');
+
+    expect(Number(mirror?.style.getPropertyValue('--mirror-aspect'))).toBeCloseTo(390 / 844);
+    /* 어림값(`PhoneFrame` 기준 크기)이 아니라 받은 값을 쓴다. */
+    expect(Number(mirror?.style.getPropertyValue('--mirror-aspect'))).not.toBeCloseTo(342 / 726);
+    /* 카메라도 원본 비율로 되돌린다. 320×240 그대로 두면 16:9 기기에서 늘어난 채로 보인다. */
+    expect(Number(mirror?.style.getPropertyValue('--mirror-camera-aspect'))).toBeCloseTo(
+      1920 / 1080,
+    );
+
+    const mapRegion = [...document.querySelectorAll<HTMLElement>('div[style]')].find(
+      (element) => element.style.left === '4.1%',
+    );
+
+    expect(mapRegion?.style.top).toBe('56.16%');
+    expect(mapRegion?.style.width).toBe('91.79%');
+    expect(mapRegion?.style.height).toBe('35.55%');
   });
 });

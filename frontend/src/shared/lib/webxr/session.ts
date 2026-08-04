@@ -246,6 +246,14 @@ export interface XrSessionController {
   subscribeCameraStream(listener: (state: XrCameraStreamState) => void): () => void;
   /** 지금 카메라 송출 상태. */
   getCameraStreamState(): XrCameraStreamState;
+  /**
+   * 이 기기 카메라의 원본 크기. 프레임을 한 장도 잡기 전이면 null 이다.
+   *
+   * **보내는 트랙 크기(320×240)와 다른 값이다.** 원본이 16:9여도 그 크기로 늘여 담으므로,
+   * 받는 쪽이 비율을 되돌리려면 원본이 몇 대 몇이었는지 알아야 한다. `camera-access` 가
+   * 부여되지 않은 기기에서는 끝까지 null 이다.
+   */
+  getCameraSourceSize(): XrCameraFrameSize | null;
 }
 
 /**
@@ -314,6 +322,13 @@ export function createXrSessionController(
   let cameraState: XrCameraStreamState = 'idle';
   let cameraFrameSize: XrCameraFrameSize = DEFAULT_CAMERA_FRAME_SIZE;
   let cameraIntervalMs = 1000 / DEFAULT_CAMERA_FRAME_FPS;
+  /**
+   * 카메라 원본 크기. 프레임에서 읽어 남긴다.
+   *
+   * 세션이 닫혀도 비우지 않는다 — 기기의 규격이라 다음 세션에서도 같은 값이고, 비우면 상담
+   * 중 세션이 한 번 끊긴 사이 상담자 화면의 카메라 비율이 기본값으로 되돌아간다.
+   */
+  let cameraSourceSize: XrCameraFrameSize | null = null;
   /** 마지막으로 카메라를 읽은 프레임 시각. 송출 간격을 지키는 기준이다. */
   let lastCameraFrameAt: DOMHighResTimeStamp | null = null;
   const cameraListeners = new Set<(state: XrCameraStreamState) => void>();
@@ -569,6 +584,16 @@ export function createXrSessionController(
      * **GL 컨텍스트보다 먼저 본다.** 기능 미부여는 이 기기의 결론이고 컨텍스트 유무와 무관하다.
      */
     if (!camera) return setCameraState('unsupported');
+
+    /**
+     * 원본 규격을 남긴다. 상담자 화면이 늘어난 비율을 되돌리는 데 쓴다.
+     *
+     * 프레임마다 확인한다 — 기기가 카메라를 바꾸면(전·후면 전환) 값이 달라지고, 한 번 재고
+     * 굳히면 그때부터 상담자 화면이 잘못된 비율로 자른다.
+     */
+    if (cameraSourceSize?.width !== camera.width || cameraSourceSize.height !== camera.height) {
+      cameraSourceSize = { width: camera.width, height: camera.height };
+    }
 
     if (!gl) return;
 
@@ -994,6 +1019,10 @@ export function createXrSessionController(
 
     getCameraStreamState() {
       return cameraState;
+    },
+
+    getCameraSourceSize() {
+      return cameraSourceSize;
     },
   };
 }

@@ -47,21 +47,11 @@
   overflow: auto;
 }
 
-/* 사용자가 보내온 영상. 잘라내면 안내에 필요한 주변이 사라지므로 화면 전체를 담는다. */
-.sharedScreen {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
-}
-
+/* 영상이 오기 전이나 오지 않을 때의 안내. 거울의 지도·카메라보다 앞에 둔다. */
 .streamPlaceholder {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -557,14 +547,93 @@
   color: #8be09b;
 }
 
-.stream {
-  position: relative;
+/*
+  사용자 화면 거울이 놓일 자리. (S15P11A206-89)
+
+  `container-type: size` 로 두는 이유는 아래 `.mirror` 가 이 상자의 **가로와 세로 양쪽**을
+  알아야 하기 때문이다. 폰 비율(약 9:19)은 세로로 길어서, 창이 높으면 폭이 걸리고 창이 낮으면
+  높이가 걸린다. `aspect-ratio` 에 `max-width`·`max-height` 를 함께 걸면 어느 쪽이 먼저
+  적용되는지가 브라우저마다 다르므로, 두 치수를 직접 비교해 작은 쪽을 고른다.
+*/
+.mirrorFit {
+  container-type: size;
   display: flex;
   flex: 1;
-  flex-direction: column;
+  min-height: 0;
+}
+
+/*
+  사용자 화면 전체를 같은 비율로 비추는 상자.
+
+  **비율은 사용자가 재서 보낸다**(`ScreenGeometryPayload`). 여기에 52:48 같은 숫자를 박아 두면
+  화면 높이가 다른 기기에서 어긋나고, 어긋나면 상담자가 짚어 준 자리가 사용자 화면의 다른 곳에
+  찍힌다. `--mirror-aspect` 는 그 값이며 도착하기 전에는 어림값이 들어온다.
+
+  가로세로 중 상자에 들어가는 쪽을 고른다 — `min()` 이 곧 `contain` 이다.
+*/
+.mirror {
+  position: relative;
+  width: min(100cqw, calc(100cqh * var(--mirror-aspect)));
+  height: min(100cqh, calc(100cqw / var(--mirror-aspect)));
+  margin: auto;
   overflow: hidden;
   background: #000;
   border-radius: 14px;
+}
+
+/*
+  카메라 영상의 원본 비율을 되돌리는 상자.
+
+  보내오는 트랙은 320×240 고정이라, 원본이 16:9인 기기에서는 세로로 늘어난 채로 도착한다
+  (`cameraFrames.ts`). 원본 비율의 상자를 만들고 그 안에서 영상을 늘려 채우면(`fill`) 그
+  늘어남이 정확히 되돌아간다.
+
+  그 상자를 거울보다 크게 잡아(`min-width`·`min-height` 100%) 넘치는 쪽을 잘라 낸다. 사용자
+  화면에서도 XR 컴포지터가 카메라를 화면에 맞춰 잘라 합성하므로, 같은 화각이 된다.
+
+  **실기기 확인이 필요하다.** 컴포지터가 정확히 이렇게 자르는지는 문서로 확정되지 않았다.
+*/
+.mirrorCameraCrop {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  min-width: 100%;
+  min-height: 100%;
+  aspect-ratio: var(--mirror-camera-aspect);
+  transform: translate(-50%, -50%);
+}
+
+/* 원본 비율 상자를 그대로 채운다. `contain` 이면 여백이 생겨 화각이 달라진다. */
+.mirrorCamera {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/*
+  사용자 화면 아래쪽. 카메라를 가리는 크림색 바탕이며, 자리는 사용자가 잰 값이다.
+  사용자 화면의 `.lower` 와 같은 배경을 쓴다 — 색이 다르면 어디까지가 지도인지 헷갈린다.
+*/
+.mirrorLower {
+  position: absolute;
+  z-index: 2;
+  background: var(--color-cream);
+}
+
+/*
+  거울 안의 지도. **읽기 전용이다.**
+
+  포인터를 받지 않는다. 상담자가 여기서 확대하거나 밀면 사용자 화면과 다른 곳을 비추게 되고,
+  그 위에 그은 선은 사용자 화면의 엉뚱한 자리에 찍힌다. 탐색은 왼쪽 지도에서 한다.
+*/
+.mirrorMap {
+  position: absolute;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  background: #eef1f5;
 }
 
 .canvas {
