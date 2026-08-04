@@ -10,6 +10,7 @@ import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
 import com.pingo.backend.consultation.event.ConsultationAcceptedEvent;
+import com.pingo.backend.consultation.event.ConsultationCanceledEvent;
 import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
@@ -87,14 +88,25 @@ public class ConsultationSessionService {
 
     @Transactional
     public ConsultationCancelResponse cancel(String consultationSessionId, String userSessionId){
-        ConsultationSession session = consultationSessionRepository.findById(consultationSessionId)
+        ConsultationSession session = consultationSessionRepository.findByIdForUpdate(consultationSessionId)
                 .orElseThrow(()-> new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND));
         validateOwner(session, userSessionId);
-        if(session.getStatus() != ConsultationStatus.WAITING){
+        if(session.getStatus() != ConsultationStatus.WAITING
+                && session.getStatus() != ConsultationStatus.ACCEPTED){
             throw new BusinessException(ErrorCode.CONSULTATION_NOT_CANCELABLE);
+        }
+
+        String signalingRoomId = session.getSignalingRoomId();
+        if (session.getStatus() == ConsultationStatus.ACCEPTED && session.getCounselorId() != null) {
+            accountRepository.findByIdForUpdate(session.getCounselorId())
+                    .ifPresent(counselor -> counselor.changeStatus(CounselorStatus.AVAILABLE));
         }
         session.cancel();
         consultationWaitingEventPublisher.publishCanceled(session.getConsultationId());
+        if (signalingRoomId != null) {
+            applicationEventPublisher.publishEvent(
+                    new ConsultationCanceledEvent(session.getConsultationId(), signalingRoomId));
+        }
         return ConsultationCancelResponse.from(session);
     }
 
