@@ -1,5 +1,6 @@
 package com.pingo.backend.station.dto.response;
 
+import com.pingo.backend.externalmap.client.KakaoPlaceSearchResult;
 import com.pingo.backend.station.domain.Station;
 
 public record StationNearbyResponse(
@@ -17,6 +18,20 @@ public record StationNearbyResponse(
                 station.getNameEn(),
                 station.getLineInfo(),
                 distanceM
+        );
+    }
+
+    public static StationNearbyResponse fromKakaoStation(
+            String nameKo,
+            String lineInfo,
+            KakaoPlaceSearchResult place
+    ) {
+        return new StationNearbyResponse(
+                null,
+                nameKo,
+                null,
+                lineInfo,
+                place.distanceMeters() == null ? 0L : place.distanceMeters()
         );
     }
 }

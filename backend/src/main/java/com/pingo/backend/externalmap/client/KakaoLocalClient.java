@@ -16,4 +16,10 @@ public interface KakaoLocalClient {
      * 카테고리(지하철역)로만 좁힌다.
      */
     List<KakaoPlaceSearchResult> searchSubwayStations(String keyword);
+
+    /** 중심 좌표 반경 안의 지하철역을 거리순으로 검색한다. */
+    List<KakaoPlaceSearchResult> searchNearbySubwayStations(
+            BigDecimal centerLongitude,
+            BigDecimal centerLatitude
+    );
 }

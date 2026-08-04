@@ -102,6 +102,43 @@ public class RestClientKakaoLocalClient implements KakaoLocalClient {
         }
     }
 
+    @Override
+    public List<KakaoPlaceSearchResult> searchNearbySubwayStations(
+            BigDecimal centerLongitude,
+            BigDecimal centerLatitude
+    ) {
+        if (isApiKeyMissing()) {
+            logMissingApiKeyOnce();
+            return List.of();
+        }
+
+        try {
+            KakaoLocalSearchResponse response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/v2/local/search/category.json")
+                            .queryParam("category_group_code", SUBWAY_CATEGORY_GROUP_CODE)
+                            .queryParam("x", centerLongitude.toPlainString())
+                            .queryParam("y", centerLatitude.toPlainString())
+                            .queryParam("radius", SEARCH_RADIUS_METERS)
+                            .queryParam("sort", "distance")
+                            .queryParam("size", SEARCH_RESULT_SIZE)
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, "KakaoAK " + properties.restApiKey())
+                    .retrieve()
+                    .body(KakaoLocalSearchResponse.class);
+
+            if (response == null || response.documents() == null) {
+                return List.of();
+            }
+
+            return response.documents().stream()
+                    .map(this::toSearchResult)
+                    .toList();
+        } catch (RestClientException | NumberFormatException exception) {
+            throw new BusinessException(ErrorCode.EXTERNAL_PLACE_SEARCH_FAILED);
+        }
+    }
+
     private KakaoPlaceSearchResult toSearchResult(KakaoPlaceDocument document) {
         return new KakaoPlaceSearchResult(
                 document.id(),
