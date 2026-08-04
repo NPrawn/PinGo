@@ -2,7 +2,6 @@ import { cleanup, render, screen } from '@testing-library/react';
 import type { Facility } from '@/entities/facility';
 import type { PixelPoint } from '@/entities/floor-map';
 import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
-import type { MapStroke } from '../model/mapStroke';
 import { IndoorMapOverlay } from './IndoorMapOverlay';
 
 const FLOOR_B2 = 1;
@@ -32,7 +31,6 @@ function renderOverlay(props: {
   activeLeg?: number | null;
   connectCurrentToRoute?: boolean;
   project?: (mapX: number, mapY: number) => PixelPoint | null;
-  strokes?: readonly MapStroke[];
 }) {
   return render(
     <IndoorMapOverlay
@@ -52,7 +50,6 @@ function renderOverlay(props: {
       waypointNodeIds={props.waypointNodeIds}
       activeLeg={props.activeLeg}
       connectCurrentToRoute={props.connectCurrentToRoute}
-      strokes={props.strokes}
     />,
   );
 }
@@ -109,67 +106,6 @@ function directionAngles(): number[] {
     return Number(rotate?.[1]);
   });
 }
-
-/**
- * 상담자가 지도 위에 그린 선. (S15P11A206-89)
- *
- * 좌표는 캐노니컬 미터라 두 화면의 확대·이동·회전이 달라도 같은 자리에 얹힌다. 여기서는 항등
- * 변환을 쓰므로 넣은 값이 그대로 좌표가 된다.
- */
-describe('상담원이 표시한 안내', () => {
-  const stroke = (floorId: number): MapStroke => ({
-    strokeId: 's1',
-    floorId,
-    color: '#ffd23f',
-    points: [
-      { x: 100, y: 100 },
-      { x: 200, y: 150 },
-    ],
-  });
-
-  function annotationPoints(): string[] {
-    const group = screen.queryByRole('img', { name: '상담원이 표시한 안내' });
-    return Array.from(group?.querySelectorAll('polyline') ?? []).map(
-      (line) => line.getAttribute('points') ?? '',
-    );
-  }
-
-  it('표시 층에 그린 선을 그대로 얹는다', () => {
-    renderOverlay({ floorId: FLOOR_B2, strokes: [stroke(FLOOR_B2)] });
-
-    expect(annotationPoints()).toEqual(['100,100 200,150']);
-  });
-
-  /**
-   * 상담자는 자유 탐색으로 사용자와 다른 층을 볼 수 있고, 그때 그린 선은 그 층의 것이다.
-   * 층을 따지지 않으면 사용자가 보고 있는 아무 층에나 남는다.
-   */
-  it('다른 층에 그린 선은 그리지 않는다', () => {
-    renderOverlay({ floorId: FLOOR_B2, strokes: [stroke(FLOOR_B3)] });
-
-    expect(screen.queryByRole('img', { name: '상담원이 표시한 안내' })).toBeNull();
-  });
-
-  /** 누르고 움직이지 않은 것도 "여기"라고 짚어 준 것이다. 점으로 남긴다. */
-  it('점 하나뿐인 선도 점으로 그린다', () => {
-    renderOverlay({
-      floorId: FLOOR_B2,
-      strokes: [{ ...stroke(FLOOR_B2), points: [{ x: 100, y: 100 }] }],
-    });
-
-    const group = screen.getByRole('img', { name: '상담원이 표시한 안내' });
-    const dot = group.querySelector('circle');
-    expect(dot?.getAttribute('cx')).toBe('100');
-    expect(dot?.getAttribute('cy')).toBe('100');
-  });
-
-  /** 선만 있어도 오버레이를 만들어야 한다. 경로·마커가 없는 층에서 짚어 줄 수도 있다. */
-  it('그릴 것이 선뿐이어도 오버레이를 만든다', () => {
-    renderOverlay({ floorId: FLOOR_B2, strokes: [stroke(FLOOR_B2)] });
-
-    expect(screen.getByRole('img', { name: '상담원이 표시한 안내' })).toBeInTheDocument();
-  });
-});
 
 describe('IndoorMapOverlay', () => {
   it('현재 위치와 목적지 마커를 그린다', () => {

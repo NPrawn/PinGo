@@ -10,7 +10,6 @@ import {
   waitedLabel,
 } from '@/entities/consult';
 import { FACILITY_MAP_FILTERS, type Facility } from '@/entities/facility';
-import type { MeterPoint } from '@/entities/floor-map';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
   describeRemoteCaptionTrouble,
@@ -33,21 +32,11 @@ import {
 import { countDevProbe, DevProbe, useDevProbe } from '@/shared/devprobe';
 import { Badge, Button, FloorRail, Icon, MapPreview, MapToggle, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
-import { applyMapStrokeEvent, IndoorMapView, type MapStroke } from '@/widgets/indoor-map';
+import { IndoorMapView } from '@/widgets/indoor-map';
 import styles from './SessionPage.module.css';
 
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
-
-/**
- * 지도에 그리는 선의 색과 두께. (S15P11A206-89)
- *
- * 노란빛은 도면(회색·흰색)과 지도 표시(민트 시설·레드 경로) 어느 것과도 겹치지 않는다. 두께는
- * 계약을 채우려고 보낼 뿐이고 실제 굵기는 받는 쪽이 자기 화면 기준으로 정한다 — 이 값은 상담자
- * 화면의 픽셀이라 상대 화면에서는 뜻이 없다.
- */
-const ANNOTATION_COLOR = '#ffd23f';
-const ANNOTATION_WIDTH = 3.5;
 
 /** 재시도 중에는 원인 코드 대신 재시도 중임을 알린다. 그 문구는 로딩 화면이 대신 보여 준다. */
 function statusMessage(reconnecting: boolean, failure: string | null, status: string): string {
@@ -168,66 +157,6 @@ export function SessionPage() {
     clear: clearDraw,
   } = useScreenDraw(drawEmitter, remoteVideoRef);
 
-  /**
-   * 지도 위 그리기. (S15P11A206-89)
-   *
-   * **카메라 패널의 그리기와 별개의 상태다.** 좌표계가 다르고(캐노니컬 미터 대 0~1 정규화) 그
-   * 패널은 없어질 예정이라, 상태를 공유하면 함께 사라진다.
-   *
-   * 그린 선을 이쪽 화면에도 남긴다. 사용자에게 보내기만 하면 상담자는 자기가 무엇을 그렸는지 볼
-   * 수 없어 같은 자리를 다시 그리게 된다. **받는 쪽과 같은 함수로 쌓는다** — 규칙이 갈라지면 두
-   * 화면의 그림이 달라진다.
-   */
-  const [mapDrawing, setMapDrawing] = useState(false);
-  const [mapStrokes, setMapStrokes] = useState<readonly MapStroke[]>([]);
-
-  const emitMapStroke = useCallback(
-    (body: ConsultEventBody) => {
-      setMapStrokes((strokes) => applyMapStrokeEvent(strokes, body));
-      sendConsultEvent(body);
-    },
-    [sendConsultEvent],
-  );
-
-  const mapDrawHandlers = useMemo(
-    () => ({
-      onStrokeStart: ({
-        strokeId,
-        floorId,
-        point,
-      }: {
-        strokeId: string;
-        floorId: number;
-        point: MeterPoint;
-      }) =>
-        emitMapStroke({
-          eventType: 'DRAW_STROKE_START',
-          payload: {
-            strokeId,
-            floorId,
-            color: ANNOTATION_COLOR,
-            width: ANNOTATION_WIDTH,
-            map: { mapX: point.x, mapY: point.y },
-          },
-        }),
-      onStrokeMove: ({ strokeId, points }: { strokeId: string; points: MeterPoint[] }) =>
-        emitMapStroke({
-          eventType: 'DRAW_STROKE_MOVE',
-          payload: {
-            strokeId,
-            mapPoints: points.map((point) => ({ mapX: point.x, mapY: point.y })),
-          },
-        }),
-      onStrokeEnd: ({ strokeId }: { strokeId: string }) =>
-        emitMapStroke({ eventType: 'DRAW_STROKE_END', payload: { strokeId } }),
-    }),
-    [emitMapStroke],
-  );
-
-  /** 지도에 그린 것을 모두 지운다. 양쪽 화면에서 함께 사라져야 한다. */
-  const clearMapStrokes = useCallback(() => {
-    emitMapStroke({ eventType: 'DRAW_CLEAR', payload: {} });
-  }, [emitMapStroke]);
 
   /**
    * 층 목록은 사용자가 보고 있는 역의 실제 지도에서 만든다.
@@ -636,12 +565,6 @@ export function SessionPage() {
                       pathNodes={mapSync.pathNodes}
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
-                      /* 지도에 그린 선. 상담자 화면에도 같은 배열을 그려 자기가 그린 것을 본다. */
-                      strokes={mapStrokes}
-                      drawing={mapDrawing}
-                      onStrokeStart={mapDrawHandlers.onStrokeStart}
-                      onStrokeMove={mapDrawHandlers.onStrokeMove}
-                      onStrokeEnd={mapDrawHandlers.onStrokeEnd}
                       facilityType={facilityType}
                       /*
                         재지정 모드일 때만 시설 선택을 사용자에게 보낸다. 켜지 않은 채로
@@ -712,33 +635,6 @@ export function SessionPage() {
               <Icon name="pin" size={14} />
               현재 위치 수정
             </PillButton>
-            {/*
-              지도에 그리기. (S15P11A206-89)
-
-              지도 위에 두지 않고 이 줄에 둔다 — 지도는 이미 층·시설·확대 버튼이 덮고 있고,
-              이 버튼들은 `목적지 재지정`·`현재 위치 수정` 과 같은 성격(지도를 대상으로 하는
-              상담자의 조작)이다.
-
-              켜는 동안 지도의 팬·줌은 멈춘다. 그리면서 지도가 밀리면 선이 손을 따라오지 못한다.
-            */}
-            <PillButton
-              className={styles.mapAction}
-              on={mapDrawing}
-              onClick={() => {
-                setMapDrawing(!mapDrawing);
-                // 그리기와 지점 재지정은 같은 탭을 다툰다. 하나를 켜면 다른 것은 끈다.
-                setRepinning(null);
-              }}
-            >
-              <Icon name="pencil" size={14} />
-              지도에 그리기
-            </PillButton>
-            {mapStrokes.length > 0 && (
-              <PillButton className={styles.mapAction} onClick={clearMapStrokes}>
-                <Icon name="eraser" size={14} />
-                그린 것 지우기
-              </PillButton>
-            )}
           </div>
 
           {/*

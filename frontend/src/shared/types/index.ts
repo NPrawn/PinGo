@@ -7,9 +7,6 @@ export type {
   ConsultEventSender,
   ConsultEventType,
   DrawPoint,
-  DrawStrokeMovePayload,
-  DrawStrokeStartPayload,
-  MapDrawPoint,
   MapPointPayload,
   MapSyncPayload,
 } from './consultEvents';

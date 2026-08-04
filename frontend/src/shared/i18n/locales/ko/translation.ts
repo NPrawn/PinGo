@@ -291,7 +291,6 @@ export const ko = {
         currentLocation: '현재 위치',
         destination: '목적지',
         route: '이동 경로',
-        annotation: '상담원이 표시한 안내',
         waypoint: '경유 {{order}}',
       },
     },
