@@ -650,7 +650,6 @@ export function SessionPage() {
                         사용자가 보고 있는 방향은 마커의 부채꼴로 그대로 나타난다.
                       */
                       rotateWithHeading={false}
-                      useMockData
                     />
                   </div>
 
@@ -897,7 +896,6 @@ export function SessionPage() {
                       /* 사용자 화면과 같은 값이어야 시점이 같아진다. 회전은 기본값(켬)이다. */
                       connectCurrentToRoute
                       followCamera
-                      useMockData
                     />
                   </div>
                 </>
