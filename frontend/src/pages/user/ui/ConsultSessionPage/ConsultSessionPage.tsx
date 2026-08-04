@@ -596,6 +596,35 @@ export function ConsultSessionPage() {
     void endCall();
   }, [endCall, permissionsRevoked]);
 
+  /**
+   * 검사 패널의 이동 버튼이 쓰는 좌표 옮기기. **임시다** — 지우는 방법은
+   * `shared/devprobe/README.md`. (S15P11A206-89)
+   *
+   * 실기기에서는 실제로 걸어야 위치가 바뀌는데, 역 안에서만 확인할 수 있는 것을 책상에서 볼
+   * 방법이 없었다. 데스크톱에서는 콘솔로 `pingo.moveTo()` 를 불렀지만 모바일에는 콘솔이 없다.
+   */
+  const nudgeCurrentPosition = (meters: number) => {
+    if (
+      currentNodeId == null ||
+      currentFloorId == null ||
+      currentMapX == null ||
+      currentMapY == null
+    ) {
+      return '먼저 「위치·목적지 놓기」를 눌러야 한다';
+    }
+
+    const mapX = currentMapX + meters;
+    setCurrentLocation({
+      nodeId: currentNodeId,
+      floorId: currentFloorId,
+      label: currentLocationLabel ?? undefined,
+      mapX,
+      mapY: currentMapY,
+    });
+
+    return `내 위치 → (${mapX.toFixed(1)}, ${currentMapY.toFixed(1)})`;
+  };
+
   /*
     실기기 검사 패널에 넘기는 값. **읽기만 한다.** 임시다 — 지우는 방법은
     `shared/devprobe/README.md`. (S15P11A206-89)
@@ -928,7 +957,51 @@ export function ConsultSessionPage() {
           ICE 검사는 실기기에서만 답이 나온다. 서버가 TURN 을 주지 않으면 서로 다른 망에 있는
           두 사람은 붙지 못하는데, 그 응답을 모바일에서 볼 방법이 지금 없다.
         */}
-        <DevProbe actions={{ ICE: () => getIceServers(signalingAccessToken ?? '') }} />
+        <DevProbe
+          actions={{
+            ICE: () => getIceServers(signalingAccessToken ?? ''),
+            /**
+             * 데스크톱에서 `pingo.moveTo()` 로 하던 것을 손가락으로 한다.
+             *
+             * 출발·도착을 함께 놓는다. 노드가 둘 다 정해져야 경로 조회가 돌고, 그때부터 지도에
+             * 선이 그려지고 상담자에게도 `pathNodes` 가 건너간다. 좌표는 지어내지 않고 이 층의
+             * 실제 시설에서 가져온다 — 없는 자리로 옮기면 도면 밖에 마커가 찍힌다.
+             */
+            '위치·목적지 놓기': async () => {
+              const spots = (facilities ?? []).flatMap((facility) =>
+                facility.floorId === displayedFloorId && facility.linkedNodeId != null
+                  ? [{ ...facility, nodeId: facility.linkedNodeId }]
+                  : [],
+              );
+              if (spots.length < 2) {
+                return `이 층에서 노드를 아는 시설이 ${spots.length}개뿐이라 경로를 만들 수 없다`;
+              }
+
+              const from = spots[0];
+              const to = spots[spots.length - 1];
+              setCurrentLocation({
+                nodeId: from.nodeId,
+                floorId: from.floorId,
+                label: from.nameKo,
+                mapX: from.mapX,
+                mapY: from.mapY,
+              });
+              setTargetNode(to.nodeId, to.nameKo);
+              setDestinationName(to.nameKo);
+
+              return `${from.nameKo}(${from.nodeId}) → ${to.nameKo}(${to.nodeId})`;
+            },
+            /**
+             * 걸어간 척한다. 마커가 움직이고, 그 움직임이 상담자 화면까지 가는지 본다.
+             *
+             * 노드는 그대로 두고 좌표만 옮긴다. 노드를 바꾸면 경로를 다시 조회하므로 "같은 경로
+             * 위를 걷는 중"이 아니게 된다. 지도 X 축 방향이며, 도면이 돌아 있으면 화면에서는
+             * 비스듬히 움직인다.
+             */
+            '+1m': async () => nudgeCurrentPosition(1),
+            '+5m': async () => nudgeCurrentPosition(5),
+          }}
+        />
       </div>
     </PhoneFrame>
   );

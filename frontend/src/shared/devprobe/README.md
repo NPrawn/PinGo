@@ -34,13 +34,30 @@
 오른쪽 아래 모서리의 `검사` 손잡이를 누르면 펼쳐진다. `복사` 를 누르면 값과 로그가 클립보드로
 들어가므로 그대로 붙여 공유할 수 있다.
 
+사용자 화면의 버튼:
+
+| 버튼               | 하는 일                                                         |
+| ------------------ | --------------------------------------------------------------- |
+| `ICE`              | 서버가 STUN·TURN 을 주는지 확인한다. 응답 전체가 로그에 남는다. |
+| `위치·목적지 놓기` | 이 층의 실제 시설 두 곳을 출발·도착으로 놓아 경로를 만든다.     |
+| `+1m` / `+5m`      | 걸어간 척 좌표를 옮긴다. 마커와 상담자 화면이 따라오는지 본다.  |
+
+**역에 가지 않고 이동을 확인하는 통로다.** 데스크톱에서는 콘솔로 `pingo.moveTo()` 를 불렀는데
+모바일에는 콘솔이 없다. 노드는 그대로 두고 좌표만 옮기므로 경로를 다시 조회하지 않는다 — 같은
+경로 위를 걷는 상태가 유지된다.
+
 ## 지우는 법
 
 1. 이 폴더(`frontend/src/shared/devprobe/`)를 지운다.
-2. 아래 두 화면에서 `DevProbe` 관련 줄을 지운다. 각 화면에서 세 곳뿐이다 — `import` 한 줄,
-   `useDevProbe({...})` 호출, `<DevProbe />` JSX.
-   - `frontend/src/pages/user/ui/ConsultSessionPage/ConsultSessionPage.tsx`
-   - `frontend/src/pages/counselor/ui/SessionPage/SessionPage.tsx`
+2. 아래 두 화면에서 `DevProbe` 관련 줄을 지운다.
+   - `frontend/src/pages/user/ui/ConsultSessionPage/ConsultSessionPage.tsx` — `import` 한 줄,
+     `nudgeCurrentPosition` 함수, `useDevProbe({...})` 호출, `<DevProbe actions={...} />` JSX
+   - `frontend/src/pages/counselor/ui/SessionPage/SessionPage.tsx` — `import` 한 줄,
+     `useDevProbe({...})` 호출, `<DevProbe />` JSX, 그리고 `useConsultSignaling` 구조분해에서
+     `eventChannelOpen` (그 화면은 이 값을 검사 패널에만 쓴다)
 3. 사용자 화면의 `@/shared/api` import 에서 `getIceServers` 를 지운다(검사 버튼에만 쓴다).
+
+**같이 지우면 안 되는 것:** `storedLocation` 과 `currentLocation` 은 검사 패널과 무관한 수정이다.
+상담자가 위치를 고쳐 줬을 때 사용자 지도가 따라오게 하는 부분이고, 테스트가 지키고 있다.
 
 찾기: `rg -n "devprobe|DevProbe" frontend/src` 가 비면 다 지운 것이다.
