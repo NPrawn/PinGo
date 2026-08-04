@@ -49,6 +49,26 @@ import styles from './ConsultSessionPage.module.css';
 /** 상담자가 끊었는지 확인하는 간격. 끊긴 걸 알아채기까지 사용자가 기다리는 시간이기도 하다. */
 const CONSULTATION_WATCH_MS = 4000;
 
+/**
+ * 검사 패널이 쓰는 방향. 출발점에서 도착점을 향한 단위 벡터다. 임시다 —
+ * 지우는 방법은 `shared/devprobe/README.md`. (S15P11A206-89)
+ *
+ * 두 점이 같은 자리면 방향을 정할 수 없다. 그때는 null 이며 앵커도 만들어지지 않는다 —
+ * 0 벡터를 넘기면 회전 계산이 NaN 이 되어 마커가 도면에서 사라진다.
+ */
+function probeForwardMap(
+  from: { mapX: number; mapY: number },
+  to: { mapX: number; mapY: number },
+): { x: number; y: number } | null {
+  const dx = to.mapX - from.mapX;
+  const dy = to.mapY - from.mapY;
+  const length = Math.hypot(dx, dy);
+
+  if (!(length > 0)) return null;
+
+  return { x: dx / length, y: dy / length };
+}
+
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
   const navigate = useNavigate();
@@ -201,13 +221,17 @@ export function ConsultSessionPage() {
    * 앵커가 생긴 뒤의 변경은 훅이 조용히 무시한다(296 계약). 그 뒤로는 추적 좌표가 앞선다.
    */
   /**
-   * 위치 인식이 확정한 방향. 앵커의 기준이라 첫 렌더 값에 고정한다. (343 병합)
+   * 위치 인식이 확정한 방향. 앵커의 기준이다. (343 병합)
    *
-   * 안내 화면과 같은 값을 같은 방식으로 읽는다 — 두 화면이 같은 앵커를 만들어야 사용자가 화면을
-   * 오갈 때 마커가 튀지 않는다.
+   * **첫 렌더 값에 고정하지 않는다.** 안내 화면은 고정하는데, 그 화면은 위치 인식을 거친 직후에만
+   * 열리므로 진입 시점에 이미 방향을 알고 있다. 상담 화면은 다르다 — 방향이 이 화면에 들어온
+   * **뒤에** 정해질 수 있고, 고정해 두면 그 값이 영원히 닿지 않아 앵커가 만들어지지 않는다.
+   * 앵커가 없으면 위치도 방향도 갱신되지 않는다. (S15P11A206-89)
+   *
+   * 고정하지 않아도 앵커가 흔들리지 않는다. 앵커는 한 번 성공하면 발화가 닫히므로(`anchorFiredRef`)
+   * 그 뒤의 변경은 무시되고, 성공 전의 변경은 더 최신 방향으로 앵커를 만드는 쪽이 맞다.
    */
-  const currentForwardMap = useNavigationStore((state) => state.currentForwardMap);
-  const [confirmedForwardMap] = useState(() => currentForwardMap);
+  const confirmedForwardMap = useNavigationStore((state) => state.currentForwardMap);
 
   const storedLocation = useMemo<IndoorPoint | null>(
     () =>
@@ -1089,6 +1113,21 @@ export function ConsultSessionPage() {
                 label: from.nameKo,
                 mapX: from.mapX,
                 mapY: from.mapY,
+                /**
+                 * 검사용 방향. **여기에 두는 이유가 있다.** (S15P11A206-89)
+                 *
+                 * `343` 이 앵커에서 목업 방향을 없애 방향이 없으면 앵커를 만들지 않는다 — 임의
+                 * 방향을 쓰면 지도 경로를 가로지르는 오차가 생기기 때문이다. 그 판단은 그대로
+                 * 두되, 이 버튼은 실제 위치 인식을 거치지 않고 자리를 놓는 **검사 장치**라
+                 * 방향도 함께 지어내야 앵커가 만들어지고 추적을 확인할 수 있다.
+                 *
+                 * 지어낸 방향이 실제 위치 인식 경로로 새지 않는다. 이 값은 검사 패널 안에만
+                 * 있고 패널을 지우면 함께 사라진다 — `shared/devprobe/README.md`.
+                 *
+                 * 목적지 쪽을 향한 것으로 둔다. 걸어갈 방향이라 마커의 부채꼴이 경로를 따라
+                 * 놓이고, 상수로 두면 도면에 따라 벽을 보고 서 있게 된다.
+                 */
+                forwardMap: probeForwardMap(from, to),
               });
               setTargetNode(to.nodeId, to.nameKo);
               setDestinationName(to.nameKo);
