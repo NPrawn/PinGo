@@ -15,6 +15,7 @@ import type { ConsultDataEvent, ConsultEventBody } from '@/shared/types';
 import { captureConsultMicrophone, peekConsultMedia } from './consultMedia';
 import { createConsultEventFallback } from './consultEventFallback';
 import type { ConsultEventFallback } from './consultEventFallback';
+import { signalingBaseUrl } from './signalingBaseUrl';
 import {
   flushConsultPhaseReport,
   markConsultPhase,
@@ -484,7 +485,7 @@ export function useConsultSignaling(
       peer.ondatachannel = (event) => attachDataChannel(event.channel);
     }
     markConsultPhase('signaling 소켓 생성');   // 추가
-    const wsBase = env.VITE_WS_BASE_URL.replace(/\/$/, '');
+    const wsBase = signalingBaseUrl();
     const socket = new WebSocket(`${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`);
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
     /** 정리된 뒤에 도착한 이벤트로 화면에 실패를 남기지 않는다. */

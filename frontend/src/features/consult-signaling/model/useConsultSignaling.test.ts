@@ -49,7 +49,11 @@ vi.mock('@/shared/api', () => ({
 }));
 
 vi.mock('@/shared/config', () => ({
-  env: { VITE_WS_BASE_URL: 'ws://localhost:8080' },
+  /**
+   * 백엔드 절대 주소를 지정한 빌드로 둔다. 그래야 소켓 주소도 `VITE_WS_BASE_URL` 로 정해진다 —
+   * 빈 값이면 같은 오리진으로 보내므로(`signalingBaseUrl`) jsdom 의 주소에 딸려 간다.
+   */
+  env: { VITE_API_BASE_URL: 'http://localhost:8080', VITE_WS_BASE_URL: 'ws://localhost:8080' },
   rtcConfiguration: () => ({ iceServers: [] }),
 }));
 

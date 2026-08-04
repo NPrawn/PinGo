@@ -79,6 +79,19 @@ export default defineConfig(({ mode }) => ({
       '/api': devProxy(mode),
       // 지도 도면 등 백엔드가 서빙하는 정적 파일. (API 명세서 2.5)
       '/uploads': devProxy(mode),
+      /**
+       * signaling WebSocket. **`ws: true` 가 있어야 upgrade 요청을 전달한다.** (S15P11A206-89)
+       *
+       * 소켓만 프록시 밖으로 나가고 있었다. 백엔드의
+       * `signaling.websocket.allowed-origin-patterns` 에는 `localhost:5173` 계열과 배포 주소만
+       * 있어서, 폰이 LAN 주소로 접속하면 handshake 가 거절되고 upgrade 가 끝나지 않은 채 close
+       * code 1006 으로 끊긴다. 서버가 close frame 을 보낼 기회조차 없어 원인 코드도 남지 않았다.
+       * 데스크톱은 허용 목록에 있는 `localhost` 라 같은 코드가 그대로 붙어, 실기기에서만 재현됐다.
+       *
+       * `/ws` 가 아니라 `/ws/signaling` 으로 좁힌다. Vite 자신의 HMR 소켓과 겹칠 여지를 두지
+       * 않는다.
+       */
+      '/ws/signaling': { ...devProxy(mode), ws: true },
     },
   },
   resolve: {
