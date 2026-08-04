@@ -213,5 +213,104 @@ describe('routeProgressOf', () => {
     expect(progress.travelledM).toBe(0);
     expect(progress.currentStepIndex).toBeNull();
     expect(progress.passedNodeIds).toEqual([]);
+    expect(progress.snappedLocation).toBeNull();
+  });
+
+  /**
+   * 지도에 찍을 자리. 측위 오차만큼 경로 옆에 떨어진 점을 경로선 위로 얹는다.
+   *
+   * **기준은 이탈 판정 하나뿐이다.** 얹는 기준을 따로 두면 그 사이 거리에서 점이 선 밖에 남고,
+   * 점에서 선까지 잇는 선이 다시 그려져 갈림길처럼 보인다.
+   */
+  describe('경로 위에 얹은 자리', () => {
+    it('경로 옆에 서면 경로 위 자리를 준다', () => {
+      const progress = routeProgressOf({
+        pathNodes: PATH,
+        steps: STEPS,
+        currentLocation: { floorId: B3, mapX: 30, mapY: 2 },
+      });
+
+      // 수선의 발. y만 0으로 당겨지고 x는 그대로다.
+      expect(progress.snappedLocation).toEqual({ floorId: B3, mapX: 30, mapY: 0 });
+    });
+
+    /** 구간을 지나쳐도 선 밖으로는 나가지 않는다. 끝점에 붙는다. */
+    it('구간 밖으로 나가면 끝점으로 잘린다', () => {
+      const progress = routeProgressOf({
+        pathNodes: PATH,
+        steps: STEPS,
+        // 노드 2(x=100)를 5m 지나쳤다.
+        currentLocation: { floorId: B3, mapX: 105, mapY: 1 },
+      });
+
+      expect(progress.snappedLocation).toEqual({ floorId: B3, mapX: 100, mapY: 0 });
+    });
+
+    /**
+     * **멀어도 얹는다.** 이탈로 판정되기 전까지는 경로 위에 있다고 보는 것이고, 그러면 점도
+     * 경로 위에 있어야 한다. 여기서 얹지 않으면 점과 선을 잇는 선이 다시 필요해진다.
+     */
+    it('이탈 전이면 멀리 떨어져 있어도 얹는다', () => {
+      const progress = routeProgressOf({
+        pathNodes: PATH,
+        steps: STEPS,
+        // 경로에서 10m. 이탈 기준(15m) 안쪽이다.
+        currentLocation: { floorId: B3, mapX: 30, mapY: 10 },
+      });
+
+      expect(progress.offRoute).toBe(false);
+      expect(progress.snappedLocation).toEqual({ floorId: B3, mapX: 30, mapY: 0 });
+    });
+
+    /** 이탈하면 얹지 않는다. 그때는 날것의 자리와 경로를 잇는 선이 필요한 안내다. */
+    it('경로에서 벗어나면 얹지 않는다', () => {
+      const progress = routeProgressOf({
+        pathNodes: PATH,
+        steps: STEPS,
+        // 경로에서 20m. 이탈 기준(15m)을 넘었다.
+        currentLocation: { floorId: B3, mapX: 30, mapY: 20 },
+      });
+
+      expect(progress.offRoute).toBe(true);
+      expect(progress.snappedLocation).toBeNull();
+    });
+
+    it('위치를 모르면 얹을 것이 없다', () => {
+      const progress = routeProgressOf({ pathNodes: PATH, steps: STEPS, currentLocation: null });
+
+      expect(progress.snappedLocation).toBeNull();
+    });
+
+    /**
+     * 점은 진행도의 래칫을 따르지 않는다.
+     *
+     * 래칫은 안내 카드가 두 구간 사이에서 깜빡이는 것을 막으려는 것이다. 점의 자리까지 붙들면
+     * 뒤로 걸을 때 점이 굳어, 사용자는 자기 위치가 갱신되지 않는다고 읽는다.
+     */
+    it('진행도가 래칫으로 앞서 있어도 점은 지금 자리를 가리킨다', () => {
+      const progress = routeProgressOf({
+        pathNodes: PATH,
+        steps: STEPS,
+        currentLocation: { floorId: B3, mapX: 30, mapY: 2 },
+        travelledM: 60,
+      });
+
+      expect(progress.travelledM).toBeCloseTo(60);
+      expect(progress.snappedLocation).toEqual({ floorId: B3, mapX: 30, mapY: 0 });
+    });
+
+    /** 그 층에 구간이 없어 노드가 후보로 뽑힌 경우에도 자리를 준다. */
+    it('그 층에 노드 하나뿐이면 그 노드 자리를 준다', () => {
+      const progress = routeProgressOf({
+        pathNodes: [
+          { nodeId: 1, floorId: B3, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: B2, mapX: 20, mapY: 0 },
+          { nodeId: 3, floorId: B2, mapX: 40, mapY: 0 },
+        ],
+        currentLocation: { floorId: B3, mapX: 3, mapY: 2 },
+      });
+
+      expect(progress.snappedLocation).toEqual({ floorId: B3, mapX: 0, mapY: 0 });
+    });
   });
 });

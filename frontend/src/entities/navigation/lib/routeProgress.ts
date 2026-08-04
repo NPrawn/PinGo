@@ -26,6 +26,26 @@ export interface RouteProgress {
   passedNodeIds: number[];
   /** 경로에서 벗어났는지. 참이면 진행도를 올리지 않았다. */
   offRoute: boolean;
+  /**
+   * 경로 위에 얹은 내 자리. 표시에만 쓴다.
+   *
+   * 지도에 이 값을 그리면 내 점이 경로선 위에 붙어, 측위 오차만큼 옆으로 벗어난 점과 그 점을
+   * 경로에 잇는 선이 갈림길처럼 보이던 것이 사라진다.
+   *
+   * **날것의 좌표를 대신하지 않는다.** 이탈 판정·재측위·기록은 그대로 원래 좌표를 쓴다.
+   * 여기에 값이 있다고 해서 사용자가 정말 그 자리에 있는 것은 아니다.
+   *
+   * **얹는 기준을 따로 두지 않는다.** 경로 위에 있다고 보는 동안에는 늘 얹는다 — 기준을 따로
+   * 두면 그 사이 거리에서 점이 선 밖에 남고, 점에서 선까지 잇는 선이 다시 그려져 갈림길처럼
+   * 보인다. 없애려던 모양이 조건만 좁혀서 되살아난다.
+   *
+   * 이탈(`offRoute`)이거나 위치를 모르면 null이다. 그때는 부르는 쪽이 날것의 좌표를 그리고
+   * 경로까지 잇는 선을 함께 보여 준다 — 정말 벗어난 경우에는 그 선이 필요한 안내다.
+   *
+   * 진행도(`travelledM`)와 달리 되돌아갈 수 있다. 래칫은 안내 카드가 두 구간 사이에서 깜빡이는
+   * 것을 막으려는 것인데, 점의 자리까지 붙들면 뒤로 걸을 때 점이 굳는다.
+   */
+  snappedLocation: IndoorPoint | null;
 }
 
 interface PathSegment {
@@ -77,6 +97,7 @@ export function routeProgressOf(options: {
       stepRemainingM: boundaries.length > 0 ? boundaries[0] : null,
       passedNodeIds: [],
       offRoute: false,
+      snappedLocation: null,
     };
   }
 
@@ -98,6 +119,10 @@ export function routeProgressOf(options: {
     stepRemainingM: stepIndex === null ? null : Math.max(0, boundaries[stepIndex] - advancedM),
     passedNodeIds: passedNodesAt(points, advancedM),
     offRoute,
+    snappedLocation:
+      currentLocation !== null && nearest !== null && !offRoute
+        ? { floorId: currentLocation.floorId, mapX: nearest.mapX, mapY: nearest.mapY }
+        : null,
   };
 }
 
@@ -158,8 +183,8 @@ function nearestOnRoute(
   location: IndoorPoint,
   segments: readonly PathSegment[],
   points: readonly PathPoint[],
-): { travelledM: number; offsetM: number } | null {
-  let nearest: { travelledM: number; offsetM: number } | null = null;
+): NearestOnRoute | null {
+  let nearest: NearestOnRoute | null = null;
 
   for (const segment of segments) {
     if (segment.from.floorId !== location.floorId) continue;
@@ -172,23 +197,38 @@ function nearestOnRoute(
   for (const point of points) {
     if (point.node.floorId !== location.floorId) continue;
 
-    const offsetM = Math.hypot(
-      location.mapX - point.node.mapX,
-      location.mapY - point.node.mapY,
-    );
+    const offsetM = Math.hypot(location.mapX - point.node.mapX, location.mapY - point.node.mapY);
     if (nearest === null || offsetM < nearest.offsetM) {
-      nearest = { travelledM: point.atM, offsetM };
+      nearest = {
+        travelledM: point.atM,
+        offsetM,
+        mapX: point.node.mapX,
+        mapY: point.node.mapY,
+      };
     }
   }
 
   return nearest;
 }
 
+/**
+ * 경로에서 가장 가까운 지점 하나.
+ *
+ * `mapX`·`mapY`가 그 지점의 좌표다 — 수선의 발이며, 구간 밖으로 나갔으면 잘린 끝점이고,
+ * 후보가 노드였다면 그 노드다. 진행 거리와 벗어난 거리가 모두 이 점에서 나오므로, 점을 함께
+ * 돌려주면 부르는 쪽이 같은 계산을 다시 하지 않고 그 자리에 마커를 놓을 수 있다.
+ */
+interface NearestOnRoute {
+  /** 경로 시작부터 이 지점까지의 거리(m). */
+  travelledM: number;
+  /** 내 위치에서 이 지점까지의 거리(m). 곧 경로에서 벗어난 정도다. */
+  offsetM: number;
+  mapX: number;
+  mapY: number;
+}
+
 /** 한 구간에 수직 투영한다. 구간 밖으로 나가면 양 끝으로 잘라낸다. */
-function projectOnSegment(
-  location: IndoorPoint,
-  segment: PathSegment,
-): { travelledM: number; offsetM: number } {
+function projectOnSegment(location: IndoorPoint, segment: PathSegment): NearestOnRoute {
   const dx = segment.to.mapX - segment.from.mapX;
   const dy = segment.to.mapY - segment.from.mapY;
   const lengthSq = dx * dx + dy * dy;
@@ -197,6 +237,8 @@ function projectOnSegment(
     return {
       travelledM: segment.startM,
       offsetM: Math.hypot(location.mapX - segment.from.mapX, location.mapY - segment.from.mapY),
+      mapX: segment.from.mapX,
+      mapY: segment.from.mapY,
     };
   }
 
@@ -210,6 +252,8 @@ function projectOnSegment(
   return {
     travelledM: segment.startM + segment.lengthM * ratio,
     offsetM: Math.hypot(location.mapX - px, location.mapY - py),
+    mapX: px,
+    mapY: py,
   };
 }
 
