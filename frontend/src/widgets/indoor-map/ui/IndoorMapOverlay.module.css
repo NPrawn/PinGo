@@ -104,11 +104,24 @@
   stroke: #fff;
 }
 
+/*
+  시설 아이콘 색. **`fill` 과 `color` 를 함께 지정한다.**
+
+  스프라이트 심볼 대부분은 면(`fill`)으로 그려지지만 일부는 선으로 그려진다 — 에스컬레이터가
+  그렇다(`i-escalator`: `fill="none" stroke="currentColor"`). 계단과 구분하려고 발판 홈이 있는
+  경사면으로 만든 것이라 면으로는 표현할 수 없다.
+
+  `fill` 만 주면 그 심볼의 선 색이 `currentColor` 로 남는데, 이 요소에 `color` 가 없으면 상속된
+  값으로 풀린다. 흰 마커 위에서 사실상 보이지 않아 **아이콘 없는 흰 동그라미**가 된다.
+  `color` 를 같이 주면 선 기반 심볼도 같은 색으로 그려진다.
+*/
 .facilityIcon {
+  color: var(--color-mint-forest);
   fill: var(--color-mint-forest);
 }
 
 .facilityIconOn {
+  color: #fff;
   fill: #fff;
 }
 
