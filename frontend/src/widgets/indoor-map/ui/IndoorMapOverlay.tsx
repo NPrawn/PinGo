@@ -196,6 +196,18 @@ export function IndoorMapOverlay({
   const connector = connectCurrentToRoute
     ? routeConnector(currentPoint, allSegments, markerRadius)
     : null;
+  /**
+   * 연결선 가운데에 놓을 방향 표시. 내 쪽에서 경로 쪽을 가리킨다. (S15P11A206-89)
+   *
+   * 간격을 선 길이로 주면 표시가 정확히 가운데 하나만 놓인다 — `directionMarks` 가 첫 표시를
+   * 간격의 절반 자리에 두고 그다음은 선 밖으로 나가기 때문이다.
+   */
+  const connectorMarks = connector
+    ? directionMarks(
+        [connector.from, connector.to],
+        Math.hypot(connector.to.px - connector.from.px, connector.to.py - connector.from.py),
+      )
+    : [];
   const destinationPoint = pointOnFloor(destination, floorId, project);
   const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project);
 
@@ -290,6 +302,26 @@ export function IndoorMapOverlay({
               />
             )),
           )}
+          {/*
+            연결선에도 화살표를 둔다. (S15P11A206-89)
+
+            **이 선만 방향이 없었다.** 본선에는 일정 간격으로 화살표가 놓이는데 연결선은 하나도
+            받지 못했다. 그런데 이 선이야말로 방향을 읽어야 하는 자리다 — 경로에서 벗어났거나
+            목적지를 지나친 동안에는 화면에 이 선밖에 없고, 그때 사용자가 알아야 하는 것은
+            "어느 쪽으로 가면 경로로 돌아가는가"다. 방향이 없으면 걸어온 자취처럼 보인다.
+
+            간격을 선 길이로 두면 표시가 **가운데 하나만** 놓인다(첫 표시가 간격의 절반 자리에
+            오고 다음은 선 밖이다). 짧은 연결선에 촘촘한 간격을 쓰면 화살표가 없거나 뭉친다.
+          */}
+          {connectorMarks.map((mark, markIndex) => (
+            <path
+              key={`connector-${markIndex}`}
+              className={styles.routeDirection}
+              strokeWidth={directionWidth}
+              d={chevron}
+              transform={`translate(${mark.px} ${mark.py}) rotate(${mark.angleDeg})`}
+            />
+          ))}
         </g>
       )}
 
