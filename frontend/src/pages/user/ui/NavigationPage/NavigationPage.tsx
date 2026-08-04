@@ -627,9 +627,7 @@ export function NavigationPage() {
                 </p>
               </div>
             </div>
-            <p className={styles.sheetNote}>
-              {t('user.navigation.waypointNote')}
-            </p>
+            <p className={styles.sheetNote}>{t('user.navigation.waypointNote')}</p>
             <div className={styles.sheetActions}>
               <Button
                 disabled={
@@ -821,7 +819,16 @@ export function NavigationPage() {
                 <IndoorMapView
                   stationId={stationId ?? 0}
                   floorId={displayedFloorId}
-                  currentLocation={currentLocation}
+                  /* 경로 위에 얹은 자리로 그린다.
+
+                     측위 오차는 복도 폭과 비슷한 규모라(B2 0.5m·B3 1.1m, 최대 2.9m) 날것의
+                     좌표를 그대로 찍으면 내 점이 늘 경로선 옆에 떨어져 앉는다. 거기에 경로까지
+                     잇는 선이 붙으면 한 점에서 선이 둘로 갈라져 갈림길처럼 읽힌다.
+
+                     얹을 수 없을 만큼 멀면 `snappedLocation`이 null이고, 그때는 날것의 좌표를
+                     그대로 그린다 — 정말 벗어난 경우까지 경로에 붙여 놓으면 사용자가 자기가
+                     잘못 걷고 있다는 것을 알 수 없다. */
+                  currentLocation={progress.snappedLocation ?? currentLocation}
                   currentHeadingDeg={headingDeg}
                   /* 길안내 화면이므로 시점이 내 위치를 따라간다. 밀거나 확대하면 풀리고
                      `내 위치` 버튼으로 돌아온다. */
@@ -856,17 +863,20 @@ export function NavigationPage() {
                   waypointNodeIds={waypointNodeIds}
                   /* 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는 연하게 그린다. */
                   activeLeg={activeLeg}
-                  /* 내 점과 경로 사이의 빈 자리를 잇는다.
+                  /* 내 점과 경로 사이의 빈 자리를 잇는다. **얹지 못했을 때만 잇는다.**
 
-                     **경로에서 벗어난 동안에도 잇는다.** 처음에는 이탈이면 끊었는데, 그러면 정작
-                     필요한 자리에서 사라졌다 — 서버가 진입 노드를 목적지 기준으로 다시 고르면
+                     얹었으면 내 점이 이미 경로선 위에 있어 이을 자리가 없다. 그런데도 그리면
+                     길이 0인 선이 남아 마커 안에서 지저분해진다.
+
+                     **경로에서 벗어난 동안에는 계속 잇는다.** 처음에는 이탈이면 끊었는데, 그러면
+                     정작 필요한 자리에서 사라졌다 — 서버가 진입 노드를 목적지 기준으로 다시 고르면
                      (S15P11A206-337) 그 노드가 수십 m 떨어질 수 있고, 그 층에 남는 경로 노드가
                      그것 하나뿐이면 이탈로 판정되어 지도가 통째로 비었다. 역삼역 B3 복도(노드 209)
                      에서 2번 출구로 갈 때 실제로 그랬다.
 
                      벗어난 자리에서 가장 가까운 경로 지점으로 이어 주는 것이 필요한 안내다.
                      아무것도 그리지 않으면 사용자는 자기 층에 경로가 없다고 읽는다. */
-                  connectCurrentToRoute
+                  connectCurrentToRoute={progress.snappedLocation === null}
                   facilityType={effectiveType}
                   /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼져
                      아무 시설도 그리지 않는다. */
@@ -905,7 +915,11 @@ export function NavigationPage() {
                 {t('user.navigation.relocalizeShort')}
               </button>
 
-              <div className={styles.floorButtons} role="group" aria-label={t('user.navigation.floorSelect')}>
+              <div
+                className={styles.floorButtons}
+                role="group"
+                aria-label={t('user.navigation.floorSelect')}
+              >
                 {floorMaps.map((map) => {
                   const on = map.floorCode === displayedFloorCode;
 
@@ -932,7 +946,11 @@ export function NavigationPage() {
               </div>
 
               {/* 표시 층에 있는 유형만 둔다. 눌러서 아무것도 안 나오는 칩은 두지 않는다. */}
-              <div className={styles.facilityFilters} role="group" aria-label={t('user.navigation.facilityFilter')}>
+              <div
+                className={styles.facilityFilters}
+                role="group"
+                aria-label={t('user.navigation.facilityFilter')}
+              >
                 {availableFilters.map((filter) => {
                   const active = effectiveView === filter.facilityType;
 
@@ -943,7 +961,10 @@ export function NavigationPage() {
                       className={[styles.facilityFilter, active && styles.facilityFilterOn]
                         .filter(Boolean)
                         .join(' ')}
-                      aria-label={t(active ? 'user.navigation.filterOff' : 'user.navigation.filterOn', { name: filter.name })}
+                      aria-label={t(
+                        active ? 'user.navigation.filterOff' : 'user.navigation.filterOn',
+                        { name: filter.name },
+                      )}
                       aria-pressed={active}
                       title={filter.name}
                       onClick={() => {
@@ -976,10 +997,16 @@ export function NavigationPage() {
                     .filter(Boolean)
                     .join(' ')}
                   aria-label={
-                    effectiveView === 'none' ? t('user.navigation.showFacilities') : t('user.navigation.hideFacilities')
+                    effectiveView === 'none'
+                      ? t('user.navigation.showFacilities')
+                      : t('user.navigation.hideFacilities')
                   }
                   aria-pressed={effectiveView === 'none'}
-                  title={effectiveView === 'none' ? t('user.navigation.showFacilities') : t('user.navigation.hideFacilities')}
+                  title={
+                    effectiveView === 'none'
+                      ? t('user.navigation.showFacilities')
+                      : t('user.navigation.hideFacilities')
+                  }
                   onClick={() => {
                     setFacilityView(effectiveView === 'none' ? 'all' : 'none');
                     setSelectedFacility(null);
