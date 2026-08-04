@@ -26,6 +26,14 @@ const REASONS: Record<CaptionTrouble, string> = {
   stopped: '음성 인식이 멈춰',
 };
 
+const EN_REASONS: Record<CaptionTrouble, string> = {
+  unsupported: 'their browser does not support speech recognition',
+  blocked: 'their microphone is blocked',
+  network: 'the speech-recognition service is unavailable',
+  silent: 'their microphone audio is not being recognized',
+  stopped: 'speech recognition has stopped',
+};
+
 /**
  * 상대 쪽 자막이 오지 않는 이유를 읽을 수 있는 한 줄로 만든다.
  *
@@ -35,8 +43,17 @@ const REASONS: Record<CaptionTrouble, string> = {
  * 목소리는 WebRTC 로 따로 흐르므로 자막이 죽어도 들린다. 그 사실을 함께 알려야 사용자가
  * 상담을 끊지 않는다.
  */
-export function describeRemoteCaptionTrouble(trouble: string | null | undefined, speaker: string) {
+export function describeRemoteCaptionTrouble(
+  trouble: string | null | undefined,
+  speaker: string,
+  language: 'ko' | 'en' = 'ko',
+) {
   if (!trouble) return null;
+
+  if (language === 'en') {
+    const reason = EN_REASONS[trouble as CaptionTrouble] ?? EN_REASONS.stopped;
+    return `${speaker} captions are unavailable because ${reason}. You can still hear their voice.`;
+  }
 
   const reason = REASONS[trouble as CaptionTrouble] ?? REASONS.stopped;
   return `${speaker} 쪽 ${reason} 자막이 오지 않습니다. 목소리는 그대로 들립니다.`;

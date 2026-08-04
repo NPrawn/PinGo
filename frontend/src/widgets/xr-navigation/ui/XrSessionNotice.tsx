@@ -49,9 +49,14 @@ export function XrSessionNotice({
   onConfirm,
   onContinueWithoutTracking,
 }: XrSessionNoticeProps) {
+  const { t } = useTranslation();
   const failed = status === 'failed';
   const unavailable = support === 'no-xr-object' || support === 'unsupported';
-  const content = failed ? failureContent(reason) : unavailable ? UNAVAILABLE : INTRO;
+  const content = failed
+    ? failureContent(reason, t)
+    : unavailable
+      ? unavailableContent(t)
+      : introContent(t);
 
   /**
    * 지원 탐지가 끝나기 전.
@@ -85,19 +90,19 @@ export function XrSessionNotice({
         <div className={styles.actions}>
           {checking ? (
             <>
-              <Button disabled>기기 확인 중…</Button>
+              <Button disabled>{t('user.xr.checkingDevice')}</Button>
               <GhostButton onClick={onContinueWithoutTracking} className={styles.skip}>
-                나중에 · 지도만 보고 이동하기
+                {t('user.xr.continueMap')}
               </GhostButton>
             </>
           ) : canStart ? (
             <>
               <Button onClick={onConfirm}>
                 <Icon name={failed ? 'refresh' : 'camera'} size={17} />
-                {failed ? '다시 시도하기' : '실시간 추적 켜기'}
+                {failed ? t('user.xr.retry') : t('user.xr.start')}
               </Button>
               <GhostButton onClick={onContinueWithoutTracking} className={styles.skip}>
-                나중에 · 지도만 보고 이동하기
+                {t('user.xr.continueMap')}
               </GhostButton>
             </>
           ) : (
@@ -110,7 +115,7 @@ export function XrSessionNotice({
             */
             <Button onClick={onContinueWithoutTracking}>
               <Icon name="map" size={17} />
-              지도만 보고 이동하기
+              {t('user.xr.mapOnly')}
             </Button>
           )}
         </div>
@@ -137,22 +142,24 @@ interface NoticeContent {
  * 일어나지 않는 일을 매번 설명하면 정작 물어보는 것이 묻힌다. 실제로 뜨는 경우에는 시스템
  * 대화상자가 스스로 무엇을 묻는지 알려준다.
  */
-const INTRO: NoticeContent = {
-  title: '실시간으로 위치를 따라갈까요?',
-  description:
-    '카메라가 주변을 인식해 걸어간 만큼 지도의 현재 위치가 움직여요. 켜지 않아도 경로 안내는 그대로 이용할 수 있어요.',
-  icon: 'camera',
-  tone: 'mint',
-};
+function introContent(t: TFunction): NoticeContent {
+  return {
+    title: t('user.xr.introTitle'),
+    description: t('user.xr.introDescription'),
+    icon: 'camera',
+    tone: 'mint',
+  };
+}
 
 /** `immersive-ar`을 쓸 수 없는 기기·브라우저. iOS Safari가 이 경로다(11.7). */
-const UNAVAILABLE: NoticeContent = {
-  title: '이 기기에서는 실시간 추적을 쓸 수 없어요',
-  description:
-    '지도와 위치 재인식으로 목적지까지 안내해 드려요. 위치가 달라지면 재인식 버튼을 눌러 주세요.',
-  icon: 'info',
-  tone: 'coral',
-};
+function unavailableContent(t: TFunction): NoticeContent {
+  return {
+    title: t('user.xr.unavailableTitle'),
+    description: t('user.xr.unavailableDescription'),
+    icon: 'info',
+    tone: 'coral',
+  };
+}
 
 /**
  * 세션 시작 실패 안내.
@@ -160,30 +167,30 @@ const UNAVAILABLE: NoticeContent = {
  * 사유별로 사용자가 할 수 있는 일이 다르다. `permission-blocked`는 앱 안에서 되돌릴 수 없어
  * 브라우저 사이트 설정을 안내하는 것 외에 방법이 없다(11.7).
  */
-function failureContent(reason: XrFailureReason | undefined): NoticeContent {
+function failureContent(reason: XrFailureReason | undefined, t: TFunction): NoticeContent {
   /**
    * 여기서 막힌 것은 **AR 사용 동의**다. 카메라 권한은 이미 허용돼 있으므로 "카메라 권한이
    * 차단됐다"고 쓰면 사용자가 초기 권한 화면을 다시 찾아간다.
    */
   if (reason === 'permission-blocked') {
     return {
-      title: '실시간 추적이 차단되어 있어요',
-      description:
-        'AR 사용 확인을 거부하면 앱에서는 되돌릴 수 없어요. 브라우저 주소창의 자물쇠 아이콘에서 이 사이트의 권한을 초기화한 뒤 다시 들어와 주세요.',
+      title: t('user.xr.blockedTitle'),
+      description: t('user.xr.blockedDescription'),
       icon: 'warning',
       tone: 'coral',
     };
   }
 
   if (reason === 'no-xr-object' || reason === 'unsupported') {
-    return UNAVAILABLE;
+    return unavailableContent(t);
   }
 
   return {
-    title: '실시간 추적을 시작하지 못했어요',
-    description:
-      'AR 사용 확인이 취소되었거나 일시적인 문제일 수 있어요. 다시 시도하거나 지도만으로 이동해도 괜찮아요.',
+    title: t('user.xr.failedTitle'),
+    description: t('user.xr.failedDescription'),
     icon: 'warning',
     tone: 'coral',
   };
 }
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';

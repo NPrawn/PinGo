@@ -92,3 +92,11 @@
   font-size: 14px;
   border-radius: 12px;
 }
+
+:global(html[lang='en']) .button {
+  font-size: 13px;
+}
+
+:global(html[lang='en']) .small {
+  font-size: 12px;
+}

@@ -151,6 +151,40 @@ class RestClientKakaoLocalClientTest {
     }
 
     @Test
+    void searchNearbySubwayStationsUsesCategoryAndCenterCoordinates() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        RestClientKakaoLocalClient client = new RestClientKakaoLocalClient(
+                builder.build(),
+                new KakaoLocalProperties("https://dapi.kakao.com", "test-key", 1000, 3000)
+        );
+
+        server.expect(requestTo(containsString("/v2/local/search/category.json")))
+                .andExpect(requestTo(containsString("category_group_code=SW8")))
+                .andExpect(requestTo(containsString("x=127.036500")))
+                .andExpect(requestTo(containsString("y=37.500700")))
+                .andRespond(withSuccess("""
+                        {"documents":[{
+                          "id":"2","place_name":"선릉역 2호선",
+                          "category_name":"교통,수송 > 지하철,전철 > 수도권2호선",
+                          "address_name":"서울 강남구 삼성동","road_address_name":"",
+                          "x":"127.048913","y":"37.504520","distance":"420"
+                        }]}
+                        """, MediaType.APPLICATION_JSON));
+
+        List<KakaoPlaceSearchResult> results = client.searchNearbySubwayStations(
+                new BigDecimal("127.036500"),
+                new BigDecimal("37.500700")
+        );
+
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.name()).isEqualTo("선릉역 2호선");
+            assertThat(result.distanceMeters()).isEqualTo(420L);
+        });
+        server.verify();
+    }
+
+    @Test
     void searchPlacesReturnsEmptyWhenApiKeyIsMissing() {
         RestClient.Builder builder = RestClient.builder().baseUrl("https://dapi.kakao.com");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

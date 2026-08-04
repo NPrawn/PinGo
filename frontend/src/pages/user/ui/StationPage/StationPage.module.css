@@ -437,6 +437,64 @@
   margin-top: 14px;
 }
 
+/* English-only fitting: Korean measurements remain unchanged. */
+:global(html[lang='en']) .heroEyebrow {
+  margin-bottom: 5px;
+  font-size: 8px;
+  letter-spacing: 0.045em;
+  white-space: nowrap;
+}
+
+:global(html[lang='en']) .title {
+  max-width: 245px;
+  font-size: 19px;
+  line-height: 1.15;
+}
+
+:global(html[lang='en']) .description {
+  max-width: 258px;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+:global(html[lang='en']) .heroConsult {
+  padding: 6px 10px;
+}
+
+:global(html[lang='en']) .progress {
+  padding-inline: 10px;
+}
+
+:global(html[lang='en']) .progressItem {
+  gap: 4px;
+  font-size: 8.8px;
+  white-space: nowrap;
+}
+
+:global(html[lang='en']) .progressDot {
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
+}
+
+:global(html[lang='en']) .sectionTitle {
+  font-size: 13.5px;
+}
+
+:global(html[lang='en']) .sectionMeta {
+  font-size: 9.5px;
+}
+
+:global(html[lang='en']) .completedBody strong,
+:global(html[lang='en']) .routePoint strong {
+  font-size: 13px;
+}
+
+:global(html[lang='en']) .changeButton,
+:global(html[lang='en']) .routeEditButton {
+  font-size: 9.5px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sectionEntering,
   .heroConsult svg {

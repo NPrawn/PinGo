@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
@@ -26,20 +27,20 @@ import {
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './ConsultWaitingPage.module.css';
 
-const MISSING_TOKEN_MESSAGE = '상담 연결 정보를 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
-
 /**
  * Screen 19 (FR-U-014) — waiting in the consult queue.
  *
  * 상담 대기 SSE를 구독하고 수락 이벤트를 받으면 상담 화면으로 이동한다.
  */
 export function ConsultWaitingPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const consultationId = useConsultStore((state) => state.consultationId);
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
   const clearConsultation = useConsultStore((state) => state.clearConsultation);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
-  const [statusMessage, setStatusMessage] = useState('잠시만 기다려 주세요 · 평균 30초 소요');
+  const [statusMessage, setStatusMessage] = useState(() => t('user.consultWaiting.status'));
+  const missingTokenMessage = t('user.consultWaiting.missingToken');
 
   useEffect(() => {
     if (!consultationId || !userSessionId) return;
@@ -49,9 +50,12 @@ export function ConsultWaitingPage() {
     void getConsultation(consultationId, userSessionId)
       .then((consultation) => {
         if (!active) return;
-        if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
+        if (
+          (consultation.status === 'ACCEPTED' || consultation.status === 'IN_PROGRESS') &&
+          consultation.signalingRoomId
+        ) {
           if (!consultation.signalingAccessToken) {
-            setStatusMessage(MISSING_TOKEN_MESSAGE);
+            setStatusMessage(missingTokenMessage);
             return;
           }
           setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
@@ -82,23 +86,23 @@ export function ConsultWaitingPage() {
             if (!active) return;
             const roomId = consultation.signalingRoomId ?? acceptedRoomId;
             if (!roomId || !consultation.signalingAccessToken) {
-              setStatusMessage(MISSING_TOKEN_MESSAGE);
+              setStatusMessage(missingTokenMessage);
               return;
             }
             setSignalingRoom(roomId, consultation.signalingAccessToken);
             void navigate(USER_ROUTES.CONSULT_SESSION);
           })
-          .catch(() => setStatusMessage(MISSING_TOKEN_MESSAGE));
+          .catch(() => setStatusMessage(missingTokenMessage));
       } catch {
-        setStatusMessage('상담 연결 정보를 읽지 못했습니다.');
+        setStatusMessage(t('user.consultWaiting.readError'));
       }
     };
     const handleUnavailable = (event: MessageEvent<string>) => {
       try {
         const payload = JSON.parse(event.data) as { message?: string };
-        setStatusMessage(payload.message ?? '상담 연결을 완료하지 못했습니다.');
+        setStatusMessage(payload.message ?? t('user.consultWaiting.connectError'));
       } catch {
-        setStatusMessage('상담 연결을 완료하지 못했습니다.');
+        setStatusMessage(t('user.consultWaiting.connectError'));
       }
     };
     const handleCanceled = () => {
@@ -117,7 +121,7 @@ export function ConsultWaitingPage() {
       active = false;
       events.close();
     };
-  }, [clearConsultation, consultationId, navigate, setSignalingRoom, userSessionId]);
+  }, [clearConsultation, consultationId, missingTokenMessage, navigate, setSignalingRoom, t, userSessionId]);
 
   const leaveWaiting = useCallback(() => {
     // 상담으로 이어지지 않았으니 미리 잡아 둔 카메라·마이크를 놓아 준다. 그대로 두면 장치를
@@ -164,7 +168,7 @@ export function ConsultWaitingPage() {
         code === 'CONSULTATION_NOT_CANCELABLE' || code === 'CONSULTATION_NOT_FOUND';
       if (!alreadyGone) {
         setStatusMessage(
-          error instanceof ApiError ? error.message : '상담 요청을 취소하지 못했습니다.',
+          error instanceof ApiError ? error.message : t('user.consultWaiting.cancelError'),
         );
         return;
       }
@@ -176,7 +180,7 @@ export function ConsultWaitingPage() {
   return (
     <PhoneFrame bodyClassName={styles.body}>
       <>
-        <LivePill>CONNECTING · 상담 대기 중</LivePill>
+        <LivePill>{t('user.consultWaiting.pill')}</LivePill>
 
         <BlobHero className={styles.hero}>
           <span className={styles.ripple} aria-hidden />
@@ -199,10 +203,8 @@ export function ConsultWaitingPage() {
           </BlobPin>
         </BlobHero>
 
-        <Title className={styles.title}>
-          상담원을
-          <br />
-          연결하고 있어요
+        <Title className={styles.title} style={{ whiteSpace: 'pre-line' }}>
+          {t('user.consultWaiting.title')}
         </Title>
         <Sub className={styles.sub}>{statusMessage}</Sub>
 
@@ -211,17 +213,17 @@ export function ConsultWaitingPage() {
             <Icon name="bulb" size={18} />
           </span>
           <div className={styles.tipCopy}>
-            <strong className={styles.tipTitle}>상담원 연결이 어려운 경우</strong>
+            <strong className={styles.tipTitle}>{t('user.consultWaiting.tipTitle')}</strong>
             <span className={styles.tipLine}>
-              <b>B1 고객안내센터</b>를 방문해 주세요.
+              {t('user.consultWaiting.tipVisit')}
             </span>
-            <span className={styles.tipLine}>역무원용 안내 문장도 준비되어 있어요.</span>
+            <span className={styles.tipLine}>{t('user.consultWaiting.tipExtra')}</span>
           </div>
         </Card>
 
         <Spring />
         <GhostButton className={styles.cancel} onClick={() => void cancel()}>
-          요청 취소
+          {t('user.consultWaiting.cancel')}
         </GhostButton>
       </>
     </PhoneFrame>

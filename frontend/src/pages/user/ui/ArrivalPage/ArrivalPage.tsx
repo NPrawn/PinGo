@@ -1,22 +1,28 @@
+import { useTranslation } from 'react-i18next';
 import { useNavigationStore } from '@/entities/navigation';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { Blob, BlobHero, BlobPin, ButtonLink, LivePill, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './ArrivalPage.module.css';
 
 /** Screen 21 (FR-U-011) — the user reached the destination. */
 export function ArrivalPage() {
-  const destination = useNavigationStore((state) => state.destination) ?? '선택한 목적지';
+  const { t, i18n } = useTranslation();
+  const storedDestination = useNavigationStore((state) => state.destination);
+  const destination = storedDestination
+    ? localizeUserLabel(storedDestination, i18n.resolvedLanguage === 'en' ? 'en' : 'ko')
+    : t('user.arrival.selected');
   // 안내가 실제로 도착한 출입구. 경로 옵션 화면이 유형별로 정해 스토어에 남긴 값이다.
   const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
-  const exit = targetExitLabel ?? '출입구';
+  const exit = targetExitLabel ?? t('user.arrival.entrance');
 
   return (
     <PhoneFrame layout="hero" bodyClassName={styles.body}>
       <>
         <LivePill tone="gps" className={styles.pill}>
-          ARRIVED · 도착 완료
+          {t('user.arrival.pill')}
         </LivePill>
 
         <BlobHero className={styles.hero}>
@@ -33,15 +39,11 @@ export function ArrivalPage() {
           </BlobPin>
         </BlobHero>
 
-        <Title className={styles.title}>
-          {exit}에
-          <br />
-          도착했습니다
+        <Title className={styles.title} style={{ whiteSpace: 'pre-line' }}>
+          {t('user.arrival.title', { exit })}
         </Title>
-        <Sub center className={styles.sub}>
-          {destination}에서 가까운 출입구예요.
-          <br />
-          안전하게 이동을 마무리해 주세요.
+        <Sub center className={styles.sub} style={{ whiteSpace: 'pre-line' }}>
+          {t('user.arrival.description', { destination })}
         </Sub>
 
         <Spring />
@@ -53,7 +55,7 @@ export function ArrivalPage() {
           하나다 — 새 여정을 시작하는 것.
         */}
         <ButtonLink to={USER_ROUTES.STATION} className={styles.cta}>
-          새로운 길 안내 시작
+          {t('user.arrival.restart')}
         </ButtonLink>
         <ConsultCta size="sm" className={styles.consult} />
       </>

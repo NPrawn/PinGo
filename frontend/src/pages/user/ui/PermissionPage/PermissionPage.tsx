@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   usePermissionStore,
@@ -32,18 +33,12 @@ type Modal = 'none' | 'incomplete';
  * 먼저 찾게 한다. 크롬은 팝업을 지나치면 주소창 오른쪽 카메라 아이콘으로 접어 둔다.
  * 그래도 답이 없으면 같은 사이트를 열어 둔 다른 탭이 장치를 잡고 있는 경우다.
  */
-const TIMEOUT_HINT =
-  '브라우저 권한 팝업에서 [허용]을 눌러 주세요. 팝업이 보이지 않으면 주소창 오른쪽 카메라 아이콘을 눌러 허용할 수 있어요. 그래도 안 되면 이 사이트를 열어 둔 다른 탭을 모두 닫아 주세요.';
-
 /**
  * 다른 곳이 카메라·마이크를 쓰고 있어 열지 못한 경우.
  *
  * 거부당한 것이 아니다. 권한은 멀쩡한데 장치를 잡을 수 없을 뿐이라, "허용해 주세요"라고 하면
  * 사용자는 이미 허용된 설정만 들여다보게 된다.
  */
-const DEVICE_BUSY_HINT =
-  '카메라나 마이크를 다른 앱 또는 다른 탭이 사용하고 있어요. 그곳을 닫은 뒤 다시 시도해 주세요.';
-
 /** 브라우저마다 이름이 다르다. 어느 쪽이든 "거부"가 아니라 "지금은 못 연다"는 뜻이다. */
 const DEVICE_BUSY_ERRORS = ['NotReadableError', 'AbortError', 'TrackStartError'];
 
@@ -94,6 +89,7 @@ function toPermissionState(statuses: RequiredPermissionStatuses): PermissionStat
 
 /** Screen 03 (FR-U-002) — permission request. */
 export function PermissionPage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const syncPermissions = usePermissionStore((state) => state.sync);
   const {
@@ -186,9 +182,9 @@ export function PermissionPage() {
     const failure = result.camera.error?.name;
 
     if (failure === 'TimeoutError') {
-      setHint(TIMEOUT_HINT);
+      setHint(t('user.permission.timeoutHint'));
     } else if (failure && DEVICE_BUSY_ERRORS.includes(failure)) {
-      setHint(DEVICE_BUSY_HINT);
+      setHint(t('user.permission.deviceBusyHint'));
     }
 
     // Navigating or opening a dialog only makes sense while the user is still
@@ -206,16 +202,12 @@ export function PermissionPage() {
   return (
     <PhoneFrame>
       <div className={styles.topSpacer} />
-      <BackLink to={USER_ROUTES.LANGUAGE}>언어 선택</BackLink>
-      <Kicker className={styles.kicker}>시작하기</Kicker>
-      <Title>
-        이용에 필요한 권한을
-        <br />
-        허용해 주세요
+      <BackLink to={USER_ROUTES.LANGUAGE}>{t('user.permission.back')}</BackLink>
+      <Kicker className={styles.kicker}>{t('user.permission.kicker')}</Kicker>
+      <Title style={{ whiteSpace: 'pre-line' }}>
+        {t('user.permission.title')}
       </Title>
-      <Sub>
-        위치 안내와 영상 상담에 <b className={styles.strong}>세 가지 권한이 필요해요.</b>
-      </Sub>
+      <Sub>{t('user.permission.description')}</Sub>
 
       <PermissionList states={toRowStates(statuses)} />
 
@@ -228,8 +220,9 @@ export function PermissionPage() {
       */}
       {blockedKeys.length > 0 && (
         <p className={styles.hint} role="alert">
-          {permissionNamesOf(blockedKeys)} 권한이 차단되어 있어요. 주소창의 자물쇠 아이콘을 눌러
-          사이트 설정에서 허용으로 바꾸면 이 화면이 자동으로 넘어가요.
+          {t('user.permission.blockedHint', {
+            permissions: permissionNamesOf(blockedKeys, i18n.resolvedLanguage),
+          })}
         </p>
       )}
       {/*
@@ -250,10 +243,10 @@ export function PermissionPage() {
       */}
       <Button onClick={() => void start()} disabled={isRequesting || promptableKinds.length === 0}>
         {isRequesting
-          ? '권한 요청 중…'
+          ? t('user.permission.requesting')
           : promptableKinds.length === 0
-            ? '브라우저 설정에서 권한을 켜 주세요'
-            : '권한 허용하고 시작하기'}
+            ? t('user.permission.openSettings')
+            : t('user.permission.allowAndStart')}
       </Button>
 
       {reminder !== 'none' && (

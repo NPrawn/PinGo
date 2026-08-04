@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { SATISFACTION_LABELS, useConsultStore } from '@/entities/consult';
 import { useUserSessionStore } from '@/entities/user-session';
@@ -16,6 +17,7 @@ const DISMISS_MS = 550;
 
 /** Screen 26 — consultation ended, collect a satisfaction rating. */
 export function ConsultEndedPage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const satisfaction = useConsultStore((state) => state.satisfaction);
   const rate = useConsultStore((state) => state.rate);
@@ -85,7 +87,7 @@ export function ConsultEndedPage() {
         setRated(true);
         return;
       }
-      setError('평가를 저장하지 못했어요. 다시 눌러 주세요.');
+      setError(t('user.consultEnded.error'));
     } finally {
       setSubmitting(false);
     }
@@ -121,13 +123,13 @@ export function ConsultEndedPage() {
         </div>
 
         <div className={styles.scrim}>
-          <div className={styles.dialog} role="dialog" aria-label="상담이 종료되었어요">
+          <div className={styles.dialog} role="dialog" aria-label={t('user.consultEnded.title')}>
             <div className={styles.mark}>
               <Icon name="chat" size={28} />
             </div>
-            <h2 className={styles.heading}>상담이 종료되었어요</h2>
+            <h2 className={styles.heading}>{t('user.consultEnded.title')}</h2>
             <Sub center className={styles.lede}>
-              별점을 남기면 목적지 검색으로 이동해요
+              {t('user.consultEnded.description')}
             </Sub>
 
             <div className={styles.stars}>
@@ -137,7 +139,7 @@ export function ConsultEndedPage() {
                   type="button"
                   className={styles.star}
                   style={{ color: score <= satisfaction ? '#F0B36A' : '#CFE2D5' }}
-                  aria-label={`${score}점`}
+                  aria-label={t('user.consultEnded.score', { score })}
                   /* 한 번 평가한 뒤에는 잠근다. 다음 화면으로 넘어가는 타이머가 도는 동안 다른 별을 다시 눌러 평가를 덮어쓰지 못하게 한다. */
                   disabled={submitting || rated}
                   onClick={() => void submitRating(score)}
@@ -148,7 +150,11 @@ export function ConsultEndedPage() {
             </div>
 
             {satisfaction > 0 && !error && (
-              <p className={styles.ratingLabel}>{SATISFACTION_LABELS[satisfaction]}</p>
+              <p className={styles.ratingLabel}>
+                {i18n.resolvedLanguage === 'en'
+                  ? t(`user.consultEnded.rating${satisfaction}`)
+                  : SATISFACTION_LABELS[satisfaction]}
+              </p>
             )}
             {error && (
               <p className={styles.ratingError} role="alert">

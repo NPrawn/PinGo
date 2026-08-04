@@ -60,6 +60,11 @@
     0 0 0 4px color-mix(in srgb, var(--color-mint) 18%, transparent);
 }
 
+:global(html[lang='en']) .big {
+  padding-right: 82px;
+  font-size: 12px;
+}
+
 .invalid,
 .invalid:focus {
   border-color: var(--color-red);
