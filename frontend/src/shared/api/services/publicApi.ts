@@ -25,6 +25,8 @@ export type RouteCreateRequest = Schemas['RouteCreateRequest'];
 export type RouteResponse = Schemas['RouteResponse'];
 export type LocalizationRequestMetadata = Schemas['LocalizationRequestMetadata'];
 export type LocalizationResponse = Schemas['LocalizationResponse'];
+export type ExternalDirectionRequest = Schemas['ExternalDirectionRequest'];
+export type ExternalDirectionResponse = Schemas['ExternalDirectionResponse'];
 
 export function getHealth() {
   return apiClient.get<string>('/api/health').then(({ data }) => data);
@@ -57,10 +59,10 @@ export function getNearbyStations(latitude: number, longitude: number) {
 }
 
 /** keyword를 비우면 서비스 중인 역 전체를 반환한다. */
-export function searchStations(keyword?: string, language?: string) {
+export function searchStations(keyword?: string) {
   return unwrap<StationSearchResponse[]>(
     apiClient.get(ENDPOINTS.stations.search, {
-      params: { keyword, language },
+      params: { keyword },
     }),
   );
 }
@@ -78,7 +80,6 @@ export function getStationFacilities(
   filters: {
     floorId?: number;
     facilityType?: string;
-    language?: string;
   } = {},
 ) {
   return unwrap<FacilityResponse[]>(
@@ -92,10 +93,10 @@ export function getFacility(facilityId: number) {
   return unwrap<FacilityDetailResponse>(apiClient.get(ENDPOINTS.facilities.detail(facilityId)));
 }
 
-export function searchDestinations(stationId: number, keyword: string, language?: string) {
+export function searchDestinations(stationId: number, keyword: string) {
   return unwrap<DestinationSearchResponse[]>(
     apiClient.get(ENDPOINTS.destinations.search, {
-      params: { stationId, keyword, language },
+      params: { stationId, keyword },
     }),
   );
 }
@@ -117,6 +118,12 @@ export function getIndoorRouteOptions(request: RouteOptionsRequest) {
 
 export function createIndoorRoute(request: RouteCreateRequest) {
   return unwrap<RouteResponse>(apiClient.post(ENDPOINTS.routes.indoor, request));
+}
+
+export function getExternalWalkingDirection(request: ExternalDirectionRequest) {
+  return unwrap<ExternalDirectionResponse>(
+    apiClient.post(ENDPOINTS.externalMaps.directions, request),
+  );
 }
 
 export function localize(image: File, metadata: LocalizationRequestMetadata) {

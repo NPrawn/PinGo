@@ -426,6 +426,121 @@ class IndoorRouteServiceTest {
         assertThat(response.startNodeId()).isEqualTo(3L);
     }
 
+    /**
+     * 같은 층이어도 걸어갈 수 없는 노드는 진입점이 될 수 없다.
+     *
+     * <p>역삼역 B3 를 줄여 옮겼다. 선로 양쪽에 승강장이 있고 그 둘은 같은 층인데 간선이 없다.
+     * 건너가려면 위층(2)으로 올라갔다 내려와야 한다. 사용자는 아래쪽 승강장에 서 있다.
+     *
+     * <pre>
+     *   위층      12 ------------- 13 --- 목적지 14
+     *              |                |
+     *   B측 2 --- 3(계단)      건너편 22 --- 23(계단)
+     *        사용자(6,0)
+     * </pre>
+     *
+     * <p>건너편 22 는 직선으로 가깝고(사용자에서 9.2m) 목적지까지 그래프 거리도 짧아 예전
+     * 비용식으로는 뽑혔다. 그러나 B3 간선만으로는 거기 갈 수 없다. (S15P11A206-338)
+     */
+    @Test
+    @DisplayName("같은 층이어도 그 층 간선으로 닿지 못하는 노드는 진입점 후보에서 빠진다")
+    void skipsEntryNodeAcrossDisconnectedPlatform() {
+        givenActiveStation(1L);
+        givenNodes(1L,
+                nodeAt(2L, 0, 0), nodeAt(3L, 10, 0),          // 사용자가 선 승강장
+                nodeAt(22L, 10, 9), nodeAt(23L, 20, 9),       // 선로 건너편 승강장 (간선으로 안 이어짐)
+                nodeAtFloor(12L, 2L, 10, 0), nodeAtFloor(13L, 2L, 20, 9), nodeAtFloor(14L, 2L, 30, 9));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 22L, 23L, 10, RouteMoveType.WALKWAY),
+                // 두 승강장은 위층을 거쳐서만 이어진다
+                edge(1L, 3L, 12L, 5, RouteMoveType.STAIR),
+                edge(1L, 23L, 13L, 5, RouteMoveType.STAIR),
+                edge(1L, 12L, 13L, 14, RouteMoveType.WALKWAY),
+                edge(1L, 13L, 14L, 10, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {2L, 1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 14L, null, "fastest", Language.KO,
+                new BigDecimal("6.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isIn(2L, 3L);
+        assertThat(response.pathNodes())
+                .extracting(RoutePathNode::nodeId)
+                .doesNotContain(22L, 23L);
+    }
+
+    /**
+     * 직선 구간이 길면 후보에서 빠진다.
+     *
+     * <p>직선은 그래프 경로의 하한이라 미터당 싸다. 그래서 상한이 없으면 목적지 쪽으로 멀리 있는
+     * 노드가 이긴다 — 걸어서 갈 수 없는 지름길을 태우는 셈이다.
+     *
+     * <p>3 과 4 사이 통로는 굽어 있어 걸어서 70m 인데 직선으로는 50m 다. 그래서 직선을 길게
+     * 쓰는 4 쪽이 상한 없이는 이긴다.
+     *
+     * <pre>
+     *   2(0,0) --- 3(10,0) ==== 굽은 통로 70m ==== 4(60,0) --- 목적지 5(70,0)
+     *   사용자(6,0)
+     *
+     *   상한 없이:  4 로  54 + 10 = 64   &lt;- 54m 를 순간이동한다
+     *              3 으로  4 + 80 = 84
+     *   상한 15m:   4 는 후보에서 빠지고 3 이 남는다
+     * </pre>
+     */
+    @Test
+    @DisplayName("직선으로 상한을 넘게 떨어진 노드는 진입점 후보에서 빠진다")
+    void skipsEntryNodeBeyondStraightLimit() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 10, 0), nodeAt(4L, 60, 0), nodeAt(5L, 70, 0));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 70, RouteMoveType.WALKWAY),
+                edge(1L, 4L, 5L, 10, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 5L, null, "fastest", Language.KO,
+                new BigDecimal("6.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(3L);
+        assertThat(response.totalDistanceM()).isEqualByComparingTo("80");
+    }
+
+    /**
+     * 간선이 없는 노드를 가리켜도 진입 노드 선택은 깨지지 않는다.
+     *
+     * <p>리뷰에서 나온 우려다 — {@code withChosenEntry} 가 {@code data.nodes()::get} 으로 노드를
+     * 꺼내니, 간선에는 있는데 노드 맵에는 없는 id 가 섞이면 {@code null} 이 흘러 NPE 가 난다는
+     * 것이다. 실제로는 후보를 {@code sameFloor} 로 거르고 그 집합을 <b>노드 맵에서</b> 만들기
+     * 때문에 그런 id 는 {@code reachableWithin} 의 {@code allowedNodeIds.contains(next)} 에서
+     * 이미 떨어진다.
+     *
+     * <p>그 불변식을 여기서 붙잡아 둔다. {@code sameFloor} 를 간선 기준으로 바꾸는 변경이
+     * 들어오면 이 테스트가 먼저 깨진다.
+     */
+    @Test
+    @DisplayName("간선이 노드 맵에 없는 id를 가리켜도 진입 노드를 고른다")
+    void ignoresEdgesPointingAtUnknownNodes() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 10, 0), nodeAt(5L, 20, 0));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 5L, 10, RouteMoveType.WALKWAY),
+                // 노드 99는 givenNodes 에 없다. 정합성이 깨진 간선을 흉내낸다.
+                edge(1L, 3L, 99L, 1, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 5L, null, "fastest", Language.KO,
+                new BigDecimal("9.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(3L);
+        assertThat(response.pathNodes())
+                .extracting(RoutePathNode::nodeId)
+                .doesNotContain(99L);
+    }
+
     @Test
     @DisplayName("상세 경로 안내에 회전과 층 이동 방향이 실린다")
     void writesTurnAndFloorDirection() {
@@ -446,6 +561,92 @@ class IndoorRouteServiceTest {
                         "10m 직진하세요.",
                         "오른쪽으로 돌아 12m 이동하세요.",
                         "계단으로 한 층 내려가세요.");
+    }
+
+    /**
+     * 연달아 직진하는 통로는 한 안내로 묶인다(S15P11A206-339).
+     *
+     * <p>간선 하나가 안내 하나면 긴 통로에서 같은 문장이 되풀이된다. 역삼역 승강장은 복도 노드가
+     * 평균 7.7m 마다 있어 B3 서쪽 끝에서 8번 출구까지 "직진하세요" 가 11번 연달아 나왔다.
+     *
+     * <p><b>{@code pathNodes} 는 묶지 않는다.</b> 지도가 꼭짓점을 다 필요로 한다.
+     */
+    @Test
+    @DisplayName("곧게 이어지는 통로를 한 안내로 묶고 거리와 시간을 합친다")
+    void mergesStraightWalkwayIntoOneStep() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 20, 0), nodeAt(3L, 45, 0), nodeAt(4L, 70, 0));
+        givenEdges(1L,
+                timedEdge(1L, 1L, 2L, 20, 16, RouteMoveType.WALKWAY),
+                timedEdge(1L, 2L, 3L, 25, 20, RouteMoveType.WALKWAY),
+                timedEdge(1L, 3L, 4L, 25, 20, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 4L, null, "fastest", Language.KO));
+
+        assertThat(response.steps()).hasSize(1);
+        assertThat(response.steps().get(0))
+                .satisfies(step -> {
+                    assertThat(step.instruction()).isEqualTo("70m 직진하세요.");
+                    assertThat(step.distanceM()).isEqualByComparingTo("70");
+                    assertThat(step.estimatedTimeSec()).isEqualTo(56);
+                    // 묶은 구간의 처음과 끝이다. 중간 노드 2·3은 step 이 아니라 pathNodes 로만 남는다.
+                    assertThat(step.fromNodeId()).isEqualTo(1L);
+                    assertThat(step.toNodeId()).isEqualTo(4L);
+                });
+        assertThat(response.pathNodes())
+                .extracting(RoutePathNode::nodeId)
+                .containsExactly(1L, 2L, 3L, 4L);
+    }
+
+    @Test
+    @DisplayName("꺾이는 곳과 층 이동에서는 안내를 끊는다")
+    void keepsStepsSeparateAtTurnAndFloorChange() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 20, 0), nodeAt(3L, 45, 0),
+                nodeAt(4L, 45, 25), nodeAtFloor(5L, 2L, 45, 25));
+        givenEdges(1L,
+                edge(1L, 1L, 2L, 20, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 3L, 25, RouteMoveType.WALKWAY),   // 여기까지 직진
+                edge(1L, 3L, 4L, 25, RouteMoveType.WALKWAY),   // 남쪽으로 90도
+                edge(1L, 4L, 5L, 5, RouteMoveType.STAIR));
+        givenFloors(1L, new long[] {2L, 1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 5L, null, "fastest", Language.KO));
+
+        assertThat(response.steps())
+                .extracting(RouteStep::instruction)
+                .containsExactly(
+                        "45m 직진하세요.",
+                        "오른쪽으로 돌아 25m 이동하세요.",
+                        "계단으로 한 층 올라가세요.");
+    }
+
+    /**
+     * 시간을 모르는 간선이 섞이면 묶은 안내의 시간도 비운다.
+     *
+     * <p>있는 것만 더하면 실제보다 짧은 수가 나가는데 받는 쪽은 부분 합인지 알 수 없다. 경로 총
+     * 시간도 같은 규칙이다.
+     */
+    @Test
+    @DisplayName("묶은 구간 중 시간을 모르는 간선이 있으면 그 안내의 시간은 비운다")
+    void leavesMergedTimeNullWhenAnyEdgeHasNoTime() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(1L, 0, 0), nodeAt(2L, 20, 0), nodeAt(3L, 45, 0));
+        givenEdges(1L,
+                timedEdge(1L, 1L, 2L, 20, 16, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 3L, 25, RouteMoveType.WALKWAY));   // 시간 없음
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(
+                createRequest(1L, 1L, 3L, null, "fastest", Language.KO));
+
+        assertThat(response.steps()).hasSize(1);
+        assertThat(response.steps().get(0).distanceM()).isEqualByComparingTo("45");
+        assertThat(response.steps().get(0).estimatedTimeSec()).isNull();
+        assertThat(response.estimatedTimeSec()).isNull();
     }
 
     @Test
@@ -532,6 +733,18 @@ class IndoorRouteServiceTest {
 
     private RouteEdge edge(long stationId, long fromNodeId, long toNodeId, long distanceM, RouteMoveType moveType) {
         return edge(stationId, fromNodeId, toNodeId, distanceM, moveType, true);
+    }
+
+    /**
+     * 예상 시간이 있는 간선. {@link #edge} 는 시간을 비워 두므로 시간을 검증할 때 이것을 쓴다.
+     *
+     * <p>역삼역 시드 간선 205개는 전부 시간이 들어 있다. 시간이 빈 간선은 관리자가 그렇게 만든
+     * 경우다 — {@code RouteEdgeCreateRequest.estimatedTimeSec} 가 필수가 아니다.
+     */
+    private RouteEdge timedEdge(
+            long stationId, long fromNodeId, long toNodeId, long distanceM, int seconds, RouteMoveType moveType) {
+        return RouteEdge.create(stationId, fromNodeId, toNodeId, BigDecimal.valueOf(distanceM),
+                seconds, moveType.getCode(), true, true);
     }
 
     private RouteEdge edge(

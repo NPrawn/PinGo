@@ -220,7 +220,7 @@ class ConsultationSessionServiceTest {
     @Test
     void cancel_성공() {
         ConsultationSession session = newSession();
-        given(consultationSessionRepository.findById(session.getConsultationId()))
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
                 .willReturn(Optional.of(session));
 
         ConsultationCancelResponse response =
@@ -230,8 +230,25 @@ class ConsultationSessionServiceTest {
     }
 
     @Test
+    void cancel_수락된_상담도_성공하고_상담원은_AVAILABLE이_된다() {
+        ConsultationSession session = newSession();
+        session.accept(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
+                .willReturn(Optional.of(session));
+
+        Account counselor = mock(Account.class);
+        given(accountRepository.findByIdForUpdate(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+
+        ConsultationCancelResponse response =
+                consultationSessionService.cancel(session.getConsultationId(), USER_SESSION_ID);
+
+        assertThat(response.status()).isEqualTo(ConsultationStatus.CANCELED);
+        verify(counselor).changeStatus(CounselorStatus.AVAILABLE);
+    }
+
+    @Test
     void cancel_실패_존재하지_않는_상담() {
-        given(consultationSessionRepository.findById("cs_notfound")).willReturn(Optional.empty());
+        given(consultationSessionRepository.findByIdForUpdate("cs_notfound")).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> consultationSessionService.cancel("cs_notfound", USER_SESSION_ID))
                 .isInstanceOf(BusinessException.class)
@@ -241,7 +258,7 @@ class ConsultationSessionServiceTest {
     @Test
     void cancel_실패_취소_불가능한_상태() {
         ConsultationSession session = newSession();
-        given(consultationSessionRepository.findById(session.getConsultationId()))
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
                 .willReturn(Optional.of(session));
         consultationSessionService.cancel(session.getConsultationId(), USER_SESSION_ID); // WAITING -> CANCELED
 
@@ -253,7 +270,7 @@ class ConsultationSessionServiceTest {
     @Test
     void cancel_실패_상담_소유자가_아님() {
         ConsultationSession session = newSession();
-        given(consultationSessionRepository.findById(session.getConsultationId()))
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
                 .willReturn(Optional.of(session));
 
         assertThatThrownBy(() -> consultationSessionService.cancel(session.getConsultationId(), OTHER_USER_SESSION_ID))
@@ -266,7 +283,7 @@ class ConsultationSessionServiceTest {
         // 다른 사람 상담이면서 이미 WAITING이 아닌 상태여도, 상태 정보를 흘리지 않고
         // CONSULTATION_NOT_FOUND만 반환해야 한다 (소유자 검증이 상태 검증보다 먼저 실행되어야 함)
         ConsultationSession session = newSession();
-        given(consultationSessionRepository.findById(session.getConsultationId()))
+        given(consultationSessionRepository.findByIdForUpdate(session.getConsultationId()))
                 .willReturn(Optional.of(session));
         consultationSessionService.cancel(session.getConsultationId(), USER_SESSION_ID); // 소유자가 먼저 취소 -> CANCELED
 

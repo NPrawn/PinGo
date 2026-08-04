@@ -204,6 +204,7 @@ describe('DestinationSearch', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /올리브영 역삼중앙점/ }));
 
+    // 세 번째 인자는 표시할 이름을 고를 언어다. 검색 키워드는 한국어 라벨 그대로 간다.
     await waitFor(() =>
       expect(searchMocks.resolveDestination).toHaveBeenCalledWith(1, '올리브영 역삼중앙점', 'ko'),
     );

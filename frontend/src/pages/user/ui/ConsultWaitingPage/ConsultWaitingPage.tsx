@@ -45,8 +45,11 @@ export function ConsultWaitingPage() {
   useEffect(() => {
     if (!consultationId || !userSessionId) return;
 
+    let active = true;
+
     void getConsultation(consultationId, userSessionId)
       .then((consultation) => {
+        if (!active) return;
         if (consultation.status === 'ACCEPTED' && consultation.signalingRoomId) {
           if (!consultation.signalingAccessToken) {
             setStatusMessage(missingTokenMessage);
@@ -69,6 +72,7 @@ export function ConsultWaitingPage() {
 
     const events = subscribeToConsultationWaitingEvents(consultationId);
     const handleAccepted = (event: MessageEvent<string>) => {
+      if (!active) return;
       try {
         const acceptedRoomId = (JSON.parse(event.data) as { signalingRoomId?: string })
           .signalingRoomId;
@@ -76,6 +80,7 @@ export function ConsultWaitingPage() {
         // WebSocket 접속을 거절하므로, 상세 조회로 토큰을 받은 뒤에 넘어간다.
         void getConsultation(consultationId, userSessionId)
           .then((consultation) => {
+            if (!active) return;
             const roomId = consultation.signalingRoomId ?? acceptedRoomId;
             if (!roomId || !consultation.signalingAccessToken) {
               setStatusMessage(missingTokenMessage);
@@ -97,12 +102,22 @@ export function ConsultWaitingPage() {
         setStatusMessage(t('user.consultWaiting.connectError'));
       }
     };
+    const handleCanceled = () => {
+      active = false;
+      releaseConsultMedia();
+      clearConsultation();
+      void navigate(USER_ROUTES.CONSULT_REQUEST);
+    };
 
     events.addEventListener('ACCEPTED', handleAccepted as EventListener);
     events.addEventListener('REJECTED', handleUnavailable as EventListener);
     events.addEventListener('NO_COUNSELOR', handleUnavailable as EventListener);
+    events.addEventListener('CANCELED', handleCanceled as EventListener);
 
-    return () => events.close();
+    return () => {
+      active = false;
+      events.close();
+    };
   }, [clearConsultation, consultationId, missingTokenMessage, navigate, setSignalingRoom, t, userSessionId]);
 
   const leaveWaiting = useCallback(() => {

@@ -57,10 +57,7 @@ export function LanguagePage() {
 
       <LanguageSelect
         value={selectedLanguage}
-        onChange={(language) => {
-          setSelectedLanguage(language);
-          setLanguage(language);
-        }}
+        onChange={setSelectedLanguage}
       />
 
       <Spring />

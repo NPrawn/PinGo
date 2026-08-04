@@ -36,6 +36,7 @@ export function SettingsPage() {
   const english = i18n.resolvedLanguage === 'en';
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const setLanguage = useUserSessionStore((state) => state.setLanguage);
+  const setExpiresAt = useUserSessionStore((state) => state.setExpiresAt);
   /**
    * 브라우저에 직접 묻는다.
    *
@@ -55,7 +56,7 @@ export function SettingsPage() {
     setLanguage(language);
     if (!userSessionId) return;
     const session = await updateUserSession(userSessionId, { language });
-    setLanguage(language, session.expiresAt);
+    if (session.expiresAt) setExpiresAt(session.expiresAt);
   };
 
   return (

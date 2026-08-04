@@ -3,7 +3,7 @@ package com.pingo.backend.usersession.dto.response;
 import com.pingo.backend.usersession.domain.Language;
 import com.pingo.backend.usersession.domain.UserSession;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record UserSessionResponse(
 
@@ -19,7 +19,7 @@ public record UserSessionResponse(
 
         Long destinationId,
 
-        LocalDateTime expiresAt
+        Instant expiresAt
 ){
 
     public static UserSessionResponse from(UserSession session) {

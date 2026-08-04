@@ -12,7 +12,13 @@ import type { IconName } from '@/shared/ui';
 import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { PhoneFrame } from '@/widgets/phone-frame';
-import { useExitRoute, type ExitRoute } from './useExitRoute';
+import {
+  distanceForDestination,
+  durationForDestination,
+  isExternalDestination,
+  useExitRoute,
+  type ExitRoute,
+} from './useExitRoute';
 import styles from './RouteOptionsPage.module.css';
 
 /**
@@ -56,6 +62,10 @@ export function RouteOptionsPage() {
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
   const destination = useNavigationStore((state) => state.destination);
+  const destinationId = useNavigationStore((state) => state.destinationId);
+  const destinationType = useNavigationStore((state) => state.destinationType);
+  const destinationAddress = useNavigationStore((state) => state.destinationAddress);
+  const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
@@ -69,6 +79,7 @@ export function RouteOptionsPage() {
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
   const locationLabel = localizeUserLabel(currentLocationLabel ?? station, language);
   const destinationLabel = destination ? localizeUserLabel(destination, language) : null;
+  const externalDestination = isExternalDestination(destinationType);
 
   /**
    * 카드에 적을 거리를 서버가 계산할 때 쓰는 입력.
@@ -82,6 +93,11 @@ export function RouteOptionsPage() {
     startNodeId: currentNodeId,
     destinationLatitude,
     destinationLongitude,
+    destinationType,
+    destinationId,
+    destinationName: destination,
+    destinationAddress,
+    targetNodeId,
     origin: SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null,
   };
   const fastestQuery = useExitRoute('fastest', lookup);
@@ -164,7 +180,11 @@ export function RouteOptionsPage() {
         alert: true,
       };
     }
-    if (destinationLatitude === null || destinationLongitude === null) {
+    if (
+      (externalDestination &&
+        (destinationLatitude === null || destinationLongitude === null)) ||
+      (!externalDestination && targetNodeId === null)
+    ) {
       return destination
         ? {
             icon: 'flag',
@@ -281,7 +301,11 @@ export function RouteOptionsPage() {
         <div className={styles.panel}>
           <div className={styles.panelHead}>
             <div>
-              <span className={styles.eyebrow}>{t('user.routeOptions.eyebrow')}</span>
+              <span className={styles.eyebrow}>
+                {externalDestination
+                  ? t('user.routeOptions.eyebrow')
+                  : t('user.routeOptions.eyebrowIndoor')}
+              </span>
               <h1>{t('user.routeOptions.title')}</h1>
             </div>
           </div>
@@ -321,6 +345,7 @@ export function RouteOptionsPage() {
                     exitRoute={queries[type].data ?? null}
                     failed={queries[type].isError}
                     destination={destinationLabel}
+                    destinationType={destinationType}
                     selected={selectedType === type}
                     onSelect={() => {
                       setRoute(type);
@@ -361,6 +386,7 @@ type RouteOptionRowProps = {
   /** 출구나 경로 조회가 실패했는지. 도달 불가와 구분해 문구를 다르게 낸다. */
   failed: boolean;
   destination: string | null;
+  destinationType: string | null;
   selected: boolean;
   onSelect: () => void;
 };
@@ -376,6 +402,7 @@ function RouteOptionRow({
   exitRoute,
   failed,
   destination,
+  destinationType,
   selected,
   onSelect,
 }: RouteOptionRowProps) {
@@ -383,8 +410,22 @@ function RouteOptionRow({
   const presentation = ROUTE_PRESENTATION[routeType];
   const option = exitRoute?.option ?? null;
   const usable = option?.available === true;
-  const duration = formatDuration(option?.estimatedTimeSec ?? null, i18n.resolvedLanguage ?? 'ko');
-  const distance = formatDistance(option?.totalDistanceM ?? null);
+  const externalDestination = isExternalDestination(destinationType);
+  const summary =
+    !externalDestination && routeType === 'fastest'
+      ? t('user.routeOptions.fastest.indoorSummary')
+      : t(`user.routeOptions.${presentation.key}.summary`);
+  const duration = formatDuration(
+    durationForDestination(destinationType, exitRoute?.outdoorEstimatedTimeSec ?? null),
+    i18n.resolvedLanguage ?? 'ko',
+  );
+  const distance = formatDistance(
+    distanceForDestination(
+      destinationType,
+      option?.totalDistanceM ?? null,
+      exitRoute?.outdoorDistanceM ?? null,
+    ),
+  );
 
   /**
    * 이 경로를 쓸 수 없는 이유.
@@ -427,11 +468,9 @@ function RouteOptionRow({
           )}
         </span>
 
-        <span className={styles.optionMeta}>
-          {usable ? t(`user.routeOptions.${presentation.key}.summary`) : unavailableText}
-        </span>
+        <span className={styles.optionMeta}>{usable ? summary : unavailableText}</span>
 
-        {usable && exitRoute && (
+        {usable && exitRoute && externalDestination && (
           /* 이 경로로 나가면 어디로 나오는지. 유형을 고르는 실제 판단 근거다. */
           <span className={styles.optionRoute}>
             <strong className={styles.optionExit}>{exitRoute.exitLabel}</strong>

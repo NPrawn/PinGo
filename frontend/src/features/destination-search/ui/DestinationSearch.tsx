@@ -8,6 +8,7 @@ import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
 import { findNearestExit, getFacility, getRecommendedExits, updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { useApiLanguage } from '@/shared/i18n';
 import { Field, Icon3d, Kicker, SelectRow } from '@/shared/ui';
 import type { Icon3dTone } from '@/shared/ui';
 import styles from './DestinationSearch.module.css';
@@ -66,12 +67,13 @@ export function DestinationSearch({
   deferNavigation = false,
   onSelect,
 }: DestinationSearchProps) {
-  const { t, i18n } = useTranslation();
-  const language = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const startNewJourney = useNavigationStore((state) => state.startNewJourney);
   const stationId = useStationStore((state) => state.stationId);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
+  /** `resolveDestination`은 훅이 아니라 직접 넘겨받아야 한다. */
+  const language = useApiLanguage();
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
   /**

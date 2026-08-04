@@ -22,4 +22,11 @@ public interface KakaoLocalClient {
             BigDecimal centerLongitude,
             BigDecimal centerLatitude
     );
+
+    KakaoWalkingRouteResult findWalkingRoute(
+            BigDecimal startLongitude,
+            BigDecimal startLatitude,
+            BigDecimal endLongitude,
+            BigDecimal endLatitude
+    );
 }
