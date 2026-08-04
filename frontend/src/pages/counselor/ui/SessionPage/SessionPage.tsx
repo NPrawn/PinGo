@@ -44,13 +44,6 @@ import styles from './SessionPage.module.css';
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
 
-/** 재시도 중에는 원인 코드 대신 재시도 중임을 알린다. 그 문구는 로딩 화면이 대신 보여 준다. */
-function statusMessage(reconnecting: boolean, failure: string | null, status: string): string {
-  if (reconnecting) return '연결 상태: 재시도 중';
-  if (failure) return `${failure} · 연결 상태: ${status}`;
-  return `연결 상태: ${status}`;
-}
-
 type DrawStrokeStart = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_START' }>['payload'];
 type DrawStrokeMove = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_MOVE' }>['payload'];
 type DrawStrokeEnd = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_END' }>['payload'];
@@ -512,16 +505,24 @@ export function SessionPage() {
         <div className={styles.main}>
           {/* 사용자 영상은 오른쪽 패널이 맡는다. 상담자 자신의 카메라는 되비추지 않는다. */}
           {/*
-            실패했을 때도 peer 상태를 함께 남긴다. 'new'(협상 시작 못 함)인지
+            연결이 정상일 때는 아무것도 적지 않는다. (S15P11A206-89)
+
+            예전에는 `연결 상태: connected` 가 늘 떠 있었다. 잘 되고 있다는 말을 계속 하는 표시는
+            읽을 이유가 없는데도 지도 오른쪽 아래를 덮고 있었다. 상담자가 알아야 하는 것은 연결이
+            **깨졌을 때**이고, 붙어 있는 동안에는 사용자 영상이 흐르는 것으로 이미 보인다.
+
+            실패는 남긴다. peer 상태를 함께 적는 이유는 'new'(협상 시작 못 함)인지
             'connecting'(상대를 못 찾음)인지 'failed'(ICE 실패)인지에 따라 볼 곳이 완전히
-            달라서, 문구만으로는 어디부터 봐야 할지 알 수 없다.
+            달라서, 문구만으로는 어디부터 봐야 할지 알 수 없기 때문이다.
+
+            재시도 중에는 적지 않는다 — 거울의 로딩 화면이 그 사실을 대신 보여 주고, 곧 결론이
+            나므로 원인 코드를 두 곳에 띄울 이유가 없다.
           */}
-          <span
-            className={styles.connectionStatus}
-            role={!reconnecting && (error ?? tokenError) ? 'alert' : undefined}
-          >
-            {statusMessage(reconnecting, error ?? tokenError, status)}
-          </span>
+          {!reconnecting && (error ?? tokenError) && (
+            <span className={styles.connectionStatus} role="alert">
+              {`${error ?? tokenError} · 연결 상태: ${status}`}
+            </span>
+          )}
           <div className={styles.summary}>
             <div className={styles.summaryBody}>
               <div className={styles.summaryHead}>
