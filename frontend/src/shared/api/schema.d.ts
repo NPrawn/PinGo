@@ -1333,12 +1333,12 @@ export interface components {
        * @description 도보 경로 거리(m)
        * @example 2450
        */
-      distanceM?: number;
+      distanceM?: number | null;
       /**
        * @description 도보 예상 시간(초)
        * @example 2295
        */
-      estimatedTimeSec?: number;
+      estimatedTimeSec?: number | null;
     };
     NearestExitRequest: {
       /** Format: int64 */

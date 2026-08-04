@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class ExternalMapServiceTest {
@@ -83,6 +84,20 @@ public class ExternalMapServiceTest {
     }
 
     @Test
+    void createDirectionReturnsUrlsWithoutMetricsWhenKakaoWalkingRouteFails() {
+        when(kakaoLocalClient.findWalkingRoute(any(), any(), any(), any()))
+                .thenThrow(new BusinessException(ErrorCode.EXTERNAL_WALKING_ROUTE_FAILED));
+
+        ExternalDirectionResponse response = externalMapService.createDirection(createRequest());
+
+        assertThat(response.provider()).isEqualTo("kakao");
+        assertThat(response.appUrl()).isNotBlank();
+        assertThat(response.webUrl()).contains("map.kakao.com/link/by/walk");
+        assertThat(response.distanceM()).isNull();
+        assertThat(response.estimatedTimeSec()).isNull();
+    }
+
+    @Test
     void createDirectionsThrowsForUnsupportedProvider() {
         ExternalDirectionRequest request = new ExternalDirectionRequest(
                 "naver",
@@ -110,5 +125,20 @@ public class ExternalMapServiceTest {
         assertThatThrownBy(() -> externalMapService.createDirection(request))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    private ExternalDirectionRequest createRequest() {
+        return new ExternalDirectionRequest(
+                "kakao",
+                new GeoPointRequest(new BigDecimal("37.4982"), new BigDecimal("127.0281")),
+                new ExternalDestinationRequest(
+                        3L,
+                        "COEX Mall",
+                        new BigDecimal("37.5118"),
+                        new BigDecimal("127.0592"),
+                        null
+                ),
+                "foot"
+        );
     }
 }

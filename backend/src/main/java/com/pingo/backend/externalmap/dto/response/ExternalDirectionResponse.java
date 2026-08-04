@@ -19,10 +19,10 @@ public record ExternalDirectionResponse(
         String webUrl,
 
         @Schema(description = "도보 경로 거리(m)", example = "2450")
-        long distanceM,
+        Long distanceM,
 
         @Schema(description = "도보 예상 시간(초)", example = "2295")
-        long estimatedTimeSec
+        Long estimatedTimeSec
 ) {
 
 }

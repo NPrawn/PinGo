@@ -8,9 +8,11 @@ import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class ExternalMapService {
 
     private static final String KAKAO_PROVIDER = "kakao";
@@ -37,13 +39,6 @@ public class ExternalMapService {
                 request.destination().longitude().toPlainString());
         String destinationName = encode(request.destination().name());
 
-        KakaoWalkingRouteResult walkingRoute = kakaoLocalClient.findWalkingRoute(
-                request.origin().longitude(),
-                request.origin().latitude(),
-                request.destination().longitude(),
-                request.destination().latitude()
-        );
-
         String appUrl = "kakaomap://route"
                 + "?sp=" + origin
                 + "&ep=" + destination
@@ -54,15 +49,38 @@ public class ExternalMapService {
                 + "/"
                 + destinationName + "," + destination;
 
+        KakaoWalkingRouteResult walkingRoute = findWalkingRouteOrNull(request);
+
         return new ExternalDirectionResponse(
                 KAKAO_PROVIDER,
                 appUrl,
-                walkingRoute.landingUrl() == null || walkingRoute.landingUrl().isBlank()
+                walkingRoute == null
+                        || walkingRoute.landingUrl() == null
+                        || walkingRoute.landingUrl().isBlank()
                         ? webUrl
                         : walkingRoute.landingUrl(),
-                walkingRoute.distanceMeters(),
-                walkingRoute.estimatedTimeSeconds()
+                walkingRoute == null ? null : walkingRoute.distanceMeters(),
+                walkingRoute == null ? null : walkingRoute.estimatedTimeSeconds()
         );
+    }
+
+    private KakaoWalkingRouteResult findWalkingRouteOrNull(ExternalDirectionRequest request) {
+        try {
+            return kakaoLocalClient.findWalkingRoute(
+                    request.origin().longitude(),
+                    request.origin().latitude(),
+                    request.destination().longitude(),
+                    request.destination().latitude()
+            );
+        } catch (BusinessException exception) {
+            if (exception.getErrorCode() != ErrorCode.EXTERNAL_WALKING_ROUTE_FAILED) {
+                throw exception;
+            }
+
+            log.warn("카카오 도보 경로 조회에 실패해 경로 지표 없이 응답합니다. destination={}",
+                    request.destination().name());
+            return null;
+        }
     }
 
     private String formatPoint(String latitude, String longitude) {
