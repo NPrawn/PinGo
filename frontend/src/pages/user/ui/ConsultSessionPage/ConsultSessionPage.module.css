@@ -39,7 +39,8 @@
   세션 전후로 헤더 위치가 달라지므로 여백을 루트 안에서 만든다 — PhoneFrame 쪽은
   `reserveTopSpace={false}` 로 끈다.
 
-  배경은 아래로 사라지는 그라디언트다. 단색으로 덮으면 세션 중에 이 띠만큼 카메라가 가린다.
+  배경을 두지 않는다. 얹혀 있는 칩과 버튼이 각자 배경을 가지고 있어 글자는 읽히고, 띠를 깔면
+  그만큼 카메라가 가린다.
 */
 .bar {
   position: absolute;
@@ -55,7 +56,6 @@
   padding: 8px 16px 0;
   font-size: 11px;
   color: #c9c8d4;
-  background: linear-gradient(180deg, rgb(6 19 16 / 94%), transparent);
 }
 
 .liveChip {

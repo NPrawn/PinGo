@@ -39,6 +39,10 @@
   background: transparent;
 }
 
+/*
+  배경을 두지 않는다. 얹혀 있는 버튼과 배지가 각자 배경을 가지고 있어 글자는 읽히고, 띠를 깔면
+  그만큼 카메라가 가린다.
+*/
 .topBar {
   position: absolute;
   top: 46px;
@@ -50,7 +54,6 @@
   justify-content: space-between;
   height: 54px;
   padding: 8px 16px 0;
-  background: linear-gradient(180deg, rgb(6 19 16 / 94%), transparent);
 }
 
 .journeyHeader {
