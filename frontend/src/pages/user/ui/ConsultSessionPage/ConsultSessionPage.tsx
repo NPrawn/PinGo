@@ -334,6 +334,20 @@ export function ConsultSessionPage() {
    * 이미 가고 있다고 읽힌다.
    */
   const cameraShareLabel = connected ? `${connectionLabel} · ${cameraLabel}` : connectionLabel;
+
+  /**
+   * 연결 상태 줄에 **이벤트 채널이 열렸는지도 함께 적는다.** (S15P11A206-89)
+   *
+   * 지도 동기화와 그리기는 피어 연결이 아니라 그 위의 DataChannel 로 오간다. 둘은 따로 붙고 따로
+   * 실패한다 — 목소리는 들리는데 지도가 오지 않는 상담이 실제로 있었고, 화면에는 `connected` 만
+   * 적혀 있어 무엇이 막혔는지 말할 수 없었다.
+   *
+   * **채널이 닫힌 것이 곧 실패는 아니다.** 닫혀 있으면 서버를 거치는 우회로로 보낸다. 다만 그
+   * 우회로는 상담자→사용자 한 방향뿐이라(서버가 상담 하나당 SSE 구독자를 하나만 두므로 받는
+   * 쪽인 사용자만 구독한다) **사용자→상담자 지도 동기화는 채널이 열려야 간다.** 그래서 이 표시가
+   * 지도가 상담자 화면에 뜨는지와 직접 맞물린다.
+   */
+  const connectionDetail = `연결 상태: ${status} · 이벤트 채널 ${eventChannelOpen ? '열림' : '닫힘'}`;
   /**
    * 경로를 이 화면에서도 직접 조회한다. (S15P11A206-89)
    *
@@ -637,9 +651,7 @@ export function ConsultSessionPage() {
             role={!reconnecting && (error ?? tokenError) ? 'alert' : undefined}
           >
             {/* 재시도 중에는 위 로딩 화면이 안내를 대신하므로 원인 코드를 여기 또 띄우지 않는다. */}
-            {reconnecting
-              ? '연결 상태: 재시도 중'
-              : (error ?? tokenError ?? `연결 상태: ${status}`)}
+            {reconnecting ? '연결 상태: 재시도 중' : (error ?? tokenError ?? connectionDetail)}
           </span>
           <div
             className={[styles.routeHeader, waypoints.length > 0 && styles.routeHeaderCompact]

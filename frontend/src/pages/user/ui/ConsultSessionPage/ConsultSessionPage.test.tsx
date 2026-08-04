@@ -282,6 +282,32 @@ describe('ConsultSessionPage', () => {
   });
 
   /**
+   * 지도 동기화가 지나는 길이 열렸는지 화면에 적어야 한다. (S15P11A206-89)
+   *
+   * 피어가 붙는 것과 DataChannel 이 열리는 것은 다른 일이고 따로 실패한다. 목소리는 들리는데
+   * 지도가 오지 않는 상담에서 화면에 `connected` 만 적혀 있으면 무엇이 막혔는지 말할 수 없다.
+   * 사용자→상담자 지도 동기화에는 우회로가 없으므로(서버가 SSE 구독자를 하나만 둔다) 이 표시가
+   * 상담자 화면에 지도가 뜨는지와 직접 맞물린다.
+   */
+  it('이벤트 채널이 열렸는지 연결 상태에 함께 적는다', async () => {
+    apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
+    signaling.state = { ...signaling.state, eventChannelOpen: false };
+
+    renderPage();
+
+    expect(await screen.findByText('연결 상태: connected · 이벤트 채널 닫힘')).toBeInTheDocument();
+  });
+
+  it('채널이 열리면 열렸다고 적는다', async () => {
+    apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
+    signaling.state = { ...signaling.state, eventChannelOpen: true };
+
+    renderPage();
+
+    expect(await screen.findByText('연결 상태: connected · 이벤트 채널 열림')).toBeInTheDocument();
+  });
+
+  /**
    * 붙는 과정에서 오류가 한 번 스치는 것은 정상이다 — 토큰을 아직 받지 못했거나 첫 handshake 가
    * 늦은 경우다. 그때마다 칩에 `연결 실패`를 적으면 접속 직후부터 실패로 보여, 곧 붙을 상담을
    * 사용자가 그 자리에서 나가 버린다. 원인은 아래 `연결 상태:` 줄이 따로 알린다.
