@@ -1,5 +1,6 @@
 package com.pingo.backend.route.service;
 
+import com.pingo.backend.facility.repository.FacilityRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.route.domain.RouteMoveType;
@@ -100,6 +101,8 @@ public class IndoorRouteService {
     private final RouteEdgeRepository routeEdgeRepository;
     private final StationRepository stationRepository;
     private final StationFloorRepository stationFloorRepository;
+    /** 출구의 접근 경로용 도착 노드를 읽는다. {@link #accessibleTargetOf} 참고. */
+    private final FacilityRepository facilityRepository;
     private final RouteFinder routeFinder;
     private final RouteInstructionWriter instructionWriter;
 
@@ -107,11 +110,21 @@ public class IndoorRouteService {
      * 출발 노드에서 도착 노드까지의 경로 옵션(빠른 경로·엘리베이터 이용 경로)을 요약으로 조회한다.
      */
     public List<RouteOptionResponse> getRouteOptions(RouteOptionsRequest request) {
-        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
-        RouteGraphData data = loadGraph(request.stationId(), requested);
+        Long accessibleTarget = accessibleTargetOf(request.stationId(), request.targetNodeId());
+
+        /* 두 유형의 도착 노드가 다를 수 있어 둘 다 검증한다. 그래프는 역 전체를 한 번에 읽으므로
+           조회가 늘지는 않는다. */
+        List<Long> toValidate = stopNodeIds(
+                request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        if (!accessibleTarget.equals(request.targetNodeId())) {
+            toValidate.add(accessibleTarget);
+        }
+        RouteGraphData data = loadGraph(request.stationId(), toValidate);
 
         List<RouteOptionResponse> options = new ArrayList<>();
         for (RouteType routeType : RouteType.values()) {
+            List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(),
+                    targetFor(routeType, request.targetNodeId(), accessibleTarget));
             InboundSearch toFirstStop = searchToFirstStop(
                     requested, data, routeType, request.currentMapX(), request.currentMapY());
             List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop, routeType,
@@ -134,7 +147,10 @@ public class IndoorRouteService {
         RouteType routeType = RouteType.fromCode(request.routeType())
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNSUPPORTED_ROUTE_TYPE));
 
-        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        Long targetNodeId = targetFor(routeType, request.targetNodeId(),
+                accessibleTargetOf(request.stationId(), request.targetNodeId()));
+
+        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), targetNodeId);
         RouteGraphData data = loadGraph(request.stationId(), requested);
         InboundSearch toFirstStop = searchToFirstStop(
                 requested, data, routeType, request.currentMapX(), request.currentMapY());
@@ -144,7 +160,7 @@ public class IndoorRouteService {
 
         if (!path.isReachable()) {
             return RouteResponse.unavailable(
-                    routeType, request.startNodeId(), request.targetNodeId(),
+                    routeType, request.startNodeId(), targetNodeId,
                     reasonFor(routeType), request.language());
         }
 
@@ -153,12 +169,44 @@ public class IndoorRouteService {
         return RouteResponse.available(
                 routeType,
                 stopNodeIds.get(0),
-                request.targetNodeId(),
+                targetNodeId,
                 path.totalDistanceM(),
                 path.totalTimeSec(),
                 steps,
                 pathNodes
         );
+    }
+
+    /**
+     * 이 유형이 안내할 도착 노드.
+     *
+     * <p>{@code elevator_only} 만 접근 경로용 노드로 바꾼다. 역삼역 3·4번 출구는 출구 노드에
+     * 닿는 길이 에스컬레이터 쪽 하나뿐이고, 나란히 있는 엘리베이터는 출구 노드로 이어지지 않는다
+     * — 타면 지상으로 올라가므로 그것이 맞다. 그래서 접근 경로는 엘리베이터가 종점이다.
+     *
+     * <p><b>값이 같아져도 두 유형을 구분한다.</b> 3번 출구는 엘리베이터가 복도에서 4.03m,
+     * 에스컬레이터 경유 출구가 19.38m 라 접근 경로가 오히려 짧다. 그래도 {@code fastest} 를
+     * 엘리베이터로 보내지 않는다 — 두 옵션은 "어느 이동 수단으로 나가는가"를 고르는 것이고,
+     * 거리로 하나가 다른 하나를 삼키면 고를 것이 없어진다.
+     */
+    private Long targetFor(RouteType routeType, Long requestedTarget, Long accessibleTarget) {
+        return routeType == RouteType.ELEVATOR_ONLY ? accessibleTarget : requestedTarget;
+    }
+
+    /**
+     * 이 노드를 도착점으로 갖는 시설의 접근 경로용 도착 노드. 없으면 받은 노드를 그대로 돌려준다.
+     *
+     * <p>그대로 돌려주는 것이 맞다 — 접근 대안이 없는 출구에서는 {@code elevator_only} 도
+     * 출구 노드로 향하고, 계단·에스컬레이터 간선이 걸러져 닿지 못하면 그때 도달 불가로 답한다.
+     * 노드를 바꿔치기하는 것과 "그 출구로는 계단 없이 갈 수 없다"는 답은 서로 다른 사실이다.
+     */
+    private Long accessibleTargetOf(Long stationId, Long targetNodeId) {
+        if (stationId == null || targetNodeId == null) {
+            return targetNodeId;
+        }
+        return facilityRepository.findAccessibleNodeIds(stationId, targetNodeId).stream()
+                .findFirst()
+                .orElse(targetNodeId);
     }
 
     private List<Long> stopNodeIds(Long startNodeId, List<Long> waypointNodeIds, Long targetNodeId) {
