@@ -420,6 +420,126 @@ describe('useConsultSignaling', () => {
     view.unmount();
   });
 
+  it('확정 결과와 중간 결과를 분리하고 동일한 발화 ID를 중복 기록하지 않는다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const recognition = FakeRecognition.instances[0];
+    await act(async () => {
+      recognition?.onresult?.({
+        resultIndex: 0,
+        results: [
+          { isFinal: true, 0: { transcript: '첫 번째 문장' } },
+          { isFinal: false, 0: { transcript: '두 번째 문장' } },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([
+      { seq: 1, speaker: 'COUNSELOR', content: '첫 번째 문장' },
+    ]);
+    expect(view.result.current.localCaption).toBe('두 번째 문장');
+    expect(view.result.current.localCaptionFinal).toBe(false);
+
+    const socket = FakeSocket.instances[0];
+    const duplicate = {
+      data: JSON.stringify({
+        sessionId: 'room_1',
+        senderType: 'USER',
+        type: 'CAPTION',
+        payload: {
+          text: '세 번째 문장',
+          final: true,
+          language: 'ko-KR',
+          captionId: 'user-caption-1',
+          occurredAt: '2026-08-05T00:00:03.000Z',
+        },
+        timestamp: '2026-08-05T00:00:03.000Z',
+      }),
+    } as MessageEvent;
+
+    await act(async () => {
+      socket?.onmessage?.(duplicate);
+      socket?.onmessage?.(duplicate);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([
+      { seq: 1, speaker: 'USER', content: '세 번째 문장' },
+      { seq: 2, speaker: 'COUNSELOR', content: '첫 번째 문장' },
+    ]);
+
+    view.unmount();
+  });
+
+  it('도착 순서가 달라도 발화 시각 기준으로 타임라인을 정렬한다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      FakeRecognition.instances[0]?.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: '나중 발화' } }],
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onmessage?.({
+        data: JSON.stringify({
+          sessionId: 'room_1',
+          senderType: 'USER',
+          type: 'CAPTION',
+          payload: {
+            text: '먼저 발화',
+            final: true,
+            language: 'ko-KR',
+            captionId: 'user-caption-early',
+            occurredAt: '2026-08-05T00:00:01.000Z',
+          },
+          timestamp: '2026-08-05T00:00:01.000Z',
+        }),
+      } as MessageEvent);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([
+      { seq: 1, speaker: 'USER', content: '먼저 발화' },
+      { seq: 2, speaker: 'COUNSELOR', content: '나중 발화' },
+    ]);
+
+    view.unmount();
+  });
+
   /**
    * 상담자 마이크 하나가 막혔다고 상담 전체가 멈추면 안 된다.
    *
