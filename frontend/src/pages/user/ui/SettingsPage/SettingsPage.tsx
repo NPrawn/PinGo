@@ -52,11 +52,17 @@ export function SettingsPage() {
   };
 
   const changeLanguage = async (language: 'ko' | 'en') => {
-    await i18n.changeLanguage(language);
+    // Persist first so an immediate Back/deep-link navigation cannot render
+    // the next screen with the previous session language.
     setLanguage(language);
+    await i18n.changeLanguage(language);
     if (!userSessionId) return;
-    const session = await updateUserSession(userSessionId, { language });
-    if (session.expiresAt) setExpiresAt(session.expiresAt);
+    try {
+      const session = await updateUserSession(userSessionId, { language });
+      if (session.expiresAt) setExpiresAt(session.expiresAt);
+    } catch {
+      // The local choice remains authoritative and can be synchronized later.
+    }
   };
 
   return (

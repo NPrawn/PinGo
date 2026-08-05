@@ -29,6 +29,28 @@ export function facilityAtNodeMatchingLabel(
   );
 }
 
+/** Resolves a persisted destination even when routing uses a different accessible node. */
+export function destinationFacilityOf(
+  facilities: readonly Facility[] | null | undefined,
+  destinationId: number | null | undefined,
+  nodeId: number | null | undefined,
+  ...labels: Array<string | null | undefined>
+): Facility | undefined {
+  const byId = destinationId == null
+    ? undefined
+    : facilities?.find((facility) => facility.facilityId === destinationId);
+  if (byId) return byId;
+
+  for (const label of labels) {
+    const atNode = facilityAtNodeMatchingLabel(facilities, nodeId, label);
+    if (atNode) return atNode;
+  }
+
+  return facilities?.find((facility) =>
+    labels.some((label) => facilityMatchesLabel(facility, label)),
+  );
+}
+
 /** Returns the facility name matching the active UI language. */
 export function localizedFacilityNameOf(
   facility: Pick<Facility, 'nameKo' | 'nameEn'>,

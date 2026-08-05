@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   FACILITY_MAP_FILTERS,
+  destinationFacilityOf,
   facilityAtNodeMatchingLabel,
   facilityIconOf,
   localizedFacilityNameAtNode,
@@ -111,6 +112,8 @@ export function NavigationPage() {
     useNavigationStore((state) => state.destination) ?? t('user.navigation.defaultDestination');
   const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
   const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
+  const destinationId = useNavigationStore((state) => state.destinationId);
+  const destinationType = useNavigationStore((state) => state.destinationType);
   const route = useNavigationStore((state) => state.route);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
@@ -477,6 +480,25 @@ export function NavigationPage() {
    * 못한 경우에도 그 자리에 목적지 이름을 붙이게 된다 — 이름과 좌표가 다른 곳을 가리키던
    * 79 의 문제가 형태만 바꿔 돌아온다. 도착 노드가 같다면 두 값도 같은 곳이다.
    */
+  /**
+   * 표시 층에 실제로 있는 시설 유형. 칩을 이걸로 추린다.
+   *
+   * 역 전체를 한 번 받아 층은 여기서 거른다. 지도 위젯이 유형 없이 그릴 때 쓰는 조회와 같은
+   * 키라 요청은 한 번만 나가고, 층을 오갈 때 다시 받지 않아 칩이 깜빡이지 않는다.
+   */
+  const facilitiesQuery = useStationFacilities(stationId ?? 0);
+  const facilitiesLoaded = facilitiesQuery.data !== undefined;
+  const nodeDestinationFacility = destinationFacilityOf(
+    facilitiesQuery.data,
+    destinationType?.toLowerCase() === 'facility' ? destinationId : null,
+    targetNodeId,
+    activeDestination,
+    destinationNameKo,
+    destinationNameEn,
+  );
+  const storedDestinationFacility = pickedDestination ?? nodeDestinationFacility;
+  const destinationFacility =
+    storedDestinationFacility ?? matchedExitDestination ?? null;
   const arrivedAtAnotherNode =
     routeResult?.targetNodeId != null &&
     destinationFacility?.linkedNodeId != null &&
@@ -492,22 +514,6 @@ export function NavigationPage() {
             mapY: destinationFacility.mapY,
           }
         : null;
-
-  /**
-   * 표시 층에 실제로 있는 시설 유형. 칩을 이걸로 추린다.
-   *
-   * 역 전체를 한 번 받아 층은 여기서 거른다. 지도 위젯이 유형 없이 그릴 때 쓰는 조회와 같은
-   * 키라 요청은 한 번만 나가고, 층을 오갈 때 다시 받지 않아 칩이 깜빡이지 않는다.
-   */
-  const facilitiesQuery = useStationFacilities(stationId ?? 0);
-  const facilitiesLoaded = facilitiesQuery.data !== undefined;
-  const nodeDestinationFacility =
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, activeDestination) ??
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameKo) ??
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameEn);
-  const storedDestinationFacility = pickedDestination ?? nodeDestinationFacility;
-  const destinationFacility =
-    storedDestinationFacility ?? matchedExitDestination ?? null;
   const facilityOrigin = localizedFacilityNameAtNode(
     facilitiesQuery.data,
     currentNodeId,
@@ -945,6 +951,7 @@ export function NavigationPage() {
                   /* 이름은 응답의 것을 쓴다. 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
                      시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
                   destinationLabel={
+                    selectedFacility === null &&
                     (effectiveType == null || effectiveType === 'exit') &&
                     destinationFacility !== null
                       ? localizedFacilityNameOf(destinationFacility, language)

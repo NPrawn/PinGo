@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import {
-  facilityAtNodeMatchingLabel,
+  destinationFacilityOf,
   localizedFacilityNameAtNode,
   localizedFacilityNameOf,
   useStationFacilities,
@@ -24,13 +24,17 @@ export function ArrivalPage() {
   const storedDestination = useNavigationStore((state) => state.destination);
   const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
   const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
+  const destinationId = useNavigationStore((state) => state.destinationId);
+  const destinationType = useNavigationStore((state) => state.destinationType);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
-  const storedDestinationFacility = facilityAtNodeMatchingLabel(
+  const storedDestinationFacility = destinationFacilityOf(
     facilities,
+    destinationType?.toLowerCase() === 'facility' ? destinationId : null,
     targetNodeId,
     destinationNameKo,
-  ) ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destinationNameEn)
-    ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, storedDestination);
+    destinationNameEn,
+    storedDestination,
+  );
   const destination = storedDestination
     ? (storedDestinationFacility
         ? localizedFacilityNameOf(storedDestinationFacility, language)

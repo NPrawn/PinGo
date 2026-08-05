@@ -4,6 +4,7 @@ export { useStationFacilities } from './api/useStationFacilities';
 export type { Facility } from './model/types';
 export { facilityIconOf, isExit, DEFAULT_FACILITY_ICON } from './lib/facilityIcon';
 export {
+  destinationFacilityOf,
   facilityAtNodeMatchingLabel,
   facilityMatchesLabel,
   localizedFacilityNameAtNode,
