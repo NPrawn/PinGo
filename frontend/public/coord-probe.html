@@ -322,7 +322,7 @@
         위치 인식 응답의 <code>position.mapX</code>·<code>position.mapY</code>를 입력한다. COLMAP
         원본 좌표가 아니라 백엔드가 변환을 끝낸 <b>캐노니컬 미터 좌표</b>여야 한다. 아래 표는 회전
         전 픽셀 변위부터 최종 픽셀까지 식의 각 항을 보여 주고, WebXR 앵커가 있으면 두 결과의 차이도
-        같이 계산한다.
+        같이 계산한다. 세션 중 VPS 자동 호출이 성공하면 응답 좌표로 자동 갱신된다.
       </p>
       <div class="grid2">
         <div class="field">
@@ -345,22 +345,37 @@
     <section>
       <h2>2. WebXR 세션</h2>
       <table id="support"></table>
+      <div class="grid2" style="margin-top: 8px">
+        <div class="field">
+          <span>VPS stationId</span>
+          <input type="number" id="inVpsStationId" value="1" min="1" step="1" />
+        </div>
+        <div class="field">
+          <span>VPS 호출 간격 (초)</span>
+          <input type="number" id="inVpsInterval" value="5" min="2" step="1" />
+        </div>
+      </div>
+      <label class="inline" style="margin-top: 8px">
+        <input type="checkbox" id="chkAutoVps" checked />
+        세션 중 XR 카메라 프레임으로 VPS 자동 호출
+      </label>
       <div class="row">
         <button id="btnStart" class="primary" disabled>immersive-ar 세션 시작</button>
         <button id="btnEnd" disabled>세션 종료</button>
       </div>
+      <table id="vpsInfo"></table>
     </section>
 
     <!-- ── 3. 앵커 ────────────────────────────────────────────────────────── -->
     <section>
-      <h2>3. 앵커 — 지도 두 번 탭</h2>
+      <h2>3. 앵커 — 세션 시작 전에 지도 두 번 탭</h2>
       <p class="hint" style="margin-top: 0">
         ① <b>지금 서 있는 자리</b>를 탭하고 ② <b>지금 바라보는 쪽의 아무 지점</b>을 탭한다. 둘의
-        차이가 <code>forwardMap</code>이 된다. 앵커는 <b>그 순간의 원시 pose</b>로 만든다 — 스냅샷을
-        쓰면 정지 heartbeat(5초)만큼 어긋난다(좌표 스펙 8.2).
+        차이가 <code>forwardMap</code>이 된다. 이 두 점을 먼저 지정한 뒤 WebXR 세션을 시작하면
+        <b>첫 번째 원시 pose</b>에 자동으로 결합된다. 지도·픽셀 변환이 필요 없으면 생략해도 된다.
       </p>
       <div class="row">
-        <button id="btnAnchorStep" class="step" disabled>① 현재 위치 탭 대기…</button>
+        <button id="btnAnchorStep" class="step">① 앵커 지정 시작</button>
         <button id="btnAnchorClear" disabled>앵커 버리기</button>
       </div>
       <table id="anchorInfo"></table>
@@ -404,30 +419,15 @@
     <section>
       <h2>6. 기록 · 내보내기</h2>
       <div class="row">
-        <button id="btnRecordStart" class="primary">연속 기록 시작 (5Hz)</button>
-        <button id="btnRecordStop" disabled>연속 기록 중지</button>
-        <button id="btnMark">지금 값 기록</button>
         <button id="btnCsv">CSV 내려받기</button>
+        <button id="btnClearCapture">기록 지우기</button>
         <button id="btnCopy">로그 복사</button>
         <button id="btnClearLog">로그 지우기</button>
       </div>
-      <div class="grid2" style="margin-top: 8px">
-        <div class="field">
-          <span>이벤트 메모</span>
-          <input
-            type="text"
-            id="inEventLabel"
-            maxlength="60"
-            placeholder="예: 정지 시작, 10m 도착, 제자리 회전"
-          />
-        </div>
-        <div class="field" style="align-self: end">
-          <button id="btnEvent">현재 시점에 이벤트 표시</button>
-        </div>
-      </div>
       <p class="hint">
-        연속 기록은 200ms마다 좌표를 저장한다. 추적 상실 중에는 마지막 pose를 정상값처럼 반복하지
-        않고 빈 좌표와 <code>tracking_status=lost</code>를 남긴다. CSV 열은
+        WebXR 세션을 시작하면 기존 기록을 지우고 자동으로 기록하며, 세션이 끝나면 자동으로 중지한다.
+        XR 프레임을 기준으로 약 200ms마다 좌표를 저장하므로 세션 중 페이지 버튼을 조작할 필요가
+        없다. VPS 응답은 촬영 순간의 XR pose와 함께 기록한다. CSV 열은
         <code>tools/coord_overlay.py</code>와 같은 이름 규칙을 쓴다 (<code
           >map_x, map_y, pixel_px, pixel_py, roundtrip_err_m</code
         >) — 파이썬에서 바로 겹쳐 그릴 수 있다.
@@ -545,6 +545,142 @@
         return (Math.atan2(y, x) * 180) / Math.PI;
       }
 
+      // ── WebXR Raw Camera Access ───────────────────────────────────────────
+      // 본 앱의 shared/lib/webxr/cameraFrames.ts와 같은 경로를 진단 페이지 안에 최소 형태로 둔다.
+      function scaledFrameSize(width, height, maxSide) {
+        const longest = Math.max(width, height);
+        const scale = longest > 0 ? Math.min(1, maxSide / longest) : 1;
+        return {
+          width: Math.max(1, Math.round(width * scale)),
+          height: Math.max(1, Math.round(height * scale)),
+        };
+      }
+
+      function encodeJpeg(pixels, size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size.width;
+        canvas.height = size.height;
+        const context = canvas.getContext('2d');
+        if (!context || typeof canvas.toBlob !== 'function') return Promise.resolve(null);
+        const image = context.createImageData(size.width, size.height);
+        image.data.set(pixels);
+        context.putImageData(image, 0, 0);
+        return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+      }
+
+      function compileShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        if (!shader) return null;
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) return shader;
+        gl.deleteShader(shader);
+        return null;
+      }
+
+      function createCameraFrameGrabber(gl, size) {
+        const vertex = compileShader(
+          gl,
+          gl.VERTEX_SHADER,
+          'attribute vec2 a_pos; varying vec2 v_uv; void main(){v_uv=vec2(a_pos.x,-a_pos.y)*0.5+0.5;gl_Position=vec4(a_pos,0.0,1.0);}',
+        );
+        const fragment = compileShader(
+          gl,
+          gl.FRAGMENT_SHADER,
+          'precision mediump float; uniform sampler2D u_tex; varying vec2 v_uv; void main(){gl_FragColor=texture2D(u_tex,v_uv);}',
+        );
+        const program = vertex && fragment ? gl.createProgram() : null;
+        if (!vertex || !fragment || !program) {
+          if (vertex) gl.deleteShader(vertex);
+          if (fragment) gl.deleteShader(fragment);
+          return null;
+        }
+        gl.attachShader(program, vertex);
+        gl.attachShader(program, fragment);
+        gl.linkProgram(program);
+        gl.deleteShader(vertex);
+        gl.deleteShader(fragment);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          gl.deleteProgram(program);
+          return null;
+        }
+
+        const quad = gl.createBuffer();
+        const target = gl.createTexture();
+        const framebuffer = gl.createFramebuffer();
+        if (!quad || !target || !framebuffer) {
+          gl.deleteProgram(program);
+          if (quad) gl.deleteBuffer(quad);
+          if (target) gl.deleteTexture(target);
+          if (framebuffer) gl.deleteFramebuffer(framebuffer);
+          return null;
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+          gl.STATIC_DRAW,
+        );
+        gl.bindTexture(gl.TEXTURE_2D, target);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          size.width,
+          size.height,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          null,
+        );
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target, 0);
+        const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        if (!complete) {
+          gl.deleteProgram(program);
+          gl.deleteBuffer(quad);
+          gl.deleteTexture(target);
+          gl.deleteFramebuffer(framebuffer);
+          return null;
+        }
+
+        const position = gl.getAttribLocation(program, 'a_pos');
+        const sampler = gl.getUniformLocation(program, 'u_tex');
+        const pixels = new Uint8Array(size.width * size.height * 4);
+        return {
+          grab(texture) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+            gl.viewport(0, 0, size.width, size.height);
+            gl.useProgram(program);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+            gl.enableVertexAttribArray(position);
+            gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.uniform1i(sampler, 0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            gl.readPixels(0, 0, size.width, size.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            return pixels.slice();
+          },
+          dispose() {
+            gl.deleteProgram(program);
+            gl.deleteBuffer(quad);
+            gl.deleteTexture(target);
+            gl.deleteFramebuffer(framebuffer);
+          },
+        };
+      }
+
       // ── 상태 ──────────────────────────────────────────────────────────────
       let frame = { ...DOC_FRAME.B2 };
       let frameSource = '문서 기본값';
@@ -562,6 +698,7 @@
       let anchor = null; // { map:{mapX,mapY}, xr:{x,z}, forwardXr, forwardMap, rotation, revision }
       let anchorRevision = -1;
       let pendingAnchorPoint = null; // 1탭 결과 (미터)
+      let pendingAnchorSetup = null; // 세션 시작 전에 선택한 map 위치와 방향
       let tapMode = 'idle'; // 'anchor1' | 'anchor2' | 'gt' | 'idle'
       let track = []; // 지도 미터 궤적
       let groundTruth = null; // { tapped:{x,y}, computed:{x,y}, errM }
@@ -571,12 +708,25 @@
       let poseFrames = 0;
       let captureId = '';
       let recordingStartedAt = null;
-      let recordingTimer = null;
+      let recordingActive = false;
+      let lastRecordedAt = null;
       let recordingSampleCount = 0;
       let recordingEventCount = 0;
+      let probeUserSessionId = '';
+      let vpsInFlight = false;
+      let lastVpsRequestedAt = null;
+      let vpsRequestCount = 0;
+      let vpsSuccessCount = 0;
+      let vpsCameraStatus = '대기';
+      let vpsCameraBinding = null;
+      let vpsFrameGrabber = null;
+      let vpsFrameGrabberSize = null;
+      let latestVps = null;
+      let latestBackendVps = null;
 
       const RECORD_INTERVAL_MS = 200;
       const TRACKING_LOST_AFTER_MS = 500;
+      const VPS_FRAME_MAX_SIDE = 768;
 
       // ── 프레임 UI ─────────────────────────────────────────────────────────
       const el = (id) => document.getElementById(id);
@@ -646,9 +796,13 @@
        * 이미 있는 조회 API 로 프레임을 받아온다. 백엔드 수정 없음.
        * 응답에 프레임 컬럼이 비어 있을 수 있으므로(V9 seed) 실패를 정상 분기로 다룬다.
        */
-      el('btnFetchFrame').addEventListener('click', async () => {
+      async function fetchServerFrame() {
         try {
-          const res = await fetch(`/api/stations/${STATION_ID}/maps`, {
+          const stationId = Math.max(
+            1,
+            Math.floor(Number(el('inVpsStationId').value) || STATION_ID),
+          );
+          const res = await fetch(`/api/stations/${stationId}/maps`, {
             headers: { Accept: 'application/json' },
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -685,7 +839,9 @@
         } catch (e) {
           log('WARN', '서버 프레임 가져오기 실패 — 문서 기본값을 쓴다', { error: String(e) });
         }
-      });
+      }
+      el('btnFetchFrame').addEventListener('click', fetchServerFrame);
+      el('inVpsStationId').addEventListener('change', () => void fetchServerFrame());
 
       // ── 백엔드 캐노니컬 미터 ↔ 픽셀 대조 ───────────────────────────────────
       function currentXrProjection() {
@@ -695,16 +851,16 @@
         return { map, pixel: map ? meterToPixel(map.mapX, map.mapY, frame) : null };
       }
 
-      function backendProjection() {
-        if (!backendPoint) return null;
+      function backendProjection(point = backendPoint) {
+        if (!point) return null;
         const theta = (frame.angleDeg * Math.PI) / 180;
         const cos = Math.cos(theta);
         const sin = Math.sin(theta);
-        const rotatedX = cos * backendPoint.mapX - sin * backendPoint.mapY;
-        const rotatedY = sin * backendPoint.mapX + cos * backendPoint.mapY;
+        const rotatedX = cos * point.mapX - sin * point.mapY;
+        const rotatedY = sin * point.mapX + cos * point.mapY;
         const offsetPxX = rotatedX / frame.mpp;
         const offsetPxY = rotatedY / frame.mpp;
-        const pixel = meterToPixel(backendPoint.mapX, backendPoint.mapY, frame);
+        const pixel = meterToPixel(point.mapX, point.mapY, frame);
         const back = pixel ? pixelToMeter(pixel.px, pixel.py, frame) : null;
         return {
           theta,
@@ -715,10 +871,7 @@
           offsetPxX,
           offsetPxY,
           pixel,
-          roundtrip:
-            back === null
-              ? NaN
-              : Math.hypot(back.x - backendPoint.mapX, back.y - backendPoint.mapY),
+          roundtrip: back === null ? NaN : Math.hypot(back.x - point.mapX, back.y - point.mapY),
         };
       }
 
@@ -795,6 +948,7 @@
           return;
         }
         backendPoint = point;
+        latestBackendVps = null;
         const backend = backendProjection();
         const xr = currentXrProjection();
         const mapDelta =
@@ -821,12 +975,276 @@
       });
       el('btnClearBackend').addEventListener('click', () => {
         backendPoint = null;
+        latestBackendVps = null;
         el('inBackendMapX').value = '';
         el('inBackendMapY').value = '';
         renderBackendCompare();
         drawMap();
         log('INFO', '백엔드 대조 좌표 지움');
       });
+
+      // ── VPS 자동 호출 ──────────────────────────────────────────────────────
+      function renderVpsInfo() {
+        const latest = latestVps;
+        renderTable('vpsInfo', [
+          ['probe userSessionId', probeUserSessionId || '생성 중…'],
+          ['XR camera-access', vpsCameraStatus, vpsCameraStatus === '사용 가능' ? 'ok' : 'warn'],
+          ['VPS 요청 / 좌표 성공', `${vpsRequestCount} / ${vpsSuccessCount}`],
+          ['호출 상태', vpsInFlight ? '요청 처리 중' : '대기', vpsInFlight ? 'warn' : 'ok'],
+          [
+            '최근 결과',
+            latest
+              ? `${latest.resultStatus || 'unknown'} · ${latest.positionSource || '좌표 없음'}`
+              : '—',
+          ],
+          [
+            '최근 backend map',
+            backendPoint ? `(${f3(backendPoint.mapX)}, ${f3(backendPoint.mapY)}) m` : '—',
+          ],
+        ]);
+      }
+
+      async function prepareProbeUserSession() {
+        try {
+          const response = await fetch('/api/user-sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ language: 'ko' }),
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const body = await response.json();
+          const data = body && body.data ? body.data : body;
+          if (!data || !data.userSessionId) throw new Error('userSessionId 없음');
+          probeUserSessionId = data.userSessionId;
+          log('OK', 'VPS용 사용자 세션 생성', { userSessionId: probeUserSessionId });
+        } catch (error) {
+          // 현재 VPS 컨트롤러는 non-blank 값만 요구한다. 세션 API 장애도 CSV 진단 자체를 막지 않는다.
+          probeUserSessionId = `coord_probe_${Date.now()}`;
+          log('WARN', '사용자 세션 생성 실패 — 진단용 ID로 계속한다', {
+            error: String(error),
+            userSessionId: probeUserSessionId,
+          });
+        }
+        renderVpsInfo();
+      }
+
+      function setVpsCameraUnavailable(message) {
+        if (vpsCameraStatus === message) return;
+        vpsCameraStatus = message;
+        renderVpsInfo();
+        mark('vps_camera_unavailable', {
+          rowType: 'event',
+          force: true,
+          allowStalePose: false,
+        });
+        log('WARN', message);
+      }
+
+      function maybeCaptureAndLocalize(viewerPose, receivedAt) {
+        if (!el('chkAutoVps').checked || !session || !glCtx || vpsInFlight) return;
+        if (!probeUserSessionId) return;
+        const intervalSeconds = Math.max(2, Number(el('inVpsInterval').value) || 5);
+        if (
+          lastVpsRequestedAt !== null &&
+          receivedAt - lastVpsRequestedAt < intervalSeconds * 1000
+        ) {
+          return;
+        }
+
+        const view = viewerPose.views && viewerPose.views[0];
+        const camera = view && view.camera;
+        if (!camera) {
+          setVpsCameraUnavailable('camera-access 미지원 또는 권한 미부여');
+          return;
+        }
+        if (typeof XRWebGLBinding !== 'function') {
+          setVpsCameraUnavailable('XRWebGLBinding 미지원');
+          return;
+        }
+
+        const size = scaledFrameSize(camera.width, camera.height, VPS_FRAME_MAX_SIDE);
+        try {
+          vpsCameraBinding ||= new XRWebGLBinding(session, glCtx);
+          if (
+            !vpsFrameGrabber ||
+            !vpsFrameGrabberSize ||
+            vpsFrameGrabberSize.width !== size.width ||
+            vpsFrameGrabberSize.height !== size.height
+          ) {
+            vpsFrameGrabber?.dispose();
+            vpsFrameGrabber = createCameraFrameGrabber(glCtx, size);
+            vpsFrameGrabberSize = size;
+          }
+        } catch (error) {
+          setVpsCameraUnavailable(`XR 카메라 초기화 실패: ${String(error)}`);
+          return;
+        }
+
+        const getCameraImage = vpsCameraBinding && vpsCameraBinding.getCameraImage;
+        if (typeof getCameraImage !== 'function' || !vpsFrameGrabber) {
+          setVpsCameraUnavailable('getCameraImage 미지원');
+          return;
+        }
+
+        let texture = null;
+        try {
+          texture = getCameraImage.call(vpsCameraBinding, camera);
+        } catch {
+          return;
+        }
+        if (!texture) return;
+        const pixels = vpsFrameGrabber.grab(texture);
+        if (!pixels) return;
+
+        vpsCameraStatus = '사용 가능';
+        vpsInFlight = true;
+        lastVpsRequestedAt = receivedAt;
+        vpsRequestCount += 1;
+        const capturedAtIso = new Date().toISOString();
+        const capturedReading = { ...lastReading };
+        const requestContext = {
+          captureId,
+          xrSessionId,
+          capturedAtIso,
+          capturedAtPerf: receivedAt,
+          reading: capturedReading,
+          size,
+        };
+        renderVpsInfo();
+
+        void encodeJpeg(pixels, size)
+          .then((blob) => {
+            if (!blob) throw new Error('JPEG 인코딩 실패');
+            return requestVpsLocalization(blob, requestContext);
+          })
+          .catch((error) => finishVpsFailure(error, requestContext));
+      }
+
+      async function requestVpsLocalization(image, context) {
+        const metadata = {
+          userSessionId: probeUserSessionId,
+          stationId: Math.max(1, Math.floor(Number(el('inVpsStationId').value) || STATION_ID)),
+          capturedAt: context.capturedAtIso,
+          camera: {
+            model: 'PINHOLE',
+            width: context.size.width,
+            height: context.size.height,
+            intrinsicsSource: 'browser',
+          },
+        };
+        const formData = new FormData();
+        formData.append('image', image, 'coord-probe.jpg');
+        formData.append(
+          'metadata',
+          new Blob([JSON.stringify(metadata)], { type: 'application/json' }),
+        );
+        const requestedAt = performance.now();
+        const response = await fetch('/api/vps/localize', {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+          body: formData,
+        });
+        const responseText = await response.text();
+        let body = null;
+        try {
+          body = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          throw new Error(`HTTP ${response.status}: JSON 아닌 응답`);
+        }
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${body?.message || responseText}`);
+        }
+        if (context.captureId !== captureId || context.xrSessionId !== xrSessionId) return;
+
+        const result = body && body.data ? body.data : body;
+        const confirmedPosition = result && result.position;
+        const candidatePosition = result && result.candidate && result.candidate.position;
+        const position = confirmedPosition || candidatePosition || null;
+        const positionSource = confirmedPosition
+          ? 'confirmed'
+          : candidatePosition
+            ? 'candidate'
+            : '';
+        const roundtripMs = performance.now() - requestedAt;
+        latestVps = {
+          requestId: result?.requestId || '',
+          resultStatus: result?.resultStatus || '',
+          positionSource,
+          floorCode: position?.floorCode || '',
+          accuracyM: position?.accuracyM ?? '',
+          confidenceScore: result?.confidenceScore ?? result?.candidate?.confidenceScore ?? '',
+          processingTimeMs: result?.processingTimeMs ?? '',
+          roundtripMs,
+          capturedAtIso: context.capturedAtIso,
+          capturedAtPerf: context.capturedAtPerf,
+          imageWidth: context.size.width,
+          imageHeight: context.size.height,
+        };
+
+        const responsePoint =
+          position && Number.isFinite(position.mapX) && Number.isFinite(position.mapY)
+            ? { mapX: position.mapX, mapY: position.mapY }
+            : null;
+        if (responsePoint) {
+          backendPoint = responsePoint;
+          latestBackendVps = latestVps;
+          vpsSuccessCount += 1;
+          el('inBackendMapX').value = position.mapX;
+          el('inBackendMapY').value = position.mapY;
+          if (!anchor && position.forwardMap && context.reading) {
+            createAnchor(backendPoint, position.forwardMap, context.reading);
+          }
+        }
+
+        mark('vps_response', {
+          rowType: 'event',
+          force: true,
+          reading: context.reading,
+          vps: latestVps,
+          backendPoint: responsePoint,
+        });
+        renderBackendCompare();
+        renderVpsInfo();
+        drawMap();
+        log(position ? 'OK' : 'WARN', 'VPS 응답', {
+          requestId: latestVps.requestId,
+          resultStatus: latestVps.resultStatus,
+          positionSource,
+          map: responsePoint ? [responsePoint.mapX, responsePoint.mapY] : null,
+          confidenceScore: latestVps.confidenceScore,
+          roundtripMs: Math.round(roundtripMs),
+        });
+        vpsInFlight = false;
+        renderVpsInfo();
+      }
+
+      function finishVpsFailure(error, context) {
+        if (context.captureId !== captureId || context.xrSessionId !== xrSessionId) return;
+        latestVps = {
+          requestId: '',
+          resultStatus: 'request_error',
+          positionSource: '',
+          floorCode: '',
+          accuracyM: '',
+          confidenceScore: '',
+          processingTimeMs: '',
+          roundtripMs: performance.now() - context.capturedAtPerf,
+          capturedAtIso: context.capturedAtIso,
+          capturedAtPerf: context.capturedAtPerf,
+          imageWidth: context.size.width,
+          imageHeight: context.size.height,
+        };
+        mark('vps_error', {
+          rowType: 'event',
+          force: true,
+          reading: context.reading,
+          vps: latestVps,
+          backendPoint: null,
+        });
+        vpsInFlight = false;
+        renderVpsInfo();
+        log('ERR', 'VPS 호출 실패', { error: String(error) });
+      }
 
       // ── 지원 여부 ─────────────────────────────────────────────────────────
       async function detect() {
@@ -859,7 +1277,7 @@
         refSpaceResetCount = 0;
         try {
           session = await navigator.xr.requestSession('immersive-ar', {
-            optionalFeatures: ['dom-overlay'],
+            optionalFeatures: ['dom-overlay', 'camera-access'],
             domOverlay: { root: overlay },
           });
         } catch (e) {
@@ -871,11 +1289,26 @@
         poseMissingSince = null;
         lastPoseReceivedAt = null;
         lastReading = null;
-        mark('session_start', { rowType: 'event', force: true, allowStalePose: false });
+        anchor = null;
+        track = [];
+        groundTruth = null;
+        backendPoint = null;
+        el('inBackendMapX').value = '';
+        el('inBackendMapY').value = '';
+        vpsInFlight = false;
+        lastVpsRequestedAt = null;
+        vpsRequestCount = 0;
+        vpsSuccessCount = 0;
+        vpsCameraStatus = el('chkAutoVps').checked ? '첫 카메라 프레임 대기' : '자동 호출 꺼짐';
+        latestVps = null;
+        latestBackendVps = null;
+        renderVpsInfo();
         log('OK', '세션 시작됨', { xrSessionId });
         try {
           const canvas = document.createElement('canvas');
-          const gl = canvas.getContext('webgl', { xrCompatible: true });
+          const gl =
+            canvas.getContext('webgl2', { xrCompatible: true }) ||
+            canvas.getContext('webgl', { xrCompatible: true });
           if (!gl) throw new Error('WebGL 컨텍스트를 만들 수 없다');
           await gl.makeXRCompatible();
           session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
@@ -918,7 +1351,10 @@
         overlay.classList.add('on');
         el('btnStart').disabled = true;
         el('btnEnd').disabled = false;
-        el('btnAnchorStep').disabled = false;
+        el('btnCsv').disabled = true;
+        el('btnClearCapture').disabled = true;
+        startContinuousRecording();
+        mark('session_start', { rowType: 'event', force: true, allowStalePose: false });
         session.requestAnimationFrame(onFrame);
       }
 
@@ -968,6 +1404,27 @@
         };
         poseFrames += 1;
 
+        if (!anchor && pendingAnchorSetup) {
+          const setup = pendingAnchorSetup;
+          pendingAnchorSetup = null;
+          createAnchor(setup.map, setup.forwardMap);
+        }
+
+        maybeCaptureAndLocalize(pose, receivedAt);
+
+        if (
+          recordingActive &&
+          (lastRecordedAt === null || receivedAt - lastRecordedAt >= RECORD_INTERVAL_MS)
+        ) {
+          mark('continuous_5hz', {
+            rowType: 'sample',
+            force: true,
+            allowStalePose: false,
+            silent: true,
+          });
+          lastRecordedAt = receivedAt;
+        }
+
         if (recovered) {
           mark('tracking_recovered', { rowType: 'event', force: true });
           log('OK', 'WebXR pose 추적 복구', { missingMs: Math.round(missingMs) });
@@ -998,11 +1455,17 @@
         session = null;
         refSpace = null;
         refSpaceType = null;
+        vpsFrameGrabber?.dispose();
+        vpsFrameGrabber = null;
+        vpsFrameGrabberSize = null;
+        vpsCameraBinding = null;
+        vpsInFlight = false;
         glCtx = null;
         overlay.classList.remove('on');
         el('btnStart').disabled = false;
         el('btnEnd').disabled = true;
-        el('btnAnchorStep').disabled = true;
+        el('btnCsv').disabled = buffer.length === 0;
+        el('btnClearCapture').disabled = buffer.length === 0;
       }
       async function end() {
         if (session)
@@ -1011,20 +1474,27 @@
 
       // ── 앵커 ──────────────────────────────────────────────────────────────
       el('btnAnchorStep').addEventListener('click', () => {
-        if (!lastReading) {
-          log('WARN', 'pose 가 아직 없다. 세션이 추적을 잡은 뒤 눌러야 한다.');
-          return;
-        }
+        anchor = null;
+        pendingAnchorSetup = null;
+        track = [];
+        groundTruth = null;
         tapMode = 'anchor1';
         pendingAnchorPoint = null;
+        el('btnGroundTruth').disabled = true;
         el('btnAnchorStep').textContent = '① 지금 서 있는 자리를 지도에서 탭';
-        log('INFO', '앵커 1단계 — 현재 위치 탭 대기');
+        renderAnchor();
+        drawMap();
+        log('INFO', '앵커 1단계 — 세션 시작 전 현재 위치 탭 대기');
       });
       el('btnAnchorClear').addEventListener('click', () => {
         anchor = null;
+        pendingAnchorSetup = null;
+        pendingAnchorPoint = null;
+        tapMode = 'idle';
         track = [];
         groundTruth = null;
         el('btnAnchorClear').disabled = true;
+        el('btnAnchorStep').textContent = '① 앵커 지정 시작';
         el('btnGroundTruth').disabled = true;
         renderAnchor();
         renderChain();
@@ -1032,22 +1502,22 @@
         log('INFO', '앵커 버림. 확정 위치 표시로 돌아간다.');
       });
 
-      function createAnchor(map, forwardMapRaw) {
+      function createAnchor(map, forwardMapRaw, reading = lastReading) {
         const forwardMap = normalizePlanar(forwardMapRaw);
         if (!forwardMap) {
           log('ERR', 'forwardMap 을 정할 수 없다. 앵커를 만들지 않는다.');
           return;
         }
-        if (!lastReading) {
+        if (!reading) {
           log('ERR', '원시 pose 가 없다. 앵커를 만들지 않는다.');
           return;
         }
-        const forwardXr = normalizePlanar(forwardXrOf(lastReading.yawDeg));
+        const forwardXr = normalizePlanar(forwardXrOf(reading.yawDeg));
         if (!forwardXr) return;
         anchorRevision += 1;
         anchor = {
           map,
-          xr: { x: lastReading.x, z: lastReading.z },
+          xr: { x: reading.x, z: reading.z },
           forwardXr,
           forwardMap,
           // 각도가 아니라 내적·2D 외적으로 들고 있다 (좌표 스펙 8.3).
@@ -1075,7 +1545,15 @@
 
       function renderAnchor() {
         if (!anchor) {
-          renderTable('anchorInfo', [['앵커 상태', 'none — 확정 위치만 표시된다', 'warn']]);
+          renderTable('anchorInfo', [
+            [
+              '앵커 상태',
+              pendingAnchorSetup
+                ? '지도 지정 완료 — WebXR 첫 pose 대기 중'
+                : 'none — 원시 XR만 기록된다',
+              pendingAnchorSetup ? 'ok' : 'warn',
+            ],
+          ]);
           return;
         }
         const { cosA, sinA } = anchor.rotation;
@@ -1409,9 +1887,19 @@
             log('WARN', '두 점이 너무 가깝다. 방향이 부정확해진다. 더 멀리 탭할 것.');
             return;
           }
-          createAnchor({ mapX: pendingAnchorPoint.x, mapY: pendingAnchorPoint.y }, fwd);
+          const map = { mapX: pendingAnchorPoint.x, mapY: pendingAnchorPoint.y };
+          if (session && trackingStatus === 'tracking' && lastReading) {
+            createAnchor(map, fwd);
+          } else {
+            pendingAnchorSetup = { map, forwardMap: fwd };
+            el('btnAnchorClear').disabled = false;
+            el('btnAnchorStep').textContent = '앵커 다시 지정하기';
+            renderAnchor();
+            log('OK', '지도 앵커 지정 완료 — WebXR 첫 pose에 자동 연결한다', { map });
+          }
           pendingAnchorPoint = null;
           tapMode = 'idle';
+          drawMap();
           return;
         }
         if (tapMode === 'gt') {
@@ -1517,6 +2005,18 @@
         'backend_pixel_py',
         'backend_vs_xr_map_err_m',
         'backend_vs_xr_pixel_err_px',
+        'backend_captured_at_iso',
+        'backend_age_ms',
+        'vps_request_id',
+        'vps_result_status',
+        'vps_position_source',
+        'vps_floor_code',
+        'vps_accuracy_m',
+        'vps_confidence_score',
+        'vps_processing_time_ms',
+        'vps_roundtrip_ms',
+        'vps_image_width',
+        'vps_image_height',
         'frame_origin_px_x',
         'frame_origin_px_y',
         'frame_angle_deg',
@@ -1530,8 +2030,9 @@
         const poseIsFresh =
           lastReading && trackingStatus === 'tracking' && poseAge <= TRACKING_LOST_AFTER_MS;
         const allowStalePose = options.allowStalePose !== false;
-        const r =
-          rowType === 'sample'
+        const r = options.reading
+          ? options.reading
+          : rowType === 'sample'
             ? poseIsFresh
               ? lastReading
               : null
@@ -1546,14 +2047,24 @@
         const mp = anchor && r ? xrToMapPoint({ x: r.x, z: r.z }, anchor, scale) : null;
         const px = mp ? meterToPixel(mp.mapX, mp.mapY, frame) : null;
         const back = px ? pixelToMeter(px.px, px.py, frame) : null;
-        const backend = backendProjection();
+        const rowBackendPoint = Object.prototype.hasOwnProperty.call(options, 'backendPoint')
+          ? options.backendPoint
+          : backendPoint;
+        const backend = backendProjection(rowBackendPoint);
         const backendMapDelta =
-          backendPoint && mp
-            ? Math.hypot(mp.mapX - backendPoint.mapX, mp.mapY - backendPoint.mapY)
+          rowBackendPoint && mp
+            ? Math.hypot(mp.mapX - rowBackendPoint.mapX, mp.mapY - rowBackendPoint.mapY)
             : '';
         const backendPixelDelta =
           backend && backend.pixel && px
             ? Math.hypot(px.px - backend.pixel.px, px.py - backend.pixel.py)
+            : '';
+        const vps = options.vps || (backendPoint ? latestBackendVps : latestVps);
+        const backendAgeMs =
+          vps && Number.isFinite(vps.capturedAtPerf)
+            ? options.reading
+              ? 0
+              : Math.max(0, now - vps.capturedAtPerf)
             : '';
         const row = {
           idx: buffer.length + 1,
@@ -1566,7 +2077,7 @@
             recordingStartedAt === null ? '' : Math.max(0, now - recordingStartedAt),
           t_ms: r ? Math.round(r.t) : Math.round(performance.now()),
           tracking_status: trackingStatus,
-          pose_age_ms: Number.isFinite(poseAge) ? Math.max(0, poseAge) : '',
+          pose_age_ms: options.reading ? 0 : Number.isFinite(poseAge) ? Math.max(0, poseAge) : '',
           floor,
           xr_x: r ? r.x : '',
           xr_y: r ? r.y : '',
@@ -1600,12 +2111,24 @@
           moved_xr_m: anchor && r ? Math.hypot(r.x - anchor.xr.x, r.z - anchor.xr.z) : '',
           moved_map_m:
             anchor && mp ? Math.hypot(mp.mapX - anchor.map.mapX, mp.mapY - anchor.map.mapY) : '',
-          backend_map_x: backendPoint ? backendPoint.mapX : '',
-          backend_map_y: backendPoint ? backendPoint.mapY : '',
+          backend_map_x: rowBackendPoint ? rowBackendPoint.mapX : '',
+          backend_map_y: rowBackendPoint ? rowBackendPoint.mapY : '',
           backend_pixel_px: backend && backend.pixel ? backend.pixel.px : '',
           backend_pixel_py: backend && backend.pixel ? backend.pixel.py : '',
           backend_vs_xr_map_err_m: backendMapDelta,
           backend_vs_xr_pixel_err_px: backendPixelDelta,
+          backend_captured_at_iso: vps ? vps.capturedAtIso : '',
+          backend_age_ms: backendAgeMs,
+          vps_request_id: vps ? vps.requestId : '',
+          vps_result_status: vps ? vps.resultStatus : '',
+          vps_position_source: vps ? vps.positionSource : '',
+          vps_floor_code: vps ? vps.floorCode : '',
+          vps_accuracy_m: vps ? vps.accuracyM : '',
+          vps_confidence_score: vps ? vps.confidenceScore : '',
+          vps_processing_time_ms: vps ? vps.processingTimeMs : '',
+          vps_roundtrip_ms: vps ? vps.roundtripMs : '',
+          vps_image_width: vps ? vps.imageWidth : '',
+          vps_image_height: vps ? vps.imageHeight : '',
           frame_origin_px_x: frame.ox,
           frame_origin_px_y: frame.oy,
           frame_angle_deg: frame.angleDeg,
@@ -1621,7 +2144,7 @@
             trackingStatus,
             map: mp ? [Number(mp.mapX.toFixed(3)), Number(mp.mapY.toFixed(3))] : null,
             pixel: px ? [Number(px.px.toFixed(1)), Number(px.py.toFixed(1))] : null,
-            backendMap: backendPoint ? [backendPoint.mapX, backendPoint.mapY] : null,
+            backendMap: rowBackendPoint ? [rowBackendPoint.mapX, rowBackendPoint.mapY] : null,
             backendPixel: backend && backend.pixel ? [backend.pixel.px, backend.pixel.py] : null,
             backendVsXrMapM: backendMapDelta === '' ? null : backendMapDelta,
             backendVsXrPixelPx: backendPixelDelta === '' ? null : backendPixelDelta,
@@ -1638,8 +2161,8 @@
         renderTable('recordInfo', [
           [
             '연속 기록',
-            recordingTimer === null ? '중지됨' : `기록 중 · ${(elapsed / 1000).toFixed(1)}초`,
-            recordingTimer === null ? 'warn' : 'ok',
+            recordingActive ? `기록 중 · ${(elapsed / 1000).toFixed(1)}초` : '중지됨',
+            recordingActive ? 'ok' : 'warn',
           ],
           ['capture ID', captureId || '—'],
           ['주기', `${RECORD_INTERVAL_MS}ms (${1000 / RECORD_INTERVAL_MS}Hz)`],
@@ -1649,41 +2172,39 @@
       }
 
       function startContinuousRecording() {
-        if (recordingTimer !== null) {
+        if (recordingActive) {
           log('WARN', '이미 연속 기록 중이다', { captureId });
           return;
         }
+        buffer = [];
+        track = [];
+        poseFrames = 0;
         captureId = `capture-${Date.now()}`;
         recordingStartedAt = performance.now();
+        recordingActive = true;
+        lastRecordedAt = null;
         recordingSampleCount = 0;
         recordingEventCount = 0;
-        el('btnRecordStart').disabled = true;
-        el('btnRecordStop').disabled = false;
         mark('recording_start', { rowType: 'event', force: true, allowStalePose: false });
-        recordingTimer = window.setInterval(() => {
-          mark('continuous_5hz', {
-            rowType: 'sample',
-            force: true,
-            allowStalePose: false,
-            silent: true,
-          });
-        }, RECORD_INTERVAL_MS);
         renderRecordInfo();
-        log('OK', '연속 기록 시작', { captureId, intervalMs: RECORD_INTERVAL_MS });
+        renderBuf();
+        drawMap();
+        log('OK', 'XR 세션 연속 기록 자동 시작', {
+          captureId,
+          intervalMs: RECORD_INTERVAL_MS,
+        });
       }
 
       function stopContinuousRecording(reason = 'manual') {
-        if (recordingTimer === null) return;
+        if (!recordingActive) return;
         mark(`recording_stop:${reason}`, {
           rowType: 'event',
           force: true,
           allowStalePose: false,
         });
-        window.clearInterval(recordingTimer);
-        recordingTimer = null;
+        recordingActive = false;
+        lastRecordedAt = null;
         recordingStartedAt = null;
-        el('btnRecordStart').disabled = false;
-        el('btnRecordStop').disabled = true;
         renderRecordInfo();
         log('INFO', '연속 기록 중지', {
           captureId,
@@ -1700,33 +2221,28 @@
           ['받은 pose 프레임', String(poseFrames)],
         ]);
       }
-      el('btnRecordStart').addEventListener('click', startContinuousRecording);
-      el('btnRecordStop').addEventListener('click', () => stopContinuousRecording());
-      el('btnMark').addEventListener('click', () => mark('manual_snapshot'));
       el('btnOvMark').addEventListener('click', () => mark('overlay_snapshot'));
-      function addUserEvent() {
-        const label = el('inEventLabel').value.trim();
-        if (!label) {
-          log('WARN', '이벤트 메모를 입력해야 한다');
-          return;
-        }
-        mark(`user:${label}`, { rowType: 'event', force: true });
-        el('inEventLabel').value = '';
-      }
-      el('btnEvent').addEventListener('click', addUserEvent);
-      el('inEventLabel').addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') addUserEvent();
-      });
       document.addEventListener('visibilitychange', () => {
-        if (recordingTimer === null) return;
+        if (!recordingActive) return;
         mark(document.hidden ? 'page_hidden' : 'page_visible', {
           rowType: 'event',
           force: true,
           allowStalePose: false,
         });
       });
-      window.addEventListener('beforeunload', () => {
-        if (recordingTimer !== null) window.clearInterval(recordingTimer);
+      el('btnClearCapture').addEventListener('click', () => {
+        if (session || recordingActive) return;
+        buffer = [];
+        track = [];
+        captureId = '';
+        recordingSampleCount = 0;
+        recordingEventCount = 0;
+        el('btnCsv').disabled = true;
+        el('btnClearCapture').disabled = true;
+        renderRecordInfo();
+        renderBuf();
+        drawMap();
+        log('INFO', '수집 기록을 지웠다');
       });
       el('btnCsv').addEventListener('click', () => {
         if (!buffer.length) {
@@ -1764,14 +2280,19 @@
       });
 
       // ── 초기화 ────────────────────────────────────────────────────────────
+      el('btnCsv').disabled = true;
+      el('btnClearCapture').disabled = true;
       frameToInputs();
       renderFrame();
       renderBackendCompare();
+      renderVpsInfo();
       renderAnchor();
       renderChain();
       renderRecordInfo();
       renderBuf();
       loadMapImage();
+      void fetchServerFrame();
+      void prepareProbeUserSession();
       detect();
       log('INFO', '페이지 로드됨. 세션 없이도 프레임·픽셀 변환과 지도 탭은 동작한다.');
     </script>
