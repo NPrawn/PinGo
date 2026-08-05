@@ -41,10 +41,39 @@ describe('useNavigationStore.setCurrentLocation', () => {
 
   /** 방향을 잃었다는 것을 알릴 길도 남긴다. `null` 을 명시하면 지운다. */
   it('null 을 명시하면 방향을 지운다', () => {
-    useNavigationStore
-      .getState()
-      .setCurrentLocation({ nodeId: 12, floorId: 3, forwardMap: null });
+    useNavigationStore.getState().setCurrentLocation({ nodeId: 12, floorId: 3, forwardMap: null });
 
     expect(useNavigationStore.getState().currentForwardMap).toBeNull();
+  });
+});
+
+describe('useNavigationStore.setDestination', () => {
+  it('keeps bilingual facility data for refresh restoration', () => {
+    useNavigationStore.getState().setDestination('교통카드 충전기 A', {
+      destinationId: 50,
+      destinationType: 'facility',
+      targetNodeId: 121,
+      destinationNameKo: '교통카드 충전기 A',
+      destinationNameEn: 'Transit Card Reload Machine A',
+    });
+
+    expect(useNavigationStore.getState()).toMatchObject({
+      destination: '교통카드 충전기 A',
+      destinationId: 50,
+      destinationType: 'facility',
+      targetNodeId: 121,
+      destinationNameKo: '교통카드 충전기 A',
+      destinationNameEn: 'Transit Card Reload Machine A',
+    });
+    const persisted = JSON.parse(sessionStorage.getItem('pingo.navigation') ?? '{}') as {
+      state?: Record<string, unknown>;
+    };
+    expect(persisted.state).toMatchObject({
+      destinationId: 50,
+      destinationType: 'facility',
+      targetNodeId: 121,
+      destinationNameKo: '교통카드 충전기 A',
+      destinationNameEn: 'Transit Card Reload Machine A',
+    });
   });
 });

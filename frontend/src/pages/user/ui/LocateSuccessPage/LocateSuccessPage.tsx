@@ -1,9 +1,9 @@
 import { useTranslation } from 'react-i18next';
+import { localizedFacilityNameAtNode, useStationFacilities } from '@/entities/facility';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
-import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { ButtonLink, Card, GhostLink, Icon, Icon3d } from '@/shared/ui';
 import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
@@ -14,12 +14,18 @@ import styles from './LocateSuccessPage.module.css';
 export function LocateSuccessPage() {
   const { t, i18n } = useTranslation();
   const station = useStationStore((state) => state.station);
+  const stationId = useStationStore((state) => state.stationId);
   const floor = useStationStore((state) => state.floor);
   /** 위치 인식이 준 경로 시작 노드의 이름. 역·층 표기보다 구체적이다. */
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
-  const locationText = localizeUserLabel(
+  const currentNodeId = useNavigationStore((state) => state.currentNodeId);
+  const language = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
+  const facilities = useStationFacilities(stationId ?? 0).data;
+  const locationText = localizedFacilityNameAtNode(
+    facilities,
+    currentNodeId,
+    language,
     currentLocationLabel ?? `${station} · ${floor}`,
-    i18n.resolvedLanguage === 'en' ? 'en' : 'ko',
   );
   /** 안내 중 재인식으로 왔는지. 돌아갈 화면을 가른다. (S15P11A206-141) */
   const relocalizing = useNavigationStore((state) => state.relocalizing);
@@ -133,9 +139,13 @@ export function LocateSuccessPage() {
               사용자가 목적지 선택부터 다시 밟는다.
             */}
             {relocalizing ? (
-              <ButtonLink to={USER_ROUTES.NAVIGATION}>{t('user.locateSuccess.continue')}</ButtonLink>
+              <ButtonLink to={USER_ROUTES.NAVIGATION}>
+                {t('user.locateSuccess.continue')}
+              </ButtonLink>
             ) : (
-              <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>{t('user.locateSuccess.chooseRoute')}</ButtonLink>
+              <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>
+                {t('user.locateSuccess.chooseRoute')}
+              </ButtonLink>
             )}
             <GhostLink to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.retake}>
               {t('user.locateSuccess.retake')}

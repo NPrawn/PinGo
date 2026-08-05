@@ -1,7 +1,15 @@
 import { useTranslation } from 'react-i18next';
+import {
+  facilityAtNodeMatchingLabel,
+  localizedFacilityNameAtNode,
+  localizedFacilityNameOf,
+  useStationFacilities,
+} from '@/entities/facility';
 import { useNavigationStore } from '@/entities/navigation';
+import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedNameOf } from '@/shared/i18n';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { Blob, BlobHero, BlobPin, ButtonLink, LivePill, Spring, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -10,13 +18,30 @@ import styles from './ArrivalPage.module.css';
 /** Screen 21 (FR-U-011) — the user reached the destination. */
 export function ArrivalPage() {
   const { t, i18n } = useTranslation();
+  const language = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
+  const stationId = useStationStore((state) => state.stationId);
+  const facilities = useStationFacilities(stationId ?? 0).data;
   const storedDestination = useNavigationStore((state) => state.destination);
+  const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
+  const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
+  const targetNodeId = useNavigationStore((state) => state.targetNodeId);
+  const storedDestinationFacility = facilityAtNodeMatchingLabel(
+    facilities,
+    targetNodeId,
+    destinationNameKo,
+  ) ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destinationNameEn)
+    ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, storedDestination);
   const destination = storedDestination
-    ? localizeUserLabel(storedDestination, i18n.resolvedLanguage === 'en' ? 'en' : 'ko')
+    ? (storedDestinationFacility
+        ? localizedFacilityNameOf(storedDestinationFacility, language)
+        : (localizedNameOf(language, destinationNameKo, destinationNameEn) ??
+          localizeUserLabel(storedDestination, language)))
     : t('user.arrival.selected');
   // 안내가 실제로 도착한 출입구. 경로 옵션 화면이 유형별로 정해 스토어에 남긴 값이다.
   const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
-  const exit = targetExitLabel ?? t('user.arrival.entrance');
+  const exit = targetExitLabel
+    ? localizedFacilityNameAtNode(facilities, targetNodeId, language, targetExitLabel)
+    : t('user.arrival.entrance');
 
   return (
     <PhoneFrame layout="hero" bodyClassName={styles.body}>

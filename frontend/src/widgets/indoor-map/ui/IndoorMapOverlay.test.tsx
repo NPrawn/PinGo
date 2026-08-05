@@ -175,8 +175,8 @@ describe('IndoorMapOverlay', () => {
       expect(marker.querySelector('circle')).toHaveAttribute('cx', '300');
     });
 
-    /** 층당 30여 개에 모두 이름을 붙이면 도면이 글자로 덮인다. */
-    it('이름은 고른 시설에만 붙인다', () => {
+    /** 상세 시트에 이름이 나오므로 지도 뒤에는 같은 문구를 중복해서 그리지 않는다. */
+    it('시설을 골라도 지도에는 이름을 붙이지 않는다', () => {
       const { rerender } = renderOverlay({ facilities: [RESTROOM] });
 
       expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toBeNull();
@@ -192,9 +192,7 @@ describe('IndoorMapOverlay', () => {
         />,
       );
 
-      expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toHaveTextContent(
-        '화장실',
-      );
+      expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toBeNull();
     });
 
     it('콜백을 넘기면 마커가 탭을 받는다', () => {

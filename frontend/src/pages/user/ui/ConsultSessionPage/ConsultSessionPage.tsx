@@ -3,7 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { isClosedConsultation, useConsultStore } from '@/entities/consult';
-import { FACILITY_MAP_FILTERS, useStationFacilities, type Facility } from '@/entities/facility';
+import {
+  FACILITY_MAP_FILTERS,
+  facilityAtNodeMatchingLabel,
+  localizedFacilityNameAtNode,
+  localizedFacilityNameOf,
+  useStationFacilities,
+  type Facility,
+} from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
   routeDistanceScaleOf,
@@ -26,6 +33,7 @@ import { readForwardMap } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedNameOf } from '@/shared/i18n';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import {
   xrSessionController,
@@ -171,10 +179,10 @@ export function ConsultSessionPage() {
    * 목적지라고 띄우면 상담자도 그것을 보고 안내를 시작한다.
    */
   const destination = useNavigationStore((state) => state.destination);
+  const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
+  const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
-  const displayedOrigin = localizeUserLabel(currentLocationLabel ?? station, displayLanguage);
-  const displayedDestination = destination ? localizeUserLabel(destination, displayLanguage) : null;
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
@@ -557,6 +565,24 @@ export function ConsultSessionPage() {
   const [facilityView, setFacilityView] = useState<string>('all');
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   const facilities = useStationFacilities(stationId ?? 0).data;
+  const displayedOrigin = localizedFacilityNameAtNode(
+    facilities,
+    currentNodeId,
+    displayLanguage,
+    currentLocationLabel ?? station,
+  );
+  const storedDestinationFacility = facilityAtNodeMatchingLabel(
+    facilities,
+    targetNodeId,
+    destinationNameKo,
+  ) ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destinationNameEn)
+    ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destination);
+  const displayedDestination = destination
+    ? (storedDestinationFacility
+        ? localizedFacilityNameOf(storedDestinationFacility, displayLanguage)
+        : (localizedNameOf(displayLanguage, destinationNameKo, destinationNameEn) ??
+          localizeUserLabel(destination, displayLanguage)))
+    : null;
   /**
    * 표시 층에 실제로 있는 유형만 칩으로 둔다. 눌러서 아무것도 나오지 않는 칩은 두지 않는다 —
    * 역삼역 B3 에는 승차권 충전기가 없는데 칩이 늘 떠 있으면 없다는 것을 눌러 봐야만 알 수 있다.
@@ -956,8 +982,20 @@ export function ConsultSessionPage() {
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
                     <small>{t('user.consultSession.waypoint', { order: index + 1 })}</small>
                   </span>
-                  <strong title={localizeUserLabel(waypoint.nameKo, displayLanguage)}>
-                    {localizeUserLabel(waypoint.nameKo, displayLanguage)}
+                  <strong
+                    title={localizedFacilityNameAtNode(
+                      facilities,
+                      waypoint.nodeId,
+                      displayLanguage,
+                      waypoint.nameKo,
+                    )}
+                  >
+                    {localizedFacilityNameAtNode(
+                      facilities,
+                      waypoint.nodeId,
+                      displayLanguage,
+                      waypoint.nameKo,
+                    )}
                   </strong>
                 </div>
               </Fragment>
@@ -1038,7 +1076,7 @@ export function ConsultSessionPage() {
                 /* 사용자 화면은 안내 화면과 같이 진행 방향이 위를 향하게 돈다. */
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
-                destinationLabel={destination}
+                destinationLabel={displayedDestination}
                 pathNodes={pathNodes}
                 /* 경유지 번호 핀과 다리별 색. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
                 waypointNodeIds={waypointNodeIds}

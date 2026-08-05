@@ -7,6 +7,7 @@ import { ConsultCta } from '@/features/consult-request';
 import { DestinationSearch } from '@/features/destination-search';
 import { StationSearch } from '@/features/station-search';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedNameOf } from '@/shared/i18n';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { ButtonLink, Icon, Sub, Title } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -31,8 +32,12 @@ export function StationPage() {
   const { t, i18n } = useTranslation();
   const station = useStationStore((state) => state.station);
   const destination = useNavigationStore((state) => state.destination);
+  const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
+  const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
+  const language = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
   const destinationLabel = destination
-    ? localizeUserLabel(destination, i18n.resolvedLanguage === 'en' ? 'en' : 'ko')
+    ? (localizedNameOf(language, destinationNameKo, destinationNameEn) ??
+      localizeUserLabel(destination, language))
     : null;
   const [step, setStep] = useState<SelectionStep>('origin');
   const activeIndex = STEP_INDEX[step];
@@ -58,9 +63,7 @@ export function StationPage() {
         <Title id="home-title" className={styles.title}>
           {t('user.station.title')}
         </Title>
-        <Sub className={styles.description}>
-          {t('user.station.description')}
-        </Sub>
+        <Sub className={styles.description}>{t('user.station.description')}</Sub>
         <ConsultCta
           variant="chip"
           label={t('user.station.consult')}

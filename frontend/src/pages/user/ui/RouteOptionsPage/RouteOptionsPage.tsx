@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  facilityAtNodeMatchingLabel,
+  localizedFacilityNameAtNode,
+  localizedFacilityNameOf,
+  useStationFacilities,
+} from '@/entities/facility';
 import { useNavigationStore } from '@/entities/navigation';
 import { routeOriginOf, routeUnavailableText, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
@@ -80,13 +86,28 @@ export function RouteOptionsPage() {
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
-  const locationLabel = localizeUserLabel(currentLocationLabel ?? station, language);
-  const destinationLabel = destination
+  const facilities = useStationFacilities(stationId ?? 0).data;
+  const locationLabel = localizedFacilityNameAtNode(
+    facilities,
+    currentNodeId,
+    language,
+    currentLocationLabel ?? station,
+  );
+  const storedDestinationLabel = destination
     ? destination === destinationNameKo || destination === destinationNameEn
-      ? localizedNameOf(language, destinationNameKo, destinationNameEn) ??
-        localizeUserLabel(destination, language)
+      ? (localizedNameOf(language, destinationNameKo, destinationNameEn) ??
+        localizeUserLabel(destination, language))
       : localizeUserLabel(destination, language)
     : null;
+  const storedDestinationFacility = facilityAtNodeMatchingLabel(
+    facilities,
+    targetNodeId,
+    destinationNameKo,
+  ) ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destinationNameEn)
+    ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destination);
+  const destinationLabel = storedDestinationFacility
+    ? localizedFacilityNameOf(storedDestinationFacility, language)
+    : storedDestinationLabel;
   const externalDestination = isExternalDestination(destinationType);
 
   /**
@@ -189,8 +210,7 @@ export function RouteOptionsPage() {
       };
     }
     if (
-      (externalDestination &&
-        (destinationLatitude === null || destinationLongitude === null)) ||
+      (externalDestination && (destinationLatitude === null || destinationLongitude === null)) ||
       (!externalDestination && targetNodeId === null)
     ) {
       return destination
@@ -323,7 +343,11 @@ export function RouteOptionsPage() {
             오는 순간 다시 벌어져 화면이 튄다.
           */}
           {loading ? (
-            <div className={styles.optionList} aria-label={t('user.routeOptions.listLabel')} aria-busy="true">
+            <div
+              className={styles.optionList}
+              aria-label={t('user.routeOptions.listLabel')}
+              aria-busy="true"
+            >
               <p className={styles.srOnly} role="status">
                 {t('user.routeOptions.loading')}
               </p>

@@ -227,9 +227,7 @@ describe('user routes', () => {
   it('사용자 웹앱에서 고른 영어를 새 세션과 다음 화면에 적용한다', async () => {
     let requestedLanguage: string | undefined;
     // The backend currently serializes its UTC LocalDateTime without a `Z`.
-    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1_000)
-      .toISOString()
-      .replace(/Z$/, '');
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1_000).toISOString().replace(/Z$/, '');
     server.use(
       http.post('*/api/user-sessions', async ({ request }) => {
         requestedLanguage = ((await request.json()) as { language?: string }).language;
@@ -258,7 +256,9 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: /English/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
 
-    expect(await screen.findByRole('heading', { name: /Allow the permissions/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /Allow the permissions/ }),
+    ).toBeInTheDocument();
     expect(requestedLanguage).toBe('en');
     expect(useUserSessionStore.getState()).toMatchObject({
       userSessionId: 'english-user-session',
@@ -304,7 +304,9 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: /English/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
 
-    expect(await screen.findByRole('heading', { name: /Allow the permissions/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /Allow the permissions/ }),
+    ).toBeInTheDocument();
     expect(requestedLanguages).toContain('en');
     expect(useUserSessionStore.getState()).toMatchObject({
       userSessionId: 'existing-user-session',
@@ -1212,6 +1214,46 @@ describe('user routes', () => {
     expect(fastest).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('link', { name: '7번 출입구 길 안내 시작' })).toBeInTheDocument();
     await waitFor(() => expect(useNavigationStore.getState().route).toBe('fastest'));
+  });
+
+  it('restores an English facility destination from a legacy refreshed session', async () => {
+    useUserSessionStore.setState({ language: 'en' });
+    useNavigationStore.setState({
+      destination: '승차권 충전',
+      destinationNameKo: null,
+      destinationNameEn: null,
+      destinationId: null,
+      destinationType: null,
+      targetNodeId: 121,
+      targetExitLabel: '승차권 충전',
+    });
+
+    await renderSection('/user/route');
+
+    expect(await screen.findByText('Transit Card Reload Machine')).toBeInTheDocument();
+    expect(screen.queryByText('승차권 충전')).toBeNull();
+  });
+
+  it('localizes the facility name in the English route details', async () => {
+    useUserSessionStore.setState({ language: 'en' });
+    useNavigationStore.setState({
+      destination: '엘리베이터',
+      destinationNameKo: null,
+      destinationNameEn: null,
+      destinationId: null,
+      destinationType: 'facility',
+      targetNodeId: 123,
+      targetExitLabel: '엘리베이터',
+      waypoints: [{ nodeId: 121, nameKo: '승차권 충전' }],
+      stepsOpen: false,
+    });
+
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with map' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Route details' }));
+
+    expect(await screen.findByText('Arrive at Elevator')).toBeInTheDocument();
+    expect(screen.queryByText('Arrive at 엘리베이터')).toBeNull();
   });
 
   it('prioritizes the route header and current maneuver during navigation', async () => {

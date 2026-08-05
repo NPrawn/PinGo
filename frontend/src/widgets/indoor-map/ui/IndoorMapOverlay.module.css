@@ -132,15 +132,6 @@
   cursor: pointer;
 }
 
-/* 고른 시설의 이름. 목적지 라벨과 같은 방식으로 흰 외곽선을 깔아 도면 위에서 읽히게 한다. */
-.facilityLabel {
-  font-weight: 800;
-  fill: var(--color-mint-forest);
-  stroke: #fff;
-  stroke-linejoin: round;
-  paint-order: stroke;
-}
-
 /* 현재 위치 — 프로토타입 `.heading`의 세 겹(ping · beam · dot)을 옮겼다.
    색은 경로와 같은 계열이다. 내 위치와 갈 길은 한 이야기이고, 시설(민트)과 갈라야 하는 쪽은
    그 둘이 함께다. */
