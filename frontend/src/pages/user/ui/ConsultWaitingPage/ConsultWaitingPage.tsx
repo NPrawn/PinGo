@@ -38,9 +38,85 @@ export function ConsultWaitingPage() {
   const consultationId = useConsultStore((state) => state.consultationId);
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
   const clearConsultation = useConsultStore((state) => state.clearConsultation);
+  const entryRoute = useConsultStore((state) => state.entryRoute);
   const userSessionId = useUserSessionStore((state) => state.userSessionId);
   const [statusMessage, setStatusMessage] = useState(() => t('user.consultWaiting.status'));
   const missingTokenMessage = t('user.consultWaiting.missingToken');
+
+  /**
+   * 상담을 그만두고 돌아갈 자리. (S15P11A206-353)
+   *
+   * 취소는 한 단계 되돌리는 것이 아니라 신청을 접는 것이다. 앞 화면(공유 동의)으로 보내면
+   * 방금 취소한 상담을 다시 만드는 버튼 앞에 서게 되고, 문의 유형 화면으로 보내면 그만둔
+   * 사람에게 유형을 다시 고르라고 내미는 셈이 된다. 상담을 시작한 화면으로 되돌린다.
+   *
+   * 마운트 시점 값에 고정한다 — `clearConsultation()`이 `entryRoute`까지 비우므로 떠나는
+   * 순간에 읽으면 이미 null이다. 상담 CTA를 거치지 않고 닿았다면 돌아갈 자리를 모르니 역
+   * 선택으로 간다.
+   */
+  const [returnRoute] = useState(() => entryRoute ?? USER_ROUTES.STATION);
+
+  /**
+   * 이미 떠나기로 정했는지. 이 화면을 벗어나는 통로가 여럿이라 서로 겹치는 것을 막는다.
+   *
+   * 취소 요청이 실패해 화면에 그대로 머무는 경우가 있으므로, 실제로 떠나는 시점에만 세운다.
+   */
+  const leavingRef = useRef(false);
+
+  const leaveWaiting = useCallback(
+    (target: string) => {
+      leavingRef.current = true;
+      // 상담으로 이어지지 않았으니 미리 잡아 둔 카메라·마이크를 놓아 준다. 그대로 두면 장치를
+      // 계속 물고 있어서 다음 권한 요청이 응답 없이 멈춘다.
+      releaseConsultMedia();
+      clearConsultation();
+      /*
+        신청 흐름을 기록에 남기지 않는다. (S15P11A206-353)
+
+        push로 나가면 뒤로가기가 이미 취소된 대기 화면으로 되돌아가고, 그 화면은 "상담원
+        연결 중"을 그대로 띄워 사용자에게는 상담이 다시 신청된 것처럼 보인다.
+      */
+      void navigate(target, { replace: true });
+    },
+    [clearConsultation, navigate],
+  );
+
+  /**
+   * 기다릴 상담이 없으면 이 화면에 머물 이유가 없다. (S15P11A206-353)
+   *
+   * 주소로 직접 들어오거나 세션에 상담 정보가 없는 채로 닿으면, 끝나지 않는 "상담원 연결 중"
+   * 화면이 그대로 보여 사용자는 신청된 줄 알고 계속 기다린다. 돌아갈 자리를 알 수 없는
+   * 경우이므로 진입 화면이 아니라 문의 유형 화면으로 내보낸다.
+   */
+  useEffect(() => {
+    if (consultationId || leavingRef.current) return;
+    void navigate(USER_ROUTES.CONSULT_REQUEST, { replace: true });
+  }, [consultationId, navigate]);
+
+  /**
+   * 기기 뒤로가기로 대기 화면을 벗어나는 경우. (S15P11A206-353)
+   *
+   * 취소 버튼을 거치지 않으므로 서버의 상담은 대기열에 그대로 남고 잡아 둔 카메라·마이크도
+   * 계속 물려 있다. 상담자가 수락해도 사용자는 이미 다른 화면에 있어 아무 응답이 없다.
+   *
+   * 언마운트 정리에 맡기지 않는다. StrictMode가 마운트 직후 정리 함수를 한 번 실행해서,
+   * 개발 빌드에서는 기다리기도 전에 상담이 취소된다. 실제로 되돌아갈 때만 오는 `popstate`를
+   * 듣는다. 새로고침은 이 통로로 오지 않으며, 상담 ID가 세션에 남아 대기가 이어진다.
+   */
+  useEffect(() => {
+    const handlePopState = () => {
+      if (leavingRef.current) return;
+      leavingRef.current = true;
+      releaseConsultMedia();
+      if (consultationId && userSessionId) {
+        void cancelConsultation(consultationId, userSessionId).catch(() => undefined);
+      }
+      clearConsultation();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [clearConsultation, consultationId, userSessionId]);
 
   useEffect(() => {
     if (!consultationId || !userSessionId) return;
@@ -59,18 +135,19 @@ export function ConsultWaitingPage() {
             return;
           }
           setSignalingRoom(consultation.signalingRoomId, consultation.signalingAccessToken);
+          // 상담으로 이어진 것이므로 아래 뒤로가기 정리가 이 상담을 거둬들이지 않게 한다.
+          leavingRef.current = true;
           void navigate(USER_ROUTES.CONSULT_SESSION);
           return;
         }
-        // 세션에 남아 있던 옛 요청이면 대기할 것이 없다.
+        // 세션에 남아 있던 옛 요청이면 대기할 것이 없다. 그만둔 것이 아니라 기다릴 대상이
+        // 없는 경우이므로, 진입 화면이 아니라 문의 유형 화면에서 다시 시작하게 한다.
         if (consultation.status && consultation.status !== 'WAITING') {
-          clearConsultation();
-          void navigate(USER_ROUTES.CONSULT_REQUEST);
+          leaveWaiting(USER_ROUTES.CONSULT_REQUEST);
         }
       })
       .catch(() => {
-        clearConsultation();
-        void navigate(USER_ROUTES.CONSULT_REQUEST);
+        leaveWaiting(USER_ROUTES.CONSULT_REQUEST);
       });
 
     const events = subscribeToConsultationWaitingEvents(consultationId);
@@ -90,6 +167,7 @@ export function ConsultWaitingPage() {
               return;
             }
             setSignalingRoom(roomId, consultation.signalingAccessToken);
+            leavingRef.current = true;
             void navigate(USER_ROUTES.CONSULT_SESSION);
           })
           .catch(() => setStatusMessage(missingTokenMessage));
@@ -105,11 +183,10 @@ export function ConsultWaitingPage() {
         setStatusMessage(t('user.consultWaiting.connectError'));
       }
     };
+    // 상담자가 거둬들인 경우다. 사용자가 취소한 것과 결과가 같으므로 같은 자리로 되돌린다.
     const handleCanceled = () => {
       active = false;
-      releaseConsultMedia();
-      clearConsultation();
-      void navigate(USER_ROUTES.CONSULT_REQUEST);
+      leaveWaiting(returnRoute);
     };
 
     events.addEventListener('ACCEPTED', handleAccepted as EventListener);
@@ -121,15 +198,16 @@ export function ConsultWaitingPage() {
       active = false;
       events.close();
     };
-  }, [clearConsultation, consultationId, missingTokenMessage, navigate, setSignalingRoom, t, userSessionId]);
-
-  const leaveWaiting = useCallback(() => {
-    // 상담으로 이어지지 않았으니 미리 잡아 둔 카메라·마이크를 놓아 준다. 그대로 두면 장치를
-    // 계속 물고 있어서 다음 권한 요청이 응답 없이 멈춘다.
-    releaseConsultMedia();
-    clearConsultation();
-    void navigate(USER_ROUTES.CONSULT_REQUEST);
-  }, [clearConsultation, navigate]);
+  }, [
+    consultationId,
+    leaveWaiting,
+    missingTokenMessage,
+    navigate,
+    returnRoute,
+    setSignalingRoom,
+    t,
+    userSessionId,
+  ]);
 
   /**
    * 기다리는 동안 권한이 사라지면 요청을 거둬들인다.
@@ -139,23 +217,24 @@ export function ConsultWaitingPage() {
    * 상담자가 수락한 뒤에야 잘못된 것을 알게 된다.
    */
   const permissionsRevoked = usePermissionsRevoked();
-  const withdrawingRef = useRef(false);
 
   useEffect(() => {
-    if (!permissionsRevoked || withdrawingRef.current) return;
+    if (!permissionsRevoked || leavingRef.current) return;
 
-    withdrawingRef.current = true;
+    leavingRef.current = true;
     releaseConsultMedia();
     if (consultationId && userSessionId) {
       void cancelConsultation(consultationId, userSessionId).catch(() => undefined);
     }
     clearConsultation();
-    void navigate(USER_ROUTES.PERMISSION);
+    // 권한을 다시 받아야 하는 경우라 진입 화면이 아니라 권한 화면으로 간다. 대기 화면은
+    // 기록에서 지운다 — 뒤로가기로 되돌아와도 기다릴 상담이 이미 없다. (S15P11A206-353)
+    void navigate(USER_ROUTES.PERMISSION, { replace: true });
   }, [clearConsultation, consultationId, navigate, permissionsRevoked, userSessionId]);
 
   const cancel = async () => {
     if (!consultationId || !userSessionId) {
-      leaveWaiting();
+      leaveWaiting(returnRoute);
       return;
     }
 
@@ -174,7 +253,7 @@ export function ConsultWaitingPage() {
       }
     }
 
-    leaveWaiting();
+    leaveWaiting(returnRoute);
   };
 
   return (
