@@ -115,20 +115,43 @@ export function useMapGestures(follow?: FollowOptions) {
    *
    * 확대하지 않았으면 이동을 허용하지 않는다. `contain`으로 맞춰진 도면을 밀면 빈 배경만
    * 보이고 되돌릴 방법이 화면에 없다.
+   *
+   * **이어받은 추종 시점은 이 한계를 넘어 있다.** 추종은 내 위치를 화면 아래쪽에 붙이는 것이
+   * 목적이라 이동량을 일부러 자르지 않는다(`computeFollowView`). 그래서 손을 대는 순간 그 값이
+   * 한계로 끌려오면 지도가 튄다 — 안내 화면 지도 박스(358×300)·추종 배율 5.38에서 도면 면적의
+   * 18~32%가 그렇고, 지도가 방향에 따라 돌아 있으면 최대 476px 튀어 내 위치 마커가 화면 밖으로
+   * 나간다. (S15P11A206-206)
+   *
+   * 넘어 있는 만큼은 그대로 허용하고, 대신 **더 밀려나지는 못하게** 한다. 안으로 미는 조작마다
+   * 여유가 줄어들어 한계 안으로 들어오면 다시 나갈 수 없다.
    */
-  const clamp = useCallback((next: MapView, box: { width: number; height: number }): MapView => {
-    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next.scale));
-    const limitX = ((scale - 1) * box.width) / 2;
-    const limitY = ((scale - 1) * box.height) / 2;
+  const clamp = useCallback(
+    (next: MapView, previous: MapView, box: { width: number; height: number }): MapView => {
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next.scale));
+      const limitX = ((scale - 1) * box.width) / 2;
+      const limitY = ((scale - 1) * box.height) / 2;
+      /**
+       * 축소할 때는 여유를 주지 않는다.
+       *
+       * 배율이 1로 돌아가면 한계가 0인데 여유를 남기면 도면이 화면 밖에 놓인 채로 굳는다.
+       * 그리고 축소는 전체를 보려는 조작이라, 그때 가운데로 돌아오는 것이 하려던 일에 맞다.
+       */
+      const shrinking = scale < previous.scale;
+      const allowance = (limit: number, previousValue: number): number =>
+        shrinking ? limit : Math.max(limit, Math.abs(previousValue));
+      const allowX = allowance(limitX, previous.x);
+      const allowY = allowance(limitY, previous.y);
 
-    return {
-      scale,
-      x: Math.min(limitX, Math.max(-limitX, next.x)),
-      y: Math.min(limitY, Math.max(-limitY, next.y)),
-      // 회전은 손 조작이 건드리지 않는다. 들어온 값을 그대로 둔다.
-      rotation: next.rotation,
-    };
-  }, []);
+      return {
+        scale,
+        x: Math.min(allowX, Math.max(-allowX, next.x)),
+        y: Math.min(allowY, Math.max(-allowY, next.y)),
+        // 회전은 손 조작이 건드리지 않는다. 들어온 값을 그대로 둔다.
+        rotation: next.rotation,
+      };
+    },
+    [],
+  );
 
   /**
    * 포인터 하나를 추적에서 놓는다.
@@ -210,12 +233,16 @@ export function useMapGestures(follow?: FollowOptions) {
 
         const ratio = distance / pinch.current.distance;
         pinch.current = { distance, scale: 0 };
-        setView((v) => clamp({ ...v, scale: v.scale * ratio }, box));
+        setView((v) => clamp({ ...v, scale: v.scale * ratio }, v, box));
         return;
       }
 
       setView((v) =>
-        clamp({ ...v, x: v.x + (current.x - previous.x), y: v.y + (current.y - previous.y) }, box),
+        clamp(
+          { ...v, x: v.x + (current.x - previous.x), y: v.y + (current.y - previous.y) },
+          v,
+          box,
+        ),
       );
     },
     [clamp, releaseFollow],
@@ -234,7 +261,7 @@ export function useMapGestures(follow?: FollowOptions) {
       const box = event.currentTarget.getBoundingClientRect();
       const ratio = event.deltaY < 0 ? 1.1 : 1 / 1.1;
       releaseFollow();
-      setView((v) => clamp({ ...v, scale: v.scale * ratio }, box));
+      setView((v) => clamp({ ...v, scale: v.scale * ratio }, v, box));
     },
     [clamp, releaseFollow],
   );
@@ -251,7 +278,7 @@ export function useMapGestures(follow?: FollowOptions) {
       if (!box) return;
 
       releaseFollow();
-      setView((v) => clamp({ ...v, scale: v.scale * ratio }, box));
+      setView((v) => clamp({ ...v, scale: v.scale * ratio }, v, box));
     },
     [box, clamp, releaseFollow],
   );
