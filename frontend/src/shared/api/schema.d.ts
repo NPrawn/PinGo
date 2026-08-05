@@ -977,6 +977,12 @@ export interface components {
       startNodeLabel?: string;
       /** @description 낮은 신뢰도 응답에서만 제공하는 다중 프레임 투표용 위치 후보 */
       candidate?: components['schemas']['LocalizationCandidateResponse'];
+      /**
+       * Format: double
+       * @description AI 기하 품질 지표를 0~1로 정규화한 위치 인식 신뢰도
+       * @example 0.87
+       */
+      confidenceScore?: number;
       fallbackOptions?: (
         | 'retry_capture'
         | 'select_landmark'

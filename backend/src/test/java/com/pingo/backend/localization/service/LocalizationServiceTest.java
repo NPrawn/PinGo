@@ -200,6 +200,7 @@ class LocalizationServiceTest {
         assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.SUCCESS);
         assertThat(response.startNodeId()).isEqualTo(123L);
         assertThat(response.startNodeLabel()).isEqualTo("B2-B3 엘리베이터 A");
+        assertThat(response.confidenceScore()).isEqualTo(0.87);
         assertThat(response.fallbackOptions()).isEmpty();
         assertThat(response.position()).isNotNull();
         assertThat(response.position().floorId()).isEqualTo(2L);
@@ -332,7 +333,8 @@ class LocalizationServiceTest {
                 "loc-1", AiLocalizationStatus.LOCALIZED, "YS-2026-07-23.1", null,
                 "B2",
                 new AiPoseResponse("colmap", null, null, List.of(1.0736587455, -1.1765271796, 6.6548534318)),
-                null, List.of(), new AiTimingResponse(1234, null, null, null), null);
+                new AiQualityResponse(60, 45, 40, 0.40, 3.0, 20, 3, "browser", 0.87),
+                List.of(), new AiTimingResponse(1234, null, null, null), null);
     }
 
     private AnchoredLocation anchored() {
