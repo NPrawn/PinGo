@@ -1,7 +1,5 @@
 package com.pingo.backend.route.dto.response;
 
-import com.pingo.backend.route.domain.RouteType;
-
 import java.math.BigDecimal;
 
 /**
@@ -23,21 +21,6 @@ import java.math.BigDecimal;
  * @param floorDelta 오르내리는 층수. 위로 가면 양수다. 층 이동이 아니거나 층을 알 수 없으면
  *                   {@code null}. 같은 층 안의 계단이면 0 이다 — 역삼역 B1 개찰구 위 중간층으로
  *                   오르내리는 계단이 여기 해당한다
- * @param type       {@code walk} 또는 {@code floor_change}. <b>클라이언트가 층 이동 화면을 띄울
- *                   신호다</b> — 표시 층을 바꾸고 "다 올라왔어요" 를 받을 자리가 여기다.
- *                   {@code fromFloorCode} 와 {@code toFloorCode} 가 다를 때만
- *                   {@code floor_change} 다 (S15P11A206-351)
- * @param edgeClass  {@code walk} 또는 {@code vertical_transition}. 간선이 수직 이동 수단인지다.
- *                   <b>{@code type} 과 다르다.</b> 같은 층 코드 안에서 오르내리는 구간이 있어서다
- *                   — 역삼역 B1 의 B0.5 중간층은 {@code floorCode} 가 B1 이라, 그 에스컬레이터는
- *                   {@code edgeClass} 가 {@code vertical_transition} 이면서 {@code type} 은
- *                   {@code walk} 다. 층 이동 화면을 띄우면 안 되는 자리다
- * @param fromFloorCode 출발 노드가 있는 층 코드({@code B1}·{@code B2}·{@code B3}). 층을 모르면 {@code null}
- * @param toFloorCode   도착 노드가 있는 층 코드. 층 이동 뒤 안내를 재개할 층이다
- * @param accessible 계단·에스컬레이터를 쓸 수 없는 사용자가 지날 수 있는 구간인지.
- *                   <b>{@code route_edge.is_accessible} 이 아니라 {@link RouteType#ELEVATOR_ONLY}
- *                   의 허용 여부로 정한다.</b> 그래야 이 값이 실제 탐색 결과와 어긋날 수 없다 —
- *                   {@code false} 인 구간은 엘리베이터 경로에 애초에 담기지 않는다
  */
 public record RouteStep(
         int order,
@@ -49,19 +32,6 @@ public record RouteStep(
         String instruction,
         String instructionTemplate,
         String turn,
-        Integer floorDelta,
-        String type,
-        String edgeClass,
-        String fromFloorCode,
-        String toFloorCode,
-        boolean accessible
+        Integer floorDelta
 ) {
-
-    /** {@code type} 값. 클라이언트가 층 이동 화면을 띄울지 가른다. */
-    public static final String TYPE_WALK = "walk";
-    public static final String TYPE_FLOOR_CHANGE = "floor_change";
-
-    /** {@code edgeClass} 값. 간선이 수직 이동 수단인지 가른다. */
-    public static final String EDGE_CLASS_WALK = "walk";
-    public static final String EDGE_CLASS_VERTICAL = "vertical_transition";
 }

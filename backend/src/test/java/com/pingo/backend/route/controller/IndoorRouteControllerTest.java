@@ -80,8 +80,7 @@ class IndoorRouteControllerTest {
                 RouteType.FASTEST, 1L, 4L, BigDecimal.valueOf(15), 240,
                 List.of(new RouteStep(
                         1, 1L, 2L, BigDecimal.valueOf(10), 120, "walkway",
-                        "10m 직진하세요.", "{distance} 직진하세요.", "straight", null,
-                        "walk", "walk", "B2", "B2", true)),
+                        "10m 직진하세요.", "{distance} 직진하세요.", "straight", null)),
                 List.of(new RoutePathNode(
                         1L, 1L, BigDecimal.valueOf(10), BigDecimal.valueOf(20), BigDecimal.valueOf(5))));
         when(indoorRouteService.createRoute(any())).thenReturn(response);
