@@ -1276,27 +1276,46 @@ describe('useConsultSignaling', () => {
     });
 
     /**
-     * **잡아 둔 자리에는 스트림 소속을 따로 붙여야 한다.** (S15P11A206-206 리뷰)
+     * **보낼 영상이 있으면 소리와 같은 스트림으로 붙인다.** (S15P11A206-206)
      *
-     * `addTransceiver` 로 만든 sender 에는 스트림이 딸려 있지 않고 `replaceTrack` 은 트랙만
-     * 바꾼다. 그대로 협상하면 영상 m-line 에 msid 가 빠지고, 받는 쪽 `ontrack` 은
-     * `event.streams` 를 빈 배열로 받는다. 소리는 `addTrack` 으로 소속이 있으므로 상담자
-     * 화면은 **소리만 나고 화면은 검은** 상태가 된다 — 캡처가 성공하는 정상 경로에서도 그렇다.
+     * `addTrack(track, stream)` 은 스트림 소속까지 등록해 협상에 msid 를 싣는다. 받는 쪽
+     * `ontrack` 이 `event.streams` 로 스트림을 얻는 근거가 그 msid 다.
+     *
+     * 예전에는 연결을 만들 때 영상 자리를 무조건 잡아 두고 거기에 `replaceTrack` 으로 넣었다.
+     * 그런데 `replaceTrack` 은 트랙만 바꾸고 소속을 만들지 않아 msid 가 빠졌고, 소리는 소속이
+     * 있어서 **소리는 나는데 화면은 검은** 상태가 됐다. 실기기에서 그렇게 확인됐다.
      *
      * 소리와 **같은** 스트림이어야 한다. 서로 다른 스트림으로 가면 화면이 보는 `srcObject` 는
      * 하나뿐이라 나중에 도착한 쪽이 앞의 것을 덮는다.
      */
-    it('잡아 둔 영상 자리를 소리와 같은 스트림에 넣는다', async () => {
+    it('보낼 영상이 있으면 소리와 같은 스트림으로 붙인다', async () => {
       const view = await connectedWithVideo();
 
       const peer = FakePeerConnection.instances[0];
-      const videoSender = peer?.transceivers[0]?.sender;
+      const videoSender = peer?.senders.find((sender) => sender.track?.kind === 'video');
       const audioSender = peer?.senders.find((sender) => sender.track?.kind === 'audio');
 
-      // 잡아 둔 자리에 카메라 트랙이 들어갔다.
-      expect(videoSender?.track?.kind).toBe('video');
       expect(audioSender?.streams[0]).toBeDefined();
       expect(videoSender?.streams[0]).toBe(audioSender?.streams[0]);
+
+      view.unmount();
+    });
+
+    /**
+     * **트랙이 있으면 자리를 따로 잡지 않는다.** (S15P11A206-206)
+     *
+     * 예약한 트랜시버를 브라우저가 재사용할지는 구현에 맡겨진 부분이다. 재사용하지 않으면 두
+     * 번째 영상 m-line 이 생기는데 상담자의 offer 에는 영상 자리가 하나뿐이라 그 여분은 협상되지
+     * 않는다. 트랙이 어느 쪽에 실렸는지에 따라 영상이 나가다 말다 한다.
+     *
+     * 잘 되던 정상 경로에는 손대지 않는 것이 이 수정의 핵심이다.
+     */
+    it('보낼 영상이 있으면 영상 자리를 따로 잡지 않는다', async () => {
+      const view = await connectedWithVideo();
+
+      const peer = FakePeerConnection.instances[0];
+
+      expect(peer?.addTransceiver).not.toHaveBeenCalled();
 
       view.unmount();
     });

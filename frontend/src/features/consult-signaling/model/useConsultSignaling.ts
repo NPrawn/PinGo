@@ -561,28 +561,42 @@ export function useConsultSignaling(
       attachDataChannel(peer.createDataChannel('consult', { ordered: true }));
     } else {
       peer.ondatachannel = (event) => attachDataChannel(event.channel);
-      /**
-       * 보낼 트랙이 없어도 영상을 **보낼 자리**를 미리 잡는다. (S15P11A206-206)
-       *
-       * 상담자는 영상 m-line 을 `recvonly` 로 열고, 방향은 answer 를 만드는 이쪽이 정한다.
-       * 그때 영상 트랜시버가 하나도 없으면 그 m-line 은 `inactive` 로 협상되고 **그대로
-       * 굳는다.** 지금 협상 흐름은 재협상을 하지 않으므로(위 `mediaReady` 주석) 뒤늦게 트랙이
-       * 생겨도 흘려보낼 방향이 없다.
-       *
-       * 캡처가 실패·타임아웃하는 경로가 실제로 그랬다. 마이크가 다른 앱에 잡혀 8초를 넘기면
-       * 붙인 트랙 없이 answer 가 나가고, 그 뒤 XR 세션이 열려 카메라 트랙이 생겨도 상담자
-       * 화면은 끝까지 검은 채였다. 화면은 "소리 없이 연결합니다"만 안내해서, 영상까지 함께
-       * 죽은 것은 드러나지도 않았다.
-       *
-       * 자리만 잡고 트랙은 넣지 않는다. 트랙 없는 `sendonly` m-line 은 아무것도 보내지 않으므로
-       * 캡처가 성공하는 정상 경로에서 달라지는 것이 없고, 실패했다면 나중에 `replaceTrack` 으로
-       * 채울 곳이 남는다.
-       *
-       * **소리는 이렇게 하지 않는다.** 마이크는 여기서 실패하면 나중에 얻을 경로가 아예 없어
-       * (XR 세션은 카메라만 준다) 자리를 잡아 둘 이유가 없다.
-       */
-      videoSenderRef.current = peer.addTransceiver('video', { direction: 'sendrecv' }).sender;
     }
+    /**
+     * 보낼 영상이 없을 때만 **보낼 자리**를 잡아 둔다. (S15P11A206-206)
+     *
+     * 상담자는 영상 m-line 을 `recvonly` 로 열고, 방향은 answer 를 만드는 사용자 쪽이 정한다.
+     * 그때 영상 트랜시버가 하나도 없으면 그 m-line 은 `inactive` 로 협상되고 **그대로 굳는다.**
+     * 이 흐름은 재협상을 하지 않으므로(아래 `mediaReady` 주석) 뒤늦게 트랙이 생겨도 흘려보낼
+     * 방향이 없다. 마이크가 다른 앱에 잡혀 캡처가 8초를 넘기는 경로가 실제로 그랬다.
+     *
+     * **트랙이 있으면 이 자리를 쓰지 않는다.** 예전에는 연결을 만들 때 무조건 잡아 두고 영상을
+     * 그 자리에 `replaceTrack` 으로 넣었는데, `replaceTrack` 은 스트림 소속을 만들지 않아
+     * answer 의 영상 m-line 에서 msid 가 빠졌다. 받는 쪽 `ontrack` 은 msid 로 `event.streams`
+     * 를 채우니 빈 배열이 오고, 오디오만 소속이 있어 **소리는 나는데 화면은 검은** 상태가 됐다.
+     * 잘 되던 정상 경로를 실패 경로 대비가 깨뜨린 것이다.
+     *
+     * 그래서 트랙이 있는 경우는 `addTrack(track, localStream)` 그대로 두고(소속이 함께 등록된다),
+     * 자리 잡기는 트랙이 없을 때로 미룬다. 협상은 `mediaReady` 뒤에 열리므로 이 시점도 answer
+     * 보다 앞이다.
+     *
+     * **소리는 이렇게 하지 않는다.** 마이크는 여기서 실패하면 나중에 얻을 경로가 아예 없어
+     * (XR 세션은 카메라만 준다) 자리를 잡아 둘 이유가 없다.
+     */
+    const reserveVideoSlotIfNeeded = () => {
+      if (role === 'COUNSELOR' || videoSenderRef.current) return;
+
+      const transceiver = peer.addTransceiver('video', { direction: 'sendrecv' });
+      videoSenderRef.current = transceiver.sender;
+      /**
+       * 소속을 붙일 수 있으면 붙인다. 오디오와 같은 스트림이어야 상담자가 트랙 둘을 하나로
+       * 받는다. 캡처가 통째로 실패했으면 붙일 스트림이 없고, 그 경우는 받는 쪽이 소속 없이 온
+       * 트랙을 주워 담는다(`peer.ontrack`).
+       */
+      if (localStream && typeof transceiver.sender.setStreams === 'function') {
+        transceiver.sender.setStreams(localStream);
+      }
+    };
     markConsultPhase('signaling 소켓 생성'); // 추가
     const wsBase = signalingBaseUrl();
     const socket = new WebSocket(`${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`);
@@ -1201,42 +1215,15 @@ export function useConsultSignaling(
         if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
         for (const track of localStream.getTracks()) {
           /**
-           * 영상은 위에서 잡아 둔 자리에 넣는다. (S15P11A206-206)
+           * **트랙과 스트림을 함께 붙인다.** (S15P11A206-206)
            *
-           * `addTrack` 을 쓰지 않는다. 잡아 둔 트랜시버를 재사용할지는 구현에 맡겨진 부분이라,
-           * 재사용하지 않는 브라우저에서는 두 번째 영상 m-line 이 생긴다. 상담자의 offer 에는
-           * 영상 자리가 하나뿐이므로 그 여분은 협상되지 않고, 트랙이 어느 쪽에 실렸는지에 따라
-           * 영상이 나가다 말다 한다.
+           * `addTrack(track, stream)` 은 스트림 소속까지 등록하므로 협상에 msid 가 실린다. 받는
+           * 쪽 `ontrack` 이 `event.streams` 로 스트림을 얻는 근거가 그 msid 다.
+           *
+           * 예약해 둔 자리에 `replaceTrack` 으로 넣지 않는다 — 그것은 트랙만 바꾸고 소속을
+           * 만들지 않아, 소리는 나는데 화면은 검은 상태를 만들었다. 자리 잡기는 보낼 트랙이
+           * 아예 없을 때만 한다(`reserveVideoSlotIfNeeded`).
            */
-          if (track.kind === 'video' && videoSenderRef.current) {
-            const videoSender = videoSenderRef.current;
-            /**
-             * 트랙보다 **스트림 소속**을 먼저 알려 준다. (S15P11A206-206 리뷰)
-             *
-             * 잡아 둔 자리에는 스트림이 딸려 있지 않다 — `addTransceiver` 에 넘길 스트림이 그
-             * 시점에는 없었다. `replaceTrack` 은 트랙만 바꾸고 소속을 만들지 않으므로, 그대로
-             * 협상하면 영상 m-line 에 msid 가 실리지 않는다. 받는 쪽 `ontrack` 은 msid 로
-             * `event.streams` 를 채우니 빈 배열이 오고, 소리는 `addTrack` 으로 소속이 있어
-             * **소리만 나고 화면은 검은** 상태가 된다.
-             *
-             * 오디오와 같은 스트림에 넣어 상담자가 트랙 둘을 하나로 받게 한다. 협상은 아래
-             * `mediaReady` 뒤에 열리므로 이 시점의 소속이 answer 에 그대로 실린다.
-             *
-             * Firefox 에는 아직 없는 메서드라 있는지 보고 부른다. 없으면 msid 가 비는데, 그
-             * 경우는 받는 쪽에서 트랙을 주워 담는다(`peer.ontrack`).
-             */
-            if (typeof videoSender.setStreams === 'function') {
-              videoSender.setStreams(localStream);
-            }
-            // 실패해도 소리는 붙여야 한다. 여기서 던지면 아래 오디오 차례가 오지 않는다.
-            try {
-              await videoSender.replaceTrack(track);
-            } catch {
-              if (!disposed) setMediaError('카메라 영상을 연결할 수 없습니다.');
-            }
-            continue;
-          }
-
           const sender = peer.addTrack(track, localStream);
           /**
            * 영상 sender 를 붙일 때 받아 둔다. 나중에 `getSenders()` 에서 되찾을 수 없다 —
@@ -1261,6 +1248,15 @@ export function useConsultSignaling(
       }
 
       if (disposed) return;
+
+      /**
+       * 보낼 영상이 없으면 여기서 자리를 잡는다. **협상을 열기 직전이다.**
+       *
+       * 캡처가 실패했거나 사용자가 카메라를 끈 경우다. 이 자리가 없으면 상담자의 `recvonly`
+       * 영상 m-line 이 `inactive` 로 굳어, 뒤에 XR 세션이 카메라 트랙을 만들어도 보낼 방향이
+       * 없다. 트랙이 이미 붙었으면 아무것도 하지 않는다. (S15P11A206-206)
+       */
+      reserveVideoSlotIfNeeded();
 
       /**
        * 미디어를 얻지 못했어도 여기까지는 반드시 온다.
