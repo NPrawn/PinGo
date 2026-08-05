@@ -479,6 +479,16 @@ describe('user routes', () => {
     expect(screen.getAllByText('허용됨')).toHaveLength(3);
   });
 
+  it('applies and stores a settings language change before leaving the screen', async () => {
+    stubPermissionStates({ geolocation: 'granted', camera: 'granted', microphone: 'granted' });
+
+    await renderSection('/user/settings');
+    fireEvent.click(await screen.findByText('English'));
+
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+    expect(useUserSessionStore.getState().language).toBe('en');
+  });
+
   /** 조회할 수 없는 브라우저에서 모르는 것을 없는 것으로 치면 멀쩡한 사용자까지 막힌다. */
   it('does not block when the browser cannot report permission state', async () => {
     await renderSection('/user/station');
@@ -1338,6 +1348,24 @@ describe('user routes', () => {
 
     expect(await screen.findByText('Transit Card Reload Machine')).toBeInTheDocument();
     expect(screen.queryByText('승차권 충전')).toBeNull();
+  });
+
+  it('restores an English quick destination and generic exit from a refreshed session', async () => {
+    useUserSessionStore.setState({ language: 'en' });
+    useNavigationStore.setState({
+      destination: '올리브영 역삼중앙점',
+      destinationNameKo: null,
+      destinationNameEn: null,
+      destinationId: null,
+      destinationType: 'external_place',
+      targetNodeId: 325,
+      targetExitLabel: '출입구',
+    });
+
+    await renderSection('/user/route');
+
+    expect(await screen.findAllByText('Olive Young Yeoksam Jungang')).not.toHaveLength(0);
+    expect(screen.queryByText('올리브영 역삼중앙점')).toBeNull();
   });
 
   it('localizes the facility name in the English route details', async () => {

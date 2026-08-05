@@ -102,6 +102,17 @@ describe('DestinationSearch', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Chaji Yeoksam' }));
     await waitFor(() => expect(useNavigationStore.getState().destination).toBe('Chaji Yeoksam'));
+    expect(useNavigationStore.getState()).toMatchObject({
+      destinationNameKo: '차지 역삼점',
+      destinationNameEn: 'Chaji Yeoksam',
+    });
+    const persisted = JSON.parse(sessionStorage.getItem('pingo.navigation') ?? '{}') as {
+      state?: Record<string, unknown>;
+    };
+    expect(persisted.state).toMatchObject({
+      destinationNameKo: '차지 역삼점',
+      destinationNameEn: 'Chaji Yeoksam',
+    });
     expect(searchMocks.resolveDestination).toHaveBeenCalledWith(1, '차지 역삼점', 'en');
   });
 

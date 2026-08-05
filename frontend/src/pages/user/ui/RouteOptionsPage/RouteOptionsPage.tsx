@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  facilityAtNodeMatchingLabel,
+  destinationFacilityOf,
   localizedFacilityNameAtNode,
   localizedFacilityNameOf,
   useStationFacilities,
@@ -107,12 +107,14 @@ export function RouteOptionsPage() {
         localizeUserLabel(destination, language))
       : localizeUserLabel(destination, language)
     : null;
-  const storedDestinationFacility = facilityAtNodeMatchingLabel(
+  const storedDestinationFacility = destinationFacilityOf(
     facilities,
+    destinationType?.toLowerCase() === 'facility' ? destinationId : null,
     targetNodeId,
     destinationNameKo,
-  ) ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destinationNameEn)
-    ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destination);
+    destinationNameEn,
+    destination,
+  );
   const destinationLabel = storedDestinationFacility
     ? localizedFacilityNameOf(storedDestinationFacility, language)
     : storedDestinationLabel;

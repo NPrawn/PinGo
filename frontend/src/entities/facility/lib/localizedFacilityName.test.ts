@@ -1,5 +1,6 @@
 import type { Facility } from '../model/types';
 import {
+  destinationFacilityOf,
   facilityAtNodeMatchingLabel,
   facilityMatchesLabel,
   localizedFacilityNameAtNode,
@@ -58,5 +59,17 @@ describe('facilityMatchesLabel', () => {
     };
 
     expect(facilityAtNodeMatchingLabel([pharmacy, elevator], 101, 'Elevator B')).toBe(elevator);
+  });
+});
+
+describe('destinationFacilityOf', () => {
+  it('uses the stable facility id when an accessible route ends at another node', () => {
+    expect(
+      destinationFacilityOf([pharmacy], pharmacy.facilityId, 999, '출입구'),
+    ).toBe(pharmacy);
+  });
+
+  it('recovers legacy refreshed sessions by bilingual name without a matching node', () => {
+    expect(destinationFacilityOf([pharmacy], null, 999, 'Pharmacy A')).toBe(pharmacy);
   });
 });

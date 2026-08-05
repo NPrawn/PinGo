@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   FACILITY_MAP_FILTERS,
+  destinationFacilityOf,
   facilityAtNodeMatchingLabel,
   facilityIconOf,
   localizedFacilityNameAtNode,
@@ -111,6 +112,8 @@ export function NavigationPage() {
     useNavigationStore((state) => state.destination) ?? t('user.navigation.defaultDestination');
   const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
   const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
+  const destinationId = useNavigationStore((state) => state.destinationId);
+  const destinationType = useNavigationStore((state) => state.destinationType);
   const route = useNavigationStore((state) => state.route);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
@@ -472,10 +475,14 @@ export function NavigationPage() {
    */
   const facilitiesQuery = useStationFacilities(stationId ?? 0);
   const facilitiesLoaded = facilitiesQuery.data !== undefined;
-  const nodeDestinationFacility =
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, activeDestination) ??
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameKo) ??
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameEn);
+  const nodeDestinationFacility = destinationFacilityOf(
+    facilitiesQuery.data,
+    destinationType?.toLowerCase() === 'facility' ? destinationId : null,
+    targetNodeId,
+    activeDestination,
+    destinationNameKo,
+    destinationNameEn,
+  );
   const storedDestinationFacility = pickedDestination ?? nodeDestinationFacility;
   const destinationFacility =
     storedDestinationFacility ?? matchedExitDestination ?? null;
@@ -499,7 +506,6 @@ export function NavigationPage() {
             mapY: destinationFacility.mapY,
           }
         : null;
-
   const facilityOrigin = localizedFacilityNameAtNode(
     facilitiesQuery.data,
     currentNodeId,
@@ -937,6 +943,7 @@ export function NavigationPage() {
                   /* 이름은 응답의 것을 쓴다. 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
                      시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
                   destinationLabel={
+                    selectedFacility === null &&
                     (effectiveType == null || effectiveType === 'exit') &&
                     destinationFacility !== null
                       ? localizedFacilityNameOf(destinationFacility, language)
