@@ -37,6 +37,7 @@ export type LocalizationCandidateResponse = {
   position: LocalizationCandidatePositionResponse;
   startNodeId: number;
   startNodeLabel?: string | null;
+  startNodeLabelEn?: string | null;
   confidenceScore: number;
 };
 export type LocalizationResponse = GeneratedLocalizationResponse & {

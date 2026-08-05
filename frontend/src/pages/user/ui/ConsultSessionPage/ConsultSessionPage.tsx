@@ -26,6 +26,7 @@ import { readForwardMap } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import {
   xrSessionController,
@@ -172,8 +173,14 @@ export function ConsultSessionPage() {
    */
   const destination = useNavigationStore((state) => state.destination);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
   const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
-  const displayedOrigin = localizeUserLabel(currentLocationLabel ?? station, displayLanguage);
+  const displayedOrigin = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    displayLanguage,
+    localizeUserLabel(station, displayLanguage),
+  );
   const displayedDestination = destination ? localizeUserLabel(destination, displayLanguage) : null;
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
@@ -472,6 +479,7 @@ export function ConsultSessionPage() {
         nodeId: result.startNodeId,
         floorId: position.floorId,
         label: result.startNodeLabel ?? undefined,
+        labelEn: result.startNodeLabelEn ?? undefined,
         mapX: position.mapX,
         mapY: position.mapY,
         forwardMap,

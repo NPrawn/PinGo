@@ -153,6 +153,7 @@ export function CapturePortraitPage() {
             },
             startNodeId: result.startNodeId,
             startNodeLabel: result.startNodeLabel,
+            startNodeLabelEn: result.startNodeLabelEn,
             // 가중 투표 타입에는 점수가 필수다. 구버전 서버 응답은 강한 단일 프레임으로 취급하되,
             // 화면에 표시할 값은 아래 confidenceScore를 null로 유지해 가짜 100%를 만들지 않는다.
             confidenceScore: result.confidenceScore ?? 1,
@@ -176,6 +177,7 @@ export function CapturePortraitPage() {
             nodeId: confirmed.startNodeId,
             floorId: position.floorId,
             label: confirmed.startNodeLabel ?? undefined,
+            labelEn: confirmed.startNodeLabelEn ?? undefined,
             mapX: position.mapX,
             mapY: position.mapY,
             forwardMap: readForwardMap(position),
