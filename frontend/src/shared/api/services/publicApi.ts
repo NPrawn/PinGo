@@ -22,29 +22,7 @@ export type RecommendedExitResponse = Schemas['RecommendedExitResponse'];
 export type RouteOptionsRequest = Schemas['RouteOptionsRequest'];
 export type RouteOptionResponse = Schemas['RouteOptionResponse'];
 export type RouteCreateRequest = Schemas['RouteCreateRequest'];
-/**
- * 층 이동 필드를 보탠 경로 응답. (S15P11A206-351)
- *
- * 백엔드가 `RouteStep`에 `type`·`edgeClass`·`fromFloorCode`·`toFloorCode`·`accessible`을 싣는데
- * `schema.d.ts`가 그 전에 생성된 것이라 아직 없다. 그 파일은 openapi-typescript 산출물이라
- * 직접 고치지 않는다(파일 머리에 그렇게 적혀 있다). 재생성하면 이 보탬은 지우면 된다.
- *
- * 모두 선택으로 둔다 — 옛 서버가 응답하면 없을 수 있고, 없을 때 층 이동 화면을 띄우지 않는 것이
- * 맞다.
- */
-type FloorChangeFields = {
-  type?: 'walk' | 'floor_change';
-  edgeClass?: 'walk' | 'vertical_transition';
-  fromFloorCode?: string;
-  toFloorCode?: string;
-  accessible?: boolean;
-};
-
-type GeneratedRouteResponse = Schemas['RouteResponse'];
-
-export type RouteResponse = Omit<GeneratedRouteResponse, 'steps'> & {
-  steps?: (NonNullable<GeneratedRouteResponse['steps']>[number] & FloorChangeFields)[];
-};
+export type RouteResponse = Schemas['RouteResponse'];
 export type LocalizationRequestMetadata = Schemas['LocalizationRequestMetadata'];
 type GeneratedLocalizationResponse = Schemas['LocalizationResponse'];
 export type LocalizationCandidatePositionResponse = NonNullable<

@@ -31,10 +31,7 @@ export const MOCK_FLOOR_ID = {
  * 층별 좌표 프레임 **폴백**. (docs/역삼역_FE_좌표연동_스펙.md §2)
  *
  * 우선순위는 API 응답이다(`coordinateFrameOf`). 이 상수는 목업 모드와, 프레임 컬럼이 비어 있는
- * 지도를 위한 폴백으로만 쓴다. 값은 DB `floor_map`과 같으므로 둘이 갈라지면 안 된다.
- *
- * `mpp`는 실측 보정값 0.12799다 (S15P11A206-351). V9가 넣은 0.19는 승강장 205m 단일 측정에서
- * 역산한 값이었고 실제보다 1.484배 컸다. V23이 DB를 같은 값으로 바꿨다.
+ * 지도를 위한 폴백으로만 쓴다. 값은 V9 seed와 같으므로 둘이 갈라지면 안 된다.
  *
  * B1의 originPx는 **미검증 추정값**이다. B1에는 원점 기준 엘리베이터가 없어 추정으로 얹었고
  * 예비 정합에서 최대 4.4m 차이가 나왔다. B1 좌표끼리는 일관되므로 B1 안에서의 지도 표시와
@@ -44,9 +41,9 @@ export const MOCK_FLOOR_ID = {
  * 모든 층의 프레임이 API로 내려오는 것이 확인되면 이 상수를 지운다.
  */
 export const MOCK_COORDINATE_FRAMES: Readonly<Record<string, CoordinateFrame>> = {
-  B1: { originPx: [594, 501], angleDeg: -21.28, mpp: 0.12799 },
-  B2: { originPx: [622, 512], angleDeg: -21.28, mpp: 0.12799 },
-  B3: { originPx: [597, 497], angleDeg: -21.28, mpp: 0.12799 },
+  B1: { originPx: [594, 501], angleDeg: -21.28, mpp: 0.19 },
+  B2: { originPx: [622, 512], angleDeg: -21.28, mpp: 0.19 },
+  B3: { originPx: [597, 497], angleDeg: -21.28, mpp: 0.19 },
 };
 
 /** 층 코드로 폴백 좌표 프레임을 찾는다. 등록되지 않은 층이면 undefined. */
