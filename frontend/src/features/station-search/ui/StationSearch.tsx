@@ -36,12 +36,19 @@ export function StationSearch({ onSelect }: StationSearchProps) {
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
   const [coordinates, setCoordinates] = useState(() => readRecentLocation());
+  const [geolocationSettled, setGeolocationSettled] = useState(
+    () => navigator.geolocation == null,
+  );
 
   const stationSearch = useStationSearch(query, searched);
   const nearbySearch = useNearbyStations(coordinates?.latitude, coordinates?.longitude);
   const hasNearby = (nearbySearch.data?.length ?? 0) > 0;
-  // GPS를 못 쓰거나 주변에 등록된 역이 없으면 등록된 역 전체를 대신 보여준다.
-  const registeredStations = useRegisteredStations(!hasNearby);
+  const nearbyPending = coordinates
+    ? nearbySearch.isPending
+    : !geolocationSettled;
+  // Only fall back after GPS/nearby lookup has actually completed. Treating
+  // "not loaded yet" as an empty result briefly rendered Yeoksam by itself.
+  const registeredStations = useRegisteredStations(!nearbyPending && !hasNearby);
   const results = stationSearch.data ?? [];
   const nearbyStations = hasNearby ? nearbySearch.data! : (registeredStations.data ?? []);
   const visibleNearbyStations = hasNearby ? nearbyStations.slice(0, 3) : nearbyStations;
@@ -50,18 +57,26 @@ export function StationSearch({ onSelect }: StationSearchProps) {
   const hasUnavailableResult = results.some((item) => item.serviceReady === false);
 
   useEffect(() => {
-    navigator.geolocation?.getCurrentPosition(
-      (position) => {
-        saveLocation(position);
-        setCoordinates({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          capturedAt: position.timestamp || Date.now(),
-        });
-      },
-      undefined,
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
-    );
+    const geolocation = navigator.geolocation;
+    if (!geolocation) return;
+
+    try {
+      geolocation.getCurrentPosition(
+        (position) => {
+          saveLocation(position);
+          setCoordinates({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            capturedAt: position.timestamp || Date.now(),
+          });
+          setGeolocationSettled(true);
+        },
+        () => setGeolocationSettled(true),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
+      );
+    } catch {
+      queueMicrotask(() => setGeolocationSettled(true));
+    }
   }, []);
 
   const renderRow = (item: Station, tone: BlobTone) => {
@@ -182,7 +197,13 @@ export function StationSearch({ onSelect }: StationSearchProps) {
             {visibleNearbyStations.map((item, index) =>
               renderRow(item, item.here ? 'mint' : TONES[index % TONES.length]),
             )}
-            {visibleNearbyStations.length === 0 && (
+            {visibleNearbyStations.length === 0 && nearbyPending && (
+              <div className={styles.empty}>{t('user.stationSearch.searching')}</div>
+            )}
+            {visibleNearbyStations.length === 0 && !nearbyPending && registeredStations.isPending && (
+              <div className={styles.empty}>{t('user.stationSearch.searching')}</div>
+            )}
+            {visibleNearbyStations.length === 0 && !nearbyPending && !registeredStations.isPending && (
               <div className={styles.empty}>{t('user.stationSearch.chooseOrigin')}</div>
             )}
           </div>
