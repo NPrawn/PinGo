@@ -30,6 +30,7 @@ import {
   Toggle,
 } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
+import { useWithdrawAbandonedConsultation } from '../../lib/useWithdrawAbandonedConsultation';
 import styles from './ConsultPermissionPage.module.css';
 
 /**
@@ -129,6 +130,11 @@ export function ConsultPermissionPage() {
    * 끄는 쪽을 기본으로 두면 대부분의 상담이 의도와 다르게 시작된다.
    */
   const [cameraConsent, setCameraConsent] = useState(true);
+  /*
+    대기 화면에서 기기 뒤로가기로 되돌아오면 여기 도착한다. 남아 있는 상담을 거둬들이지 않으면
+    서버 대기열에 응답할 사람 없는 요청이 그대로 남는다. (S15P11A206-353)
+  */
+  useWithdrawAbandonedConsultation();
 
   useEffect(() => {
     if (issue == null) {

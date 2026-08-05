@@ -18,6 +18,7 @@ import {
   Title,
 } from '@/shared/ui';
 import { PhoneFrame } from '@/widgets/phone-frame';
+import { useWithdrawAbandonedConsultation } from '../../lib/useWithdrawAbandonedConsultation';
 import styles from './ConsultRequestPage.module.css';
 
 /** Screen 17 (FR-U-013) — choose what kind of help is needed. */
@@ -25,6 +26,8 @@ export function ConsultRequestPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  /* 대기 화면에서 뒤로가기로 두 칸 되돌아온 경우, 남은 상담을 여기서 거둬들인다. */
+  useWithdrawAbandonedConsultation();
   const issue = useConsultStore((state) => state.issue);
   const selectIssue = useConsultStore((state) => state.selectIssue);
   const [reminderOpen, setReminderOpen] = useState(false);
