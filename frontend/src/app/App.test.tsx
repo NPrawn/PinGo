@@ -1322,6 +1322,46 @@ describe('user routes', () => {
     await waitFor(() => expect(useNavigationStore.getState().route).toBe('fastest'));
   });
 
+  it('restores an English facility destination from a legacy refreshed session', async () => {
+    useUserSessionStore.setState({ language: 'en' });
+    useNavigationStore.setState({
+      destination: '승차권 충전',
+      destinationNameKo: null,
+      destinationNameEn: null,
+      destinationId: null,
+      destinationType: null,
+      targetNodeId: 121,
+      targetExitLabel: '승차권 충전',
+    });
+
+    await renderSection('/user/route');
+
+    expect(await screen.findByText('Transit Card Reload Machine')).toBeInTheDocument();
+    expect(screen.queryByText('승차권 충전')).toBeNull();
+  });
+
+  it('localizes the facility name in the English route details', async () => {
+    useUserSessionStore.setState({ language: 'en' });
+    useNavigationStore.setState({
+      destination: '엘리베이터',
+      destinationNameKo: null,
+      destinationNameEn: null,
+      destinationId: null,
+      destinationType: 'facility',
+      targetNodeId: 123,
+      targetExitLabel: '엘리베이터',
+      waypoints: [{ nodeId: 121, nameKo: '승차권 충전' }],
+      stepsOpen: false,
+    });
+
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with map' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Route details' }));
+
+    expect(await screen.findByText('Arrive at Elevator')).toBeInTheDocument();
+    expect(screen.queryByText('Arrive at 엘리베이터')).toBeNull();
+  });
+
   it('prioritizes the route header and current maneuver during navigation', async () => {
     useNavigationStore.setState({
       destination: 'GS25 역삼역점',

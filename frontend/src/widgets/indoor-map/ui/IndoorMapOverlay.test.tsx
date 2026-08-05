@@ -177,8 +177,8 @@ describe('IndoorMapOverlay', () => {
       expect(marker.querySelector('circle')).toHaveAttribute('cx', '300');
     });
 
-    /** 층당 30여 개에 모두 이름을 붙이면 도면이 글자로 덮인다. */
-    it('이름은 고른 시설에만 붙인다', () => {
+    /** 상세 시트에 이름이 나오므로 지도 뒤에는 같은 문구를 중복해서 그리지 않는다. */
+    it('시설을 골라도 지도에는 이름을 붙이지 않는다', () => {
       const { rerender } = renderOverlay({ facilities: [RESTROOM] });
 
       expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toBeNull();
@@ -194,9 +194,7 @@ describe('IndoorMapOverlay', () => {
         />,
       );
 
-      expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toHaveTextContent(
-        '화장실',
-      );
+      expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toBeNull();
     });
 
     /**
@@ -343,22 +341,27 @@ describe('IndoorMapOverlay', () => {
       { nodeId: 2, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
     ];
 
-    it('켜지 않으면 잇지 않는다', () => {
+    it('켜지 않으면 내 자리를 넣지 않는다', () => {
       renderOverlay({
         pathNodes: straight,
         currentLocation: { floorId: FLOOR_B2, mapX: 0, mapY: 300 },
       });
 
+      expect(routeSegments()).toEqual(['0,0 1000,0']);
+      // 따로 그리던 연결선은 이제 없다.
       expect(connectorLine()).toBeNull();
     });
 
     /**
-     * **경로의 첫 점이 아니라 가장 가까운 점에 잇는다.**
+     * **닿는 자리에서 둘로 나눈다.** (S15P11A206-345)
      *
-     * 첫 점에 이으면 조금이라도 걸어간 뒤에는 뒤로 향하는 선이 그려져, 이미 지나온 곳으로
-     * 돌아가라는 것처럼 보인다.
+     * 예전에는 경로를 그대로 두고 연결선을 따로 그렸다. 그 선은 첫 점이 아니라 가장 가까운 점에
+     * 붙으므로, 붙은 자리보다 뒤쪽 토막이 경로선에 남아 한 점에서 선이 둘로 뻗었다. 그 갈라짐이
+     * 갈림길로 읽혔다.
+     *
+     * 뒤쪽은 그대로 남긴다 — 얼마나 왔는지가 보여야 한다. 앞쪽만 내 자리에서 시작시킨다.
      */
-    it('경로에서 가장 가까운 점에 잇는다', () => {
+    it('닿는 자리에서 뒤쪽은 남기고 앞길만 내 자리에서 시작한다', () => {
       renderOverlay({
         pathNodes: straight,
         // 경로를 절반쯤 걸어와 통로에서 300 벗어난 자리.
@@ -366,31 +369,34 @@ describe('IndoorMapOverlay', () => {
         connectCurrentToRoute: true,
       });
 
-      // 첫 점 (0,0)이 아니라 발밑의 (500,0)으로 이어야 한다.
-      expect(connectorLine()).toEqual([500, 300, 500, 0]);
+      expect(routeSegments()).toEqual([
+        // 지나온 쪽. 닿는 자리까지 그대로다.
+        '0,0 500,0',
+        // 앞길. 첫 점 (0,0)이 아니라 발밑의 (500,0)으로 이어진다.
+        '500,300 500,0 1000,0',
+      ]);
     });
 
     /** 선분 밖으로는 나가지 않는다. 경로가 끝난 뒤에는 마지막 점에 붙는다. */
-    it('경로 끝을 지나면 마지막 점에 잇는다', () => {
+    it('경로 끝을 지나면 마지막 점으로 이어진다', () => {
       renderOverlay({
         pathNodes: straight,
         currentLocation: { floorId: FLOOR_B2, mapX: 1500, mapY: 0 },
         connectCurrentToRoute: true,
       });
 
-      expect(connectorLine()).toEqual([1500, 0, 1000, 0]);
+      expect(routeSegments()).toEqual(['0,0 1000,0', '1500,0 1000,0']);
     });
 
     /**
-     * 연결선에도 방향 표시를 둔다. (S15P11A206-89)
+     * 앞길에도 방향 표시가 붙는다.
      *
-     * 이 선만 방향이 없었다. 그런데 경로에서 벗어났거나 목적지를 지나친 동안에는 화면에 이 선밖에
-     * 없고, 그때 알아야 하는 것은 "어느 쪽으로 가면 경로로 돌아가는가"다. 방향이 없으면 걸어온
-     * 자취처럼 보인다.
+     * 예전에는 연결선이 별개 요소라 화살표를 따로 얹어야 했다. 이제 경로선의 일부라 본선과 같은
+     * 규칙으로 화살표를 받는다 — 경로에서 벗어났거나 목적지를 지나친 동안 화면에 이 선밖에 없을
+     * 때, 어느 쪽으로 가야 하는지가 그대로 보인다.
      */
-    it('연결선 가운데에 경로 쪽을 가리키는 화살표를 둔다', () => {
+    it('되돌아가야 하는 방향을 화살표가 가리킨다', () => {
       renderOverlay({
-        // 본선이 짧아 자기 화살표는 하나도 갖지 않는다. 남는 것은 연결선의 것뿐이다.
         pathNodes: [
           { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
           { nodeId: 2, floorId: FLOOR_B2, mapX: 100, mapY: 0 },
@@ -400,12 +406,17 @@ describe('IndoorMapOverlay', () => {
         connectCurrentToRoute: true,
       });
 
-      expect(connectorLine()).toEqual([600, 0, 100, 0]);
-      expect(directionAngles()).toEqual([180]);
+      expect(routeSegments()).toEqual(['0,0 100,0', '600,0 100,0']);
+      expect(directionAngles()).toContain(180);
     });
 
-    /** 그만한 길이는 현재 위치 점 안에 묻혀 보이지 않는다. 요소만 하나 늘어난다. */
-    it('점 안에 묻히는 길이는 그리지 않는다', () => {
+    /**
+     * 경로 위에 얹힌 점(`snappedLocation`)이 여기 해당한다.
+     *
+     * 그만한 길이는 현재 위치 점 안에 묻혀 보이지 않는데 꼭짓점만 늘어난다. 넣지 않으면 나눈 두
+     * 조각이 닿는 자리에서 만나 원래 한 줄과 같은 모양이 된다.
+     */
+    it('점 안에 묻히는 길이는 넣지 않는다', () => {
       renderOverlay({
         pathNodes: straight,
         // 경로 위에서 1만큼 벗어난 자리. 마커 반지름보다 훨씬 짧다.
@@ -413,7 +424,32 @@ describe('IndoorMapOverlay', () => {
         connectCurrentToRoute: true,
       });
 
-      expect(connectorLine()).toBeNull();
+      // 둘로 나뉘었을 뿐 이어 보면 원래 경로와 같다.
+      expect(routeSegments()).toEqual(['0,0 500,0', '500,0 1000,0']);
+    });
+
+    /**
+     * 길이 0인 마디를 남기지 않는다.
+     *
+     * 나눌 때 닿는 점이 이미 있는 점과 겹치면 같은 좌표가 잇달아 들어간다. 그 마디는
+     * `Math.atan2(0, 0)` 이 0 이라 방향 화살표가 엉뚱한 쪽을 가리킨다. 여기서는 경로에 같은
+     * 좌표 노드가 잇달아 온 경우로 확인한다 — 닿는 점이 선분의 시작점과 겹쳐도 같은 일이 생긴다.
+     */
+    it('같은 자리인 점이 잇달아 오면 하나로 줄인다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          // 앞 노드와 같은 자리. 지나온 쪽에 0,0 이 두 번 들어갈 자리다.
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+        ],
+        currentLocation: { floorId: FLOOR_B2, mapX: 500, mapY: 300 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(routeSegments()).toEqual(['0,0 500,0', '500,300 500,0 1000,0']);
+      // 화살표가 각도를 잃지 않는다.
+      expect(directionAngles().every((angle) => Number.isFinite(angle))).toBe(true);
     });
 
     /**
@@ -421,9 +457,9 @@ describe('IndoorMapOverlay', () => {
      *
      * 서버가 진입 노드를 목적지 기준으로 다시 고르면서 계단·엘리베이터 노드를 집으면, 그 층의
      * 경로가 그 노드 하나로 끝난다. 선으로 그릴 구간이 없어 지도가 텅 비었다 — 사용자가 서 있는
-     * 층인데 아무 안내도 없었다. 이 선이 그 층의 안내 전부가 된다.
+     * 층인데 아무 안내도 없었다. 내 자리가 앞에 붙어 두 점이 되므로 이제 선이 그려진다.
      */
-    it('그 층에 경로 노드가 하나뿐이면 그 노드에 잇는다', () => {
+    it('그 층에 경로 노드가 하나뿐이면 내 자리에서 그 노드로 잇는다', () => {
       renderOverlay({
         pathNodes: [
           // B3에는 계단 진입 노드 하나뿐이고, 그 다음은 B2다.
@@ -436,13 +472,10 @@ describe('IndoorMapOverlay', () => {
         connectCurrentToRoute: true,
       });
 
-      // 선으로 그릴 구간은 없다.
-      expect(routeSegments()).toEqual([]);
-      // 그래도 계단까지 이어 준다.
-      expect(connectorLine()).toEqual([0, 0, 200, 0]);
+      expect(routeSegments()).toEqual(['0,0 200,0']);
     });
 
-    /** 다른 층의 경로에는 이을 수 없다. 이 층에 그려진 선이 없다. */
+    /** 다른 층의 경로에는 이을 수 없다. 이 층에 그릴 것이 없어 묶음 자체가 없다. */
     it('경로가 다른 층에만 있으면 잇지 않는다', () => {
       renderOverlay({
         pathNodes: [
@@ -453,11 +486,11 @@ describe('IndoorMapOverlay', () => {
         connectCurrentToRoute: true,
       });
 
-      expect(connectorLine()).toBeNull();
+      expect(screen.queryByRole('img', { name: '이동 경로' })).toBeNull();
     });
 
     /**
-     * 이은 선도 다리의 명도를 따른다. 지금 걷는 다리와 다른 색으로 그리면 그 구간만 따로
+     * 앞길도 그 다리의 명도를 따른다. 지금 걷는 다리와 다른 색으로 그리면 그 구간만 따로
      * 판단해야 하는 무언가로 보인다.
      */
     it('닿는 다리와 같은 명도로 그린다', () => {
@@ -474,10 +507,10 @@ describe('IndoorMapOverlay', () => {
         connectCurrentToRoute: true,
       });
 
-      const group = screen.getByRole('img', { name: '이동 경로' });
-      const connector = group.querySelector('line:not([aria-hidden])');
+      const forward = routeSegments().indexOf('800,300 800,0 1000,0');
 
-      expect(connector?.getAttribute('class')).toContain('routeNear');
+      expect(forward).toBeGreaterThanOrEqual(0);
+      expect(routeToneClasses()[forward]).toContain('routeNear');
     });
   });
 

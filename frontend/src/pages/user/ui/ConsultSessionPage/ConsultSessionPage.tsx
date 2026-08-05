@@ -3,7 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { isClosedConsultation, useConsultStore } from '@/entities/consult';
-import { FACILITY_MAP_FILTERS, useStationFacilities, type Facility } from '@/entities/facility';
+import {
+  FACILITY_MAP_FILTERS,
+  facilityAtNodeMatchingLabel,
+  localizedFacilityNameAtNode,
+  localizedFacilityNameOf,
+  useStationFacilities,
+  type Facility,
+} from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
   routeDistanceScaleOf,
@@ -26,6 +33,7 @@ import { readForwardMap } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedNameOf } from '@/shared/i18n';
 import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import {
@@ -189,16 +197,11 @@ export function ConsultSessionPage() {
    * 목적지라고 띄우면 상담자도 그것을 보고 안내를 시작한다.
    */
   const destination = useNavigationStore((state) => state.destination);
+  const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
+  const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
   const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
-  const displayedOrigin = localizedLocationLabelOf(
-    currentLocationLabel,
-    currentLocationLabelEn,
-    displayLanguage,
-    localizeUserLabel(station, displayLanguage),
-  );
-  const displayedDestination = destination ? localizeUserLabel(destination, displayLanguage) : null;
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
@@ -582,6 +585,30 @@ export function ConsultSessionPage() {
   const [facilityView, setFacilityView] = useState<string>('all');
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   const facilities = useStationFacilities(stationId ?? 0).data;
+  const facilityOrigin = localizedFacilityNameAtNode(
+    facilities,
+    currentNodeId,
+    displayLanguage,
+    currentLocationLabel ?? station,
+  );
+  const displayedOrigin = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    displayLanguage,
+    facilityOrigin,
+  );
+  const storedDestinationFacility = facilityAtNodeMatchingLabel(
+    facilities,
+    targetNodeId,
+    destinationNameKo,
+  ) ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destinationNameEn)
+    ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destination);
+  const displayedDestination = destination
+    ? (storedDestinationFacility
+        ? localizedFacilityNameOf(storedDestinationFacility, displayLanguage)
+        : (localizedNameOf(displayLanguage, destinationNameKo, destinationNameEn) ??
+          localizeUserLabel(destination, displayLanguage)))
+    : null;
   /**
    * 표시 층에 실제로 있는 유형만 칩으로 둔다. 눌러서 아무것도 나오지 않는 칩은 두지 않는다 —
    * 역삼역 B3 에는 승차권 충전기가 없는데 칩이 늘 떠 있으면 없다는 것을 눌러 봐야만 알 수 있다.
@@ -983,8 +1010,20 @@ export function ConsultSessionPage() {
                     <span className={`${styles.pointDot} ${styles.pointDotWaypoint}`} aria-hidden />
                     <small>{t('user.consultSession.waypoint', { order: index + 1 })}</small>
                   </span>
-                  <strong title={localizeUserLabel(waypoint.nameKo, displayLanguage)}>
-                    {localizeUserLabel(waypoint.nameKo, displayLanguage)}
+                  <strong
+                    title={localizedFacilityNameAtNode(
+                      facilities,
+                      waypoint.nodeId,
+                      displayLanguage,
+                      waypoint.nameKo,
+                    )}
+                  >
+                    {localizedFacilityNameAtNode(
+                      facilities,
+                      waypoint.nodeId,
+                      displayLanguage,
+                      waypoint.nameKo,
+                    )}
                   </strong>
                 </div>
               </Fragment>
@@ -1061,11 +1100,14 @@ export function ConsultSessionPage() {
               <IndoorMapView
                 stationId={stationId ?? 0}
                 floorId={displayedFloorId}
-                currentLocation={currentLocation}
+                /* 안내 화면과 같이 경로 위에 얹은 자리로 그린다. 두 화면이 같은 자리를 보여야
+                   상담자가 짚어 주는 지점과 사용자가 보는 점이 어긋나지 않는다. 얹을 수 없을
+                   만큼 멀면 null이라 날것의 좌표로 떨어진다. */
+                currentLocation={progress.snappedLocation ?? currentLocation}
                 /* 사용자 화면은 안내 화면과 같이 진행 방향이 위를 향하게 돈다. */
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
-                destinationLabel={destination}
+                destinationLabel={displayedDestination}
                 destinationNodeId={destinationPoint?.nodeId ?? null}
                 pathNodes={pathNodes}
                 /* 경유지 번호 핀과 다리별 색. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
@@ -1073,13 +1115,15 @@ export function ConsultSessionPage() {
                 /* 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는 연하게 그린다. */
                 activeLeg={activeLeg}
                 /*
-                  내 점과 경로 사이의 빈 자리를 잇는다. **벗어난 동안에도 잇는다.**
+                  내 점과 경로 사이의 빈 자리를 잇는다. **얹지 못했을 때만 잇는다.**
+                  얹었으면 점이 이미 경로선 위에 있어 이을 자리가 없다.
 
-                  서버가 진입 노드를 목적지 기준으로 다시 고르면 그 노드가 수십 m 떨어질 수 있고,
-                  그 층에 남는 경로 노드가 그것 하나뿐이면 이탈로 판정되어 지도가 통째로 빈다.
-                  아무것도 그리지 않으면 사용자는 자기 층에 경로가 없다고 읽는다. (S15P11A206-83)
+                  **벗어난 동안에는 계속 잇는다.** 서버가 진입 노드를 목적지 기준으로 다시 고르면
+                  그 노드가 수십 m 떨어질 수 있고, 그 층에 남는 경로 노드가 그것 하나뿐이면 이탈로
+                  판정되어 지도가 통째로 빈다. 아무것도 그리지 않으면 사용자는 자기 층에 경로가
+                  없다고 읽는다. (S15P11A206-83)
                 */
-                connectCurrentToRoute
+                connectCurrentToRoute={progress.snappedLocation === null}
                 followCamera
                 /* `내 위치` 버튼은 고른 층까지 함께 되돌린다. 시점만 돌리면 다른 층을 보던
                    사용자는 그 층 지도가 자기 좌표로 옮겨진 것만 보고 마커는 그려지지 않는다. */

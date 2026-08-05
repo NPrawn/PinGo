@@ -49,3 +49,34 @@ describe('useNavigationStore.setCurrentLocation', () => {
     expect(useNavigationStore.getState().currentForwardMap).toBeNull();
   });
 });
+
+describe('useNavigationStore.setDestination', () => {
+  it('keeps bilingual facility data for refresh restoration', () => {
+    useNavigationStore.getState().setDestination('교통카드 충전기 A', {
+      destinationId: 50,
+      destinationType: 'facility',
+      targetNodeId: 121,
+      destinationNameKo: '교통카드 충전기 A',
+      destinationNameEn: 'Transit Card Reload Machine A',
+    });
+
+    expect(useNavigationStore.getState()).toMatchObject({
+      destination: '교통카드 충전기 A',
+      destinationId: 50,
+      destinationType: 'facility',
+      targetNodeId: 121,
+      destinationNameKo: '교통카드 충전기 A',
+      destinationNameEn: 'Transit Card Reload Machine A',
+    });
+    const persisted = JSON.parse(sessionStorage.getItem('pingo.navigation') ?? '{}') as {
+      state?: Record<string, unknown>;
+    };
+    expect(persisted.state).toMatchObject({
+      destinationId: 50,
+      destinationType: 'facility',
+      targetNodeId: 121,
+      destinationNameKo: '교통카드 충전기 A',
+      destinationNameEn: 'Transit Card Reload Machine A',
+    });
+  });
+});
