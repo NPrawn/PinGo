@@ -109,6 +109,10 @@ type TranscriptTimelineEntry = {
   order: number;
 };
 
+type TranscriptTimelineSegment = ConsultationTranscriptSegment & {
+  captionId: string;
+};
+
 /**
  * 자막이 왜 오지 않는지 알리는 payload. 자막 본문 대신 이것만 실려 온다.
  *
@@ -229,11 +233,9 @@ export function useConsultSignaling(
   /** Keep final captions until the signaling and peer connections can relay them. */
   const pendingFinalCaptionsRef = useRef<CaptionPayload[]>([]);
   const captionSequenceRef = useRef(0);
-  const transcriptOrderRef = useRef(0);
   useEffect(() => {
     pendingFinalCaptionsRef.current = [];
     captionSequenceRef.current = 0;
-    transcriptOrderRef.current = 0;
   }, [roomId]);
   /**
    * 상담 이벤트 채널이 열려 있는지.
@@ -271,6 +273,7 @@ export function useConsultSignaling(
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [localCaption, setLocalCaption] = useState('');
   const [localCaptionFinal, setLocalCaptionFinal] = useState(true);
+  const [localFinalCaptionId, setLocalFinalCaptionId] = useState<string | null>(null);
   const [remoteCaption, setRemoteCaption] = useState('');
   /** 상대가 말을 마친 마지막 문장. 번역은 이 값으로만 건다. */
   const [remoteFinalCaption, setRemoteFinalCaption] = useState('');
@@ -281,6 +284,7 @@ export function useConsultSignaling(
    * "옮길 준비가 끝난 문장"을 구분한다.
    */
   const [remoteCaptionFinal, setRemoteCaptionFinal] = useState(true);
+  const [remoteFinalCaptionId, setRemoteFinalCaptionId] = useState<string | null>(null);
   /**
    * 상대 쪽 음성 인식이 멈춘 이유. null 이면 정상이다.
    *
@@ -301,12 +305,25 @@ export function useConsultSignaling(
   const restartCaptions = useCallback(() => restartCaptionsRef.current(), []);
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptTimelineEntry[]>([]);
   const [transcriptRoomId, setTranscriptRoomId] = useState(roomId);
-  const transcript = useMemo(
+  const transcriptTimeline = useMemo<TranscriptTimelineSegment[]>(
     () =>
       [...transcriptEntries]
         .sort((left, right) => left.occurredAt - right.occurredAt || left.order - right.order)
-        .map((entry, index) => ({ ...entry.segment, seq: index + 1 })),
+        .map((entry, index) => ({
+          ...entry.segment,
+          seq: index + 1,
+          captionId: entry.captionId,
+        })),
     [transcriptEntries],
+  );
+  const transcript = useMemo(
+    () =>
+      transcriptTimeline.map((segment) => ({
+        seq: segment.seq,
+        speaker: segment.speaker,
+        content: segment.content,
+      })),
+    [transcriptTimeline],
   );
   /** 서버가 준 STUN·TURN 설정. 받기 전에는 연결을 시작하지 않는다. */
   const [rtcConfig, setRtcConfig] = useState<RTCConfiguration | null>(null);
@@ -412,6 +429,8 @@ export function useConsultSignaling(
   if (transcriptRoomId !== roomId) {
     setTranscriptRoomId(roomId);
     setTranscriptEntries([]);
+    setLocalFinalCaptionId(null);
+    setRemoteFinalCaptionId(null);
   }
 
   useEffect(() => {
@@ -596,7 +615,6 @@ export function useConsultSignaling(
       const occurredAtValue = metadata.occurredAt ? Date.parse(metadata.occurredAt) : NaN;
       const occurredAt = Number.isFinite(occurredAtValue) ? occurredAtValue : Date.now();
       const captionId = metadata.captionId ?? `${speaker}:${occurredAt}:${content}`;
-      const order = transcriptOrderRef.current++;
 
       setTranscriptEntries((previous) => {
         // 앞부분이 요약에 더 중요하다. 한도를 넘으면 뒤를 버린다.
@@ -610,7 +628,8 @@ export function useConsultSignaling(
           {
             captionId,
             occurredAt,
-            order,
+            // 중복·최대 개수 검사를 통과해 실제로 추가되는 경우에만 순서를 만든다.
+            order: previous.length,
             segment: { seq: 0, speaker, content },
           },
         ];
@@ -727,9 +746,11 @@ export function useConsultSignaling(
         // 한 이벤트에 확정 결과가 여러 개 들어오면 각각의 발화 ID를 유지한다. 하나로 합치면
         // 나중에 같은 문장이 다시 확정되는 것처럼 보이고, 타임라인 한 칸에 서로 다른 발화가
         // 붙는다.
+        let lastFinalCaptionId: string | null = null;
         for (const text of finalTextValues) {
           const occurredAt = new Date().toISOString();
           const captionId = `${roomId}:${role}:${occurredAt}:${captionSequenceRef.current++}`;
+          lastFinalCaptionId = captionId;
           appendFinalCaption(role, text, { captionId, occurredAt });
           sendCaption({
             text,
@@ -743,6 +764,7 @@ export function useConsultSignaling(
         if (interimTextValue) {
           setLocalCaption(interimTextValue);
           setLocalCaptionFinal(false);
+          setLocalFinalCaptionId(null);
           const now = Date.now();
           if (
             now - lastInterimCaptionSentAt < INTERIM_CAPTION_INTERVAL_MS ||
@@ -762,6 +784,7 @@ export function useConsultSignaling(
 
         setLocalCaption(finalTextValues.at(-1) ?? '');
         setLocalCaptionFinal(true);
+        setLocalFinalCaptionId(lastFinalCaptionId);
         lastInterimCaption = '';
       };
       /**
@@ -1246,12 +1269,17 @@ export function useConsultSignaling(
         setRemoteCaption(caption.text);
         setRemoteCaptionFinal(Boolean(caption.final));
         if (caption.final) {
+          const captionId =
+            caption.captionId ?? `${remoteRole}:${message.timestamp}:${caption.text}`;
           appendFinalCaption(remoteRole, caption.text, {
-            captionId: caption.captionId ?? `${remoteRole}:${message.timestamp}:${caption.text}`,
+            captionId,
             occurredAt: caption.occurredAt ?? message.timestamp,
           });
+          setRemoteFinalCaptionId(captionId);
           // 번역은 확정된 문장만 건다. 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라진다.
           setRemoteFinalCaption(caption.text);
+        } else {
+          setRemoteFinalCaptionId(null);
         }
       }
     };
@@ -1483,9 +1511,11 @@ export function useConsultSignaling(
     reconnecting,
     localCaption,
     localCaptionFinal,
+    localFinalCaptionId,
     remoteCaption,
     /** 상대가 말을 마친 마지막 문장. 번역에 쓴다. */
     remoteFinalCaption,
+    remoteFinalCaptionId,
     /** `remoteCaption` 이 말을 마친 문장인지. 거짓이면 상대가 지금 말하는 중이다. */
     remoteCaptionFinal,
     /** 상대 쪽 음성 인식이 멈춘 이유. null 이면 정상이다. */
@@ -1497,6 +1527,8 @@ export function useConsultSignaling(
     restartCaptions,
     /** 상담 종료 뒤 서버에 넘길 확정 자막. 말한 순서대로 쌓인다. */
     transcript,
+    /** 실시간 영역에서 현재 확정 발화를 타임라인과 구분할 때 쓰는 식별자를 포함한다. */
+    transcriptTimeline,
     sendConsultEvent,
     /** 상담 이벤트 채널이 열렸는지. 상태 스냅숏을 다시 보내야 할 시점이다. */
     eventChannelOpen,

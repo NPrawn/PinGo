@@ -454,6 +454,7 @@ describe('useConsultSignaling', () => {
     ]);
     expect(view.result.current.localCaption).toBe('두 번째 문장');
     expect(view.result.current.localCaptionFinal).toBe(false);
+    expect(view.result.current.localFinalCaptionId).toBeNull();
 
     const socket = FakeSocket.instances[0];
     const duplicate = {
@@ -483,6 +484,7 @@ describe('useConsultSignaling', () => {
       { seq: 1, speaker: 'USER', content: '세 번째 문장' },
       { seq: 2, speaker: 'COUNSELOR', content: '첫 번째 문장' },
     ]);
+    expect(view.result.current.remoteFinalCaptionId).toBe('user-caption-1');
 
     view.unmount();
   });
