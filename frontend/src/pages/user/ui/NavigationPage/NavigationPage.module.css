@@ -56,17 +56,6 @@
   padding: 8px 16px 0;
 }
 
-/*
-  상단 바 오른쪽 칸. 재인식과 상담 버튼을 함께 담는다.
-
-  둘을 상단 바의 직계 자식으로 두면 `space-between`이 넷을 고르게 벌려 가운데 추적 배지가
-  중앙에서 밀려난다.
-*/
-.topBarRight {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
 
 .journeyHeader {
   position: absolute;
@@ -348,10 +337,17 @@
   }
 }
 
+/*
+  방향 자막. **위치 재촬영 버튼 위에 둔다.**
+
+  예전에는 둘이 같은 `bottom: 88px`이었다. 자막은 좌우 전체를 쓰고 가운데 정렬이라, 문장이 길면
+  오른쪽 버튼 아래로 파고들었다. 폭을 좁히는 대신 한 줄 위로 올린다 — 좁히면 긴 문장이 잘리거나
+  두 줄로 접힌다. 값은 버튼 높이(26px)에 여백을 더한 것이다. (S15P11A206-206)
+*/
 .camCaption {
   position: absolute;
   right: 0;
-  bottom: 88px;
+  bottom: 122px;
   left: 0;
   font-size: 11px;
   font-weight: 700;
@@ -507,10 +503,17 @@
 /* 현재 위치 다시 인식. 층 버튼과 마주보는 위치에 둔다.
    층 버튼(top-left)·시설 필터(bottom-center)와 겹치지 않는 자리다. */
 /*
-  재인식은 지도가 아니라 **카메라 화면 상단 바**에 둔다.
-  지도 위에 있으면 도면 오른쪽 위를 가리고, 복귀·숨기기 버튼과 같은 모서리를 다툰다.
+  위치 재촬영은 **카메라 화면 오른쪽 아래**, 안내 카드 바로 위에 둔다.
+
+  지도 위에 있으면 도면을 가리고 복귀·숨기기 버튼과 같은 모서리를 다툰다. 상단 바에 두면
+  뒤로·추적 배지·상담과 넷이 한 줄에 몰린다. 아래 `bottom`은 안내 카드 높이(76px)에 12px을
+  띄운 값이다.
 */
 .relocalize {
+  position: absolute;
+  right: 12px;
+  bottom: 88px;
+  z-index: 8;
   display: flex;
   gap: 4px;
   align-items: center;

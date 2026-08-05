@@ -770,37 +770,7 @@ export function NavigationPage() {
           <div className={styles.topBar}>
             <ViewfinderBack to={USER_ROUTES.ROUTE_OPTIONS} />
             <XrTrackingBadge status={xrStatus} anchorStatus={anchorStatus} source={source} />
-            <div className={styles.topBarRight}>
-              {/*
-                U-10의 "현재 위치 다시 인식". 주변을 다시 촬영해 위치를 새로 확정하는 흐름이므로
-                U-04로 나간다(화면 정의서 U-10 사용자 액션).
-
-                **지도가 아니라 상단 바에 둔다.** 지도 위에 있으면 도면 오른쪽 위를 가리고,
-                `내 위치`·시설 숨기기와 같은 모서리를 다툰다. 위치 표시를 다시 잡는 조작이라
-                추적 배지 옆이 뜻도 더 분명하다. (S15P11A206-206)
-
-                **세션이 끊기고 앵커가 사라지는 것이 정상이다.** 이 버튼을 누르는 상황은 이미
-                위치를 신뢰할 수 없는 상태(경로 이탈, 엘리베이터 하차 등)라 지킬 앵커가 없다.
-                앵커를 유지한 채 좌표만 갱신하는 세션 안 위치 인식은 이것과 별개이며, 그쪽은
-                camera-access로 프레임을 얻어 화면을 벗어나지 않는다(11.8).
-
-                돌아오는 경로는 스토어의 relocalizing 표시가 담당한다 — U-05의 기본 CTA가 경로
-                옵션 선택이라, 표시가 없으면 목적지를 다시 고르는 화면부터 밟게 된다.
-              */}
-              <button
-                type="button"
-                className={styles.relocalize}
-                aria-label={t('user.navigation.relocalize')}
-                onClick={() => {
-                  beginRelocalize();
-                  navigate(USER_ROUTES.CAPTURE_PORTRAIT);
-                }}
-              >
-                <Icon name="refresh" size={14} />
-                {t('user.navigation.relocalizeShort')}
-              </button>
-              <ConsultCta variant="icon" />
-            </div>
+            <ConsultCta variant="icon" />
           </div>
 
           <div
@@ -879,6 +849,35 @@ export function NavigationPage() {
               </strong>
             </div>
           </div>
+
+          {/*
+            U-10의 "현재 위치 다시 촬영". 주변을 다시 촬영해 위치를 새로 확정하는 흐름이므로
+            U-04로 나간다(화면 정의서 U-10 사용자 액션).
+
+            **지도가 아니라 카메라 화면 아래쪽에 둔다.** 지도 위에 있으면 도면을 가리고
+            `내 위치`·시설 숨기기와 같은 모서리를 다툰다. 상단 바에 두면 뒤로·추적 배지·상담과
+            네 개가 한 줄에 몰려 좁은 화면에서 서로 붙는다. (S15P11A206-206)
+
+            **세션이 끊기고 앵커가 사라지는 것이 정상이다.** 이 버튼을 누르는 상황은 이미
+            위치를 신뢰할 수 없는 상태(경로 이탈, 엘리베이터 하차 등)라 지킬 앵커가 없다.
+            앵커를 유지한 채 좌표만 갱신하는 세션 안 위치 인식은 이것과 별개이며, 그쪽은
+            camera-access로 프레임을 얻어 화면을 벗어나지 않는다(11.8).
+
+            돌아오는 경로는 스토어의 relocalizing 표시가 담당한다 — U-05의 기본 CTA가 경로
+            옵션 선택이라, 표시가 없으면 목적지를 다시 고르는 화면부터 밟게 된다.
+          */}
+          <button
+            type="button"
+            className={styles.relocalize}
+            aria-label={t('user.navigation.relocalize')}
+            onClick={() => {
+              beginRelocalize();
+              navigate(USER_ROUTES.CAPTURE_PORTRAIT);
+            }}
+          >
+            <Icon name="refresh" size={14} />
+            {t('user.navigation.relocalizeShort')}
+          </button>
 
           <div className={styles.instructionCard}>
             <span className={styles.instructionIcon}>

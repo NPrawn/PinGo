@@ -1017,7 +1017,7 @@ describe('user routes', () => {
     await renderSection('/user/navigation');
     fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
 
-    fireEvent.click(screen.getByRole('button', { name: '현재 위치 다시 인식' }));
+    fireEvent.click(screen.getByRole('button', { name: '위치 재촬영하기' }));
     expect(await screen.findByText('세 방향을 자유롭게 비춰주세요')).toBeInTheDocument();
     expect(useNavigationStore.getState().relocalizing).toBe(true);
 
