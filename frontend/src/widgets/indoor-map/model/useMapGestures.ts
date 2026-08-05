@@ -102,13 +102,23 @@ export function useMapGestures(follow?: FollowOptions) {
    *
    * 이어받을 것은 **지금 보이는 것**뿐이다. 추종 중이어도 대상이 없으면(`followViewRef` 가 null)
    * 화면에 그려지던 것은 손으로 만든 `view` 이므로, 그대로 두는 것이 이어받는 것이다.
+   *
+   * **갱신 함수 안에서 다른 상태를 건드리지 않는다.** (S15P11A206-206)
+   *
+   * 예전에는 `setFollowing` 갱신 함수 안에서 `setView`를 불렀다. 갱신 함수는 렌더 때 실행되므로
+   * 그 `setView`가 **같은 배치의 이동 갱신보다 나중에** 적용되어 델타를 덮어썼다. 그래서 문턱을
+   * 넘겨 미는 첫 이벤트는 화면을 조금도 움직이지 못했다 — 손가락을 빠르게 움직이면 한 이벤트에
+   * 수십 px이 실리는데 그것이 통째로 사라졌다.
+   *
+   * 이어받을 값을 먼저 큐에 넣어 두면 뒤따르는 이동 갱신이 그 값을 받는다. 이미 풀려 있으면
+   * 아무것도 하지 않는다 — 이동 이벤트마다 불리므로 매번 상태를 다시 쓸 이유가 없다.
    */
   const releaseFollow = useCallback(() => {
-    setFollowing((wasFollowing) => {
-      if (wasFollowing && followViewRef.current) setView(followViewRef.current);
-      return false;
-    });
-  }, []);
+    if (!following) return;
+
+    setFollowing(false);
+    if (followViewRef.current) setView(followViewRef.current);
+  }, [following]);
 
   /**
    * 이동량을 화면 밖으로 나가지 않게 자른다.

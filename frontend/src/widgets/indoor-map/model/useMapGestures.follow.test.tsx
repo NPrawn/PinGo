@@ -222,33 +222,48 @@ describe('시점 추종', () => {
     const target = { px: 1650, py: 950 };
     const { state } = mount(followOptions(target, -45));
 
-    expect(screenOf(state.current!.view, target).x).toBeCloseTo(BOX.width / 2, 0);
-
-    /*
-      **이동 이벤트가 두 번 필요하다.** 문턱을 넘는 첫 이벤트는 추종을 풀고 그 시점을 그대로
-      이어받는 데 쓰인다 — `releaseFollow`가 `setFollowing` 갱신 함수 안에서 `setView`를
-      부르므로, 그 값이 같은 배치의 이동 갱신보다 나중에 적용되어 델타를 덮는다. 지도가 튀는 것은
-      이어받은 시점에서 **실제로 미는** 그 다음 이벤트다.
-    */
-    act(() => {
-      state.current!.handlers.onPointerDown(pointer(1, 100, 100));
-      state.current!.handlers.onPointerMove(pointer(1, 106, 100));
-    });
-
-    expect(state.current?.isFollowing).toBe(false);
-    const inherited = screenOf(state.current!.view, target);
-    // 이어받은 직후에는 아직 앵커 자리다.
-    expect(inherited.x).toBeCloseTo(BOX.width / 2, 0);
+    const before = screenOf(state.current!.view, target);
+    // 추종 중에는 앵커에 정확히 붙어 있다.
+    expect(before.x).toBeCloseTo(BOX.width / 2, 0);
 
     const dragPx = 6;
 
     act(() => {
-      state.current!.handlers.onPointerMove(pointer(1, 106 + dragPx, 100));
+      state.current!.handlers.onPointerDown(pointer(1, 100, 100));
+      // 문턱(4px)을 넘겨 추종을 풀고 실제로 민다.
+      state.current!.handlers.onPointerMove(pointer(1, 100 + dragPx, 100));
     });
 
+    expect(state.current?.isFollowing).toBe(false);
+
     const after = screenOf(state.current!.view, target);
-    expect(after.x).toBeCloseTo(inherited.x + dragPx, 0);
-    expect(after.y).toBeCloseTo(inherited.y, 0);
+    expect(after.x).toBeCloseTo(before.x + dragPx, 0);
+    expect(after.y).toBeCloseTo(before.y, 0);
+  });
+
+  /**
+   * 추종을 푸는 그 이동도 화면에 반영된다. (S15P11A206-206)
+   *
+   * 예전에는 `releaseFollow`가 `setFollowing` 갱신 함수 안에서 `setView`를 불렀다. 갱신 함수는
+   * 렌더 때 실행되므로 그 값이 같은 배치의 이동 갱신보다 나중에 적용되어 델타를 덮었고, 문턱을
+   * 넘겨 미는 첫 이벤트는 화면을 조금도 움직이지 못했다. 손가락을 빠르게 움직이면 한 이벤트에
+   * 수십 px이 실리는데 그만큼이 통째로 사라졌다.
+   *
+   * 이동 한계 안쪽 목표를 쓴다 — 자르기와 섞이지 않게 델타만 본다.
+   */
+  it('추종을 푸는 첫 이동의 델타도 사라지지 않는다', () => {
+    const target = { px: 1200, py: 400 };
+    const { state } = mount(followOptions(target));
+
+    const before = screenOf(state.current!.view, target);
+    const dragPx = 40;
+
+    act(() => {
+      state.current!.handlers.onPointerDown(pointer(1, 100, 100));
+      state.current!.handlers.onPointerMove(pointer(1, 100 + dragPx, 100));
+    });
+
+    expect(screenOf(state.current!.view, target).x).toBeCloseTo(before.x + dragPx, 0);
   });
 
   /**
@@ -267,12 +282,8 @@ describe('시점 추종', () => {
 
     act(() => {
       state.current!.handlers.onPointerDown(pointer(1, 300, 100));
-      // 첫 이동은 추종을 풀고 그 시점을 이어받는다(위 테스트 주석).
-      state.current!.handlers.onPointerMove(pointer(1, 290, 100));
-    });
-    act(() => {
       // 넘어 있는 방향(왼쪽)으로 더 밀어 본다.
-      state.current!.handlers.onPointerMove(pointer(1, 190, 100));
+      state.current!.handlers.onPointerMove(pointer(1, 200, 100));
     });
 
     expect(state.current!.view.x).toBeCloseTo(inherited, 5);
