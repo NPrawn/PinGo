@@ -2635,9 +2635,14 @@ WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 
 {
   "floorCode": "B2",
   "floorName": "지하 2층",
+  "spaceType": "concourse",
   "floorOrder": 2
 }
 ```
+
+`spaceType`은 `concourse`(대합실), `platform`(승강장), `station_interior`(기타 역사 내부) 중 하나다.
+등록 시 생략하면 `station_interior`, 수정 시 생략하면 기존 값을 유지한다. 위치 인식 결과의 사용자용
+출발지 라벨은 층 코드가 아니라 이 값을 기준으로 생성한다.
 
 ### 층 등록 Response
 

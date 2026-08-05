@@ -228,12 +228,33 @@ class IndoorPositionResolverTest {
     @Test
     @DisplayName("층이나 노드를 찾지 못하면 위치를 확정하지 않는다")
     void returnsEmptyWhenFloorOrNodesMissing() {
+        assertThat(resolver.resolve(STATION, null, new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
+        assertThat(resolver.resolve(STATION, "  ", new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
+
         when(stationFloorRepository.findByStationIdAndFloorCode(STATION, "B9"))
                 .thenReturn(Optional.empty());
         assertThat(resolver.resolve(STATION, "B9", new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
 
         givenNodes();
         assertThat(resolver.resolve(STATION, "B2", new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("알 수 없는 공간 유형은 역사 내부로 안전하게 표시한다")
+    void fallsBackForUnknownSpaceType() {
+        StationFloor floor = floor(4L, "B4", "unknown");
+        when(stationFloorRepository.findByStationIdAndFloorCode(STATION, "B4"))
+                .thenReturn(Optional.of(floor));
+        RouteNode node = node(91L, 4L, "B4_R001", "0.000", "0.000", "-10.000");
+        when(routeNodeRepository.search(STATION, 4L)).thenReturn(List.of(node));
+
+        AnchoredLocation got = resolver
+                .resolve(STATION, " b4 ", new CanonicalPoint(0.0, 0.0, -10.0), null, 0.5)
+                .orElseThrow();
+
+        assertThat(got.floorCode()).isEqualTo("B4");
+        assertThat(got.startNodeLabel()).isEqualTo("B4 · 역사 내부");
+        assertThat(got.startNodeLabelEn()).isEqualTo("B4 · Station interior");
     }
 
     private void givenNodes(RouteNode... nodes) {
@@ -253,8 +274,13 @@ class IndoorPositionResolverTest {
     }
 
     private StationFloor floor(Long id, String code) {
+        String spaceType = "B3".equals(code) ? "platform" : "concourse";
+        return floor(id, code, spaceType);
+    }
+
+    private StationFloor floor(Long id, String code, String spaceType) {
         Station station = Station.create("역삼역", "Yeoksam", "2호선", null, null);
-        StationFloor f = StationFloor.create(station, code, "지하", 1, null);
+        StationFloor f = StationFloor.create(station, code, "지하", spaceType, 1, null);
         ReflectionTestUtils.setField(f, "id", id);
         return f;
     }

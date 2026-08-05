@@ -1642,6 +1642,8 @@ export interface components {
     FloorCreateRequest: {
       floorCode: string;
       floorName?: string;
+      /** @description 층 공간 유형 */
+      spaceType?: 'concourse' | 'platform' | 'station_interior';
       /** Format: int32 */
       floorOrder: number;
       /**
@@ -1887,6 +1889,7 @@ export interface components {
       floorId?: number;
       floorCode?: string;
       floorName?: string;
+      spaceType?: 'concourse' | 'platform' | 'station_interior';
       /** Format: int32 */
       floorOrder?: number;
       /**
@@ -2006,6 +2009,8 @@ export interface components {
     FloorUpdateRequest: {
       floorCode: string;
       floorName?: string;
+      /** @description 층 공간 유형. 생략하면 기존 값을 유지한다. */
+      spaceType?: 'concourse' | 'platform' | 'station_interior';
       /** Format: int32 */
       floorOrder: number;
       /**

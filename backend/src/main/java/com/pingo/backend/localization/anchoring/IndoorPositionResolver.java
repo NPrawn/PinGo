@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -59,12 +60,18 @@ public class IndoorPositionResolver {
             CanonicalDirection forward,
             double accuracyM
     ) {
-        Optional<StationFloor> floor = stationFloorRepository.findByStationIdAndFloorCode(stationId, floorCode);
+        if (floorCode == null || floorCode.isBlank()) {
+            return Optional.empty();
+        }
+        String normalizedFloorCode = floorCode.trim().toUpperCase(Locale.ROOT);
+        Optional<StationFloor> floor = stationFloorRepository
+                .findByStationIdAndFloorCode(stationId, normalizedFloorCode);
         if (floor.isEmpty()) {
             return Optional.empty();
         }
 
-        Long floorId = floor.get().getId();
+        StationFloor stationFloor = floor.orElseThrow();
+        Long floorId = stationFloor.getId();
         List<RouteNode> floorNodes = routeNodeRepository.search(stationId, floorId);
         Optional<RouteNode> nearest = floorNodes.stream()
                 .min(Comparator.comparingDouble(node -> distanceTo(node, point)));
@@ -73,11 +80,11 @@ public class IndoorPositionResolver {
         }
 
         RouteNode node = nearest.get();
-        NodeLabels labels = labelsOf(floorCode);
+        NodeLabels labels = labelsOf(normalizedFloorCode, stationFloor.getSpaceType());
 
         return Optional.of(new AnchoredLocation(
                 floorId,
-                floorCode,
+                normalizedFloorCode,
                 round(point.x()),
                 round(point.y()),
                 round(point.z()),
@@ -112,11 +119,12 @@ public class IndoorPositionResolver {
     }
 
     /** 세부 노드명 대신 사용자가 구분하기 쉬운 층과 공간 유형만 표시한다. */
-    private NodeLabels labelsOf(String floorCode) {
-        if ("B3".equalsIgnoreCase(floorCode)) {
-            return new NodeLabels(floorCode + " · 승강장", floorCode + " · Platform");
-        }
-        return new NodeLabels(floorCode + " · 대합실", floorCode + " · Concourse");
+    private NodeLabels labelsOf(String floorCode, String spaceType) {
+        return switch (spaceType == null ? "" : spaceType) {
+            case "concourse" -> new NodeLabels(floorCode + " · 대합실", floorCode + " · Concourse");
+            case "platform" -> new NodeLabels(floorCode + " · 승강장", floorCode + " · Platform");
+            default -> new NodeLabels(floorCode + " · 역사 내부", floorCode + " · Station interior");
+        };
     }
 
     private record NodeLabels(String ko, String en) {
