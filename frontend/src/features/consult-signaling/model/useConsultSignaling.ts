@@ -322,8 +322,31 @@ export function useConsultSignaling(
         seq: segment.seq,
         speaker: segment.speaker,
         content: segment.content,
+        ...(segment.translatedContent ? { translatedContent: segment.translatedContent } : {}),
       })),
     [transcriptTimeline],
+  );
+  const updateTranscriptTranslation = useCallback(
+    (captionId: string, translatedContent: string) => {
+      const normalizedTranslation = translatedContent.trim();
+      if (!captionId || !normalizedTranslation) return;
+
+      setTranscriptEntries((previous) => {
+        const entryIndex = previous.findIndex((entry) => entry.captionId === captionId);
+        if (entryIndex < 0) return previous;
+
+        const entry = previous[entryIndex];
+        if (entry.segment.translatedContent === normalizedTranslation) return previous;
+
+        const next = [...previous];
+        next[entryIndex] = {
+          ...entry,
+          segment: { ...entry.segment, translatedContent: normalizedTranslation },
+        };
+        return next;
+      });
+    },
+    [],
   );
   /** 서버가 준 STUN·TURN 설정. 받기 전에는 연결을 시작하지 않는다. */
   const [rtcConfig, setRtcConfig] = useState<RTCConfiguration | null>(null);
@@ -1529,6 +1552,7 @@ export function useConsultSignaling(
     transcript,
     /** 실시간 영역에서 현재 확정 발화를 타임라인과 구분할 때 쓰는 식별자를 포함한다. */
     transcriptTimeline,
+    updateTranscriptTranslation,
     sendConsultEvent,
     /** 상담 이벤트 채널이 열렸는지. 상태 스냅숏을 다시 보내야 할 시점이다. */
     eventChannelOpen,

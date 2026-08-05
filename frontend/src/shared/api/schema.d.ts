@@ -1550,6 +1550,7 @@ export interface components {
       /** @enum {string} */
       speaker: 'USER' | 'COUNSELOR';
       content: string;
+      translatedContent?: string;
     };
     ApiResponseConsultationSummaryStatusResponse: {
       success?: boolean;
@@ -2343,6 +2344,7 @@ export interface components {
       /** @enum {string} */
       speaker?: 'USER' | 'COUNSELOR';
       content?: string;
+      translatedContent?: string;
     };
     ApiResponseBoolean: {
       success?: boolean;
