@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
+import type { MapSyncPayload } from '@/shared/types';
 import { ApiError } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { SessionPage } from './SessionPage';
@@ -95,7 +96,10 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
 }));
 
 /** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
-async function renderWithMapSync(floorId: number | null = null) {
+async function renderWithMapSync(
+  floorId: number | null = null,
+  extra: Partial<MapSyncPayload> = {},
+) {
   apiMocks.getCounselorConsultations.mockResolvedValue([
     { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
   ]);
@@ -121,6 +125,7 @@ async function renderWithMapSync(floorId: number | null = null) {
         destinationNodeId: null,
         pathNodes: [],
         screen: null,
+        ...extra,
       },
     });
   });
@@ -414,6 +419,32 @@ describe('SessionPage', () => {
       await renderWithMapSync(7);
 
       expect(screen.getByRole('button', { name: /승차권 충전/ })).toBeEnabled();
+    });
+  });
+
+  /**
+   * **경로가 중간에 끊겨 보이지 않아야 한다.** (S15P11A206-206)
+   *
+   * 경로선은 그래프 노드에서 끝나고 사용자 점은 실제 좌표에 있어 둘이 몇 미터 떨어져 보인다.
+   * 그 사이를 잇는 옵션이 거울 지도에는 있었는데 상담자 자신의 지도에만 빠져 있어, 상담자가
+   * 보는 큰 지도에서만 경로가 끊겨 있었다. 두 지도가 다른 그림을 보여 주면 상담자가 짚어 주는
+   * 자리를 사용자가 자기 화면에서 찾을 수 없다.
+   */
+  it('상담자 지도도 사용자 점과 경로 사이를 잇는다', async () => {
+    await renderWithMapSync(1, {
+      current: { floorId: 1, mapX: 0, mapY: 10 },
+      pathNodes: [
+        { nodeId: 1, floorId: 1, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: 1, mapX: 20, mapY: 0 },
+      ],
+    });
+
+    /* 그려진 지도 전부를 본다. 배치 정보(`screen`)가 오기 전에는 거울이 없어 한 장뿐이다. */
+    const routes = screen.getAllByRole('img', { name: '이동 경로' });
+    expect(routes.length).toBeGreaterThan(0);
+    routes.forEach((route) => {
+      // 테두리(`aria-hidden`)가 아닌 본선 연결선.
+      expect(route.querySelector('line:not([aria-hidden])')).not.toBeNull();
     });
   });
 

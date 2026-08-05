@@ -812,6 +812,17 @@ export function SessionPage() {
                          어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
                       destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
+                      /**
+                       * 내 위치와 경로 사이의 빈 자리를 잇는다. (S15P11A206-206)
+                       *
+                       * 경로선은 그래프 노드에서 끝나고 사용자 점은 실제 좌표에 있어 둘이 몇
+                       * 미터 떨어져 보인다. 거울 지도에는 이 옵션이 있었는데 이 지도에만 빠져
+                       * 있어, 상담자가 보는 큰 지도에서만 경로가 중간에 끊겨 있었다.
+                       *
+                       * 사용자 화면과 같은 값이어야 한다. 두 지도가 다른 그림을 보여 주면
+                       * 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수 없다.
+                       */
+                      connectCurrentToRoute
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
                       facilityType={facilityType}
