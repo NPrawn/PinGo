@@ -430,12 +430,16 @@ describe('SessionPage', () => {
   /**
    * **경로가 중간에 끊겨 보이지 않아야 한다.** (S15P11A206-206)
    *
-   * 경로선은 그래프 노드에서 끝나고 사용자 점은 실제 좌표에 있어 둘이 몇 미터 떨어져 보인다.
-   * 그 사이를 잇는 옵션이 거울 지도에는 있었는데 상담자 자신의 지도에만 빠져 있어, 상담자가
-   * 보는 큰 지도에서만 경로가 끊겨 있었다. 두 지도가 다른 그림을 보여 주면 상담자가 짚어 주는
-   * 자리를 사용자가 자기 화면에서 찾을 수 없다.
+   * 경로선은 그래프 노드에서 시작하고 사용자 점은 실제 좌표에 있어 둘이 몇 미터 떨어져 보인다.
+   * 그 사이를 메우는 `connectCurrentToRoute` 가 거울 지도에는 있었는데 상담자 자신의 지도에만
+   * 빠져 있어, 상담자가 보는 큰 지도에서만 경로가 끊겨 있었다. 두 지도가 다른 그림을 보여 주면
+   * 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수 없다.
+   *
+   * 검사는 **앞으로 갈 길이 내 자리에서 시작하는지**로 한다. 예전에는 따로 그린 연결선(`line`)을
+   * 찾았는데, 그 선은 닿는 점에서 길이 갈라져 보이는 문제로 없어졌고 지금은 경로를 다시 써서 한
+   * 줄로 만든다(S15P11A206-345). 그리는 방식이 아니라 이어져 있다는 사실을 본다.
    */
-  it('상담자 지도도 사용자 점과 경로 사이를 잇는다', async () => {
+  it('상담자 지도의 경로가 사용자 점에서 시작한다', async () => {
     await renderWithMapSync(1, {
       current: { floorId: 1, mapX: 0, mapY: 10 },
       pathNodes: [
@@ -444,12 +448,22 @@ describe('SessionPage', () => {
       ],
     });
 
+    const marker = screen.getAllByRole('img', { name: '현재 위치' })[0];
+    const dot = marker?.querySelector('circle:last-of-type');
+    const at = { x: Number(dot?.getAttribute('cx')), y: Number(dot?.getAttribute('cy')) };
+    expect(Number.isFinite(at.x)).toBe(true);
+
     /* 그려진 지도 전부를 본다. 배치 정보(`screen`)가 오기 전에는 거울이 없어 한 장뿐이다. */
     const routes = screen.getAllByRole('img', { name: '이동 경로' });
     expect(routes.length).toBeGreaterThan(0);
     routes.forEach((route) => {
-      // 테두리(`aria-hidden`)가 아닌 본선 연결선.
-      expect(route.querySelector('line:not([aria-hidden])')).not.toBeNull();
+      // 테두리(`aria-hidden`)가 아닌 본선의 첫 좌표.
+      const points = route.querySelector('polyline:not([aria-hidden])')?.getAttribute('points');
+      const [first = ''] = (points ?? '').split(' ');
+      const [x, y] = first.split(',').map(Number);
+
+      expect(x).toBeCloseTo(at.x, 0);
+      expect(y).toBeCloseTo(at.y, 0);
     });
   });
 

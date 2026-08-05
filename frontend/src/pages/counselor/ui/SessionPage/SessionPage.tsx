@@ -981,118 +981,121 @@ export function SessionPage() {
                 </div>
                 <span className={styles.captionPanelStatus}>실시간 반영</span>
               </div>
-            {/*
+              {/*
               기록이 안 되고 있으면 그 사실을 상담 중에 알아야 한다. 끝난 뒤에 알면 이미
               전문이 비어 있고 AI 요약도 만들어지지 않아 되돌릴 방법이 없다.
             */}
-            {captionError && (
-              <div className={styles.notesAlert} role="alert">
-                <Icon name="warning" size={12} />
-                <span>{captionError}</span>
-                {/* 마이크를 놓아 준 뒤 상담을 끊지 않고 자막만 되살릴 수 있어야 한다. */}
-                <button
-                  type="button"
-                  className={styles.notesRetry}
-                  onClick={() => restartCaptions()}
-                >
-                  다시 시도
-                </button>
-              </div>
-            )}
-            {/*
+              {captionError && (
+                <div className={styles.notesAlert} role="alert">
+                  <Icon name="warning" size={12} />
+                  <span>{captionError}</span>
+                  {/* 마이크를 놓아 준 뒤 상담을 끊지 않고 자막만 되살릴 수 있어야 한다. */}
+                  <button
+                    type="button"
+                    className={styles.notesRetry}
+                    onClick={() => restartCaptions()}
+                  >
+                    다시 시도
+                  </button>
+                </div>
+              )}
+              {/*
               사용자 쪽 자막이 죽은 경우. 이쪽에서 손쓸 수 있는 일이 아니라 다시 시도 버튼을
               붙이지 않는다. 대신 사용자가 조용한 것이 아니라는 사실은 알아야 한다 — 모르면
               상담원은 대답을 기다리며 계속 침묵하게 된다.
             */}
-            {userCaptionNotice && (
-              <div className={styles.notesAlert} role="alert">
-                <Icon name="warning" size={12} />
-                <span>{userCaptionNotice}</span>
-              </div>
-            )}
-            <div className={styles.liveCaptions}>
-              <div className={[styles.liveCaption, styles.liveCaptionUser].join(' ')}>
-                <div className={styles.liveCaptionHeader}>
-                  <span className={styles.speakerUser}>사용자</span>
-                  <span className={styles.liveCaptionState}>
-                    {remoteCaptionFinal ? '확정' : '말하는 중'}
+              {userCaptionNotice && (
+                <div className={styles.notesAlert} role="alert">
+                  <Icon name="warning" size={12} />
+                  <span>{userCaptionNotice}</span>
+                </div>
+              )}
+              <div className={styles.liveCaptions}>
+                <div className={[styles.liveCaption, styles.liveCaptionUser].join(' ')}>
+                  <div className={styles.liveCaptionHeader}>
+                    <span className={styles.speakerUser}>사용자</span>
+                    <span className={styles.liveCaptionState}>
+                      {remoteCaptionFinal ? '확정' : '말하는 중'}
+                    </span>
+                  </div>
+                  <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
+                    {userCaptionPrimary ||
+                      (captionsSupported
+                        ? '사용자가 말하면 자막을 표시합니다.'
+                        : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
+                  </span>
+                  {userCaptionSource && (
+                    <span
+                      className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
+                        .filter(Boolean)
+                        .join(' ')}
+                      aria-live="polite"
+                      aria-atomic="true"
+                    >
+                      {userCaptionSource}
+                    </span>
+                  )}
+                </div>
+                <div className={[styles.liveCaption, styles.liveCaptionCounselor].join(' ')}>
+                  <div className={styles.liveCaptionHeader}>
+                    <span className={styles.speakerAgent}>상담원</span>
+                    <span className={styles.liveCaptionState}>
+                      {localCaptionFinal ? '확정' : '말하는 중'}
+                    </span>
+                  </div>
+                  <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
+                    {localCaption ||
+                      (captionsSupported
+                        ? '마이크를 켜고 말하면 자막을 표시합니다.'
+                        : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                   </span>
                 </div>
-                <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
-                  {userCaptionPrimary ||
-                    (captionsSupported
-                      ? '사용자가 말하면 자막을 표시합니다.'
-                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
-                </span>
-                {userCaptionSource && (
-                  <span
-                    className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
-                      .filter(Boolean)
-                      .join(' ')}
-                    aria-live="polite"
-                    aria-atomic="true"
-                  >
-                    {userCaptionSource}
-                  </span>
-                )}
               </div>
-              <div className={[styles.liveCaption, styles.liveCaptionCounselor].join(' ')}>
-                <div className={styles.liveCaptionHeader}>
-                  <span className={styles.speakerAgent}>상담원</span>
-                  <span className={styles.liveCaptionState}>
-                    {localCaptionFinal ? '확정' : '말하는 중'}
-                  </span>
+            </section>
+            <section className={styles.transcriptPanel}>
+              <div className={styles.captionPanelHeader}>
+                <div className={styles.captionPanelHeading}>
+                  <span className={styles.captionPanelKicker}>LOG</span>
+                  <h3 className={styles.captionPanelTitle}>대화 로그</h3>
                 </div>
-                <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
-                  {localCaption ||
-                    (captionsSupported
-                      ? '마이크를 켜고 말하면 자막을 표시합니다.'
-                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
-                </span>
+                <span className={styles.captionPanelStatus}>{displayTranscript.length}줄</span>
               </div>
-            </div>
-          </section>
-          <section className={styles.transcriptPanel}>
-            <div className={styles.captionPanelHeader}>
-              <div className={styles.captionPanelHeading}>
-                <span className={styles.captionPanelKicker}>LOG</span>
-                <h3 className={styles.captionPanelTitle}>대화 로그</h3>
-              </div>
-              <span className={styles.captionPanelStatus}>{displayTranscript.length}줄</span>
-            </div>
-            <div className={styles.notesBody}>
-              {displayTranscript.length === 0 ? (
-                <div className={styles.transcriptEmpty}>확정된 대화가 여기에 표시됩니다.</div>
-              ) : (
-                displayTranscript.map((segment) => (
-                  <div className={styles.transcriptEntry} key={segment.captionId}>
-                    <div className={styles.transcriptSpeaker}>
-                      <span
-                        className={
-                          segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
-                        }
-                      >
-                        {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
-                      </span>
-                    </div>
-                    <div className={styles.transcriptLine}>
-                      <span className={styles.transcriptLanguage}>원문</span>
-                      <span className={styles.line}>{segment.content}</span>
-                    </div>
-                    {segment.translatedContent && segment.translatedContent !== segment.content && (
-                      <div className={styles.transcriptLine}>
-                        <span className={styles.transcriptLanguage}>번역</span>
-                        <span className={styles.transcriptTranslation}>
-                          {segment.translatedContent}
+              <div className={styles.notesBody}>
+                {displayTranscript.length === 0 ? (
+                  <div className={styles.transcriptEmpty}>확정된 대화가 여기에 표시됩니다.</div>
+                ) : (
+                  displayTranscript.map((segment) => (
+                    <div className={styles.transcriptEntry} key={segment.captionId}>
+                      <div className={styles.transcriptSpeaker}>
+                        <span
+                          className={
+                            segment.speaker === 'COUNSELOR'
+                              ? styles.speakerAgent
+                              : styles.speakerUser
+                          }
+                        >
+                          {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
                         </span>
                       </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
+                      <div className={styles.transcriptLine}>
+                        <span className={styles.transcriptLanguage}>원문</span>
+                        <span className={styles.line}>{segment.content}</span>
+                      </div>
+                      {segment.translatedContent &&
+                        segment.translatedContent !== segment.content && (
+                          <div className={styles.transcriptLine}>
+                            <span className={styles.transcriptLanguage}>번역</span>
+                            <span className={styles.transcriptTranslation}>
+                              {segment.translatedContent}
+                            </span>
+                          </div>
+                        )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
         </div>
 
         <div className={styles.rail}>
