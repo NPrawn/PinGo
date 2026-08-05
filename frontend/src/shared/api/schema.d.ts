@@ -972,7 +972,7 @@ export interface components {
       startNodeId?: number;
       /**
        * @description 경로 시작 노드의 사용자용 한글 표시 이름.
-       * @example B2 · B2-B3 엘리베이터 A 인근
+       * @example B2 · 대합실
        */
       startNodeLabel?: string;
       /** @description 경로 시작 노드의 영문 표시 이름. */

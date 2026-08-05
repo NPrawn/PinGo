@@ -1222,8 +1222,8 @@ describe('user routes', () => {
     useNavigationStore.setState({
       destination: 'GS25 역삼역점',
       route: 'elevator_only',
-      currentLocationLabel: 'B2 · 개찰구 A 인근',
-      currentLocationLabelEn: 'B2 · Near Fare Gate A',
+      currentLocationLabel: 'B2 · 대합실',
+      currentLocationLabelEn: 'B2 · Concourse',
       // 경로 옵션 화면에서 엘리베이터 우선을 고르면 그 유형의 출구가 여기 남는다.
       targetExitLabel: '2번 출입구',
       waypoints: [
@@ -1245,7 +1245,7 @@ describe('user routes', () => {
     expect(await screen.findByText('출발지')).toBeInTheDocument();
     expect(screen.getByText('목적지')).toBeInTheDocument();
     const routeHeader = screen.getByLabelText('현재 경로');
-    expect(within(routeHeader).getByText('B2 · 개찰구 A 인근')).toBeInTheDocument();
+    expect(within(routeHeader).getByText('B2 · 대합실')).toBeInTheDocument();
     expect(within(routeHeader).getByText('2번 출입구')).toBeInTheDocument();
     expect(within(routeHeader).queryByText('GS25 역삼역점')).toBeNull();
     expect(within(routeHeader).getByText('경유 1')).toBeInTheDocument();
