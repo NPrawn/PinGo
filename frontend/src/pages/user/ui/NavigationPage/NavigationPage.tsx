@@ -584,8 +584,7 @@ export function NavigationPage() {
       ? (activeStep.distanceM ?? 0)
       : (progress.stepRemainingM ?? activeStep.distanceM ?? 0);
     /** 보여줄 문장이 있는지. 없으면 거리를 채울 것도 없다. */
-    const hasInstruction =
-      activeStep.instructionTemplate != null || activeStep.instruction != null;
+    const hasInstruction = activeStep.instructionTemplate != null || activeStep.instruction != null;
 
     return {
       /*
@@ -677,91 +676,6 @@ export function NavigationPage() {
             onConfirm={startXrSession}
             onContinueWithoutTracking={continueWithoutTracking}
           />
-        ) : selectedFacility ? (
-          <Sheet
-            label={t('user.navigation.facilityRoute', { name: selectedFacilityName })}
-            onDismiss={() => setSelectedFacility(null)}
-          >
-            <div className={styles.sheetHandle} aria-hidden />
-            <div className={styles.sheetHead}>
-              <span className={styles.sheetIcon}>
-                <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
-              </span>
-              <div>
-                <h2>{selectedFacilityName}</h2>
-                {/* 목업이던 거리·층 설명 대신 응답에 있는 값을 쓴다. 거리는 경로 계산(297)이
-                    붙으면 넣는다 — 지금 임의로 만들면 틀린 숫자를 보여주게 된다. */}
-                <p>
-                  {selectedFacility.isAccessible
-                    ? t('user.navigation.accessible')
-                    : t('user.navigation.mayHaveStairs')}
-                </p>
-              </div>
-            </div>
-            <p className={styles.sheetNote}>
-              {t('user.navigation.waypointNote')}
-            </p>
-            <div className={styles.sheetActions}>
-              <Button
-                disabled={
-                  waypoints.length >= 2 ||
-                  selectedFacilityIsWaypoint ||
-                  selectedFacilityIsDestination ||
-                  !selectedFacilityRoutable
-                }
-                onClick={() => {
-                  if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  if (selectedFacility.linkedNodeId == null) return;
-                  addWaypoint({
-                    nodeId: selectedFacility.linkedNodeId,
-                    nameKo: selectedFacility.nameKo,
-                  });
-                  setRecalculated(true);
-                  setSelectedFacility(null);
-                }}
-              >
-                {selectedFacilityIsDestination
-                  ? t('user.navigation.cannotAddDestination')
-                  : selectedFacilityIsWaypoint
-                    ? t('user.navigation.alreadyWaypoint')
-                    : !selectedFacilityRoutable
-                      ? t('user.navigation.notRoutable')
-                      : waypoints.length >= 2
-                        ? t('user.navigation.waypointLimit')
-                        : t('user.navigation.addWaypoint')}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={selectedFacilityIsWaypoint || selectedFacilityIsDestination}
-                onClick={() => {
-                  if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  setDestination(selectedFacility.nameKo);
-                  setActiveDestination(selectedFacility.nameKo);
-                  // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
-                  setPickedDestination(selectedFacility);
-                  /**
-                   * 도착 노드도 그 시설로 옮긴다.
-                   *
-                   * `setDestination`은 이름만 바꾸고 도착 노드를 비운다 — 이름과 노드가 다른
-                   * 곳을 가리키는 것을 막기 위해서다. 여기서는 고른 시설의 노드를 알고 있으므로
-                   * 곧바로 채워 경로를 다시 계산하게 한다. 비워 둔 채로 두면 안내 카드가
-                   * "목적지를 선택해 주세요"로 돌아가 방금 고른 것이 무시된 것처럼 보인다.
-                   */
-                  if (selectedFacility.linkedNodeId != null) {
-                    setTargetNode(selectedFacility.linkedNodeId, selectedFacility.nameKo);
-                  }
-                  setRecalculated(true);
-                  setSelectedFacility(null);
-                }}
-              >
-                {selectedFacilityIsWaypoint
-                  ? t('user.navigation.registeredWaypoint')
-                  : selectedFacilityIsDestination
-                    ? t('user.navigation.currentDestination')
-                    : t('user.navigation.setDestination')}
-              </Button>
-            </div>
-          </Sheet>
         ) : undefined
       }
     >
@@ -980,7 +894,11 @@ export function NavigationPage() {
                 />
               </div>
 
-              <div className={styles.floorButtons} role="group" aria-label={t('user.navigation.floorSelect')}>
+              <div
+                className={styles.floorButtons}
+                role="group"
+                aria-label={t('user.navigation.floorSelect')}
+              >
                 {floorMaps.map((map) => {
                   const on = map.floorCode === displayedFloorCode;
 
@@ -1007,7 +925,11 @@ export function NavigationPage() {
               </div>
 
               {/* 표시 층에 있는 유형만 둔다. 눌러서 아무것도 안 나오는 칩은 두지 않는다. */}
-              <div className={styles.facilityFilters} role="group" aria-label={t('user.navigation.facilityFilter')}>
+              <div
+                className={styles.facilityFilters}
+                role="group"
+                aria-label={t('user.navigation.facilityFilter')}
+              >
                 {availableFilters.map((filter) => {
                   const active = effectiveView === filter.facilityType;
 
@@ -1018,7 +940,10 @@ export function NavigationPage() {
                       className={[styles.facilityFilter, active && styles.facilityFilterOn]
                         .filter(Boolean)
                         .join(' ')}
-                      aria-label={t(active ? 'user.navigation.filterOff' : 'user.navigation.filterOn', { name: filter.name })}
+                      aria-label={t(
+                        active ? 'user.navigation.filterOff' : 'user.navigation.filterOn',
+                        { name: filter.name },
+                      )}
                       aria-pressed={active}
                       title={filter.name}
                       onClick={() => {
@@ -1063,10 +988,16 @@ export function NavigationPage() {
                     .filter(Boolean)
                     .join(' ')}
                   aria-label={
-                    effectiveView === 'none' ? t('user.navigation.showFacilities') : t('user.navigation.hideFacilities')
+                    effectiveView === 'none'
+                      ? t('user.navigation.showFacilities')
+                      : t('user.navigation.hideFacilities')
                   }
                   aria-pressed={effectiveView === 'none'}
-                  title={effectiveView === 'none' ? t('user.navigation.showFacilities') : t('user.navigation.hideFacilities')}
+                  title={
+                    effectiveView === 'none'
+                      ? t('user.navigation.showFacilities')
+                      : t('user.navigation.hideFacilities')
+                  }
                   onClick={() => {
                     setFacilityView(effectiveView === 'none' ? 'all' : 'none');
                     setSelectedFacility(null);
@@ -1180,6 +1111,102 @@ export function NavigationPage() {
             </div>
           </div>
         </div>
+
+        {/*
+          시설 시트. **`dom-overlay` 루트 안에 둔다.** (S15P11A206-206)
+
+          예전에는 `PhoneFrame` 의 `overlay` 로 넘겼는데, 그쪽은 `children` 의 형제로 그려지므로
+          이 화면이 세션에 넘긴 루트(`overlayRoot`) **밖**이다. XR 세션이 열리면 컴포지터는 그 루트
+          아래만 카메라 위에 합성하므로, 시트는 열려 있어도 화면에 나타나지 않았다 — 세션 전에는
+          시설을 눌러 경유지를 추가할 수 있는데 세션에 들어가면 아무 일도 일어나지 않던 이유다.
+
+          세션 안내는 그대로 `overlay` 에 둔다. 그것이 뜨는 구간에는 세션이 떠 있지 않아 일반 DOM
+          이 그대로 보이고, 안내가 시트보다 앞서야 한다는 순서도 아래 조건으로 유지된다.
+        */}
+        {!isNoticeOpen && selectedFacility && (
+          <Sheet
+            label={t('user.navigation.facilityRoute', { name: selectedFacilityName })}
+            onDismiss={() => setSelectedFacility(null)}
+          >
+            <div className={styles.sheetHandle} aria-hidden />
+            <div className={styles.sheetHead}>
+              <span className={styles.sheetIcon}>
+                <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
+              </span>
+              <div>
+                <h2>{selectedFacilityName}</h2>
+                {/* 목업이던 거리·층 설명 대신 응답에 있는 값을 쓴다. 거리는 경로 계산(297)이
+                  붙으면 넣는다 — 지금 임의로 만들면 틀린 숫자를 보여주게 된다. */}
+                <p>
+                  {selectedFacility.isAccessible
+                    ? t('user.navigation.accessible')
+                    : t('user.navigation.mayHaveStairs')}
+                </p>
+              </div>
+            </div>
+            <p className={styles.sheetNote}>{t('user.navigation.waypointNote')}</p>
+            <div className={styles.sheetActions}>
+              <Button
+                disabled={
+                  waypoints.length >= 2 ||
+                  selectedFacilityIsWaypoint ||
+                  selectedFacilityIsDestination ||
+                  !selectedFacilityRoutable
+                }
+                onClick={() => {
+                  if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
+                  if (selectedFacility.linkedNodeId == null) return;
+                  addWaypoint({
+                    nodeId: selectedFacility.linkedNodeId,
+                    nameKo: selectedFacility.nameKo,
+                  });
+                  setRecalculated(true);
+                  setSelectedFacility(null);
+                }}
+              >
+                {selectedFacilityIsDestination
+                  ? t('user.navigation.cannotAddDestination')
+                  : selectedFacilityIsWaypoint
+                    ? t('user.navigation.alreadyWaypoint')
+                    : !selectedFacilityRoutable
+                      ? t('user.navigation.notRoutable')
+                      : waypoints.length >= 2
+                        ? t('user.navigation.waypointLimit')
+                        : t('user.navigation.addWaypoint')}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={selectedFacilityIsWaypoint || selectedFacilityIsDestination}
+                onClick={() => {
+                  if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
+                  setDestination(selectedFacility.nameKo);
+                  setActiveDestination(selectedFacility.nameKo);
+                  // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
+                  setPickedDestination(selectedFacility);
+                  /**
+                   * 도착 노드도 그 시설로 옮긴다.
+                   *
+                   * `setDestination`은 이름만 바꾸고 도착 노드를 비운다 — 이름과 노드가 다른
+                   * 곳을 가리키는 것을 막기 위해서다. 여기서는 고른 시설의 노드를 알고 있으므로
+                   * 곧바로 채워 경로를 다시 계산하게 한다. 비워 둔 채로 두면 안내 카드가
+                   * "목적지를 선택해 주세요"로 돌아가 방금 고른 것이 무시된 것처럼 보인다.
+                   */
+                  if (selectedFacility.linkedNodeId != null) {
+                    setTargetNode(selectedFacility.linkedNodeId, selectedFacility.nameKo);
+                  }
+                  setRecalculated(true);
+                  setSelectedFacility(null);
+                }}
+              >
+                {selectedFacilityIsWaypoint
+                  ? t('user.navigation.registeredWaypoint')
+                  : selectedFacilityIsDestination
+                    ? t('user.navigation.currentDestination')
+                    : t('user.navigation.setDestination')}
+              </Button>
+            </div>
+          </Sheet>
+        )}
       </div>
     </PhoneFrame>
   );
