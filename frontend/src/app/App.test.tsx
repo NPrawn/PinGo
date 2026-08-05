@@ -843,6 +843,35 @@ describe('user routes', () => {
   });
 
   /**
+   * 카드와 상세 경로가 같은 문장을 말한다. (S15P11A206-206)
+   *
+   * 예전에는 카드가 `activeStep.instruction`을 그대로 썼다. 그 문장에는 **구간 전체 길이**가 박혀
+   * 있어서, 남은 거리로 문장을 다시 쓰는 상세 경로와 어긋났다 — 한 화면에서 카드는
+   * `32m 직진하세요`, 목록은 `24m 직진하세요`였다. 게다가 카드 숫자는 걸어도 줄지 않으니 틀린
+   * 쪽이 카드다.
+   *
+   * 남은 거리를 값으로 박지 않는다. 목업의 구간 경계 보정에 딸린 숫자라 목업이 바뀌면 함께
+   * 흔들린다. 확인할 성질은 **두 자리가 같은 문장이고, 그것이 서버 원문이 아니라는 것**이다.
+   */
+  it('카드 안내 문장과 상세 경로의 강조된 줄이 같다', async () => {
+    // 첫 구간(205 → 202, 25m)의 중간. 남은 거리가 구간 전체 길이와 달라진다.
+    useNavigationStore.setState({ currentFloorId: 2, currentMapX: -12.85, currentMapY: 26.4 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /상세 경로/ }));
+
+    const activeRow = document.querySelector('[aria-current="step"]');
+    const sentence = activeRow?.querySelector('b')?.textContent ?? '';
+
+    // 첫 구간을 걷고 있어야 이 검사가 뜻을 갖는다.
+    expect(sentence).toMatch(/직진하세요/);
+    // 구간 전체 길이(25m)가 아니라 남은 거리로 쓰여 있다.
+    expect(sentence).not.toBe('개찰구 방향으로 25m 직진하세요');
+    // 카드와 목록, 두 자리에 같은 문장이 있다.
+    expect(screen.getAllByText(sentence)).toHaveLength(2);
+  });
+
+  /**
    * 상세 경로가 지금 걷는 구간을 따라 올라온다. (S15P11A206-206)
    *
    * 칸이 150px이라 두 줄 반만 보인다. 예전에는 목록이 고정돼 있어서, 걸어가면 강조된 줄이 아래로

@@ -583,6 +583,9 @@ export function NavigationPage() {
     const nextDistance = progress.offRoute
       ? (activeStep.distanceM ?? 0)
       : (progress.stepRemainingM ?? activeStep.distanceM ?? 0);
+    /** 보여줄 문장이 있는지. 없으면 거리를 채울 것도 없다. */
+    const hasInstruction =
+      activeStep.instructionTemplate != null || activeStep.instruction != null;
 
     return {
       /*
@@ -593,7 +596,23 @@ export function NavigationPage() {
         recalculated && routeQuery.isFetching
           ? t('user.navigation.recalculating')
           : t('user.navigation.nextDistance', { distance: Math.round(nextDistance) }),
-      title: activeStep.instruction ?? t('user.navigation.followRoute'),
+      /*
+        **문장에 남은 거리를 채워 넣는다.** (S15P11A206-206)
+
+        예전에는 `activeStep.instruction`을 그대로 썼다. 그 문장에는 구간 전체 길이가 박혀 있어
+        (`instructionAt` 주석) 아래 상세 경로가 같은 구간을 남은 거리로 다시 쓰는 것과 어긋났다 —
+        한 화면에서 카드는 `32m 직진하세요`, 목록은 `24m 직진하세요`였다. 어느 쪽을 믿어야 하는지
+        알 수 없고, 카드 쪽 숫자는 걸어도 줄지 않으므로 틀린 쪽이 카드다.
+
+        위 `nextDistance`를 그대로 넘긴다. 상세 경로의 강조된 줄도 같은 값을 쓰므로 둘이 반드시
+        같은 문장이 된다.
+
+        문장이 아예 없을 때만 번역된 대체 문구로 간다. `instructionAt`의 마지막 수단은
+        `moveType`(`walkway` 같은 원본 코드)이라 사용자에게 보일 말이 아니다.
+      */
+      title: hasInstruction
+        ? instructionAt(activeStep, nextDistance)
+        : t('user.navigation.followRoute'),
       meta:
         totalMinutes === null
           ? t('user.navigation.totalDistance', { distance: totalDistance })
