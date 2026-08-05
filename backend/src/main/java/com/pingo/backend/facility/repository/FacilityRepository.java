@@ -55,4 +55,23 @@ public interface FacilityRepository extends JpaRepository<Facility, Long> {
             @Param("floorId") Long floorId,
             @Param("nodeId") Long nodeId
     );
+
+    /**
+     * 이 노드를 도착점으로 갖는 시설의 <b>접근 경로용 도착 노드</b>. 없으면 빈 리스트다.
+     *
+     * <p>층을 조건에 넣지 않는다. 노드 하나는 한 층에만 있으므로 층을 알 필요가 없고, 부르는
+     * 쪽({@code IndoorRouteService})은 목적지 노드만 들고 있다.
+     *
+     * <p>한 노드에 시설이 여럿 붙을 수 있어 리스트로 돌려준다 — {@code findActiveByLinkedNodeId}
+     * 와 같은 이유다. {@code ORDER BY f.id ASC} 로 매번 같은 시설이 뽑힌다.
+     */
+    @Query("""
+            SELECT f.accessibleNodeId FROM Facility f
+            WHERE f.active = true
+              AND f.stationId = :stationId
+              AND f.linkedNodeId = :nodeId
+              AND f.accessibleNodeId IS NOT NULL
+            ORDER BY f.id ASC
+            """)
+    List<Long> findAccessibleNodeIds(@Param("stationId") Long stationId, @Param("nodeId") Long nodeId);
 }

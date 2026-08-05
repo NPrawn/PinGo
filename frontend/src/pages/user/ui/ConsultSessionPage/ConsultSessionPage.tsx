@@ -1100,7 +1100,10 @@ export function ConsultSessionPage() {
               <IndoorMapView
                 stationId={stationId ?? 0}
                 floorId={displayedFloorId}
-                currentLocation={currentLocation}
+                /* 안내 화면과 같이 경로 위에 얹은 자리로 그린다. 두 화면이 같은 자리를 보여야
+                   상담자가 짚어 주는 지점과 사용자가 보는 점이 어긋나지 않는다. 얹을 수 없을
+                   만큼 멀면 null이라 날것의 좌표로 떨어진다. */
+                currentLocation={progress.snappedLocation ?? currentLocation}
                 /* 사용자 화면은 안내 화면과 같이 진행 방향이 위를 향하게 돈다. */
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
@@ -1112,13 +1115,15 @@ export function ConsultSessionPage() {
                 /* 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는 연하게 그린다. */
                 activeLeg={activeLeg}
                 /*
-                  내 점과 경로 사이의 빈 자리를 잇는다. **벗어난 동안에도 잇는다.**
+                  내 점과 경로 사이의 빈 자리를 잇는다. **얹지 못했을 때만 잇는다.**
+                  얹었으면 점이 이미 경로선 위에 있어 이을 자리가 없다.
 
-                  서버가 진입 노드를 목적지 기준으로 다시 고르면 그 노드가 수십 m 떨어질 수 있고,
-                  그 층에 남는 경로 노드가 그것 하나뿐이면 이탈로 판정되어 지도가 통째로 빈다.
-                  아무것도 그리지 않으면 사용자는 자기 층에 경로가 없다고 읽는다. (S15P11A206-83)
+                  **벗어난 동안에는 계속 잇는다.** 서버가 진입 노드를 목적지 기준으로 다시 고르면
+                  그 노드가 수십 m 떨어질 수 있고, 그 층에 남는 경로 노드가 그것 하나뿐이면 이탈로
+                  판정되어 지도가 통째로 빈다. 아무것도 그리지 않으면 사용자는 자기 층에 경로가
+                  없다고 읽는다. (S15P11A206-83)
                 */
-                connectCurrentToRoute
+                connectCurrentToRoute={progress.snappedLocation === null}
                 followCamera
                 /* `내 위치` 버튼은 고른 층까지 함께 되돌린다. 시점만 돌리면 다른 층을 보던
                    사용자는 그 층 지도가 자기 좌표로 옮겨진 것만 보고 마커는 그려지지 않는다. */

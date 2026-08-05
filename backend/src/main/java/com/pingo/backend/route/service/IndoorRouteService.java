@@ -1,5 +1,6 @@
 package com.pingo.backend.route.service;
 
+import com.pingo.backend.facility.repository.FacilityRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.route.domain.RouteMoveType;
@@ -76,10 +77,32 @@ public class IndoorRouteService {
      */
     private static final double MAX_ENTRY_STRAIGHT_M = 15.0;
 
+    /**
+     * 총 이동 거리가 이만큼 안에서 비슷하면 <b>가까운 노드</b>를 진입점으로 고르는 여유(m).
+     *
+     * <p>후보를 {@code 직선 거리 + 남은 경로 거리} 로만 고르면 사용자가 노드 위에 서 있어도 다른
+     * 노드가 뽑힌다. 그 노드에서 앞 노드로 가는 간선 하나뿐일 때 두 값이 <b>정확히 같아지기</b>
+     * 때문이다 — 역삼역 B2_R023 에 서면 이렇다.
+     *
+     * <pre>
+     *   B2_R023  직선  0m + 남은 (12 + r)  =  12 + r
+     *   B2_R004  직선 12m + 남은 r         =  12 + r
+     * </pre>
+     *
+     * <p>동점이면 스트림 순서가 정하므로 12m 떨어진 쪽이 뽑히곤 했다. 걷는 거리가 같다면 발밑에서
+     * 시작하는 편이 낫다 — 경로선이 내 자리에서 뻗어 나가고 첫 안내도 지금 서 있는 곳 기준이 된다.
+     *
+     * <p>1m 인 것은 부동소수 오차를 흡수하면서, "가까운 쪽을 고르느라 1m 더 걷는" 정도만
+     * 허용하기 위해서다. 이보다 키우면 목적지에서 멀어지는 노드가 뽑히기 시작한다.
+     */
+    private static final double ENTRY_TIE_TOLERANCE_M = 1.0;
+
     private final RouteNodeRepository routeNodeRepository;
     private final RouteEdgeRepository routeEdgeRepository;
     private final StationRepository stationRepository;
     private final StationFloorRepository stationFloorRepository;
+    /** 출구의 접근 경로용 도착 노드를 읽는다. {@link #accessibleTargetOf} 참고. */
+    private final FacilityRepository facilityRepository;
     private final RouteFinder routeFinder;
     private final RouteInstructionWriter instructionWriter;
 
@@ -87,11 +110,21 @@ public class IndoorRouteService {
      * 출발 노드에서 도착 노드까지의 경로 옵션(빠른 경로·엘리베이터 이용 경로)을 요약으로 조회한다.
      */
     public List<RouteOptionResponse> getRouteOptions(RouteOptionsRequest request) {
-        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
-        RouteGraphData data = loadGraph(request.stationId(), requested);
+        Long accessibleTarget = accessibleTargetOf(request.stationId(), request.targetNodeId());
+
+        /* 두 유형의 도착 노드가 다를 수 있어 둘 다 검증한다. 그래프는 역 전체를 한 번에 읽으므로
+           조회가 늘지는 않는다. */
+        List<Long> toValidate = stopNodeIds(
+                request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        if (!accessibleTarget.equals(request.targetNodeId())) {
+            toValidate.add(accessibleTarget);
+        }
+        RouteGraphData data = loadGraph(request.stationId(), toValidate);
 
         List<RouteOptionResponse> options = new ArrayList<>();
         for (RouteType routeType : RouteType.values()) {
+            List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(),
+                    targetFor(routeType, request.targetNodeId(), accessibleTarget));
             InboundSearch toFirstStop = searchToFirstStop(
                     requested, data, routeType, request.currentMapX(), request.currentMapY());
             List<Long> stopNodeIds = withChosenEntry(requested, data, toFirstStop, routeType,
@@ -114,7 +147,10 @@ public class IndoorRouteService {
         RouteType routeType = RouteType.fromCode(request.routeType())
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNSUPPORTED_ROUTE_TYPE));
 
-        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), request.targetNodeId());
+        Long targetNodeId = targetFor(routeType, request.targetNodeId(),
+                accessibleTargetOf(request.stationId(), request.targetNodeId()));
+
+        List<Long> requested = stopNodeIds(request.startNodeId(), request.waypointNodeIds(), targetNodeId);
         RouteGraphData data = loadGraph(request.stationId(), requested);
         InboundSearch toFirstStop = searchToFirstStop(
                 requested, data, routeType, request.currentMapX(), request.currentMapY());
@@ -124,7 +160,7 @@ public class IndoorRouteService {
 
         if (!path.isReachable()) {
             return RouteResponse.unavailable(
-                    routeType, request.startNodeId(), request.targetNodeId(),
+                    routeType, request.startNodeId(), targetNodeId,
                     reasonFor(routeType), request.language());
         }
 
@@ -133,12 +169,44 @@ public class IndoorRouteService {
         return RouteResponse.available(
                 routeType,
                 stopNodeIds.get(0),
-                request.targetNodeId(),
+                targetNodeId,
                 path.totalDistanceM(),
                 path.totalTimeSec(),
                 steps,
                 pathNodes
         );
+    }
+
+    /**
+     * 이 유형이 안내할 도착 노드.
+     *
+     * <p>{@code elevator_only} 만 접근 경로용 노드로 바꾼다. 역삼역 3·4번 출구는 출구 노드에
+     * 닿는 길이 에스컬레이터 쪽 하나뿐이고, 나란히 있는 엘리베이터는 출구 노드로 이어지지 않는다
+     * — 타면 지상으로 올라가므로 그것이 맞다. 그래서 접근 경로는 엘리베이터가 종점이다.
+     *
+     * <p><b>값이 같아져도 두 유형을 구분한다.</b> 3번 출구는 엘리베이터가 복도에서 4.03m,
+     * 에스컬레이터 경유 출구가 19.38m 라 접근 경로가 오히려 짧다. 그래도 {@code fastest} 를
+     * 엘리베이터로 보내지 않는다 — 두 옵션은 "어느 이동 수단으로 나가는가"를 고르는 것이고,
+     * 거리로 하나가 다른 하나를 삼키면 고를 것이 없어진다.
+     */
+    private Long targetFor(RouteType routeType, Long requestedTarget, Long accessibleTarget) {
+        return routeType == RouteType.ELEVATOR_ONLY ? accessibleTarget : requestedTarget;
+    }
+
+    /**
+     * 이 노드를 도착점으로 갖는 시설의 접근 경로용 도착 노드. 없으면 받은 노드를 그대로 돌려준다.
+     *
+     * <p>그대로 돌려주는 것이 맞다 — 접근 대안이 없는 출구에서는 {@code elevator_only} 도
+     * 출구 노드로 향하고, 계단·에스컬레이터 간선이 걸러져 닿지 못하면 그때 도달 불가로 답한다.
+     * 노드를 바꿔치기하는 것과 "그 출구로는 계단 없이 갈 수 없다"는 답은 서로 다른 사실이다.
+     */
+    private Long accessibleTargetOf(Long stationId, Long targetNodeId) {
+        if (stationId == null || targetNodeId == null) {
+            return targetNodeId;
+        }
+        return facilityRepository.findAccessibleNodeIds(stationId, targetNodeId).stream()
+                .findFirst()
+                .orElse(targetNodeId);
     }
 
     private List<Long> stopNodeIds(Long startNodeId, List<Long> waypointNodeIds, Long targetNodeId) {
@@ -244,6 +312,12 @@ public class IndoorRouteService {
      * <p><b>직선 구간에 상한을 둔다.</b> {@link #MAX_ENTRY_STRAIGHT_M} 참고. 위의 후보 제한과
      * 막는 것이 다르다 — 이것은 지름길 치기를, 후보 제한은 선로 건너편을 막는다.
      *
+     * <p><b>복도 노드만 후보로 둔다.</b> 시설 노드는 통로에 매달린 끝점이라 그 자리에서 경로를
+     * 시작하면 안내가 "교통카드 충전기에서 출발"처럼 읽힌다. 사용자가 실제로 서 있는 곳은
+     * 그 앞 통로이고, 시설은 지나가는 자리가 아니라 목적지다. 시설 노드는 대개 복도 노드
+     * 하나에만 붙어 있어서, 그것을 진입점으로 삼으면 첫 구간이 통로로 되돌아 나오는 군더더기가
+     * 된다. {@code is_landmark} 가 둘을 가른다 — 복도(normal·junction)는 거짓, 시설은 참이다.
+     *
      * <p><b>직선 거리라 벽을 모른다.</b> 직선으로 가깝지만 실제로는 벽 너머인 노드가 뽑힐 수
      * 있다. 지금 {@code IndoorPositionResolver} 도 같은 한계를 갖고 있어 일관은 하다. 제대로
      * 하려면 노드가 아니라 간선 위의 점에 투영해야 하고, 그것은 그래프 모델을 바꾸는 일이다.
@@ -279,12 +353,25 @@ public class IndoorRouteService {
 
         double x = currentMapX.doubleValue();
         double y = currentMapY.doubleValue();
-        Long chosen = walkable.stream()
+        List<RouteNode> candidates = walkable.stream()
                 .map(data.nodes()::get)
+                .filter(node -> !node.isLandmark())
                 .filter(node -> toFirstStop.reaches(node.getId()))
                 .filter(node -> straightDistance(x, y, node) <= MAX_ENTRY_STRAIGHT_M)
-                .min(Comparator.comparingDouble(node ->
-                        straightDistance(x, y, node) + toFirstStop.distanceFrom(node.getId()).doubleValue()))
+                .toList();
+
+        /*
+          총 이동 거리가 가장 짧은 것을 고르되, 비슷하면 가까운 쪽을 고른다.
+          왜 동점이 생기고 왜 가까운 쪽이 나은지는 ENTRY_TIE_TOLERANCE_M 에 적어 두었다.
+        */
+        double best = candidates.stream()
+                .mapToDouble(node -> straightDistance(x, y, node) + toFirstStop.distanceFrom(node.getId()).doubleValue())
+                .min()
+                .orElse(Double.NaN);
+        Long chosen = candidates.stream()
+                .filter(node -> straightDistance(x, y, node)
+                        + toFirstStop.distanceFrom(node.getId()).doubleValue() <= best + ENTRY_TIE_TOLERANCE_M)
+                .min(Comparator.comparingDouble(node -> straightDistance(x, y, node)))
                 .map(RouteNode::getId)
                 .orElse(requestedEntry);
 

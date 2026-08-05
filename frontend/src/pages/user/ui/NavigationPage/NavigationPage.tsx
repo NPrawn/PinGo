@@ -457,12 +457,41 @@ export function NavigationPage() {
    * 자리에 표시하는 것보다 없는 편이 낫다. 사용자가 시설을 새 목적지로 지정한 경우에는 그
    * 시설을 그대로 쓴다.
    *
-   * TODO(297): 경로 조회가 붙으면 목적지는 경로 응답의 마지막 노드에서 온다. 그때 이 조회와
-   * 이름 대조를 지운다.
+   * TODO(297): 이름 대조는 **라벨에만** 남았다. 마커 좌표는 `destinationPoint`가 경로 응답에서
+   * 가져온다. 응답이 목적지 이름을 함께 실어 주면 이 조회를 지울 수 있다.
    */
   const exitsQuery = useStationFacilities(stationId ?? 0, { facilityType: 'exit' });
   const [pickedDestination, setPickedDestination] = useState<Facility | null>(null);
   const matchedExitDestination = matchExitByName(exitsQuery.data ?? [], activeDestination);
+
+  /**
+   * 지도에 찍을 목적지 자리. (S15P11A206-345)
+   *
+   * 보통은 이름으로 찾은 시설 좌표다. **서버가 도착 노드를 바꿨을 때만 경로가 끝나는 자리에
+   * 찍는다.** `elevator_only`는 출구 노드가 아니라 그 출구의 엘리베이터로 안내한다
+   * (`facility.accessible_node_id`) — 출구 노드에 닿는 길이 에스컬레이터 쪽 하나뿐이라 그렇다.
+   * 그때 시설 좌표에 찍으면 경로선이 마커에서 20m 앞에 멈춘 것처럼 보이고, 사용자는 안내가
+   * 목적지에 닿지 못한 것으로 읽는다.
+   *
+   * **바꾸지 않았을 때는 시설 좌표를 그대로 쓴다.** 경로 끝을 늘 믿으면 응답이 목적지에 닿지
+   * 못한 경우에도 그 자리에 목적지 이름을 붙이게 된다 — 이름과 좌표가 다른 곳을 가리키던
+   * 79 의 문제가 형태만 바꿔 돌아온다. 도착 노드가 같다면 두 값도 같은 곳이다.
+   */
+  const arrivedAtAnotherNode =
+    routeResult?.targetNodeId != null &&
+    destinationFacility?.linkedNodeId != null &&
+    routeResult.targetNodeId !== destinationFacility.linkedNodeId;
+  const lastPathNode = pathNodes.length > 0 ? pathNodes[pathNodes.length - 1] : null;
+  const destinationPoint: IndoorPoint | null =
+    arrivedAtAnotherNode && lastPathNode
+      ? { floorId: lastPathNode.floorId, mapX: lastPathNode.mapX, mapY: lastPathNode.mapY }
+      : destinationFacility
+        ? {
+            floorId: destinationFacility.floorId,
+            mapX: destinationFacility.mapX,
+            mapY: destinationFacility.mapY,
+          }
+        : null;
 
   /**
    * 표시 층에 실제로 있는 시설 유형. 칩을 이걸로 추린다.
@@ -892,7 +921,16 @@ export function NavigationPage() {
                 <IndoorMapView
                   stationId={stationId ?? 0}
                   floorId={displayedFloorId}
-                  currentLocation={currentLocation}
+                  /* 경로 위에 얹은 자리로 그린다.
+
+                     측위 오차는 복도 폭과 비슷한 규모라(B2 0.5m·B3 1.1m, 최대 2.9m) 날것의
+                     좌표를 그대로 찍으면 내 점이 늘 경로선 옆에 떨어져 앉는다. 거기에 경로까지
+                     잇는 선이 붙으면 한 점에서 선이 둘로 갈라져 갈림길처럼 읽힌다.
+
+                     얹을 수 없을 만큼 멀면 `snappedLocation`이 null이고, 그때는 날것의 좌표를
+                     그대로 그린다 — 정말 벗어난 경우까지 경로에 붙여 놓으면 사용자가 자기가
+                     잘못 걷고 있다는 것을 알 수 없다. */
+                  currentLocation={progress.snappedLocation ?? currentLocation}
                   currentHeadingDeg={headingDeg}
                   /* 길안내 화면이므로 시점이 내 위치를 따라간다. 밀거나 확대하면 풀리고
                      `내 위치` 버튼으로 돌아온다. */
@@ -900,17 +938,10 @@ export function NavigationPage() {
                   /* 층은 이 화면이 들고 있다. 시점만 되돌리면 다른 층을 보던 사용자는 그 층
                      지도가 자기 좌표로 옮겨진 것만 보고, 마커는 다른 층이라 그려지지 않는다. */
                   onRecenter={returnToMyFloor}
-                  /* 실제 시설 좌표를 넘긴다. 목업 목적지를 쓰지 않는다 — 좌표와 이름이
-                     다른 곳을 가리키던 원인이다. 다른 층의 목적지는 오버레이가 걸러낸다. */
-                  destination={
-                    destinationFacility
-                      ? {
-                          floorId: destinationFacility.floorId,
-                          mapX: destinationFacility.mapX,
-                          mapY: destinationFacility.mapY,
-                        }
-                      : null
-                  }
+                  /* 경로가 끝나는 자리에 찍는다. 이름으로 찾은 시설이 아니다 — 경로 유형에 따라
+                     도착 노드가 달라진다(`destinationPoint`). 다른 층의 목적지는 오버레이가
+                     걸러낸다. */
+                  destination={destinationPoint}
                   /* 이름은 응답의 것을 쓴다. 마커와 같은 좌표계에서 그려야 둘이 붙어 있다.
                      시설 필터가 걸리면 원본과 같이 출구 표시를 감춘다. */
                   destinationLabel={
@@ -921,7 +952,12 @@ export function NavigationPage() {
                   }
                   /* 목적지 시설의 아이콘에 도착지 표시를 붙인다. 지도에서 시설을 새 목적지로
                      지정했을 때, 어느 아이콘이 목적지가 되었는지 알 방법이 이것뿐이다. */
-                  destinationNodeId={targetNodeId}
+                  /* **서버가 안내한 노드**를 넘긴다. 요청한 노드가 아니다 — `elevator_only` 는
+                     출구 노드가 아니라 그 출구의 엘리베이터로 안내한다(S15P11A206-345). 요청한
+                     노드를 넘기면 도착지 표시가 출구 아이콘에 붙고 경로는 엘리베이터에서 끝나,
+                     `destinationPoint` 에서 고친 것과 같은 어긋남이 아이콘 쪽에 남는다.
+                     경로가 없으면 요청한 노드로 떨어진다. */
+                  destinationNodeId={routeResult?.targetNodeId ?? targetNodeId}
                   /* 실제로 안내 중인 경로를 그린다. 조회 전이거나 실패하면 빈 배열이라
                      선이 그려지지 않는다 — 예전에는 이 자리를 목업이 채워, 사용자가 가지도
                      않을 B3 승강장 → 3번출구 경로가 늘 그려져 있었다. */
@@ -930,17 +966,20 @@ export function NavigationPage() {
                   waypointNodeIds={waypointNodeIds}
                   /* 지나온 다리는 흐리게, 지금 다리는 진하게, 남은 다리는 연하게 그린다. */
                   activeLeg={activeLeg}
-                  /* 내 점과 경로 사이의 빈 자리를 잇는다.
+                  /* 내 점과 경로 사이의 빈 자리를 잇는다. **얹지 못했을 때만 잇는다.**
 
-                     **경로에서 벗어난 동안에도 잇는다.** 처음에는 이탈이면 끊었는데, 그러면 정작
-                     필요한 자리에서 사라졌다 — 서버가 진입 노드를 목적지 기준으로 다시 고르면
+                     얹었으면 내 점이 이미 경로선 위에 있어 이을 자리가 없다. 그런데도 그리면
+                     길이 0인 선이 남아 마커 안에서 지저분해진다.
+
+                     **경로에서 벗어난 동안에는 계속 잇는다.** 처음에는 이탈이면 끊었는데, 그러면
+                     정작 필요한 자리에서 사라졌다 — 서버가 진입 노드를 목적지 기준으로 다시 고르면
                      (S15P11A206-337) 그 노드가 수십 m 떨어질 수 있고, 그 층에 남는 경로 노드가
                      그것 하나뿐이면 이탈로 판정되어 지도가 통째로 비었다. 역삼역 B3 복도(노드 209)
                      에서 2번 출구로 갈 때 실제로 그랬다.
 
                      벗어난 자리에서 가장 가까운 경로 지점으로 이어 주는 것이 필요한 안내다.
                      아무것도 그리지 않으면 사용자는 자기 층에 경로가 없다고 읽는다. */
-                  connectCurrentToRoute
+                  connectCurrentToRoute={progress.snappedLocation === null}
                   facilityType={effectiveType}
                   /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼져
                      아무 시설도 그리지 않는다. */
