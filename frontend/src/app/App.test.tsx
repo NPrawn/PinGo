@@ -198,6 +198,8 @@ describe('user routes', () => {
       destinationLatitude: 37.5007,
       destinationLongitude: 127.0365,
       currentFloorId: 1,
+      currentLocationLabel: null,
+      currentLocationLabelEn: null,
       currentMapX: -30,
       currentMapY: 10,
       /*
@@ -227,9 +229,7 @@ describe('user routes', () => {
   it('사용자 웹앱에서 고른 영어를 새 세션과 다음 화면에 적용한다', async () => {
     let requestedLanguage: string | undefined;
     // The backend currently serializes its UTC LocalDateTime without a `Z`.
-    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1_000)
-      .toISOString()
-      .replace(/Z$/, '');
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1_000).toISOString().replace(/Z$/, '');
     server.use(
       http.post('*/api/user-sessions', async ({ request }) => {
         requestedLanguage = ((await request.json()) as { language?: string }).language;
@@ -258,7 +258,9 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: /English/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
 
-    expect(await screen.findByRole('heading', { name: /Allow the permissions/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /Allow the permissions/ }),
+    ).toBeInTheDocument();
     expect(requestedLanguage).toBe('en');
     expect(useUserSessionStore.getState()).toMatchObject({
       userSessionId: 'english-user-session',
@@ -304,7 +306,9 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: /English/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
 
-    expect(await screen.findByRole('heading', { name: /Allow the permissions/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /Allow the permissions/ }),
+    ).toBeInTheDocument();
     expect(requestedLanguages).toContain('en');
     expect(useUserSessionStore.getState()).toMatchObject({
       userSessionId: 'existing-user-session',
@@ -1218,6 +1222,8 @@ describe('user routes', () => {
     useNavigationStore.setState({
       destination: 'GS25 역삼역점',
       route: 'elevator_only',
+      currentLocationLabel: 'B2 · 개찰구 A 인근',
+      currentLocationLabelEn: 'B2 · Near Fare Gate A',
       // 경로 옵션 화면에서 엘리베이터 우선을 고르면 그 유형의 출구가 여기 남는다.
       targetExitLabel: '2번 출입구',
       waypoints: [
@@ -1239,6 +1245,7 @@ describe('user routes', () => {
     expect(await screen.findByText('출발지')).toBeInTheDocument();
     expect(screen.getByText('목적지')).toBeInTheDocument();
     const routeHeader = screen.getByLabelText('현재 경로');
+    expect(within(routeHeader).getByText('B2 · 개찰구 A 인근')).toBeInTheDocument();
     expect(within(routeHeader).getByText('2번 출입구')).toBeInTheDocument();
     expect(within(routeHeader).queryByText('GS25 역삼역점')).toBeNull();
     expect(within(routeHeader).getByText('경유 1')).toBeInTheDocument();

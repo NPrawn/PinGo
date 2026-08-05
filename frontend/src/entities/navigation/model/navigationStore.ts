@@ -46,6 +46,7 @@ type NavigationStore = {
   currentNodeId: number | null;
   currentFloorId: number | null;
   currentLocationLabel: string | null;
+  currentLocationLabelEn: string | null;
   currentMapX: number | null;
   currentMapY: number | null;
   currentForwardMap: MapDirection | null;
@@ -110,6 +111,7 @@ type NavigationStore = {
     nodeId: number;
     floorId: number;
     label?: string;
+    labelEn?: string;
     mapX?: number;
     mapY?: number;
     forwardMap?: MapDirection | null;
@@ -162,6 +164,7 @@ export const useNavigationStore = create<NavigationStore>()(
       currentNodeId: null,
       currentFloorId: null,
       currentLocationLabel: null,
+      currentLocationLabelEn: null,
       currentMapX: null,
       currentMapY: null,
       currentForwardMap: null,
@@ -210,6 +213,7 @@ export const useNavigationStore = create<NavigationStore>()(
           currentNodeId: location.nodeId,
           currentFloorId: location.floorId,
           currentLocationLabel: location.label ?? null,
+          currentLocationLabelEn: location.labelEn ?? null,
           currentMapX: location.mapX ?? null,
           currentMapY: location.mapY ?? null,
           currentConfidenceScore: location.confidenceScore ?? null,

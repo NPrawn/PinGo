@@ -6,6 +6,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { localizedNameOf } from '@/shared/i18n';
+import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import type { RouteType } from '@/shared/types';
 import { ButtonLink, Icon, SelectRow } from '@/shared/ui';
@@ -71,6 +72,7 @@ export function RouteOptionsPage() {
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
   const destinationLatitude = useNavigationStore((state) => state.destinationLatitude);
@@ -80,11 +82,16 @@ export function RouteOptionsPage() {
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
-  const locationLabel = localizeUserLabel(currentLocationLabel ?? station, language);
+  const locationLabel = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    language,
+    localizeUserLabel(station, language),
+  );
   const destinationLabel = destination
     ? destination === destinationNameKo || destination === destinationNameEn
-      ? localizedNameOf(language, destinationNameKo, destinationNameEn) ??
-        localizeUserLabel(destination, language)
+      ? (localizedNameOf(language, destinationNameKo, destinationNameEn) ??
+        localizeUserLabel(destination, language))
       : localizeUserLabel(destination, language)
     : null;
   const externalDestination = isExternalDestination(destinationType);
@@ -189,8 +196,7 @@ export function RouteOptionsPage() {
       };
     }
     if (
-      (externalDestination &&
-        (destinationLatitude === null || destinationLongitude === null)) ||
+      (externalDestination && (destinationLatitude === null || destinationLongitude === null)) ||
       (!externalDestination && targetNodeId === null)
     ) {
       return destination
@@ -323,7 +329,11 @@ export function RouteOptionsPage() {
             오는 순간 다시 벌어져 화면이 튄다.
           */}
           {loading ? (
-            <div className={styles.optionList} aria-label={t('user.routeOptions.listLabel')} aria-busy="true">
+            <div
+              className={styles.optionList}
+              aria-label={t('user.routeOptions.listLabel')}
+              aria-busy="true"
+            >
               <p className={styles.srOnly} role="status">
                 {t('user.routeOptions.loading')}
               </p>

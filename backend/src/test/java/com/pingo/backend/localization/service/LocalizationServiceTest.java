@@ -200,6 +200,7 @@ class LocalizationServiceTest {
         assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.SUCCESS);
         assertThat(response.startNodeId()).isEqualTo(123L);
         assertThat(response.startNodeLabel()).isEqualTo("B2-B3 엘리베이터 A");
+        assertThat(response.startNodeLabelEn()).isEqualTo("B2-B3 Elevator A");
         assertThat(response.confidenceScore()).isEqualTo(0.87);
         assertThat(response.fallbackOptions()).isEmpty();
         assertThat(response.position()).isNotNull();
@@ -269,6 +270,7 @@ class LocalizationServiceTest {
         assertThat(response.candidate()).isNotNull();
         assertThat(response.candidate().confidenceScore()).isEqualTo(1.0);
         assertThat(response.candidate().startNodeId()).isEqualTo(123L);
+        assertThat(response.candidate().startNodeLabelEn()).isEqualTo("B2-B3 Elevator A");
         assertThat(response.candidate().position().floorCode()).isEqualTo("B2");
     }
 
@@ -347,7 +349,10 @@ class LocalizationServiceTest {
                 new BigDecimal("-0.975"), new BigDecimal("27.717"), new BigDecimal("0.000"),
                 forwardMapX, forwardMapY,
                 new BigDecimal("0.497"),
-                123L, "B2-B3 엘리베이터 A", new BigDecimal("0.770"));
+                123L,
+                "B2-B3 엘리베이터 A",
+                "B2-B3 Elevator A",
+                new BigDecimal("0.770"));
     }
 
     private AiLocalizationResponse aiResponse(AiLocalizationStatus status, String failureReason) {

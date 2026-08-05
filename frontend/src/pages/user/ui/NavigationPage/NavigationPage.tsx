@@ -24,6 +24,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { useApiLanguage } from '@/shared/i18n';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
@@ -110,7 +111,13 @@ export function NavigationPage() {
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
-  const displayedOrigin = localizeUserLabel(currentLocationLabel ?? station, language);
+  const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
+  const displayedOrigin = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    language,
+    localizeUserLabel(station, language),
+  );
   const displayedDestination = localizeUserLabel(destination, language);
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
@@ -627,9 +634,7 @@ export function NavigationPage() {
                 </p>
               </div>
             </div>
-            <p className={styles.sheetNote}>
-              {t('user.navigation.waypointNote')}
-            </p>
+            <p className={styles.sheetNote}>{t('user.navigation.waypointNote')}</p>
             <div className={styles.sheetActions}>
               <Button
                 disabled={
@@ -905,7 +910,11 @@ export function NavigationPage() {
                 {t('user.navigation.relocalizeShort')}
               </button>
 
-              <div className={styles.floorButtons} role="group" aria-label={t('user.navigation.floorSelect')}>
+              <div
+                className={styles.floorButtons}
+                role="group"
+                aria-label={t('user.navigation.floorSelect')}
+              >
                 {floorMaps.map((map) => {
                   const on = map.floorCode === displayedFloorCode;
 
@@ -932,7 +941,11 @@ export function NavigationPage() {
               </div>
 
               {/* 표시 층에 있는 유형만 둔다. 눌러서 아무것도 안 나오는 칩은 두지 않는다. */}
-              <div className={styles.facilityFilters} role="group" aria-label={t('user.navigation.facilityFilter')}>
+              <div
+                className={styles.facilityFilters}
+                role="group"
+                aria-label={t('user.navigation.facilityFilter')}
+              >
                 {availableFilters.map((filter) => {
                   const active = effectiveView === filter.facilityType;
 
@@ -943,7 +956,10 @@ export function NavigationPage() {
                       className={[styles.facilityFilter, active && styles.facilityFilterOn]
                         .filter(Boolean)
                         .join(' ')}
-                      aria-label={t(active ? 'user.navigation.filterOff' : 'user.navigation.filterOn', { name: filter.name })}
+                      aria-label={t(
+                        active ? 'user.navigation.filterOff' : 'user.navigation.filterOn',
+                        { name: filter.name },
+                      )}
                       aria-pressed={active}
                       title={filter.name}
                       onClick={() => {
@@ -976,10 +992,16 @@ export function NavigationPage() {
                     .filter(Boolean)
                     .join(' ')}
                   aria-label={
-                    effectiveView === 'none' ? t('user.navigation.showFacilities') : t('user.navigation.hideFacilities')
+                    effectiveView === 'none'
+                      ? t('user.navigation.showFacilities')
+                      : t('user.navigation.hideFacilities')
                   }
                   aria-pressed={effectiveView === 'none'}
-                  title={effectiveView === 'none' ? t('user.navigation.showFacilities') : t('user.navigation.hideFacilities')}
+                  title={
+                    effectiveView === 'none'
+                      ? t('user.navigation.showFacilities')
+                      : t('user.navigation.hideFacilities')
+                  }
                   onClick={() => {
                     setFacilityView(effectiveView === 'none' ? 'all' : 'none');
                     setSelectedFacility(null);

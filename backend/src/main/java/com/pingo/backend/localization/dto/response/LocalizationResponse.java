@@ -50,11 +50,18 @@ public record LocalizationResponse(
         Long startNodeId,
 
         @Schema(
-                description = "경로 시작 노드의 표시 이름. 시설이 붙어 있으면 시설명이다.",
-                example = "B2-B3 엘리베이터 A",
+                description = "경로 시작 노드의 사용자용 한글 표시 이름.",
+                example = "B2 · B2-B3 엘리베이터 A 인근",
                 nullable = true
         )
         String startNodeLabel,
+
+        @Schema(
+                description = "경로 시작 노드의 영문 표시 이름.",
+                example = "B2 · Near B2-B3 Elevator A",
+                nullable = true
+        )
+        String startNodeLabelEn,
 
         @Schema(
                 description = "낮은 신뢰도 응답에서만 제공하는 다중 프레임 투표용 위치 후보",

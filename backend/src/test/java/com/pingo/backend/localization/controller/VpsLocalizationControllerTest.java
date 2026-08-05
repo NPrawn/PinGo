@@ -47,6 +47,7 @@ class VpsLocalizationControllerTest {
                         null,
                         null,
                         null,
+                        null,
                         List.of(LocalizationFallbackOption.RETRY_CAPTURE),
                         1234
                 ));
