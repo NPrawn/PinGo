@@ -852,6 +852,15 @@ describe('useConsultSignaling', () => {
     expect(view.result.current.remoteCaptionFinal).toBe(true);
     expect(view.result.current.remoteFinalCaption).toBe('3번 출구로 가세요');
 
+    await act(async () => {
+      caption({ text: '왼쪽으로 가세요', final: false, language: 'ko-KR' });
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.remoteCaption).toBe('왼쪽으로 가세요');
+    expect(view.result.current.remoteCaptionFinal).toBe(false);
+    expect(view.result.current.remoteFinalCaption).toBe('3번 출구로 가세요');
+
     view.unmount();
   });
 

@@ -153,9 +153,12 @@ export function ConsultSessionPage() {
    * 그래서 옮긴 문장은 큰 자리에 그대로 두되(읽어야 하는 것은 자기 언어로 된 쪽이다),
    * 지금 들어오는 원문은 아래 줄에 흘려보낸다.
    */
-  const captionPrimary = translatedRemoteCaption || remoteCaption;
+  const captionPrimary = remoteCaptionFinal
+    ? translatedRemoteCaption || remoteCaption
+    : remoteCaption;
   /** 큰 자리와 같은 말이면 두 번 쓰지 않는다(아직 옮기지 못해 원문이 위에 올라간 경우다). */
-  const captionSource = remoteCaption && remoteCaption !== captionPrimary ? remoteCaption : '';
+  const captionSource =
+    remoteCaptionFinal && remoteCaption && remoteCaption !== captionPrimary ? remoteCaption : '';
   /** 상담원 쪽 자막이 죽었다는 사실. 이쪽 마이크 문제와 섞이지 않게 따로 띄운다. */
   const remoteCaptionNotice = describeRemoteCaptionTrouble(
     remoteCaptionError,
