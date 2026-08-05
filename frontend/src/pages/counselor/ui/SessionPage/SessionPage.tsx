@@ -293,6 +293,25 @@ export function SessionPage() {
     (facility: Facility) => {
       if (!repinning) return;
 
+      /**
+       * **경로 노드를 모르는 시설은 보내지 않는다.** (S15P11A206-206)
+       *
+       * 경로는 노드로만 계산되므로 사용자 화면이 이런 시설로는 목적지도 현재 위치도 옮길 수 없다.
+       * 예전에는 그냥 보냈고 사용자 화면이 조용히 버렸다. 상담자에게는 "옮겼어요"라고 적혀 있어서,
+       * 사용자 지도가 왜 그대로인지 알 수 없었다.
+       *
+       * 어느 시설이 노드를 갖는지는 도면만 봐서는 알 수 없으니 눌러 본 자리에서 알려 준다.
+       */
+      if (facility.linkedNodeId == null) {
+        setLastPick(
+          `${facility.nameKo}은(는) 경로에 연결된 지점이 없어 ${
+            repinning === 'dest' ? '목적지로 지정' : '현재 위치로 지정'
+          }할 수 없어요. 가까운 출구나 계단을 짚어 주세요.`,
+        );
+        setRepinning(null);
+        return;
+      }
+
       const payload = {
         facilityId: facility.facilityId,
         nameKo: facility.nameKo,
@@ -315,6 +334,34 @@ export function SessionPage() {
       setRepinning(null);
     },
     [repinning, sendConsultEvent],
+  );
+
+  /** 이름표를 띄워 둔 시설. 지도에 아이콘만 있고 그것이 무엇인지 알 방법이 없었다. */
+  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
+
+  /**
+   * 지도에서 시설을 눌렀을 때. (S15P11A206-206)
+   *
+   * **예전에는 재지정 모드가 아니면 핸들러를 아예 붙이지 않았다.** 그래서 상담자가 시설을 눌러도
+   * 아무 일도 일어나지 않았다 — 도면에 아이콘이 잔뜩 있는데 각각이 무엇인지 알 길이 없었고,
+   * 이름을 확인하려면 목적지 재지정을 켜서 실제로 사용자에게 보내 보는 수밖에 없었다.
+   *
+   * 재지정 모드에서는 그대로 사용자에게 보내고, 그 밖에는 이름표만 띄운다. 훑어보다 잘못 눌러
+   * 사용자의 목적지가 바뀌는 일은 여전히 없다.
+   */
+  const selectFacility = useCallback(
+    (facility: Facility) => {
+      if (repinning) {
+        pickOnMap(facility);
+        return;
+      }
+
+      // 같은 것을 다시 누르면 접는다. 이름표를 치울 다른 방법이 없다.
+      setSelectedFacility((current) =>
+        current?.facilityId === facility.facilityId ? null : facility,
+      );
+    },
+    [pickOnMap, repinning],
   );
 
   /**
@@ -635,6 +682,8 @@ export function SessionPage() {
                 // 층을 직접 고르는 것은 사용자 시점을 벗어나겠다는 뜻이다.
                 setSynced(false);
                 setPickedFloorId(Number(value));
+                // 다른 층 시설의 이름표를 남기지 않는다.
+                setSelectedFacility(null);
               }}
             />
             <MapPreview className={styles.map}>
@@ -655,10 +704,11 @@ export function SessionPage() {
                       /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼진다. */
                       showAllFacilities={effectiveView === 'all'}
                       /*
-                        재지정 모드일 때만 시설 선택을 사용자에게 보낸다. 켜지 않은 채로
-                        지도를 훑어보다 잘못 눌러 사용자의 목적지가 바뀌면 안 된다.
+                        재지정 모드일 때만 사용자에게 보낸다. 그 밖에는 이름표만 띄운다 —
+                        훑어보다 잘못 눌러 사용자의 목적지가 바뀌는 일은 없다.
                       */
-                      onSelectFacility={repinning ? pickOnMap : undefined}
+                      onSelectFacility={selectFacility}
+                      selectedFacilityId={selectedFacility?.facilityId}
                       /* 따라가기일 때만 사용자 위치를 좇는다. 자유 탐색은 층 전체를 본다. */
                       followCamera={synced}
                       /*
@@ -711,7 +761,11 @@ export function SessionPage() {
                       title={absent ? `이 층에는 ${filter.name}이 없어요` : undefined}
                       /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
                          누르기를 망설이게 된다. */
-                      onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
+                      onClick={() => {
+                        setFacilityView(active ? 'all' : filter.facilityType);
+                        // 다른 유형으로 넘어가면 지워진 시설의 이름표가 남지 않게 한다.
+                        setSelectedFacility(null);
+                      }}
                     >
                       <Icon name={filter.icon} size={13} />
                       {filter.name}

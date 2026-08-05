@@ -91,12 +91,27 @@ export function ConsultSessionPage() {
 
       if (event.eventType === 'DESTINATION_CHANGE_REQUESTED') {
         const { nameKo, linkedNodeId } = event.payload;
+        /**
+         * **노드를 모르는 시설은 목적지가 될 수 없다.** (S15P11A206-206)
+         *
+         * 경로는 노드로만 계산된다. 예전에는 이름을 먼저 바꾸고 노드를 아는 경우에만 도착 노드를
+         * 채웠는데, `setDestination` 이 이름만 바꾸는 것이 아니라 **`targetNodeId` 와
+         * `routeResult` 까지 비운다.** 그래서 노드를 모르는 시설을 짚으면 도착 노드가 빈 채로
+         * 남아 경로 조회 조건이 깨지고, 경로선과 목적지 마커가 통째로 사라졌다 — 상담자 화면에서
+         * "목적지 재지정을 해도 아무 일도 일어나지 않는" 것으로 보였다.
+         *
+         * 아래 `CURRENT_LOCATION_CORRECTED` 와 같은 순서로 맞춘다. 먼저 확인하고 나서 바꾼다.
+         * 상담자 쪽에서도 그런 시설은 애초에 보내지 않지만, 옛 화면이 보낼 수 있으므로 여기서도
+         * 막는다.
+         */
+        if (linkedNodeId == null) return;
+
         setDestinationName(nameKo);
         /**
          * 도착 노드까지 함께 옮긴다. 이름만 바꾸면 경로는 옛 목적지를 향한 채로 남아,
          * 화면에 적힌 곳과 지도에 그려진 길이 서로 다른 곳을 가리킨다.
          */
-        if (linkedNodeId != null) setTargetNode(linkedNodeId, nameKo);
+        setTargetNode(linkedNodeId, nameKo);
         return;
       }
 
