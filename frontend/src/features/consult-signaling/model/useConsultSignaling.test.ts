@@ -1390,5 +1390,42 @@ describe('useConsultSignaling', () => {
 
       view.unmount();
     });
+
+    /**
+     * **이미 붙어 있는 트랙에는 손대지 않는다.** (S15P11A206-206 리뷰)
+     *
+     * 같은 구성을 새 스트림으로 다시 대입하면 요소가 소스를 처음부터 다시 읽어 화면이 순간
+     * 깜빡이고 소리가 끊긴다. 소속이 온전한 정상 경로에서는 두 번째 `ontrack` 이 늘 이 경우다 —
+     * 소리와 영상이 같은 msid 로 오므로 첫 호출에서 이미 둘 다 담겨 있다.
+     */
+    it('이미 붙어 있는 트랙이 다시 와도 스트림을 갈지 않는다', async () => {
+      const view = await connectedWithVideo();
+      const element = { srcObject: null as MediaStream | null, play: vi.fn() };
+      view.result.current.remoteVideoRef.current = element as unknown as HTMLVideoElement;
+
+      const remoteAudio = fakeTrack('audio');
+      const remoteVideo = fakeTrack('video');
+      // 소리와 영상이 같은 msid 로 온다. 브라우저가 주는 스트림에 둘 다 담겨 있다.
+      const both = fakeStream([remoteAudio, remoteVideo]);
+      const fire = (track: MediaStreamTrack) => {
+        act(() => {
+          FakePeerConnection.instances[0]?.ontrack?.({
+            streams: [both],
+            track,
+          } as unknown as RTCTrackEvent);
+        });
+      };
+
+      fire(remoteAudio);
+      const afterFirst = element.srcObject;
+      expect(afterFirst?.getTracks()).toContain(remoteVideo);
+
+      fire(remoteVideo);
+
+      // 두 번째 트랙은 이미 담겨 있다. 다시 대입할 이유가 없다.
+      expect(element.srcObject).toBe(afterFirst);
+
+      view.unmount();
+    });
   });
 });

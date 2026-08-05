@@ -1090,20 +1090,31 @@ export function useConsultSignaling(
        * **처음 본 스트림 하나에 트랙을 모은다.** 화면은 `srcObject` 하나만 보므로, 소리와
        * 영상이 서로 다른 스트림으로 오면 나중에 온 쪽이 앞의 것을 덮어 버린다.
        */
-      const known = remoteStreamRef.current?.getTracks() ?? event.streams[0]?.getTracks() ?? [];
-      const tracks = known.some((existing) => existing.id === event.track.id)
-        ? [...known]
-        : [...known, event.track];
+      const attached = remoteStreamRef.current;
       /**
-       * **매번 새 스트림 객체로 만들어 붙인다.** (S15P11A206-206)
+       * 이미 붙어 있는 트랙이면 아무것도 하지 않는다. (S15P11A206-206 리뷰)
+       *
+       * 같은 구성을 새 스트림으로 다시 대입하면 요소가 소스를 처음부터 다시 읽어 화면이 순간
+       * 깜빡이고 소리가 끊긴다. 소속이 온전한 정상 경로에서는 **두 번째 `ontrack` 이 늘 이
+       * 경우다** — 소리와 영상이 같은 msid 로 오므로 첫 호출에서 이미 둘 다 담겨 있다.
+       *
+       * **판단은 `attached` 로만 한다.** `event.streams[0]` 에는 그 트랙이 이미 들어 있어서,
+       * 그것으로 판단하면 첫 트랙에서 그대로 돌아서 화면에 아무것도 붙지 않는다.
+       */
+      if (attached?.getTracks().some((existing) => existing.id === event.track.id)) return;
+
+      /**
+       * 소속이 있으면 그 스트림을 그대로 쓴다. 없으면 알고 있던 트랙에 새 트랙을 더해 **새
+       * 객체**로 만든다.
        *
        * 붙어 있는 스트림에 `addTrack` 으로 더하기만 하면 크롬은 그 트랙을 그리기 시작하지
-       * 않는다. 요소는 `srcObject` 가 **다른 객체로 바뀔 때** 트랙 구성을 다시 읽는다.
-       *
-       * 소리가 먼저 붙고 영상이 뒤에 오는 순서에서 실제로 그랬다 — 소리는 나는데 화면만 끝까지
-       * 검었다. 같은 객체를 그대로 돌려주면 `attachRemoteStream` 도 대입을 건너뛴다.
+       * 않는다. 요소는 `srcObject` 가 다른 객체로 바뀔 때 트랙 구성을 다시 읽는다. 소리가 먼저
+       * 붙고 영상이 뒤에 오는 순서에서 실제로 그랬다 — 소리는 나는데 화면만 끝까지 검었다.
        */
-      const stream = new MediaStream(tracks);
+      const stream =
+        attached == null && event.streams[0] != null
+          ? event.streams[0]
+          : new MediaStream([...(attached?.getTracks() ?? []), event.track]);
       remoteStreamRef.current = stream;
       attachRemoteStream(stream);
     };
