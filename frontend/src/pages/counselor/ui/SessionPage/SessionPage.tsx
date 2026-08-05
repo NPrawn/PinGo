@@ -41,6 +41,31 @@ import styles from './SessionPage.module.css';
 
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
+const TRANSCRIPT_SAVE_ATTEMPTS = 3;
+const TRANSCRIPT_RETRY_DELAY_MS = 500;
+
+type TranscriptRequest = Parameters<typeof submitConsultationTranscript>[1];
+
+async function submitTranscriptWithRetry(
+  consultationId: string,
+  transcript: TranscriptRequest['transcript'],
+) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < TRANSCRIPT_SAVE_ATTEMPTS; attempt += 1) {
+    try {
+      await submitConsultationTranscript(consultationId, { transcript });
+      return;
+    } catch (cause) {
+      lastError = cause;
+      if (attempt < TRANSCRIPT_SAVE_ATTEMPTS - 1) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, TRANSCRIPT_RETRY_DELAY_MS));
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('transcript_save_failed');
+}
 
 type DrawStrokeStart = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_START' }>['payload'];
 type DrawStrokeMove = Extract<ConsultEventBody, { eventType: 'DRAW_STROKE_MOVE' }>['payload'];
@@ -120,6 +145,7 @@ export function SessionPage() {
     reconnecting,
     localCaption,
     remoteCaption,
+    remoteFinalCaption,
     remoteCaptionFinal,
     remoteCaptionError,
     captionsSupported,
@@ -136,7 +162,7 @@ export function SessionPage() {
    * 상담자 콘솔은 한국어로 쓰인다. 사용자가 다른 언어로 말하면 상담자는 자막을 읽고도
    * 무슨 말인지 알 수 없어, 실시간 자막이 있으나 마나가 된다.
    */
-  const translatedUserCaption = useCaptionTranslation(consultationId, remoteCaption, 'ko');
+  const translatedUserCaption = useCaptionTranslation(consultationId, remoteFinalCaption, 'ko');
   useTranslatedSpeech(translatedUserCaption, 'ko-KR', remoteCaptionFinal);
   /**
    * 옮긴 문장은 큰 줄에, 지금 들어오는 원문은 아래 줄에 흘려보낸다.
@@ -390,7 +416,12 @@ export function SessionPage() {
     const leave = async () => {
       // 사용자가 끝냈으니 상담은 이미 `ENDED`다. 종료 요청 없이 바로 전문만 올린다.
       if (consultationId && transcript.length > 0) {
-        await submitConsultationTranscript(consultationId, { transcript }).catch(() => undefined);
+        try {
+          await submitTranscriptWithRetry(consultationId, transcript);
+        } catch {
+          setEndError('상담 전문을 저장하지 못했습니다. 네트워크를 확인해 주세요.');
+          return;
+        }
       }
       complete(selected);
       void queryClient.invalidateQueries({ queryKey: queryKeys.counselorConsultations() });
@@ -457,7 +488,13 @@ export function SessionPage() {
      * 보내지 않는다. 지도 연동이 끝나면 함께 싣는다.
      */
     if (transcript.length > 0) {
-      await submitConsultationTranscript(consultationId, { transcript }).catch(() => undefined);
+      try {
+        await submitTranscriptWithRetry(consultationId, transcript);
+      } catch {
+        setEnding(false);
+        setEndError('상담 전문을 저장하지 못했습니다. 네트워크를 확인해 주세요.');
+        return;
+      }
     }
 
     /**
@@ -992,7 +1029,6 @@ export function SessionPage() {
           </div>
         </div>
       </div>
-
     </CounselorConsoleShell>
   );
 }

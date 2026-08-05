@@ -544,10 +544,9 @@ describe('useConsultSignaling', () => {
       value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
     });
 
-    const view = renderHook(
-      ({ token }) => useConsultSignaling('room_1', 'COUNSELOR', token),
-      { initialProps: { token: 'token-1' } },
-    );
+    const view = renderHook(({ token }) => useConsultSignaling('room_1', 'COUNSELOR', token), {
+      initialProps: { token: 'token-1' },
+    });
     await flushSetup();
 
     // 토큰을 새로 받아 다시 붙어 보기를 되풀이한다.
@@ -633,7 +632,10 @@ describe('useConsultSignaling', () => {
 
     const socket = FakeSocket.instances[0];
     const statuses = (socket?.send.mock.calls ?? [])
-      .map(([raw]) => JSON.parse(String(raw)) as { type: string; payload?: { captionStatus?: string } })
+      .map(
+        ([raw]) =>
+          JSON.parse(String(raw)) as { type: string; payload?: { captionStatus?: string } },
+      )
       .filter((message) => message.type === 'CAPTION')
       .map((message) => message.payload?.captionStatus);
 
@@ -737,6 +739,110 @@ describe('useConsultSignaling', () => {
    * 예전에는 여기서 조용히 버려서, 상담자는 사용자가 보고 있다고 믿은 채 화면에 아무것도
    * 뜨지 않는 설명을 이어 갔다.
    */
+  it('queues a final caption until the peer connection is ready', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    const socket = FakeSocket.instances[0];
+    await act(async () => {
+      socket?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const recognition = FakeRecognition.instances[0];
+    recognition?.onresult?.({
+      resultIndex: 0,
+      results: [{ isFinal: true, 0: { transcript: '최종 자막' } }],
+    });
+
+    const hasFinalCaption = () =>
+      (socket?.send.mock.calls ?? [])
+        .map(([raw]) => JSON.parse(String(raw)) as { type: string; payload?: { text?: string } })
+        .some((message) => message.type === 'CAPTION' && message.payload?.text === '최종 자막');
+
+    expect(hasFinalCaption()).toBe(false);
+
+    const peer = FakePeerConnection.instances[0];
+    await act(async () => {
+      if (peer) peer.connectionState = 'connected';
+      peer?.onconnectionstatechange?.();
+      await Promise.resolve();
+    });
+
+    expect(hasFinalCaption()).toBe(true);
+    view.unmount();
+  });
+
+  it('starts speech recognition after media capture completes', async () => {
+    const getUserMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')]));
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getUserMedia).toHaveBeenCalled();
+    expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled();
+    expect(getUserMedia.mock.invocationCallOrder[0]).toBeLessThan(
+      FakeRecognition.instances[0]?.start.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+
+    view.unmount();
+  });
+
+  it('ignores results from a previous speech recognition instance', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const previousRecognition = FakeRecognition.instances[0];
+    await act(async () => {
+      view.result.current.restartCaptions();
+      await Promise.resolve();
+    });
+
+    previousRecognition?.onresult?.({
+      resultIndex: 0,
+      results: [{ isFinal: true, 0: { transcript: '이전 인식 결과' } }],
+    });
+
+    expect(view.result.current.transcript).not.toContainEqual(
+      expect.objectContaining({ content: '이전 인식 결과' }),
+    );
+
+    view.unmount();
+  });
+
   it('DataChannel 이 닫혀 있으면 상담 이벤트를 서버 우회로로 보낸다', async () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
