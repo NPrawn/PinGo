@@ -279,11 +279,14 @@ public class IndoorRouteService {
                 ))
                 .toList();
 
-        Map<Long, Integer> floorOrders = stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(stationId)
-                .stream()
+        List<StationFloor> stationFloors = stationFloorRepository.findAllByStationIdOrderByFloorOrderAsc(stationId);
+        Map<Long, Integer> floorOrders = stationFloors.stream()
                 .collect(Collectors.toMap(StationFloor::getId, StationFloor::getFloorOrder));
+        Map<Long, String> floorCodes = stationFloors.stream()
+                .filter(floor -> floor.getFloorCode() != null)
+                .collect(Collectors.toMap(StationFloor::getId, StationFloor::getFloorCode));
 
-        return new RouteGraphData(nodes, RouteFinder.graphOf(edges), floorOrders);
+        return new RouteGraphData(nodes, RouteFinder.graphOf(edges), floorOrders, floorCodes);
     }
 
     /**
@@ -426,6 +429,8 @@ public class IndoorRouteService {
             RouteMoveType moveType = segment.moveType();
             RouteInstructionWriter.Guidance guidance =
                     instructionWriter.write(previous, segment, data.nodes(), data.floorOrders(), language);
+            String fromFloorCode = floorCodeOf(segment.fromNodeId(), data);
+            String toFloorCode = floorCodeOf(segment.toNodeId(), data);
             steps.add(new RouteStep(
                     order++,
                     segment.fromNodeId(),
@@ -436,11 +441,60 @@ public class IndoorRouteService {
                     guidance.instruction(),
                     guidance.instructionTemplate(),
                     guidance.turn(),
-                    guidance.floorDelta()
+                    guidance.floorDelta(),
+                    stepTypeOf(fromFloorCode, toFloorCode),
+                    edgeClassOf(moveType),
+                    fromFloorCode,
+                    toFloorCode,
+                    accessibleFor(moveType)
             ));
             previous = segment;
         }
         return steps;
+    }
+
+    private String floorCodeOf(Long nodeId, RouteGraphData data) {
+        RouteNode node = data.nodes().get(nodeId);
+        return node == null ? null : data.floorCodes().get(node.getFloorId());
+    }
+
+    /**
+     * 클라이언트가 층 이동 화면을 띄울지 가르는 값.
+     *
+     * <p><b>층 코드가 실제로 달라질 때만 {@code floor_change} 다.</b> 수직 이동 수단인지로
+     * 정하지 않는다 — 역삼역 B1 의 B0.5 중간층은 {@code floorCode} 가 B1 이라, 그 계단·에스컬레이터는
+     * 오르내리기는 하지만 보고 있는 지도가 바뀌지 않는다. 그 자리에서 층 이동 화면을 띄우면
+     * 사용자는 넘어갈 층이 없는 화면을 닫아야 한다.
+     *
+     * <p>층을 모르면 {@code walk} 다. 모르는 것을 층 이동으로 다루면 도착층을 알려줄 수 없는
+     * 화면을 띄우게 된다.
+     */
+    private String stepTypeOf(String fromFloorCode, String toFloorCode) {
+        boolean changes = fromFloorCode != null && toFloorCode != null && !fromFloorCode.equals(toFloorCode);
+        return changes ? RouteStep.TYPE_FLOOR_CHANGE : RouteStep.TYPE_WALK;
+    }
+
+    /**
+     * 계단·에스컬레이터를 쓸 수 없는 사용자가 지날 수 있는 구간인지.
+     *
+     * <p>{@code route_edge.is_accessible} 을 읽지 않고 {@link RouteType#ELEVATOR_ONLY} 의 허용
+     * 여부로 정한다. 그래야 이 값이 실제 탐색 결과와 어긋날 수 없다 — 거짓인 구간은 엘리베이터
+     * 경로에 애초에 담기지 않는다. 컬럼을 따로 읽으면 둘이 갈라질 수 있고, 그때 클라이언트는
+     * 경로에 들어 있는데 못 지나간다고 적힌 구간을 보게 된다.
+     *
+     * <p>{@code null} 은 허용으로 본다. {@link RouteFinder} 도 같게 다룬다 — 모르는 이동 수단을
+     * 막으면 경로가 통째로 끊긴다.
+     */
+    private boolean accessibleFor(RouteMoveType moveType) {
+        return moveType == null || RouteType.ELEVATOR_ONLY.allows(moveType);
+    }
+
+    /** 간선이 수직 이동 수단인지. 통로와 개찰구만 평지다. */
+    private String edgeClassOf(RouteMoveType moveType) {
+        boolean vertical = moveType == RouteMoveType.STAIR
+                || moveType == RouteMoveType.ESCALATOR
+                || moveType == RouteMoveType.ELEVATOR;
+        return vertical ? RouteStep.EDGE_CLASS_VERTICAL : RouteStep.EDGE_CLASS_WALK;
     }
 
     /**
@@ -549,7 +603,9 @@ public class IndoorRouteService {
             /** 요청 범위 탐색 그래프. 인접 목록을 처음 쓸 때 만들고 재사용한다({@link RouteGraph}). */
             RouteGraph graph,
             /** 층 ID 에서 {@code floor_order} 로. 층 이동 안내가 몇 층인지 셀 때 쓴다. */
-            Map<Long, Integer> floorOrders
+            Map<Long, Integer> floorOrders,
+            /** 층 ID 에서 층 코드로. 층 이동 구간이 어느 층에서 어느 층으로 가는지 실을 때 쓴다. */
+            Map<Long, String> floorCodes
     ) {
     }
 }

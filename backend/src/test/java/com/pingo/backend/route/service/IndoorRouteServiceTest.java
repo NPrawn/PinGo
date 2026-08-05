@@ -161,6 +161,69 @@ class IndoorRouteServiceTest {
         assertThat(options.get(1).available()).isTrue();
     }
 
+    /**
+     * 층 이동 구간을 클라이언트가 알아볼 수 있게 내려준다. (S15P11A206-351)
+     *
+     * <p>탐색은 예전부터 층을 넘었지만 화면이 층을 따라가지 못했다 — 표시 층은 측위 좌표를
+     * 따르는데 엘리베이터를 타는 동안 측위가 이전 층에 머문다. 그래서 도착층을 알려 줄 값이
+     * 필요하다.
+     */
+    @Test
+    @DisplayName("층이 바뀌는 구간은 floor_change 로 내려가고 도착층을 알려준다")
+    void marksFloorChangeStep() {
+        givenActiveStation(1L);
+        givenNodes(1L,
+                nodeAtFloor(1L, 2L, 0, 0),
+                nodeAtFloor(2L, 2L, 10, 0),
+                nodeAtFloor(3L, 1L, 10, 0));
+        givenEdges(1L,
+                edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY),
+                edge(1L, 2L, 3L, 5, RouteMoveType.ELEVATOR));
+        givenFloors(1L, new long[] {1L, 2L});
+
+        List<RouteStep> steps = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 1L, 3L, null, "elevator_only", Language.KO, null, null)).steps();
+
+        assertThat(steps).hasSize(2);
+        assertThat(steps.get(0).type()).isEqualTo("walk");
+        assertThat(steps.get(0).edgeClass()).isEqualTo("walk");
+        assertThat(steps.get(0).fromFloorCode()).isEqualTo("B2");
+        assertThat(steps.get(0).toFloorCode()).isEqualTo("B2");
+
+        assertThat(steps.get(1).type()).isEqualTo("floor_change");
+        assertThat(steps.get(1).edgeClass()).isEqualTo("vertical_transition");
+        assertThat(steps.get(1).fromFloorCode()).isEqualTo("B2");
+        // 프론트가 이 값을 보고 도착층에서 안내를 재개한다.
+        assertThat(steps.get(1).toFloorCode()).isEqualTo("B1");
+        assertThat(steps.get(1).accessible()).isTrue();
+    }
+
+    /**
+     * **층 코드가 같으면 오르내려도 floor_change 가 아니다.**
+     *
+     * 역삼역 B1 의 B0.5 중간층이 여기 해당한다 — {@code floorCode} 가 B1 이라 보고 있는 지도가
+     * 바뀌지 않는다. 그 자리에서 층 이동 화면을 띄우면 사용자는 넘어갈 층이 없는 화면을 닫아야
+     * 한다. 수직 이동이라는 사실은 {@code edgeClass} 로 따로 알려준다.
+     */
+    @Test
+    @DisplayName("같은 층 안에서 오르내리는 구간은 수직 이동이지만 층 변경이 아니다")
+    void keepsSameFloorVerticalAsWalkType() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAtFloor(1L, 1L, 0, 0), nodeAtFloor(2L, 1L, 10, 0));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.ESCALATOR));
+        givenFloors(1L, new long[] {1L});
+
+        RouteStep step = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 1L, 2L, null, "fastest", Language.KO, null, null)).steps().get(0);
+
+        assertThat(step.edgeClass()).isEqualTo("vertical_transition");
+        assertThat(step.type()).isEqualTo("walk");
+        assertThat(step.fromFloorCode()).isEqualTo("B1");
+        assertThat(step.toFloorCode()).isEqualTo("B1");
+        // 에스컬레이터라 엘리베이터 경로로는 지날 수 없다.
+        assertThat(step.accessible()).isFalse();
+    }
+
     @Test
     @DisplayName("통로만 지나는 경로는 계단 포함이 아니다")
     void marksWalkwayOnlyPathAsStepFree() {
