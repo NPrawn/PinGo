@@ -154,11 +154,30 @@ class FakeSender {
   track: MediaStreamTrack | null;
   replaceTrack: ReturnType<typeof vi.fn>;
 
-  constructor(track: MediaStreamTrack) {
+  constructor(track: MediaStreamTrack | null) {
     this.track = track;
     this.replaceTrack = vi.fn(async (next: MediaStreamTrack | null) => {
       this.track = next;
     });
+  }
+}
+
+/**
+ * `addTransceiver` 가 돌려주는 트랜시버. **sender 를 함께 준다.**
+ *
+ * 예전에는 `vi.fn()` 이라 undefined 를 돌려줬다. 그러면 자리를 미리 잡아 두는 코드가 있는지
+ * 없는지를 테스트가 구분할 수 없다 — 실제 브라우저는 언제나 트랜시버를 돌려주고, 그 sender 가
+ * 나중에 트랙을 채울 유일한 통로다. (S15P11A206-206)
+ */
+class FakeTransceiver {
+  kind: string;
+  direction: string;
+  sender: FakeSender;
+
+  constructor(kind: string, direction: string) {
+    this.kind = kind;
+    this.direction = direction;
+    this.sender = new FakeSender(null);
   }
 }
 
@@ -181,7 +200,13 @@ class FakePeerConnection {
   getSenders = vi.fn(() => this.senders);
   close = vi.fn();
   createDataChannel = vi.fn(() => ({ readyState: 'connecting', send: vi.fn(), onmessage: null }));
-  addTransceiver = vi.fn();
+  transceivers: FakeTransceiver[] = [];
+  addTransceiver = vi.fn((kind: string, init?: { direction?: string }) => {
+    const transceiver = new FakeTransceiver(kind, init?.direction ?? 'sendrecv');
+    this.transceivers.push(transceiver);
+    this.senders.push(transceiver.sender);
+    return transceiver;
+  });
   createOffer = vi.fn().mockResolvedValue({ type: 'offer', sdp: '' });
   createAnswer = vi.fn().mockResolvedValue({ type: 'answer', sdp: 'answer-sdp' });
   setLocalDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
@@ -934,6 +959,51 @@ describe('useConsultSignaling', () => {
       // 첫 연결의 sender 는 건드리지 않는다. 이미 닫힌 연결이다.
       expect(FakePeerConnection.instances[0]?.senders[0]?.track).not.toBe(next);
       expect(rebuilt?.senders[0]?.track).toBe(next);
+
+      view.unmount();
+    });
+
+    /**
+     * **캡처가 실패한 상담에서도 나중에 온 카메라 트랙을 보낼 수 있어야 한다.** (S15P11A206-206)
+     *
+     * 이것이 상담 진입의 정상적인 한 경로다. 마이크가 다른 앱에 잡혀 있으면 `getUserMedia` 는
+     * 거절도 응답도 하지 않고, 8초 뒤 타임아웃으로 트랙 없이 협상이 진행된다. 그 뒤 사용자가
+     * XR 세션을 열면 카메라 트랙이 생기는데, 보낼 자리를 잡아 두지 않았으면 상담자 화면은
+     * 끝까지 검은 채다 — 영상 m-line 이 `inactive` 로 굳고 이 흐름은 재협상을 하지 않는다.
+     *
+     * 자리를 잡지 않은 코드에서는 `videoSenderRef` 가 null 이라 교체가 `false` 를 돌려주고
+     * 어느 sender 도 트랙을 들지 않는다.
+     */
+    it('캡처가 실패해도 나중에 온 카메라 트랙을 보낼 자리가 남아 있다', async () => {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockRejectedValue(new Error('NotReadableError')) },
+      });
+
+      const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const peer = FakePeerConnection.instances[0];
+      // 보낼 트랙이 없어도 영상 자리는 잡혀 있다. 소리는 나중에 얻을 길이 없어 잡지 않는다.
+      expect(peer?.addTransceiver).toHaveBeenCalledWith('video', { direction: 'sendrecv' });
+      expect(peer?.addTransceiver).not.toHaveBeenCalledWith('audio', expect.anything());
+
+      const fromSession = fakeTrack('video');
+      let handedOver: boolean | undefined;
+
+      await act(async () => {
+        handedOver = await view.result.current.replaceLocalVideoTrack(fromSession);
+      });
+
+      expect(handedOver).toBe(true);
+      expect(peer?.transceivers[0]?.sender.track).toBe(fromSession);
 
       view.unmount();
     });

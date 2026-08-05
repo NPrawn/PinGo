@@ -503,6 +503,27 @@ export function useConsultSignaling(
       attachDataChannel(peer.createDataChannel('consult', { ordered: true }));
     } else {
       peer.ondatachannel = (event) => attachDataChannel(event.channel);
+      /**
+       * 보낼 트랙이 없어도 영상을 **보낼 자리**를 미리 잡는다. (S15P11A206-206)
+       *
+       * 상담자는 영상 m-line 을 `recvonly` 로 열고, 방향은 answer 를 만드는 이쪽이 정한다.
+       * 그때 영상 트랜시버가 하나도 없으면 그 m-line 은 `inactive` 로 협상되고 **그대로
+       * 굳는다.** 지금 협상 흐름은 재협상을 하지 않으므로(위 `mediaReady` 주석) 뒤늦게 트랙이
+       * 생겨도 흘려보낼 방향이 없다.
+       *
+       * 캡처가 실패·타임아웃하는 경로가 실제로 그랬다. 마이크가 다른 앱에 잡혀 8초를 넘기면
+       * 붙인 트랙 없이 answer 가 나가고, 그 뒤 XR 세션이 열려 카메라 트랙이 생겨도 상담자
+       * 화면은 끝까지 검은 채였다. 화면은 "소리 없이 연결합니다"만 안내해서, 영상까지 함께
+       * 죽은 것은 드러나지도 않았다.
+       *
+       * 자리만 잡고 트랙은 넣지 않는다. 트랙 없는 `sendonly` m-line 은 아무것도 보내지 않으므로
+       * 캡처가 성공하는 정상 경로에서 달라지는 것이 없고, 실패했다면 나중에 `replaceTrack` 으로
+       * 채울 곳이 남는다.
+       *
+       * **소리는 이렇게 하지 않는다.** 마이크는 여기서 실패하면 나중에 얻을 경로가 아예 없어
+       * (XR 세션은 카메라만 준다) 자리를 잡아 둘 이유가 없다.
+       */
+      videoSenderRef.current = peer.addTransceiver('video', { direction: 'sendrecv' }).sender;
     }
     markConsultPhase('signaling 소켓 생성');   // 추가
     const wsBase = signalingBaseUrl();
@@ -967,14 +988,32 @@ export function useConsultSignaling(
         localStream = stream;
         setMediaError(null);
         if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-        localStream.getTracks().forEach((track) => {
-          const sender = peer.addTrack(track, localStream!);
+        for (const track of localStream.getTracks()) {
+          /**
+           * 영상은 위에서 잡아 둔 자리에 넣는다. (S15P11A206-206)
+           *
+           * `addTrack` 을 쓰지 않는다. 잡아 둔 트랜시버를 재사용할지는 구현에 맡겨진 부분이라,
+           * 재사용하지 않는 브라우저에서는 두 번째 영상 m-line 이 생긴다. 상담자의 offer 에는
+           * 영상 자리가 하나뿐이므로 그 여분은 협상되지 않고, 트랙이 어느 쪽에 실렸는지에 따라
+           * 영상이 나가다 말다 한다.
+           */
+          if (track.kind === 'video' && videoSenderRef.current) {
+            // 실패해도 소리는 붙여야 한다. 여기서 던지면 아래 오디오 차례가 오지 않는다.
+            try {
+              await videoSenderRef.current.replaceTrack(track);
+            } catch {
+              if (!disposed) setMediaError('카메라 영상을 연결할 수 없습니다.');
+            }
+            continue;
+          }
+
+          const sender = peer.addTrack(track, localStream);
           /**
            * 영상 sender 를 붙일 때 받아 둔다. 나중에 `getSenders()` 에서 되찾을 수 없다 —
            * 트랙을 비우면 종류를 알 방법이 사라진다. (S15P11A206-89 리뷰)
            */
           if (track.kind === 'video') videoSenderRef.current = sender;
-        });
+        }
       } catch (cause) {
         const timedOut = cause instanceof Error && cause.message === 'media_capture_timeout';
         markConsultPhase(timedOut ? '미디어 캡처 타임아웃(8초)' : '미디어 캡처 실패');   // 추가
