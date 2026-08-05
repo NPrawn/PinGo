@@ -56,6 +56,18 @@
   padding: 8px 16px 0;
 }
 
+/*
+  상단 바 오른쪽 칸. 재인식과 상담 버튼을 함께 담는다.
+
+  둘을 상단 바의 직계 자식으로 두면 `space-between`이 넷을 고르게 벌려 가운데 추적 배지가
+  중앙에서 밀려난다.
+*/
+.topBarRight {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 .journeyHeader {
   position: absolute;
   top: 100px;
@@ -440,6 +452,19 @@
   transform: translateX(-50%);
 }
 
+/*
+  유형 칩과 감추기를 가르는 선.
+
+  글자 `|`를 쓰지 않는다. 글꼴에 딸린 높이와 기준선이 칩(27px)과 맞지 않아 위아래로 뜬다.
+  1px 선이 같은 뜻이면서 칩 높이에 맞춰 그려진다.
+*/
+.facilityDivider {
+  flex: 0 0 1px;
+  align-self: stretch;
+  margin: 3px 2px;
+  background: var(--color-line);
+}
+
 .facilityFilter {
   display: flex;
   align-items: center;
@@ -481,11 +506,11 @@
 
 /* 현재 위치 다시 인식. 층 버튼과 마주보는 위치에 둔다.
    층 버튼(top-left)·시설 필터(bottom-center)와 겹치지 않는 자리다. */
+/*
+  재인식은 지도가 아니라 **카메라 화면 상단 바**에 둔다.
+  지도 위에 있으면 도면 오른쪽 위를 가리고, 복귀·숨기기 버튼과 같은 모서리를 다툰다.
+*/
 .relocalize {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 5;
   display: flex;
   gap: 4px;
   align-items: center;
@@ -539,11 +564,26 @@
   color: var(--color-mint-dark);
 }
 
+/* 한 줄 높이. 아이콘 26px에 위아래 여백 7px, 구분선 1px이다. */
 .steps {
+  --step-row: 41px;
+
   /* 지금 걷는 줄을 맨 위로 올리는 계산의 기준. 이것이 없으면 자식의 offsetTop이 이 칸이 아니라
      더 바깥 요소를 기준으로 잡혀 엉뚱한 자리로 스크롤된다. */
   position: relative;
-  max-height: 150px;
+  /*
+    **두 줄로 고정한다.** 지금 걷는 줄과 그 다음 줄이다.
+
+    `max-height`로 두면 내용만큼만 높아지는데, 이 칸은 위의 `.map`과 높이를 주고받는다
+    (`.lowerBody`는 높이가 고정이고 `.map`이 `flex: 1`이다). 걸어가면 강조된 줄만 남은 거리를 쓰고
+    강조가 풀리면 구간 전체 거리로 돌아가므로 구간이 넘어갈 때마다 두 줄의 글자가 바뀌는데, 그때
+    글자가 두 줄로 접히거나 펴지면 이 칸이 커졌다 작아지고 지도가 반대로 움직였다. 역삼역 경로는
+    내용 높이가 마침 150px 근처라 상한선을 넘나들며 계속 튀었다. (S15P11A206-206)
+
+    줄이 하나뿐이면 아래에 여백이 남는다. 칸이 걸을 때마다 변하는 것보다 낫다 — 걸으면서 보는
+    것은 지도다.
+  */
+  height: calc(2 * var(--step-row) + 8px);
   padding: 3px 10px;
   margin-top: 7px;
   overflow: auto;
