@@ -144,6 +144,7 @@ export function SessionPage() {
     error,
     reconnecting,
     localCaption,
+    localCaptionFinal = true,
     remoteCaption,
     remoteFinalCaption,
     remoteCaptionFinal,
@@ -170,9 +171,15 @@ export function SessionPage() {
    * 번역은 말이 끝난 문장에만 걸리므로, 옮긴 문장만 띄우면 사용자가 말하는 내내 화면이
    * 지난 문장에서 멈춰 있다. 상담원은 사용자가 말하는 중인지 끝난 것인지 알 수 없다.
    */
-  const userCaptionPrimary = translatedUserCaption || remoteCaption;
+  /** 확정 원문은 아래 타임라인에 들어가므로 실시간 영역에는 진행 중인 결과만 남긴다. */
+  const liveUserCaption = remoteCaptionFinal ? '' : remoteCaption;
+  const userCaptionPrimary = remoteCaptionFinal
+    ? translatedUserCaption !== remoteCaption
+      ? translatedUserCaption
+      : ''
+    : translatedUserCaption || liveUserCaption;
   const userCaptionSource =
-    remoteCaption && remoteCaption !== userCaptionPrimary ? remoteCaption : '';
+    liveUserCaption && liveUserCaption !== userCaptionPrimary ? liveUserCaption : '';
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
   const userCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '사용자');
 
@@ -887,14 +894,14 @@ export function SessionPage() {
                 <span className={styles.speakerAgent}>상담원</span>
                 <br />
                 <span className={styles.line}>
-                  {localCaption ||
+                  {(!localCaptionFinal && localCaption) ||
                     (captionsSupported
                       ? '마이크를 켜고 말하면 이 자리에 표시됩니다.'
                       : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                 </span>
               </div>
-              {/* 최신 확정 발화부터 보여 주고, 이전 대화는 아래로 스크롤해 확인한다. */}
-              {[...transcript].reverse().map((segment) => (
+              {/* 발화 시각 순서로 보여 주어 실제 상담 흐름을 따라갈 수 있게 한다. */}
+              {transcript.map((segment) => (
                 <div key={segment.seq}>
                   <span
                     className={
