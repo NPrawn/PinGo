@@ -83,8 +83,13 @@ async function flushSetup() {
   });
 }
 
+/** 트랙마다 다른 `id` 를 준다. 같은 트랙이 두 번 담기지 않는지 보는 검사가 이것에 기댄다. */
+let trackSequence = 0;
+
 function fakeTrack(kind: 'video' | 'audio') {
+  trackSequence += 1;
   return {
+    id: `track-${trackSequence}`,
     kind,
     stop: vi.fn(),
     addEventListener: vi.fn(),
@@ -110,6 +115,10 @@ class FakeMediaStream {
 
   getTracks() {
     return this.tracks;
+  }
+
+  addTrack(track: MediaStreamTrack) {
+    this.tracks.push(track);
   }
 
   getVideoTracks() {
@@ -152,12 +161,25 @@ class FakeRecognition {
  */
 class FakeSender {
   track: MediaStreamTrack | null;
+  /**
+   * 이 sender 가 소속된 스트림. **협상에 실리는 msid 가 여기서 나온다.**
+   *
+   * `addTrack(track, stream)` 은 이것을 채우고 `addTransceiver` 로 잡은 자리는 비운 채로
+   * 시작한다. 받는 쪽 `event.streams` 가 비어 오는지가 이 값에 달렸으므로, 가짜가 이것을
+   * 들고 있지 않으면 msid 가 빠진 결함을 테스트가 볼 수 없다. (S15P11A206-206 리뷰)
+   */
+  streams: MediaStream[];
   replaceTrack: ReturnType<typeof vi.fn>;
+  setStreams: ReturnType<typeof vi.fn>;
 
-  constructor(track: MediaStreamTrack | null) {
+  constructor(track: MediaStreamTrack | null, streams: MediaStream[] = []) {
     this.track = track;
+    this.streams = streams;
     this.replaceTrack = vi.fn(async (next: MediaStreamTrack | null) => {
       this.track = next;
+    });
+    this.setStreams = vi.fn((...next: MediaStream[]) => {
+      this.streams = next;
     });
   }
 }
@@ -189,11 +211,12 @@ class FakePeerConnection {
   remoteDescription: RTCSessionDescriptionInit | null = null;
   localDescription: (RTCSessionDescriptionInit & { toJSON: () => unknown }) | null = null;
   onconnectionstatechange: (() => void) | null = null;
-  ontrack: (() => void) | null = null;
+  ontrack: ((event: RTCTrackEvent) => void) | null = null;
   onicecandidate: (() => void) | null = null;
   senders: FakeSender[] = [];
-  addTrack = vi.fn((track: MediaStreamTrack) => {
-    const sender = new FakeSender(track);
+  addTrack = vi.fn((track: MediaStreamTrack, stream?: MediaStream) => {
+    // 브라우저와 같이 넘어온 스트림을 sender 의 소속으로 남긴다.
+    const sender = new FakeSender(track, stream ? [stream] : []);
     this.senders.push(sender);
     return sender;
   });
@@ -1248,6 +1271,59 @@ describe('useConsultSignaling', () => {
 
       expect(handedOver).toBe(true);
       expect(peer?.transceivers[0]?.sender.track).toBe(fromSession);
+
+      view.unmount();
+    });
+
+    /**
+     * **잡아 둔 자리에는 스트림 소속을 따로 붙여야 한다.** (S15P11A206-206 리뷰)
+     *
+     * `addTransceiver` 로 만든 sender 에는 스트림이 딸려 있지 않고 `replaceTrack` 은 트랙만
+     * 바꾼다. 그대로 협상하면 영상 m-line 에 msid 가 빠지고, 받는 쪽 `ontrack` 은
+     * `event.streams` 를 빈 배열로 받는다. 소리는 `addTrack` 으로 소속이 있으므로 상담자
+     * 화면은 **소리만 나고 화면은 검은** 상태가 된다 — 캡처가 성공하는 정상 경로에서도 그렇다.
+     *
+     * 소리와 **같은** 스트림이어야 한다. 서로 다른 스트림으로 가면 화면이 보는 `srcObject` 는
+     * 하나뿐이라 나중에 도착한 쪽이 앞의 것을 덮는다.
+     */
+    it('잡아 둔 영상 자리를 소리와 같은 스트림에 넣는다', async () => {
+      const view = await connectedWithVideo();
+
+      const peer = FakePeerConnection.instances[0];
+      const videoSender = peer?.transceivers[0]?.sender;
+      const audioSender = peer?.senders.find((sender) => sender.track?.kind === 'audio');
+
+      // 잡아 둔 자리에 카메라 트랙이 들어갔다.
+      expect(videoSender?.track?.kind).toBe('video');
+      expect(audioSender?.streams[0]).toBeDefined();
+      expect(videoSender?.streams[0]).toBe(audioSender?.streams[0]);
+
+      view.unmount();
+    });
+
+    /**
+     * **스트림 소속 없이 온 트랙도 화면에 붙인다.** (S15P11A206-206 리뷰)
+     *
+     * 캡처가 8초를 넘겨 트랙 없이 answer 가 먼저 나간 경로에서는, 뒤늦게 자리를 채워도 msid 를
+     * 다시 알릴 재협상이 없다. 그때 `event.streams` 는 빈 배열로 오는데 예전에는 여기서 그대로
+     * 돌아섰다 — 영상이 흐르고 있는데도 화면은 끝까지 검었다. `setStreams` 가 없는 브라우저도
+     * 같은 자리에 놓인다.
+     */
+    it('스트림 소속 없이 온 트랙도 화면에 붙인다', async () => {
+      const view = await connectedWithVideo();
+      const element = { srcObject: null as MediaStream | null, play: vi.fn() };
+      view.result.current.remoteVideoRef.current = element as unknown as HTMLVideoElement;
+
+      const incoming = fakeTrack('video');
+
+      act(() => {
+        FakePeerConnection.instances[0]?.ontrack?.({
+          streams: [],
+          track: incoming,
+        } as unknown as RTCTrackEvent);
+      });
+
+      expect(element.srcObject?.getTracks()).toContain(incoming);
 
       view.unmount();
     });
