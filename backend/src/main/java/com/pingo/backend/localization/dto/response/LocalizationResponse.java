@@ -62,6 +62,15 @@ public record LocalizationResponse(
         )
         LocalizationCandidateResponse candidate,
 
+        @Schema(
+                description = "AI 기하 품질 지표를 0~1로 정규화한 위치 인식 신뢰도",
+                example = "0.87",
+                minimum = "0",
+                maximum = "1",
+                nullable = true
+        )
+        Double confidenceScore,
+
         @ArraySchema(
                 schema = @Schema(
                         description = "사용자에게 제공할 fallback 동작",

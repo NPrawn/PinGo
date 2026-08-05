@@ -125,9 +125,8 @@ export const en = {
       },
       locateSuccess: {
         camera: 'Rear camera view', found: 'We found your location', matched: 'VPS match complete',
-        confidence: '92% confidence', eyebrow: 'Confirm your location', title: 'Is this the right place?',
-        nearby: 'Toward Exit 3 · Near pillar 12', recognized: 'Located',
-        stationMeta: 'Line 2 · Exits 1–8', accuracy: 'Accuracy about 1.2 m',
+        confidence: '{{percent}}% confidence', confidenceUnavailable: 'Confidence verified', eyebrow: 'Confirm your location', title: 'Is this the right place?',
+        recognized: 'Located', accuracy: 'Accuracy about {{meters}} m', accuracyUnavailable: 'Accuracy unavailable',
         continue: 'Continue guidance from here →', chooseRoute: 'Choose a route from here →',
         retake: 'This isn’t my location · Scan again',
       },

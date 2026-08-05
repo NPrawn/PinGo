@@ -41,6 +41,7 @@ export type LocalizationCandidateResponse = {
 };
 export type LocalizationResponse = GeneratedLocalizationResponse & {
   candidate?: LocalizationCandidateResponse | null;
+  confidenceScore?: number | null;
 };
 export type ExternalDirectionRequest = Schemas['ExternalDirectionRequest'];
 export type ExternalDirectionResponse = Schemas['ExternalDirectionResponse'];
