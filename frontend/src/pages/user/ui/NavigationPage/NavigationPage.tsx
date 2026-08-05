@@ -465,17 +465,24 @@ export function NavigationPage() {
   const matchedExitDestination = matchExitByName(exitsQuery.data ?? [], activeDestination);
 
   /**
-   * 지도에 찍을 목적지 자리. (S15P11A206-345)
+   * 표시 층에 실제로 있는 시설 유형. 칩을 이걸로 추린다.
    *
-   * 보통은 이름으로 찾은 시설 좌표다. **서버가 도착 노드를 바꿨을 때만 경로가 끝나는 자리에
-   * 찍는다.** `elevator_only`는 출구 노드가 아니라 그 출구의 엘리베이터로 안내한다
-   * (`facility.accessible_node_id`) — 출구 노드에 닿는 길이 에스컬레이터 쪽 하나뿐이라 그렇다.
-   * 그때 시설 좌표에 찍으면 경로선이 마커에서 20m 앞에 멈춘 것처럼 보이고, 사용자는 안내가
-   * 목적지에 닿지 못한 것으로 읽는다.
-   *
-   * **바꾸지 않았을 때는 시설 좌표를 그대로 쓴다.** 경로 끝을 늘 믿으면 응답이 목적지에 닿지
-   * 못한 경우에도 그 자리에 목적지 이름을 붙이게 된다 — 이름과 좌표가 다른 곳을 가리키던
-   * 79 의 문제가 형태만 바꿔 돌아온다. 도착 노드가 같다면 두 값도 같은 곳이다.
+   * 역 전체를 한 번 받아 층은 여기서 거른다. 지도 위젯이 유형 없이 그릴 때 쓰는 조회와 같은
+   * 키라 요청은 한 번만 나가고, 층을 오갈 때 다시 받지 않아 칩이 깜빡이지 않는다.
+   */
+  const facilitiesQuery = useStationFacilities(stationId ?? 0);
+  const facilitiesLoaded = facilitiesQuery.data !== undefined;
+  const nodeDestinationFacility =
+    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, activeDestination) ??
+    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameKo) ??
+    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameEn);
+  const storedDestinationFacility = pickedDestination ?? nodeDestinationFacility;
+  const destinationFacility =
+    storedDestinationFacility ?? matchedExitDestination ?? null;
+
+  /**
+   * 목적지 시설이 경로 응답의 도착 노드와 다를 때만 실제 경로 끝에 마커를 둔다.
+   * 시설이 선언된 뒤 계산해야 목적지 좌표와 경로 끝의 불일치를 처리할 수 있다.
    */
   const arrivedAtAnotherNode =
     routeResult?.targetNodeId != null &&
@@ -493,21 +500,6 @@ export function NavigationPage() {
           }
         : null;
 
-  /**
-   * 표시 층에 실제로 있는 시설 유형. 칩을 이걸로 추린다.
-   *
-   * 역 전체를 한 번 받아 층은 여기서 거른다. 지도 위젯이 유형 없이 그릴 때 쓰는 조회와 같은
-   * 키라 요청은 한 번만 나가고, 층을 오갈 때 다시 받지 않아 칩이 깜빡이지 않는다.
-   */
-  const facilitiesQuery = useStationFacilities(stationId ?? 0);
-  const facilitiesLoaded = facilitiesQuery.data !== undefined;
-  const nodeDestinationFacility =
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, activeDestination) ??
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameKo) ??
-    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameEn);
-  const storedDestinationFacility = pickedDestination ?? nodeDestinationFacility;
-  const destinationFacility =
-    storedDestinationFacility ?? matchedExitDestination ?? null;
   const facilityOrigin = localizedFacilityNameAtNode(
     facilitiesQuery.data,
     currentNodeId,
