@@ -9,6 +9,11 @@ import type { IconName } from '@/shared/ui';
  *
  * 안내 화면과 상담 화면이 같은 목록을 써야 한다. 상담자가 켠 시설이 사용자 화면에 없는
  * 유형이면, 짚어 준 자리를 사용자가 찾을 수 없다.
+ *
+ * **역삼역 응답에 오는 유형은 14종이고 이 목록은 그중 일부다.** 전체 표시(`showAllFacilities`)는
+ * 그 층의 모든 유형을 그리므로, 여기 없는 유형은 지도에 뜨는데 칩이 없어 따로 켜고 끌 수 없다.
+ * 유형을 늘릴 때 판단 기준은 **길을 찾는 사람이 그것을 목표로 삼는가**다 — 개찰구와 물품보관함은
+ * 그렇고(S15P11A206-206), 환승통로·역무실처럼 지나가거나 물어보는 곳은 아직 두지 않았다.
  */
 export const FACILITY_MAP_FILTERS: readonly {
   name: string;
@@ -17,9 +22,11 @@ export const FACILITY_MAP_FILTERS: readonly {
 }[] = [
   { name: '화장실', icon: 'restroom', facilityType: 'restroom' },
   { name: '승차권 충전', icon: 'card', facilityType: 'card_charger' },
+  { name: '물품보관함', icon: 'lock', facilityType: 'locker' },
   { name: '엘리베이터', icon: 'elevator', facilityType: 'elevator' },
   { name: '에스컬레이터', icon: 'escalator', facilityType: 'escalator' },
   { name: '계단', icon: 'stairs', facilityType: 'stair' },
   { name: '내린 위치', icon: 'train', facilityType: 'platform' },
+  { name: '개찰구', icon: 'gate', facilityType: 'gate' },
   { name: '출구', icon: 'door', facilityType: 'exit' },
 ];
