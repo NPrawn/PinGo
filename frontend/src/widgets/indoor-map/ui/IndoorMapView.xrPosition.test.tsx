@@ -1,6 +1,11 @@
 import { act, render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
-import { MOCK_FLOOR_ID, useStationFloorMaps } from '@/entities/floor-map';
+import {
+  meterToPixel,
+  MOCK_FLOOR_ID,
+  PLAN_REFERENCE,
+  useStationFloorMaps,
+} from '@/entities/floor-map';
 import type { IndoorPoint } from '@/entities/navigation';
 import { useXrMapPosition, type PlanarVector } from '@/features/xr-tracking';
 import type {
@@ -212,9 +217,12 @@ describe('IndoorMapView + useXrMapPosition', () => {
   });
 
   /**
-   * 전방 10m 이동은 지도 미터 (0, -10)이고, 이를 B2 프레임으로 픽셀 변환하면
-   * `meterToPixel(0, -10)` = originPx + 회전(-21.28°)·축척(0.19) 적용값이다.
-   * 훅과 오버레이가 같은 프레임을 쓰는지 확인한다.
+   * 전방 10m 이동은 지도 미터 (0, -10)이고, 이를 표시 기준 프레임으로 픽셀 변환한 자리에
+   * 마커가 있어야 한다. 훅과 오버레이가 같은 프레임을 쓰는지 확인한다.
+   *
+   * <p>기대값을 손으로 계산하지 않고 {@code PLAN_REFERENCE} 와 {@code meterToPixel} 을 쓴다.
+   * 예전에는 축척 0.19 를 여기에 적어 두었는데, 실측 보정으로 프레임이 바뀌자
+   * (S15P11A206-351) 프레임은 맞는데 이 테스트만 깨졌다 — 상수를 복제하면 그렇게 된다.
    */
   it('마커 픽셀 좌표가 프레임 변환 결과와 일치한다', () => {
     const fake = createFakeController();
@@ -231,12 +239,11 @@ describe('IndoorMapView + useXrMapPosition', () => {
       fake.emitSnapshot(0, -10);
     });
 
-    const radians = (-21.28 * Math.PI) / 180;
-    const expectedPx = 622 + (Math.cos(radians) * 0 - Math.sin(radians) * -10) / 0.19;
-    const expectedPy = 512 + (Math.sin(radians) * 0 + Math.cos(radians) * -10) / 0.19;
+    const expected = meterToPixel(0, -10, PLAN_REFERENCE.frame);
 
-    expect(Number(currentMarker().getAttribute('cx'))).toBeCloseTo(expectedPx, 3);
-    expect(Number(currentMarker().getAttribute('cy'))).toBeCloseTo(expectedPy, 3);
+    expect(expected).not.toBeNull();
+    expect(Number(currentMarker().getAttribute('cx'))).toBeCloseTo(expected!.px, 3);
+    expect(Number(currentMarker().getAttribute('cy'))).toBeCloseTo(expected!.py, 3);
   });
 
   /** 앵커를 만들 수 없으면 사전 확정 위치가 그대로 그려진다(11.2). */

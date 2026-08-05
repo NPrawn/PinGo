@@ -38,6 +38,7 @@ import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
+import { FloorChangeSheet } from './FloorChangeSheet';
 import styles from './NavigationPage.module.css';
 
 /**
@@ -125,6 +126,8 @@ export function NavigationPage() {
   const currentMapY = useNavigationStore((state) => state.currentMapY);
   const currentForwardMap = useNavigationStore((state) => state.currentForwardMap);
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
+  /** 층 이동을 마쳤을 때 도착층 노드로 위치를 옮긴다. (S15P11A206-351) */
+  const setCurrentLocation = useNavigationStore((state) => state.setCurrentLocation);
   const setRouteResult = useNavigationStore((state) => state.setRouteResult);
   const progressKey = useNavigationStore((state) => state.progressKey);
   const storedTravelledM = useNavigationStore((state) => state.travelledM);
@@ -398,6 +401,80 @@ export function NavigationPage() {
     progress.currentStepIndex === null
       ? undefined
       : routeResult?.steps?.[progress.currentStepIndex];
+
+  /**
+   * 층 이동 안내. (S15P11A206-351)
+   *
+   * **경로에 남은 첫 층 이동 구간**을 고른다. 지금 걷는 구간(`activeStep`)만 보지 않는 이유는
+   * 진행도가 거리로 오르기 때문이다 — 추적이 꺼져 있으면 진행도가 멈춰 층 이동 구간이 활성이
+   * 되지 않고, 그러면 층을 넘길 방법이 없다. 안내 카드의 버튼으로 언제든 열 수 있게 두고,
+   * 그 구간이 활성이 되면 저절로 뜨게 한다.
+   */
+  const steps = routeResult?.steps ?? [];
+  const floorChangeIndex = steps.findIndex(
+    (step, index) =>
+      step.type === 'floor_change' &&
+      (progress.currentStepIndex == null || index >= progress.currentStepIndex),
+  );
+  const floorChangeStep = floorChangeIndex === -1 ? undefined : steps[floorChangeIndex];
+  const [floorChangeOpen, setFloorChangeOpen] = useState(false);
+  /**
+   * 자동으로 띄운 구간. 사용자가 닫은 구간을 다시 띄우지 않으려고 기억한다.
+   *
+   * 경로 열쇠를 함께 넣는다 — 인덱스만 쓰면 경로를 새로 받았을 때 같은 자리의 다른 구간을
+   * 이미 띄운 것으로 보게 된다.
+   */
+  const autoOpenedKey = useRef<string | null>(null);
+
+  /**
+   * 층 이동 구간에 닿으면 저절로 띄운다.
+   *
+   * 한 구간에 한 번만 띄운다 — 닫았는데 다시 뜨면 지도를 볼 수 없다. 다시 보려면 안내 카드의
+   * 버튼을 쓴다. 구간이 바뀌면 다시 띄운다(경로를 새로 받거나 다음 층 이동에 닿은 경우).
+   */
+  useEffect(() => {
+    if (floorChangeIndex === -1) return;
+    if (progress.currentStepIndex !== floorChangeIndex) return;
+
+    const key = `${routeKey}:${floorChangeIndex}`;
+    if (autoOpenedKey.current === key) return;
+
+    autoOpenedKey.current = key;
+    setFloorChangeOpen(true);
+  }, [floorChangeIndex, progress.currentStepIndex, routeKey]);
+
+  /**
+   * 층을 넘긴다. **도착층의 다음 경로 노드로 옮긴다.**
+   *
+   * 도착 노드(`toNodeId`)는 계단·엘리베이터 시설 노드다. 그 자리에 세우면 두 가지가 어긋난다.
+   *
+   * 1. 시설 노드에 붙은 복도 간선은 하나뿐인데(역삼역 B2 계단 5 는 `B2_R023` 6.88m), 서버가
+   *    진입 노드를 다시 고를 때 총거리로는 8.51m 떨어진 `B2_R004` 가 5.56m 짧아 그쪽이 뽑힌다.
+   *    그 대각선이 통행 가능한지는 확인된 바 없다 — 진입점 선택이 직선 거리라 벽을 모른다.
+   * 2. 안내가 계단에서 시작해 "교통카드 충전기에서 출발"처럼 읽힌다. 345 가 진입 노드에서
+   *    시설을 제외한 것과 같은 이유다.
+   *
+   * 경로에는 이미 그 복도 노드가 도착 노드 바로 뒤에 들어 있다(`124 -> 353 -> 104`). 계단을 올라
+   * 통로로 나온 자리가 그것이므로 거기로 옮긴다. 다음 노드가 없으면(층 이동이 경로의 끝) 도착
+   * 노드를 그대로 쓴다.
+   */
+  const completeFloorChange = () => {
+    setFloorChangeOpen(false);
+    if (floorChangeStep?.toNodeId == null) return;
+
+    const arrivalIndex = pathNodes.findIndex((node) => node.nodeId === floorChangeStep.toNodeId);
+    if (arrivalIndex === -1) return;
+
+    const arrival = pathNodes[arrivalIndex + 1] ?? pathNodes[arrivalIndex];
+
+    setCurrentLocation({
+      nodeId: arrival.nodeId,
+      floorId: arrival.floorId,
+      mapX: arrival.mapX,
+      mapY: arrival.mapY,
+    });
+    setPickedFloorCode(null);
+  };
 
   /**
    * 지금 걷고 있는 다리. **지나온 경유지 수가 곧 다리 번호다.**
@@ -748,6 +825,18 @@ export function NavigationPage() {
             onConfirm={startXrSession}
             onContinueWithoutTracking={continueWithoutTracking}
           />
+        ) : /**
+         * 층 이동 안내. 세션 안내 다음 순위다 — 세션을 아직 고르지 않았으면 그것이 먼저다.
+         * 시설 시트보다는 앞선다. 층을 넘기지 못하면 그 다음 조작이 의미가 없다.
+         */
+        floorChangeOpen && floorChangeStep ? (
+          <FloorChangeSheet
+            toFloorCode={floorChangeStep.toFloorCode ?? ''}
+            floorDelta={floorChangeStep.floorDelta ?? null}
+            moveType={floorChangeStep.moveType ?? null}
+            onComplete={completeFloorChange}
+            onDismiss={() => setFloorChangeOpen(false)}
+          />
         ) : undefined
       }
     >
@@ -872,6 +961,24 @@ export function NavigationPage() {
             <Icon name="refresh" size={14} />
             {t('user.navigation.relocalizeShort')}
           </button>
+
+          {/*
+            층 이동 안내를 직접 여는 버튼. (S15P11A206-351)
+
+            **자동 노출만으로는 부족하다.** 저절로 뜨는 것은 진행도가 그 구간에 닿을 때인데,
+            진행도는 걸은 거리로 오르므로 추적이 꺼져 있으면 멈춘다. 그러면 층을 넘길 방법이
+            없어 안내가 출발층에 갇힌다. 남은 층 이동이 있을 때만 둔다.
+          */}
+          {floorChangeStep && (
+            <button
+              type="button"
+              className={styles.floorChangeOpen}
+              onClick={() => setFloorChangeOpen(true)}
+            >
+              <Icon name={floorChangeStep.moveType === 'elevator' ? 'elevator' : 'stairs'} size={14} />
+              {t('user.navigation.floorChange.open')}
+            </button>
+          )}
 
           <div className={styles.instructionCard}>
             <span className={styles.instructionIcon}>

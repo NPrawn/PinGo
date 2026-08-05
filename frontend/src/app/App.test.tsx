@@ -1022,6 +1022,173 @@ describe('user routes', () => {
   });
 
   /**
+   * 층 이동 안내. (S15P11A206-351)
+   *
+   * 계단·엘리베이터를 타는 동안 측위는 이전 층에 머문다 — WebXR 추적은 수직 이동을 따라가지
+   * 못하고 재인식도 걸리지 않는다. 그래서 다 올라간 뒤에도 지도가 출발층에 남았고 사용자가 층
+   * 탭을 직접 눌러야 했다. 도착을 사용자에게 물어 그 시점에 층을 넘긴다.
+   *
+   * 층이 둘인 ㄱ자 통로를 세운다. 실제 역삼역 B3 엘리베이터 A → B2 모양이다.
+   *
+   * ```
+   *   B3   401(0,0) --10m-- 402(10,0)
+   *                            |  엘리베이터 (층 이동)
+   *   B2                    403(12,0) --6m-- 404(18,0) --12m-- 405(30,0)
+   *                         엘베 앞(시설)      복도            목적지
+   * ```
+   *
+   * 사용자를 402(엘리베이터 앞, B3)에 세운다. 진행 거리가 층 이동 구간에 들어가 화면이 자동으로
+   * 뜬다.
+   */
+  const floorChangeRoute = {
+    routeType: 'fastest',
+    available: true,
+    startNodeId: 401,
+    targetNodeId: 405,
+    totalDistanceM: 33,
+    pathNodes: [
+      { nodeId: 401, floorId: 2, mapX: 0, mapY: 0 },
+      { nodeId: 402, floorId: 2, mapX: 10, mapY: 0 },
+      { nodeId: 403, floorId: 1, mapX: 12, mapY: 0 },
+      { nodeId: 404, floorId: 1, mapX: 18, mapY: 0 },
+      { nodeId: 405, floorId: 1, mapX: 30, mapY: 0 },
+    ],
+    steps: [
+      {
+        order: 1, fromNodeId: 401, toNodeId: 402, distanceM: 10, moveType: 'walkway',
+        instruction: '10m 직진하세요.', type: 'walk', edgeClass: 'walk',
+        fromFloorCode: 'B3', toFloorCode: 'B3', accessible: true,
+      },
+      {
+        order: 2, fromNodeId: 402, toNodeId: 403, distanceM: 5, moveType: 'elevator',
+        instruction: '엘리베이터로 한 층 올라가세요.', floorDelta: 1,
+        type: 'floor_change', edgeClass: 'vertical_transition',
+        fromFloorCode: 'B3', toFloorCode: 'B2', accessible: true,
+      },
+      {
+        order: 3, fromNodeId: 403, toNodeId: 404, distanceM: 6, moveType: 'walkway',
+        instruction: '6m 직진하세요.', type: 'walk', edgeClass: 'walk',
+        fromFloorCode: 'B2', toFloorCode: 'B2', accessible: true,
+      },
+      {
+        order: 4, fromNodeId: 404, toNodeId: 405, distanceM: 12, moveType: 'walkway',
+        instruction: '12m 직진하세요.', type: 'walk', edgeClass: 'walk',
+        fromFloorCode: 'B2', toFloorCode: 'B2', accessible: true,
+      },
+    ],
+  };
+
+  /** 위 경로를 돌려주고, 사용자를 층 이동 구간 바로 앞(402)에 세운다. */
+  async function renderAtFloorChange(
+    route: Record<string, unknown> = floorChangeRoute,
+    position = { currentMapX: 10, currentMapY: 0 },
+  ) {
+    server.use(
+      http.post('*/api/routes/indoor', () =>
+        HttpResponse.json({ success: true, data: route, message: null }),
+      ),
+    );
+    useNavigationStore.setState({
+      currentNodeId: 402,
+      targetNodeId: 405,
+      currentFloorId: 2,
+      ...position,
+    });
+
+    await renderSection('/user/navigation');
+    /*
+      세션 안내를 확실히 닫는다.
+
+      `overlay` 는 한 번에 하나만 띄우고 세션 안내가 층 이동 안내보다 앞선다. 한 번 누르는 것으로는
+      모자라다 — 지연 로딩이 끝나며 화면이 다시 서면 안내도 다시 뜬다. 사라질 때까지 닫는다.
+    */
+    const notice = () => screen.queryByRole('button', { name: /지도만 보고 이동하기/ });
+    await waitFor(() => {
+      const button = notice();
+      if (button) fireEvent.click(button);
+      expect(notice()).toBeNull();
+    });
+  }
+
+  it('층 이동 구간에 들어가면 층 이동 안내가 저절로 뜬다', async () => {
+    await renderAtFloorChange();
+
+    const sheet = await screen.findByRole('dialog', { name: 'B2층까지 올라가기' });
+
+    // 도착층을 크게 둔다. 걸으면서 흘깃 보고 판단하는 값이다.
+    expect(within(sheet).getByText('B2')).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: /이동 완료/ })).toBeInTheDocument();
+  });
+
+  /**
+   * 도착 노드(403)가 아니라 **그 다음 복도 노드(404)** 에 세운다.
+   *
+   * 403은 엘리베이터 시설 노드다. 그 자리에 세우면 서버가 진입 노드를 다시 고를 때 통로 모서리를
+   * 대각선으로 자르는 노드가 뽑혀(`IndoorRouteService.ON_NODE_M`) 첫 안내가 어긋난다. 엘리베이터를
+   * 나와 통로에 선 자리는 그 다음 노드다.
+   */
+  it('이동 완료를 누르면 도착층의 통로 노드로 옮기고 표시 층이 따라온다', async () => {
+    await renderAtFloorChange();
+
+    fireEvent.click(
+      within(await screen.findByRole('dialog', { name: 'B2층까지 올라가기' })).getByRole('button', {
+        name: /이동 완료/,
+      }),
+    );
+
+    await waitFor(() => expect(useNavigationStore.getState().currentNodeId).toBe(404));
+    const moved = useNavigationStore.getState();
+    expect(moved.currentFloorId).toBe(1);
+    expect([moved.currentMapX, moved.currentMapY]).toEqual([18, 0]);
+
+    // 눌렀으면 닫힌다. 같은 구간에서 다시 뜨면 지도를 볼 수 없다.
+    expect(screen.queryByRole('dialog', { name: 'B2층까지 올라가기' })).not.toBeInTheDocument();
+
+    // 표시 층이 도착층을 따라온다. 예전에는 층 탭을 직접 눌러야 했다.
+    const floorGroup = await screen.findByRole('group', { name: '층 선택' });
+    await waitFor(() =>
+      expect(within(floorGroup).getByRole('button', { name: 'B2' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
+  });
+
+  /**
+   * 같은 층 안에서 오르내리는 구간은 층 이동이 아니다.
+   *
+   * 역삼역 B1 개찰구 위 중간층(B0.5)이 이렇다 — `floorCode` 가 B1 이라 그 에스컬레이터는
+   * `edgeClass` 가 `vertical_transition` 이면서 `type` 은 `walk` 다. 지도가 바뀌지 않는 자리에서
+   * 이 화면을 띄우면 사용자는 넘어갈 층이 없는 화면을 닫아야 한다.
+   */
+  it('같은 층 안에서 오르내리는 구간에는 층 이동 안내를 띄우지 않는다', async () => {
+    const sameFloor = {
+      ...floorChangeRoute,
+      pathNodes: floorChangeRoute.pathNodes.map((node) => ({ ...node, floorId: 2 })),
+      steps: floorChangeRoute.steps.map((step) =>
+        step.order === 2
+          ? {
+              ...step,
+              moveType: 'escalator',
+              // 층 코드가 같으므로 서버가 `walk` 로 내려준다. `edgeClass` 만 수직 이동이다.
+              type: 'walk',
+              edgeClass: 'vertical_transition',
+              fromFloorCode: 'B1',
+              toFloorCode: 'B1',
+              floorDelta: 0,
+            }
+          : { ...step, fromFloorCode: 'B1', toFloorCode: 'B1' },
+      ),
+    };
+
+    await renderAtFloorChange(sameFloor);
+
+    await screen.findByRole('group', { name: '시설 필터' });
+    expect(screen.queryByRole('button', { name: '층 이동' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /올라가기|내려가기|이동하기/ })).toBeNull();
+  });
+
+  /**
    * 안내 중 위치 재인식. (S15P11A206-141)
    *
    * U-10 → U-04(촬영·매칭) → U-05(위치 확인) → **U-10** 으로 돌아와야 한다. 표시가 없으면
