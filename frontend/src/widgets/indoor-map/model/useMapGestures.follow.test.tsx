@@ -290,6 +290,33 @@ describe('시점 추종', () => {
   });
 
   /**
+   * 넘어 있는 쪽의 여유가 **반대쪽까지** 넓히지는 않는다. (S15P11A206-206 리뷰)
+   *
+   * 예전에는 `max(limit, |previous|)` 로 한 값을 만들어 `[-allow, allow]`로 썼다. 양쪽이 같이
+   * 넓어진다. 왼쪽으로 300 밀려 있고 제 한계가 100이면 허용 범위가 `[-300, 300]`이 되어, 거기서
+   * 오른쪽으로 밀면 100을 지나 반대쪽 300까지 나갔다. 이어받은 시점을 살려 주려던 여유가 도면을
+   * 되돌릴 수 없는 자리로 내보내는 통로가 된 셈이다.
+   */
+  it('한계를 넘은 쪽의 여유가 반대 방향까지 넓히지 않는다', () => {
+    const target = { px: 1650, py: 950 };
+    const { state } = mount(followOptions(target, -45));
+
+    const inherited = state.current!.view.x;
+    const limitX = ((state.current!.view.scale - 1) * BOX.width) / 2;
+    // 왼쪽으로 제 한계를 넘어 있다. 여유는 그 방향에만 주어져야 한다.
+    expect(inherited).toBeLessThan(-limitX);
+
+    act(() => {
+      state.current!.handlers.onPointerDown(pointer(1, 0, 100));
+      // 반대쪽인 오른쪽으로 크게 민다.
+      state.current!.handlers.onPointerMove(pointer(1, 5000, 100));
+    });
+
+    // 제 한계에서 멈춘다. 예전에는 `|inherited|`까지 갔다.
+    expect(state.current!.view.x).toBeCloseTo(limitX, 0);
+  });
+
+  /**
    * 낮은 박스에서도 지정한 폭을 담는다. (S15P11A206-206)
    *
    * `fit`이 폭이 아니라 높이로 정해지면 필요한 배율이 크게 올라간다. 배율 상한이 6이던 동안

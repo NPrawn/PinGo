@@ -163,15 +163,27 @@ export function useMapGestures(follow?: FollowOptions) {
        * 그리고 축소는 전체를 보려는 조작이라, 그때 가운데로 돌아오는 것이 하려던 일에 맞다.
        */
       const shrinking = scale < previous.scale;
-      const allowance = (limit: number, previousValue: number): number =>
-        shrinking ? limit : Math.max(limit, Math.abs(previousValue));
-      const allowX = allowance(limitX, previous.x);
-      const allowY = allowance(limitY, previous.y);
+      /**
+       * 넘어 있는 **그 쪽 경계만** 넓힌다. (S15P11A206-206 리뷰)
+       *
+       * 예전에는 `max(limit, |previous|)` 로 한 값을 만들어 `[-allow, allow]` 로 썼다. 양쪽이
+       * 같이 넓어진다. 왼쪽으로 300 밀려 있고 제 한계가 100이면 허용 범위가 `[-300, 300]` 이
+       * 되어, 거기서 오른쪽으로 밀면 100을 지나 반대쪽 300까지 나갔다. 이어받은 시점을
+       * 살려 주려던 여유가, 도면을 되돌릴 수 없는 자리로 내보내는 통로가 된 것이다.
+       *
+       * 이미 넘은 쪽은 그 값까지 인정하고, 반대쪽은 제 한계를 그대로 지킨다.
+       */
+      const bound = (limit: number, previousValue: number): { min: number; max: number } =>
+        shrinking
+          ? { min: -limit, max: limit }
+          : { min: Math.min(-limit, previousValue), max: Math.max(limit, previousValue) };
+      const boundX = bound(limitX, previous.x);
+      const boundY = bound(limitY, previous.y);
 
       return {
         scale,
-        x: Math.min(allowX, Math.max(-allowX, next.x)),
-        y: Math.min(allowY, Math.max(-allowY, next.y)),
+        x: Math.min(boundX.max, Math.max(boundX.min, next.x)),
+        y: Math.min(boundY.max, Math.max(boundY.min, next.y)),
         // 회전은 손 조작이 건드리지 않는다. 들어온 값을 그대로 둔다.
         rotation: next.rotation,
       };
