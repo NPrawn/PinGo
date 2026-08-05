@@ -1276,27 +1276,46 @@ describe('useConsultSignaling', () => {
     });
 
     /**
-     * **잡아 둔 자리에는 스트림 소속을 따로 붙여야 한다.** (S15P11A206-206 리뷰)
+     * **보낼 영상이 있으면 소리와 같은 스트림으로 붙인다.** (S15P11A206-206)
      *
-     * `addTransceiver` 로 만든 sender 에는 스트림이 딸려 있지 않고 `replaceTrack` 은 트랙만
-     * 바꾼다. 그대로 협상하면 영상 m-line 에 msid 가 빠지고, 받는 쪽 `ontrack` 은
-     * `event.streams` 를 빈 배열로 받는다. 소리는 `addTrack` 으로 소속이 있으므로 상담자
-     * 화면은 **소리만 나고 화면은 검은** 상태가 된다 — 캡처가 성공하는 정상 경로에서도 그렇다.
+     * `addTrack(track, stream)` 은 스트림 소속까지 등록해 협상에 msid 를 싣는다. 받는 쪽
+     * `ontrack` 이 `event.streams` 로 스트림을 얻는 근거가 그 msid 다.
+     *
+     * 예전에는 연결을 만들 때 영상 자리를 무조건 잡아 두고 거기에 `replaceTrack` 으로 넣었다.
+     * 그런데 `replaceTrack` 은 트랙만 바꾸고 소속을 만들지 않아 msid 가 빠졌고, 소리는 소속이
+     * 있어서 **소리는 나는데 화면은 검은** 상태가 됐다. 실기기에서 그렇게 확인됐다.
      *
      * 소리와 **같은** 스트림이어야 한다. 서로 다른 스트림으로 가면 화면이 보는 `srcObject` 는
      * 하나뿐이라 나중에 도착한 쪽이 앞의 것을 덮는다.
      */
-    it('잡아 둔 영상 자리를 소리와 같은 스트림에 넣는다', async () => {
+    it('보낼 영상이 있으면 소리와 같은 스트림으로 붙인다', async () => {
       const view = await connectedWithVideo();
 
       const peer = FakePeerConnection.instances[0];
-      const videoSender = peer?.transceivers[0]?.sender;
+      const videoSender = peer?.senders.find((sender) => sender.track?.kind === 'video');
       const audioSender = peer?.senders.find((sender) => sender.track?.kind === 'audio');
 
-      // 잡아 둔 자리에 카메라 트랙이 들어갔다.
-      expect(videoSender?.track?.kind).toBe('video');
       expect(audioSender?.streams[0]).toBeDefined();
       expect(videoSender?.streams[0]).toBe(audioSender?.streams[0]);
+
+      view.unmount();
+    });
+
+    /**
+     * **트랙이 있으면 자리를 따로 잡지 않는다.** (S15P11A206-206)
+     *
+     * 예약한 트랜시버를 브라우저가 재사용할지는 구현에 맡겨진 부분이다. 재사용하지 않으면 두
+     * 번째 영상 m-line 이 생기는데 상담자의 offer 에는 영상 자리가 하나뿐이라 그 여분은 협상되지
+     * 않는다. 트랙이 어느 쪽에 실렸는지에 따라 영상이 나가다 말다 한다.
+     *
+     * 잘 되던 정상 경로에는 손대지 않는 것이 이 수정의 핵심이다.
+     */
+    it('보낼 영상이 있으면 영상 자리를 따로 잡지 않는다', async () => {
+      const view = await connectedWithVideo();
+
+      const peer = FakePeerConnection.instances[0];
+
+      expect(peer?.addTransceiver).not.toHaveBeenCalled();
 
       view.unmount();
     });
@@ -1324,6 +1343,87 @@ describe('useConsultSignaling', () => {
       });
 
       expect(element.srcObject?.getTracks()).toContain(incoming);
+
+      view.unmount();
+    });
+
+    /**
+     * **소리가 먼저 붙은 뒤 영상이 와도 함께 그려야 한다.** (S15P11A206-206)
+     *
+     * 실기기에서 이 순서로 걸렸다 — 소리는 나는데 화면만 끝까지 검었다. 소리에는 msid 가 있어
+     * 스트림이 먼저 붙고, 뒤에 온 영상 트랙을 **그 스트림에 더하기만** 하면 크롬은 그것을 그리지
+     * 않는다. 요소는 `srcObject` 가 다른 객체로 바뀔 때 트랙 구성을 다시 읽는다.
+     *
+     * 그래서 붙는 스트림이 **새 객체**여야 하고, 두 트랙이 모두 담겨 있어야 한다.
+     */
+    it('소리가 먼저 붙은 뒤 온 영상도 같은 화면에 붙인다', async () => {
+      const view = await connectedWithVideo();
+      const element = { srcObject: null as MediaStream | null, play: vi.fn() };
+      view.result.current.remoteVideoRef.current = element as unknown as HTMLVideoElement;
+
+      const remoteAudio = fakeTrack('audio');
+      const remoteVideo = fakeTrack('video');
+      // 소리는 소속이 있어 스트림째로 온다.
+      const audioStream = fakeStream([remoteAudio]);
+
+      act(() => {
+        FakePeerConnection.instances[0]?.ontrack?.({
+          streams: [audioStream],
+          track: remoteAudio,
+        } as unknown as RTCTrackEvent);
+      });
+
+      const afterAudio = element.srcObject;
+      expect(afterAudio?.getTracks()).toContain(remoteAudio);
+
+      act(() => {
+        FakePeerConnection.instances[0]?.ontrack?.({
+          streams: [],
+          track: remoteVideo,
+        } as unknown as RTCTrackEvent);
+      });
+
+      // 같은 객체를 그대로 두면 요소가 새 트랙을 읽지 않는다.
+      expect(element.srcObject).not.toBe(afterAudio);
+      expect(element.srcObject?.getTracks()).toContain(remoteAudio);
+      expect(element.srcObject?.getTracks()).toContain(remoteVideo);
+
+      view.unmount();
+    });
+
+    /**
+     * **이미 붙어 있는 트랙에는 손대지 않는다.** (S15P11A206-206 리뷰)
+     *
+     * 같은 구성을 새 스트림으로 다시 대입하면 요소가 소스를 처음부터 다시 읽어 화면이 순간
+     * 깜빡이고 소리가 끊긴다. 소속이 온전한 정상 경로에서는 두 번째 `ontrack` 이 늘 이 경우다 —
+     * 소리와 영상이 같은 msid 로 오므로 첫 호출에서 이미 둘 다 담겨 있다.
+     */
+    it('이미 붙어 있는 트랙이 다시 와도 스트림을 갈지 않는다', async () => {
+      const view = await connectedWithVideo();
+      const element = { srcObject: null as MediaStream | null, play: vi.fn() };
+      view.result.current.remoteVideoRef.current = element as unknown as HTMLVideoElement;
+
+      const remoteAudio = fakeTrack('audio');
+      const remoteVideo = fakeTrack('video');
+      // 소리와 영상이 같은 msid 로 온다. 브라우저가 주는 스트림에 둘 다 담겨 있다.
+      const both = fakeStream([remoteAudio, remoteVideo]);
+      const fire = (track: MediaStreamTrack) => {
+        act(() => {
+          FakePeerConnection.instances[0]?.ontrack?.({
+            streams: [both],
+            track,
+          } as unknown as RTCTrackEvent);
+        });
+      };
+
+      fire(remoteAudio);
+      const afterFirst = element.srcObject;
+      expect(afterFirst?.getTracks()).toContain(remoteVideo);
+
+      fire(remoteVideo);
+
+      // 두 번째 트랙은 이미 담겨 있다. 다시 대입할 이유가 없다.
+      expect(element.srcObject).toBe(afterFirst);
 
       view.unmount();
     });

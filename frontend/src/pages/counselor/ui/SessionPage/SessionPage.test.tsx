@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { useConsultStore } from '@/entities/consult';
+import type { MapSyncPayload } from '@/shared/types';
 import { ApiError } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { SessionPage } from './SessionPage';
@@ -20,6 +21,8 @@ const signalingMocks = vi.hoisted(() => ({
   ],
   /** 화면이 등록한 이벤트 수신 함수. 사용자가 보낸 것처럼 흘려 넣는 데 쓴다. */
   onEvent: null as ((event: unknown) => void) | null,
+  /** 사용자에게 나간 이벤트. 렌더마다 새로 만들면 무엇이 나갔는지 검사할 수 없다. */
+  sendConsultEvent: vi.fn(() => true),
 }));
 
 const facilityMocks = vi.hoisted(() => ({
@@ -36,6 +39,18 @@ vi.mock('@/entities/facility', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/facility')>()),
   useStationFacilities: () => ({ data: facilityMocks.data }),
 }));
+
+/**
+ * 층별 지도. 도면이 있어야 시설 마커가 그려진다.
+ *
+ * MSW 에는 층별 지도 핸들러가 없어 조회가 실패하고, 그러면 지도가 비어 마커를 누를 수 없다.
+ * 좌표 프레임까지 갖춘 목업이 이미 있으므로 그것을 그대로 쓴다. (S15P11A206-206)
+ */
+vi.mock('@/entities/floor-map', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/entities/floor-map')>();
+
+  return { ...actual, useStationFloorMaps: () => ({ data: actual.MOCK_FLOOR_MAPS }) };
+});
 
 vi.mock('@/shared/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/api')>()),
@@ -75,10 +90,51 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
       remoteCaptionError: null,
       captionsSupported: true,
       transcript: signalingMocks.transcript,
-      sendConsultEvent: vi.fn(() => true),
+      sendConsultEvent: signalingMocks.sendConsultEvent,
     };
   },
 }));
+
+/** 사용자가 보내오는 지도 스냅숏 한 통. 층이 바뀌는 상황도 이것으로 만든다. */
+function sendMapSync(floorId: number | null = null, extra: Partial<MapSyncPayload> = {}) {
+  act(() => {
+    signalingMocks.onEvent?.({
+      eventType: 'MAP_SYNC',
+      eventId: 'evt_1',
+      sessionId: 'cs_1',
+      senderType: 'USER',
+      timestamp: '2026-08-03T00:00:00Z',
+      version: 1,
+      payload: {
+        stationId: 1,
+        floorId,
+        current: null,
+        headingDeg: null,
+        destination: null,
+        destinationLabel: null,
+        destinationNodeId: null,
+        pathNodes: [],
+        screen: null,
+        ...extra,
+      },
+    });
+  });
+}
+
+/** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
+async function renderWithMapSync(
+  floorId: number | null = null,
+  extra: Partial<MapSyncPayload> = {},
+) {
+  apiMocks.getCounselorConsultations.mockResolvedValue([
+    { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
+  ]);
+
+  renderPage();
+  await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.');
+
+  sendMapSync(floorId, extra);
+}
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -297,37 +353,6 @@ describe('SessionPage', () => {
       facilityMocks.data = undefined;
     });
 
-    /** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
-    async function renderWithMapSync(floorId: number | null = null) {
-      apiMocks.getCounselorConsultations.mockResolvedValue([
-        { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
-      ]);
-
-      renderPage();
-      await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.');
-
-      act(() => {
-        signalingMocks.onEvent?.({
-          eventType: 'MAP_SYNC',
-          eventId: 'evt_1',
-          sessionId: 'cs_1',
-          senderType: 'USER',
-          timestamp: '2026-08-03T00:00:00Z',
-          version: 1,
-          payload: {
-            stationId: 1,
-            floorId,
-            current: null,
-            headingDeg: null,
-            destination: null,
-            destinationLabel: null,
-            pathNodes: [],
-            screen: null,
-          },
-        });
-      });
-    }
-
     it('처음에는 전체 표시이고 켜진 유형 칩이 없다', async () => {
       await renderWithMapSync();
 
@@ -399,6 +424,159 @@ describe('SessionPage', () => {
       await renderWithMapSync(7);
 
       expect(screen.getByRole('button', { name: /승차권 충전/ })).toBeEnabled();
+    });
+  });
+
+  /**
+   * **경로가 중간에 끊겨 보이지 않아야 한다.** (S15P11A206-206)
+   *
+   * 경로선은 그래프 노드에서 시작하고 사용자 점은 실제 좌표에 있어 둘이 몇 미터 떨어져 보인다.
+   * 그 사이를 메우는 `connectCurrentToRoute` 가 거울 지도에는 있었는데 상담자 자신의 지도에만
+   * 빠져 있어, 상담자가 보는 큰 지도에서만 경로가 끊겨 있었다. 두 지도가 다른 그림을 보여 주면
+   * 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수 없다.
+   *
+   * 검사는 **앞으로 갈 길이 내 자리에서 시작하는지**로 한다. 예전에는 따로 그린 연결선(`line`)을
+   * 찾았는데, 그 선은 닿는 점에서 길이 갈라져 보이는 문제로 없어졌고 지금은 경로를 다시 써서 한
+   * 줄로 만든다(S15P11A206-345). 그리는 방식이 아니라 이어져 있다는 사실을 본다.
+   */
+  it('상담자 지도의 경로가 사용자 점에서 시작한다', async () => {
+    await renderWithMapSync(1, {
+      current: { floorId: 1, mapX: 0, mapY: 10 },
+      pathNodes: [
+        { nodeId: 1, floorId: 1, mapX: 0, mapY: 0 },
+        { nodeId: 2, floorId: 1, mapX: 20, mapY: 0 },
+      ],
+    });
+
+    const marker = screen.getAllByRole('img', { name: '현재 위치' })[0];
+    const dot = marker?.querySelector('circle:last-of-type');
+    const at = { x: Number(dot?.getAttribute('cx')), y: Number(dot?.getAttribute('cy')) };
+    expect(Number.isFinite(at.x)).toBe(true);
+
+    /* 그려진 지도 전부를 본다. 배치 정보(`screen`)가 오기 전에는 거울이 없어 한 장뿐이다. */
+    const routes = screen.getAllByRole('img', { name: '이동 경로' });
+    expect(routes.length).toBeGreaterThan(0);
+    routes.forEach((route) => {
+      // 테두리(`aria-hidden`)가 아닌 본선의 첫 좌표.
+      const points = route.querySelector('polyline:not([aria-hidden])')?.getAttribute('points');
+      const [first = ''] = (points ?? '').split(' ');
+      const [x, y] = first.split(',').map(Number);
+
+      expect(x).toBeCloseTo(at.x, 0);
+      expect(y).toBeCloseTo(at.y, 0);
+    });
+  });
+
+  /**
+   * 지점 재지정. **두 순서를 모두 받는다.** (S15P11A206-206)
+   *
+   * 예전에는 버튼이 모드를 켜는 일만 했다. 그래서 아이콘을 눌러 이름을 확인한 상담자는 그 이름표를
+   * 보면서도 버튼을 켜고 **같은 아이콘을 한 번 더** 눌러야 했다. 고른 것이 눈앞에 있는데 다시
+   * 짚으라는 요구다.
+   */
+  describe('고른 시설에 곧바로 적용', () => {
+    /** 도면에 실제로 그려질 수 있는 시설. 좌표와 노드가 온전해야 마커가 나온다. */
+    const ELEVATOR = {
+      facilityId: 52,
+      stationId: 1,
+      floorId: 1,
+      facilityType: 'elevator',
+      nameKo: '엘리베이터',
+      nameEn: 'Elevator',
+      mapX: -0.4,
+      mapY: 27.2,
+      linkedNodeId: 123,
+      isAccessible: true,
+    };
+
+    afterEach(() => {
+      facilityMocks.data = undefined;
+    });
+
+    /** 지도 마커. 같은 이름의 유형 칩과 구분해야 한다 — 마커는 SVG `g` 다. */
+    function facilityMarker(name: string): HTMLElement {
+      const found = screen
+        .getAllByRole('button', { name })
+        .find((node) => node.tagName.toLowerCase() === 'g');
+      if (!found) throw new Error(`지도에 ${name} 마커가 없다`);
+
+      return found;
+    }
+
+    it('시설을 골라 둔 채 목적지 재지정을 누르면 바로 보낸다', async () => {
+      facilityMocks.data = [ELEVATOR];
+      await renderWithMapSync(1);
+
+      fireEvent.click(facilityMarker('엘리베이터'));
+      // 버튼이 곧바로 적용된다는 것을 화면에서 알 수 있어야 한다.
+      expect(screen.getByRole('status')).toHaveTextContent('엘리베이터을(를) 골랐어요');
+
+      fireEvent.click(screen.getByRole('button', { name: /목적지 재지정/ }));
+
+      expect(signalingMocks.sendConsultEvent).toHaveBeenCalledWith({
+        eventType: 'DESTINATION_CHANGE_REQUESTED',
+        payload: {
+          facilityId: 52,
+          nameKo: '엘리베이터',
+          floorId: 1,
+          mapX: -0.4,
+          mapY: 27.2,
+          linkedNodeId: 123,
+        },
+      });
+      expect(screen.getByRole('status')).toHaveTextContent('엘리베이터(으)로 목적지를 옮겼어요');
+    });
+
+    it('현재 위치 수정도 같은 순서를 받는다', async () => {
+      facilityMocks.data = [ELEVATOR];
+      await renderWithMapSync(1);
+
+      fireEvent.click(facilityMarker('엘리베이터'));
+      fireEvent.click(screen.getByRole('button', { name: /현재 위치 수정/ }));
+
+      expect(signalingMocks.sendConsultEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'CURRENT_LOCATION_CORRECTED' }),
+      );
+      expect(screen.getByRole('status')).toHaveTextContent('엘리베이터(으)로 현재 위치를 옮겼어요');
+    });
+
+    /**
+     * **층이 바뀌면 고른 것이 풀려야 한다.** (S15P11A206-206 리뷰)
+     *
+     * 층은 상담자가 직접 넘기지 않아도 바뀐다 — 따라가기 중에 사용자가 계단을 오르면
+     * `mapSync.floorId` 가 바뀌고 표시 층이 따라간다. 고른 시설이 남아 있으면 화면은 다른 층인데
+     * 안내에는 이전 층 시설 이름이 뜨고, 그 상태에서 재지정을 누르면 **화면에 보이지도 않는
+     * 시설**로 목적지가 지정된다.
+     */
+    it('사용자 층이 바뀌면 고른 시설이 풀린다', async () => {
+      facilityMocks.data = [ELEVATOR];
+      await renderWithMapSync(1);
+
+      fireEvent.click(facilityMarker('엘리베이터'));
+      expect(screen.getByRole('status')).toHaveTextContent('엘리베이터을(를) 골랐어요');
+
+      // 사용자가 다른 층으로 옮겼다. 상담자는 아무것도 누르지 않았다.
+      sendMapSync(2);
+
+      // 안내 줄 자체가 사라진다 — 켜 둔 모드도, 고른 것도, 방금 보낸 결과도 없다.
+      expect(screen.queryByText(/골랐어요/)).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: /목적지 재지정/ }));
+
+      // 보이지 않는 시설로 보내지 않는다. 모드만 켜고 지도에서 짚기를 기다린다.
+      expect(signalingMocks.sendConsultEvent).not.toHaveBeenCalled();
+      expect(screen.getByRole('status')).toHaveTextContent('지도에서 새 목적지를 누르세요');
+    });
+
+    /** 고른 것이 없으면 예전처럼 모드를 켠다. 그때는 지도에서 짚는 것이 유일한 입력이다. */
+    it('고른 시설이 없으면 모드만 켠다', async () => {
+      facilityMocks.data = [ELEVATOR];
+      await renderWithMapSync(1);
+
+      fireEvent.click(screen.getByRole('button', { name: /목적지 재지정/ }));
+
+      expect(signalingMocks.sendConsultEvent).not.toHaveBeenCalled();
+      expect(screen.getByRole('status')).toHaveTextContent('지도에서 새 목적지를 누르세요');
     });
   });
 });

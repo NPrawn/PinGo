@@ -355,10 +355,31 @@ export function SessionPage() {
    * 사용자 화면이 값을 바꾸면 곧 새 MAP_SYNC 가 돌아와 이 지도에도 반영된다. 여기서 미리
    * 그려 두지 않는 이유다 — 실제로 사용자 화면이 받아들인 것만 보여야 한다.
    */
-  const pickOnMap = useCallback(
-    (facility: Facility) => {
-      if (!repinning) return;
+  /** 이름표를 띄워 둔 시설. 지도에 아이콘만 있고 그것이 무엇인지 알 방법이 없었다. */
+  const [pickedFacility, setPickedFacility] = useState<Facility | null>(null);
+  /**
+   * **표시 층의 것만 유효하다.** (S15P11A206-206 리뷰)
+   *
+   * 층은 상담자가 직접 넘기지 않아도 바뀐다 — 따라가기 중에 사용자가 계단을 오르면
+   * `mapSync.floorId` 가 바뀌고 `displayedFloorId` 가 따라간다. 고른 시설을 그대로 두면 화면은
+   * 다른 층인데 안내에는 이전 층 시설 이름이 남고, 그 상태에서 재지정 버튼을 누르면 **화면에
+   * 보이지도 않는 시설**로 목적지가 지정된다.
+   *
+   * 층이 바뀔 때 지우는 `useEffect` 를 두지 않고 여기서 판단한다. 효과는 그린 뒤에 실행되므로
+   * 한 프레임 동안 옛 이름이 그대로 보이고 그 사이의 클릭도 받는다. 조건을 렌더에서 풀면 그
+   * 틈이 아예 없고, 층이 어떤 경로로 바뀌었는지도 따질 필요가 없다.
+   */
+  const selectedFacility = pickedFacility?.floorId === displayedFloorId ? pickedFacility : null;
 
+  /**
+   * 짚은 시설을 목적지 또는 현재 위치로 보낸다.
+   *
+   * **모드를 인자로 받는다.** 예전에는 `repinning` 상태를 읽었는데, 그러면 "버튼을 먼저 켜고
+   * 아이콘을 누르는" 순서만 가능하다. 시설을 골라 둔 채 버튼을 누르는 반대 순서에서는 그 시점의
+   * `repinning` 이 아직 null 이라 아무 일도 일어나지 않는다. (S15P11A206-206)
+   */
+  const applyPick = useCallback(
+    (facility: Facility, mode: 'dest' | 'origin') => {
       /**
        * **경로 노드를 모르는 시설은 보내지 않는다.** (S15P11A206-206)
        *
@@ -371,7 +392,7 @@ export function SessionPage() {
       if (facility.linkedNodeId == null) {
         setLastPick(
           `${facility.nameKo}은(는) 경로에 연결된 지점이 없어 ${
-            repinning === 'dest' ? '목적지로 지정' : '현재 위치로 지정'
+            mode === 'dest' ? '목적지로 지정' : '현재 위치로 지정'
           }할 수 없어요. 가까운 출구나 계단을 짚어 주세요.`,
         );
         setRepinning(null);
@@ -387,23 +408,27 @@ export function SessionPage() {
         linkedNodeId: facility.linkedNodeId ?? null,
       };
       const sent = sendConsultEvent(
-        repinning === 'dest'
+        mode === 'dest'
           ? { eventType: 'DESTINATION_CHANGE_REQUESTED', payload }
           : { eventType: 'CURRENT_LOCATION_CORRECTED', payload },
       );
 
       setLastPick(
         sent
-          ? `${facility.nameKo}(으)로 ${repinning === 'dest' ? '목적지' : '현재 위치'}를 옮겼어요`
+          ? `${facility.nameKo}(으)로 ${mode === 'dest' ? '목적지' : '현재 위치'}를 옮겼어요`
           : '사용자에게 전달하지 못했어요. 연결을 확인해 주세요.',
       );
       setRepinning(null);
+      /**
+       * 골라 둔 것을 놓는다.
+       *
+       * 남겨 두면 아래 안내가 "골랐어요"에 머물러, 방금 보낸 결과를 읽을 자리가 사라진다.
+       * 지도에서는 사용자 화면이 받아들인 뒤 도착지 표시가 그 아이콘에 붙어 남는다.
+       */
+      setPickedFacility(null);
     },
-    [repinning, sendConsultEvent],
+    [sendConsultEvent],
   );
-
-  /** 이름표를 띄워 둔 시설. 지도에 아이콘만 있고 그것이 무엇인지 알 방법이 없었다. */
-  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
 
   /**
    * 지도에서 시설을 눌렀을 때. (S15P11A206-206)
@@ -418,16 +443,36 @@ export function SessionPage() {
   const selectFacility = useCallback(
     (facility: Facility) => {
       if (repinning) {
-        pickOnMap(facility);
+        applyPick(facility, repinning);
         return;
       }
 
       // 같은 것을 다시 누르면 접는다. 이름표를 치울 다른 방법이 없다.
-      setSelectedFacility((current) =>
-        current?.facilityId === facility.facilityId ? null : facility,
-      );
+      setPickedFacility(selectedFacility?.facilityId === facility.facilityId ? null : facility);
     },
-    [pickOnMap, repinning],
+    [applyPick, repinning, selectedFacility],
+  );
+
+  /**
+   * 목적지·현재 위치 버튼. **두 순서를 모두 받는다.** (S15P11A206-206)
+   *
+   * 시설을 골라 둔 상태라면 그것에 곧바로 적용한다. 예전에는 버튼이 모드를 켜는 일만 했으므로,
+   * 아이콘을 눌러 이름을 확인한 상담자는 그 이름표를 보면서도 버튼을 켜고 **같은 아이콘을 한 번
+   * 더** 눌러야 했다. 고른 것이 눈앞에 있는데 다시 짚으라는 요구다.
+   *
+   * 고른 것이 없으면 예전처럼 모드를 켠다. 그때는 지도에서 짚는 것이 유일한 입력이다.
+   */
+  const repinTo = useCallback(
+    (mode: 'dest' | 'origin') => {
+      if (selectedFacility) {
+        applyPick(selectedFacility, mode);
+        return;
+      }
+
+      setRepinning((current) => (current === mode ? null : mode));
+      setLastPick(null);
+    },
+    [applyPick, selectedFacility],
   );
 
   /**
@@ -759,8 +804,8 @@ export function SessionPage() {
                 // 층을 직접 고르는 것은 사용자 시점을 벗어나겠다는 뜻이다.
                 setSynced(false);
                 setPickedFloorId(Number(value));
-                // 다른 층 시설의 이름표를 남기지 않는다.
-                setSelectedFacility(null);
+                /* 다른 층 시설의 이름표는 따로 지우지 않는다. 표시 층의 것만 유효하다고
+                   렌더에서 판단하므로(`selectedFacility`) 층이 바뀌면 저절로 풀린다. */
               }}
             />
             <MapPreview className={styles.map}>
@@ -778,6 +823,17 @@ export function SessionPage() {
                          어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
                       destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
+                      /**
+                       * 내 위치와 경로 사이의 빈 자리를 잇는다. (S15P11A206-206)
+                       *
+                       * 경로선은 그래프 노드에서 끝나고 사용자 점은 실제 좌표에 있어 둘이 몇
+                       * 미터 떨어져 보인다. 거울 지도에는 이 옵션이 있었는데 이 지도에만 빠져
+                       * 있어, 상담자가 보는 큰 지도에서만 경로가 중간에 끊겨 있었다.
+                       *
+                       * 사용자 화면과 같은 값이어야 한다. 두 지도가 다른 그림을 보여 주면
+                       * 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수 없다.
+                       */
+                      connectCurrentToRoute
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
                       facilityType={facilityType}
@@ -844,7 +900,7 @@ export function SessionPage() {
                       onClick={() => {
                         setFacilityView(active ? 'all' : filter.facilityType);
                         // 다른 유형으로 넘어가면 지워진 시설의 이름표가 남지 않게 한다.
-                        setSelectedFacility(null);
+                        setPickedFacility(null);
                       }}
                     >
                       <Icon name={filter.icon} size={13} />
@@ -882,10 +938,7 @@ export function SessionPage() {
             <PillButton
               className={styles.mapAction}
               on={repinning === 'dest'}
-              onClick={() => {
-                setRepinning(repinning === 'dest' ? null : 'dest');
-                setLastPick(null);
-              }}
+              onClick={() => repinTo('dest')}
             >
               <Icon name="target" size={14} />
               목적지 재지정
@@ -893,10 +946,7 @@ export function SessionPage() {
             <PillButton
               className={styles.mapAction}
               on={repinning === 'origin'}
-              onClick={() => {
-                setRepinning(repinning === 'origin' ? null : 'origin');
-                setLastPick(null);
-              }}
+              onClick={() => repinTo('origin')}
             >
               <Icon name="pin" size={14} />
               현재 위치 수정
@@ -907,11 +957,18 @@ export function SessionPage() {
             무엇을 눌러야 하는지, 무엇이 사용자에게 갔는지 알려 준다. 예전에는 버튼이 켜지기만
             하고 아무 일도 일어나지 않아, 상담자는 자기가 목적지를 바꾼 줄 알았다.
           */}
-          {(repinning || lastPick) && (
+          {(repinning || selectedFacility || lastPick) && (
             <p className={styles.mapHint} role="status">
               {repinning
                 ? `지도에서 ${repinning === 'dest' ? '새 목적지' : '사용자의 실제 위치'}를 누르세요. 시설이 안 보이면 아래 시설 버튼을 켜 주세요.`
-                : lastPick}
+                : /*
+                     고른 것이 있으면 버튼이 곧바로 적용된다는 것을 알려 준다. 같은 버튼이
+                     상황에 따라 모드를 켜기도 하고 바로 보내기도 하므로, 지금 어느 쪽인지
+                     읽히지 않으면 상담자는 눌러 보고 나서야 안다. (S15P11A206-206)
+                  */
+                  selectedFacility
+                  ? `${selectedFacility.nameKo}을(를) 골랐어요. 위 버튼을 누르면 그대로 지정돼요.`
+                  : lastPick}
             </p>
           )}
 
@@ -924,118 +981,121 @@ export function SessionPage() {
                 </div>
                 <span className={styles.captionPanelStatus}>실시간 반영</span>
               </div>
-            {/*
+              {/*
               기록이 안 되고 있으면 그 사실을 상담 중에 알아야 한다. 끝난 뒤에 알면 이미
               전문이 비어 있고 AI 요약도 만들어지지 않아 되돌릴 방법이 없다.
             */}
-            {captionError && (
-              <div className={styles.notesAlert} role="alert">
-                <Icon name="warning" size={12} />
-                <span>{captionError}</span>
-                {/* 마이크를 놓아 준 뒤 상담을 끊지 않고 자막만 되살릴 수 있어야 한다. */}
-                <button
-                  type="button"
-                  className={styles.notesRetry}
-                  onClick={() => restartCaptions()}
-                >
-                  다시 시도
-                </button>
-              </div>
-            )}
-            {/*
+              {captionError && (
+                <div className={styles.notesAlert} role="alert">
+                  <Icon name="warning" size={12} />
+                  <span>{captionError}</span>
+                  {/* 마이크를 놓아 준 뒤 상담을 끊지 않고 자막만 되살릴 수 있어야 한다. */}
+                  <button
+                    type="button"
+                    className={styles.notesRetry}
+                    onClick={() => restartCaptions()}
+                  >
+                    다시 시도
+                  </button>
+                </div>
+              )}
+              {/*
               사용자 쪽 자막이 죽은 경우. 이쪽에서 손쓸 수 있는 일이 아니라 다시 시도 버튼을
               붙이지 않는다. 대신 사용자가 조용한 것이 아니라는 사실은 알아야 한다 — 모르면
               상담원은 대답을 기다리며 계속 침묵하게 된다.
             */}
-            {userCaptionNotice && (
-              <div className={styles.notesAlert} role="alert">
-                <Icon name="warning" size={12} />
-                <span>{userCaptionNotice}</span>
-              </div>
-            )}
-            <div className={styles.liveCaptions}>
-              <div className={[styles.liveCaption, styles.liveCaptionUser].join(' ')}>
-                <div className={styles.liveCaptionHeader}>
-                  <span className={styles.speakerUser}>사용자</span>
-                  <span className={styles.liveCaptionState}>
-                    {remoteCaptionFinal ? '확정' : '말하는 중'}
+              {userCaptionNotice && (
+                <div className={styles.notesAlert} role="alert">
+                  <Icon name="warning" size={12} />
+                  <span>{userCaptionNotice}</span>
+                </div>
+              )}
+              <div className={styles.liveCaptions}>
+                <div className={[styles.liveCaption, styles.liveCaptionUser].join(' ')}>
+                  <div className={styles.liveCaptionHeader}>
+                    <span className={styles.speakerUser}>사용자</span>
+                    <span className={styles.liveCaptionState}>
+                      {remoteCaptionFinal ? '확정' : '말하는 중'}
+                    </span>
+                  </div>
+                  <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
+                    {userCaptionPrimary ||
+                      (captionsSupported
+                        ? '사용자가 말하면 자막을 표시합니다.'
+                        : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
+                  </span>
+                  {userCaptionSource && (
+                    <span
+                      className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
+                        .filter(Boolean)
+                        .join(' ')}
+                      aria-live="polite"
+                      aria-atomic="true"
+                    >
+                      {userCaptionSource}
+                    </span>
+                  )}
+                </div>
+                <div className={[styles.liveCaption, styles.liveCaptionCounselor].join(' ')}>
+                  <div className={styles.liveCaptionHeader}>
+                    <span className={styles.speakerAgent}>상담원</span>
+                    <span className={styles.liveCaptionState}>
+                      {localCaptionFinal ? '확정' : '말하는 중'}
+                    </span>
+                  </div>
+                  <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
+                    {localCaption ||
+                      (captionsSupported
+                        ? '마이크를 켜고 말하면 자막을 표시합니다.'
+                        : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                   </span>
                 </div>
-                <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
-                  {userCaptionPrimary ||
-                    (captionsSupported
-                      ? '사용자가 말하면 자막을 표시합니다.'
-                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
-                </span>
-                {userCaptionSource && (
-                  <span
-                    className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
-                      .filter(Boolean)
-                      .join(' ')}
-                    aria-live="polite"
-                    aria-atomic="true"
-                  >
-                    {userCaptionSource}
-                  </span>
-                )}
               </div>
-              <div className={[styles.liveCaption, styles.liveCaptionCounselor].join(' ')}>
-                <div className={styles.liveCaptionHeader}>
-                  <span className={styles.speakerAgent}>상담원</span>
-                  <span className={styles.liveCaptionState}>
-                    {localCaptionFinal ? '확정' : '말하는 중'}
-                  </span>
+            </section>
+            <section className={styles.transcriptPanel}>
+              <div className={styles.captionPanelHeader}>
+                <div className={styles.captionPanelHeading}>
+                  <span className={styles.captionPanelKicker}>LOG</span>
+                  <h3 className={styles.captionPanelTitle}>대화 로그</h3>
                 </div>
-                <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
-                  {localCaption ||
-                    (captionsSupported
-                      ? '마이크를 켜고 말하면 자막을 표시합니다.'
-                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
-                </span>
+                <span className={styles.captionPanelStatus}>{displayTranscript.length}줄</span>
               </div>
-            </div>
-          </section>
-          <section className={styles.transcriptPanel}>
-            <div className={styles.captionPanelHeader}>
-              <div className={styles.captionPanelHeading}>
-                <span className={styles.captionPanelKicker}>LOG</span>
-                <h3 className={styles.captionPanelTitle}>대화 로그</h3>
-              </div>
-              <span className={styles.captionPanelStatus}>{displayTranscript.length}줄</span>
-            </div>
-            <div className={styles.notesBody}>
-              {displayTranscript.length === 0 ? (
-                <div className={styles.transcriptEmpty}>확정된 대화가 여기에 표시됩니다.</div>
-              ) : (
-                displayTranscript.map((segment) => (
-                  <div className={styles.transcriptEntry} key={segment.captionId}>
-                    <div className={styles.transcriptSpeaker}>
-                      <span
-                        className={
-                          segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
-                        }
-                      >
-                        {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
-                      </span>
-                    </div>
-                    <div className={styles.transcriptLine}>
-                      <span className={styles.transcriptLanguage}>원문</span>
-                      <span className={styles.line}>{segment.content}</span>
-                    </div>
-                    {segment.translatedContent && segment.translatedContent !== segment.content && (
-                      <div className={styles.transcriptLine}>
-                        <span className={styles.transcriptLanguage}>번역</span>
-                        <span className={styles.transcriptTranslation}>
-                          {segment.translatedContent}
+              <div className={styles.notesBody}>
+                {displayTranscript.length === 0 ? (
+                  <div className={styles.transcriptEmpty}>확정된 대화가 여기에 표시됩니다.</div>
+                ) : (
+                  displayTranscript.map((segment) => (
+                    <div className={styles.transcriptEntry} key={segment.captionId}>
+                      <div className={styles.transcriptSpeaker}>
+                        <span
+                          className={
+                            segment.speaker === 'COUNSELOR'
+                              ? styles.speakerAgent
+                              : styles.speakerUser
+                          }
+                        >
+                          {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
                         </span>
                       </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
+                      <div className={styles.transcriptLine}>
+                        <span className={styles.transcriptLanguage}>원문</span>
+                        <span className={styles.line}>{segment.content}</span>
+                      </div>
+                      {segment.translatedContent &&
+                        segment.translatedContent !== segment.content && (
+                          <div className={styles.transcriptLine}>
+                            <span className={styles.transcriptLanguage}>번역</span>
+                            <span className={styles.transcriptTranslation}>
+                              {segment.translatedContent}
+                            </span>
+                          </div>
+                        )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
         </div>
 
         <div className={styles.rail}>
