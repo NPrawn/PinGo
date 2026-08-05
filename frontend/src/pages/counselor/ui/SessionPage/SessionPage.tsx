@@ -915,17 +915,15 @@ export function SessionPage() {
             </p>
           )}
 
-          <div className={styles.notes}>
-            <div className={styles.notesLabel}>
-              <Icon name="note" size={13} />
-              상담 메모 · 실시간 STT
-              {/*
-                지금까지 쌓인 줄 수를 함께 보여 준다. 이 값이 그대로 상담 전문으로 저장돼
-                AI 요약의 입력이 되는데, 예전에는 마지막 한 줄만 보여서 실제로 남고 있는지
-                끝날 때까지 알 수 없었다. 0에서 멈춰 있으면 음성 인식이 안 되고 있다는 뜻이다.
-              */}
-              <span className={styles.notesCount}>{displayTranscript.length}줄 기록됨</span>
-            </div>
+          <div className={styles.captionWorkspace}>
+            <section className={styles.liveCaptionPanel}>
+              <div className={styles.captionPanelHeader}>
+                <div className={styles.captionPanelHeading}>
+                  <span className={styles.captionPanelKicker}>LIVE</span>
+                  <h3 className={styles.captionPanelTitle}>실시간 자막</h3>
+                </div>
+                <span className={styles.captionPanelStatus}>실시간 반영</span>
+              </div>
             {/*
               기록이 안 되고 있으면 그 사실을 상담 중에 알아야 한다. 끝난 뒤에 알면 이미
               전문이 비어 있고 AI 요약도 만들어지지 않아 되돌릴 방법이 없다.
@@ -955,7 +953,7 @@ export function SessionPage() {
                 <span>{userCaptionNotice}</span>
               </div>
             )}
-            <div className={styles.liveCaptions} aria-live="polite">
+            <div className={styles.liveCaptions}>
               <div className={[styles.liveCaption, styles.liveCaptionUser].join(' ')}>
                 <div className={styles.liveCaptionHeader}>
                   <span className={styles.speakerUser}>사용자</span>
@@ -963,7 +961,7 @@ export function SessionPage() {
                     {remoteCaptionFinal ? '확정' : '말하는 중'}
                   </span>
                 </div>
-                <span className={styles.liveCaptionText}>
+                <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
                   {userCaptionPrimary ||
                     (captionsSupported
                       ? '사용자가 말하면 자막을 표시합니다.'
@@ -974,6 +972,8 @@ export function SessionPage() {
                     className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
                       .filter(Boolean)
                       .join(' ')}
+                    aria-live="polite"
+                    aria-atomic="true"
                   >
                     {userCaptionSource}
                   </span>
@@ -986,7 +986,7 @@ export function SessionPage() {
                     {localCaptionFinal ? '확정' : '말하는 중'}
                   </span>
                 </div>
-                <span className={styles.liveCaptionText}>
+                <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
                   {localCaption ||
                     (captionsSupported
                       ? '마이크를 켜고 말하면 자막을 표시합니다.'
@@ -994,9 +994,14 @@ export function SessionPage() {
                 </span>
               </div>
             </div>
-            <div className={styles.transcriptHeader}>
-              <span className={styles.transcriptTitle}>대화 기록</span>
-              <span className={styles.notesCount}>{displayTranscript.length}줄</span>
+          </section>
+          <section className={styles.transcriptPanel}>
+            <div className={styles.captionPanelHeader}>
+              <div className={styles.captionPanelHeading}>
+                <span className={styles.captionPanelKicker}>LOG</span>
+                <h3 className={styles.captionPanelTitle}>대화 로그</h3>
+              </div>
+              <span className={styles.captionPanelStatus}>{displayTranscript.length}줄</span>
             </div>
             <div className={styles.notesBody}>
               {displayTranscript.length === 0 ? (
@@ -1004,74 +1009,33 @@ export function SessionPage() {
               ) : (
                 displayTranscript.map((segment) => (
                   <div className={styles.transcriptEntry} key={segment.captionId}>
-                    <span
-                      className={
-                        segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
-                      }
-                    >
-                      {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
-                    </span>
-                    <span className={styles.line}>{segment.content}</span>
-                    {segment.translatedContent && segment.translatedContent !== segment.content && (
-                      <span className={styles.transcriptTranslation}>
-                        {segment.translatedContent}
+                    <div className={styles.transcriptSpeaker}>
+                      <span
+                        className={
+                          segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
+                        }
+                      >
+                        {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
                       </span>
+                    </div>
+                    <div className={styles.transcriptLine}>
+                      <span className={styles.transcriptLanguage}>원문</span>
+                      <span className={styles.line}>{segment.content}</span>
+                    </div>
+                    {segment.translatedContent && segment.translatedContent !== segment.content && (
+                      <div className={styles.transcriptLine}>
+                        <span className={styles.transcriptLanguage}>번역</span>
+                        <span className={styles.transcriptTranslation}>
+                          {segment.translatedContent}
+                        </span>
+                      </div>
                     )}
                   </div>
                 ))
               )}
             </div>
-            <div className={styles.legacyNotesBody}>
-              <div>
-                <span className={styles.speakerUser}>사용자</span>
-                <br />
-                {/*
-                  사용자가 한국어로 말하지 않을 수 있다. 옮긴 문장을 먼저 두고 원문을 아래
-                  작게 붙인다 — 출구 번호나 역 이름은 원문으로 맞춰 봐야 할 때가 있다.
-                */}
-                <span className={styles.line}>
-                  {userCaptionPrimary ||
-                    (captionsSupported
-                      ? '사용자가 말하면 이 자리에 표시됩니다.'
-                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
-                </span>
-                {/* 사용자가 말하는 중에는 이 줄이 한 마디씩 흘러간다. 위 줄은 말이 끝나야 바뀐다. */}
-                {userCaptionSource && (
-                  <span
-                    className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
-                    {userCaptionSource}
-                  </span>
-                )}
-              </div>
-              <div>
-                <span className={styles.speakerAgent}>상담원</span>
-                <br />
-                <span className={styles.line}>
-                  {localCaption ||
-                    (captionsSupported
-                      ? '마이크를 켜고 말하면 이 자리에 표시됩니다.'
-                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
-                </span>
-              </div>
-              {/* 발화 시각 순서로 보여 주어 실제 상담 흐름을 따라갈 수 있게 한다. */}
-              {displayTranscript.map((segment) => (
-                <div key={segment.captionId}>
-                  <span
-                    className={
-                      segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
-                    }
-                  >
-                    {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
-                  </span>
-                  <br />
-                  <span className={styles.line}>{segment.content}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          </section>
+        </div>
         </div>
 
         <div className={styles.rail}>
