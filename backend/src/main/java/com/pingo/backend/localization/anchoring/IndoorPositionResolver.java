@@ -1,10 +1,6 @@
 package com.pingo.backend.localization.anchoring;
 
-import com.pingo.backend.facility.domain.Facility;
-import com.pingo.backend.facility.repository.FacilityRepository;
-import com.pingo.backend.route.domain.RouteEdge;
 import com.pingo.backend.route.domain.RouteNode;
-import com.pingo.backend.route.repository.RouteEdgeRepository;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.station.domain.StationFloor;
 import com.pingo.backend.station.repository.StationFloorRepository;
@@ -13,15 +9,10 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Locale;
 import java.util.Optional;
-import java.util.PriorityQueue;
-import java.util.Set;
 
 /**
  * 캐노니컬 좌표를 사용자에게 보여줄 위치와 경로 탐색 진입 노드로 정리한다(S15P11A206-128).
@@ -51,12 +42,7 @@ public class IndoorPositionResolver {
      * 1e-3 까지 벌어지지만 6자리면 1e-6 수준이라, FE 가 정규화 없이 그대로 써도 무해하다.
      */
     private static final int DIRECTION_SCALE = 6;
-    private static final double NEARBY_FACILITY_M = 10.0;
-    private static final double TOWARD_FACILITY_M = 20.0;
-
     private final RouteNodeRepository routeNodeRepository;
-    private final RouteEdgeRepository routeEdgeRepository;
-    private final FacilityRepository facilityRepository;
     private final StationFloorRepository stationFloorRepository;
 
     /**
@@ -74,12 +60,18 @@ public class IndoorPositionResolver {
             CanonicalDirection forward,
             double accuracyM
     ) {
-        Optional<StationFloor> floor = stationFloorRepository.findByStationIdAndFloorCode(stationId, floorCode);
+        if (floorCode == null || floorCode.isBlank()) {
+            return Optional.empty();
+        }
+        String normalizedFloorCode = floorCode.trim().toUpperCase(Locale.ROOT);
+        Optional<StationFloor> floor = stationFloorRepository
+                .findByStationIdAndFloorCode(stationId, normalizedFloorCode);
         if (floor.isEmpty()) {
             return Optional.empty();
         }
 
-        Long floorId = floor.get().getId();
+        StationFloor stationFloor = floor.orElseThrow();
+        Long floorId = stationFloor.getId();
         List<RouteNode> floorNodes = routeNodeRepository.search(stationId, floorId);
         Optional<RouteNode> nearest = floorNodes.stream()
                 .min(Comparator.comparingDouble(node -> distanceTo(node, point)));
@@ -88,11 +80,11 @@ public class IndoorPositionResolver {
         }
 
         RouteNode node = nearest.get();
-        NodeLabels labels = labelsOf(stationId, floorId, floorCode, node, floorNodes);
+        NodeLabels labels = labelsOf(normalizedFloorCode, stationFloor.getSpaceType());
 
         return Optional.of(new AnchoredLocation(
                 floorId,
-                floorCode,
+                normalizedFloorCode,
                 round(point.x()),
                 round(point.y()),
                 round(point.z()),
@@ -126,144 +118,16 @@ public class IndoorPositionResolver {
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    /** 사용자에게 내부 코드 대신 층·랜드마크 관계가 드러나는 출발지를 돌려준다. */
-    private NodeLabels labelsOf(
-            Long stationId,
-            Long floorId,
-            String floorCode,
-            RouteNode node,
-            List<RouteNode> floorNodes
-    ) {
-        List<Facility> facilities = facilityRepository.searchActive(stationId, floorId, null);
-        Optional<Facility> attached = facilities.stream()
-                .filter(facility -> node.getId().equals(facility.getLinkedNodeId()))
-                .findFirst();
-        if (attached.isPresent()) {
-            Facility facility = attached.orElseThrow();
-            return withFloor(floorCode, facility.getNameKo(), englishNameOf(facility));
-        }
-
-        Optional<NearbyFacility> nearby = nearestFacility(
-                node,
-                floorNodes,
-                facilities,
-                routeEdgeRepository.findAllByStationIdAndActiveTrueOrderByIdAsc(stationId)
-        );
-        if (nearby.isPresent() && nearby.orElseThrow().distanceM() <= NEARBY_FACILITY_M) {
-            Facility facility = nearby.orElseThrow().facility();
-            return withFloor(
-                    floorCode,
-                    facility.getNameKo() + " 인근",
-                    "Near " + englishNameOf(facility)
-            );
-        }
-        if (nearby.isPresent() && nearby.orElseThrow().distanceM() <= TOWARD_FACILITY_M) {
-            Facility facility = nearby.orElseThrow().facility();
-            return withFloor(
-                    floorCode,
-                    facility.getNameKo() + " 방면 통로",
-                    "Passage toward " + englishNameOf(facility)
-            );
-        }
-        if ("B3".equalsIgnoreCase(floorCode)) {
-            PlatformZone zone = platformZoneOf(node, floorNodes);
-            return withFloor(floorCode, zone.ko(), zone.en());
-        }
-        return withFloor(floorCode, "통로", "Passage");
-    }
-
-    private Optional<NearbyFacility> nearestFacility(
-            RouteNode start,
-            List<RouteNode> floorNodes,
-            List<Facility> facilities,
-            List<RouteEdge> stationEdges
-    ) {
-        Set<Long> floorNodeIds = new HashSet<>();
-        floorNodes.forEach(node -> floorNodeIds.add(node.getId()));
-
-        Map<Long, List<Neighbor>> graph = new HashMap<>();
-        for (RouteEdge edge : stationEdges) {
-            if (!floorNodeIds.contains(edge.getFromNodeId()) || !floorNodeIds.contains(edge.getToNodeId())) {
-                continue;
-            }
-            double distance = edge.getDistanceM().doubleValue();
-            graph.computeIfAbsent(edge.getFromNodeId(), ignored -> new ArrayList<>())
-                    .add(new Neighbor(edge.getToNodeId(), distance));
-            // 위치 설명은 통행 방향이 아니라 공간적 인접성을 나타내므로 단방향 간선도 양쪽으로 잰다.
-            graph.computeIfAbsent(edge.getToNodeId(), ignored -> new ArrayList<>())
-                    .add(new Neighbor(edge.getFromNodeId(), distance));
-        }
-
-        Map<Long, Facility> facilityByNode = new HashMap<>();
-        facilities.stream()
-                .filter(facility -> facility.getLinkedNodeId() != null)
-                .forEach(facility -> facilityByNode.putIfAbsent(facility.getLinkedNodeId(), facility));
-
-        Map<Long, Double> distances = new HashMap<>();
-        PriorityQueue<NodeDistance> queue = new PriorityQueue<>(Comparator.comparingDouble(NodeDistance::distanceM));
-        distances.put(start.getId(), 0.0);
-        queue.add(new NodeDistance(start.getId(), 0.0));
-
-        while (!queue.isEmpty()) {
-            NodeDistance current = queue.poll();
-            if (current.distanceM() > distances.getOrDefault(current.nodeId(), Double.POSITIVE_INFINITY)) {
-                continue;
-            }
-            Facility facility = facilityByNode.get(current.nodeId());
-            if (facility != null) {
-                return Optional.of(new NearbyFacility(facility, current.distanceM()));
-            }
-            for (Neighbor neighbor : graph.getOrDefault(current.nodeId(), List.of())) {
-                double candidate = current.distanceM() + neighbor.distanceM();
-                if (candidate < distances.getOrDefault(neighbor.nodeId(), Double.POSITIVE_INFINITY)) {
-                    distances.put(neighbor.nodeId(), candidate);
-                    queue.add(new NodeDistance(neighbor.nodeId(), candidate));
-                }
-            }
-        }
-        return Optional.empty();
-    }
-
-    private PlatformZone platformZoneOf(RouteNode node, List<RouteNode> floorNodes) {
-        double minX = floorNodes.stream().mapToDouble(value -> value.getMapX().doubleValue()).min().orElse(0.0);
-        double maxX = floorNodes.stream().mapToDouble(value -> value.getMapX().doubleValue()).max().orElse(0.0);
-        double width = maxX - minX;
-        if (width <= 0.0) {
-            return new PlatformZone("승강장 구간", "Platform area");
-        }
-        double position = (node.getMapX().doubleValue() - minX) / width;
-        if (position < 1.0 / 3.0) {
-            return new PlatformZone("승강장 서쪽 구간", "West platform area");
-        }
-        if (position < 2.0 / 3.0) {
-            return new PlatformZone("승강장 중앙 구간", "Central platform area");
-        }
-        return new PlatformZone("승강장 동쪽 구간", "East platform area");
-    }
-
-    private NodeLabels withFloor(String floorCode, String placeKo, String placeEn) {
-        return new NodeLabels(floorCode + " · " + placeKo, floorCode + " · " + placeEn);
-    }
-
-    private String englishNameOf(Facility facility) {
-        return facility.getNameEn() == null || facility.getNameEn().isBlank()
-                ? facility.getNameKo()
-                : facility.getNameEn();
-    }
-
-    private record Neighbor(Long nodeId, double distanceM) {
-    }
-
-    private record NodeDistance(Long nodeId, double distanceM) {
-    }
-
-    private record NearbyFacility(Facility facility, double distanceM) {
+    /** 세부 노드명 대신 사용자가 구분하기 쉬운 층과 공간 유형만 표시한다. */
+    private NodeLabels labelsOf(String floorCode, String spaceType) {
+        return switch (spaceType == null ? "" : spaceType) {
+            case "concourse" -> new NodeLabels(floorCode + " · 대합실", floorCode + " · Concourse");
+            case "platform" -> new NodeLabels(floorCode + " · 승강장", floorCode + " · Platform");
+            default -> new NodeLabels(floorCode + " · 역사 내부", floorCode + " · Station interior");
+        };
     }
 
     private record NodeLabels(String ko, String en) {
-    }
-
-    private record PlatformZone(String ko, String en) {
     }
 
     private BigDecimal round(double value) {

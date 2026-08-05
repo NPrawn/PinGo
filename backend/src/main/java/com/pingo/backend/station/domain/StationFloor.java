@@ -39,6 +39,9 @@ public class StationFloor {
     @Column(name = "floor_name", length = 100)
     private String floorName;
 
+    @Column(name = "space_type", nullable = false, length = 30)
+    private String spaceType;
+
     @Column(name = "floor_order", nullable = false)
     private int floorOrder;
 
@@ -66,12 +69,14 @@ public class StationFloor {
             Station station,
             String floorCode,
             String floorName,
+            String spaceType,
             int floorOrder,
             BigDecimal nominalZ
     ) {
         this.station = station;
         this.floorCode = floorCode;
         this.floorName = floorName;
+        this.spaceType = spaceType;
         this.floorOrder = floorOrder;
         this.nominalZ = nominalZ;
     }
@@ -83,12 +88,28 @@ public class StationFloor {
             int floorOrder,
             BigDecimal nominalZ
     ) {
-        return new StationFloor(station, floorCode, floorName, floorOrder, nominalZ);
+        return create(station, floorCode, floorName, "station_interior", floorOrder, nominalZ);
+    }
+
+    public static StationFloor create(
+            Station station,
+            String floorCode,
+            String floorName,
+            String spaceType,
+            int floorOrder,
+            BigDecimal nominalZ
+    ) {
+        return new StationFloor(station, floorCode, floorName, spaceType, floorOrder, nominalZ);
     }
 
     public void update(String floorCode, String floorName, int floorOrder, BigDecimal nominalZ) {
+        update(floorCode, floorName, spaceType, floorOrder, nominalZ);
+    }
+
+    public void update(String floorCode, String floorName, String spaceType, int floorOrder, BigDecimal nominalZ) {
         this.floorCode = floorCode;
         this.floorName = floorName;
+        this.spaceType = spaceType;
         this.floorOrder = floorOrder;
         this.nominalZ = nominalZ;
     }

@@ -199,8 +199,8 @@ class LocalizationServiceTest {
 
         assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.SUCCESS);
         assertThat(response.startNodeId()).isEqualTo(123L);
-        assertThat(response.startNodeLabel()).isEqualTo("B2-B3 엘리베이터 A");
-        assertThat(response.startNodeLabelEn()).isEqualTo("B2-B3 Elevator A");
+        assertThat(response.startNodeLabel()).isEqualTo("B2 · 대합실");
+        assertThat(response.startNodeLabelEn()).isEqualTo("B2 · Concourse");
         assertThat(response.confidenceScore()).isEqualTo(0.87);
         assertThat(response.fallbackOptions()).isEmpty();
         assertThat(response.position()).isNotNull();
@@ -270,7 +270,7 @@ class LocalizationServiceTest {
         assertThat(response.candidate()).isNotNull();
         assertThat(response.candidate().confidenceScore()).isEqualTo(1.0);
         assertThat(response.candidate().startNodeId()).isEqualTo(123L);
-        assertThat(response.candidate().startNodeLabelEn()).isEqualTo("B2-B3 Elevator A");
+        assertThat(response.candidate().startNodeLabelEn()).isEqualTo("B2 · Concourse");
         assertThat(response.candidate().position().floorCode()).isEqualTo("B2");
     }
 
@@ -350,8 +350,8 @@ class LocalizationServiceTest {
                 forwardMapX, forwardMapY,
                 new BigDecimal("0.497"),
                 123L,
-                "B2-B3 엘리베이터 A",
-                "B2-B3 Elevator A",
+                "B2 · 대합실",
+                "B2 · Concourse",
                 new BigDecimal("0.770"));
     }
 

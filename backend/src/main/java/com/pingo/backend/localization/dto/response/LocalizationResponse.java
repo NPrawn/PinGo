@@ -51,14 +51,14 @@ public record LocalizationResponse(
 
         @Schema(
                 description = "경로 시작 노드의 사용자용 한글 표시 이름.",
-                example = "B2 · B2-B3 엘리베이터 A 인근",
+                example = "B2 · 대합실",
                 nullable = true
         )
         String startNodeLabel,
 
         @Schema(
                 description = "경로 시작 노드의 영문 표시 이름.",
-                example = "B2 · Near B2-B3 Elevator A",
+                example = "B2 · Concourse",
                 nullable = true
         )
         String startNodeLabelEn,

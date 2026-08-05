@@ -1003,8 +1003,8 @@ multipart/form-data
       "accuracyM": 0.497
     },
     "startNodeId": 123,
-    "startNodeLabel": "B2 · B2-B3 엘리베이터 A 인근",
-    "startNodeLabelEn": "B2 · Near B2-B3 Elevator A",
+    "startNodeLabel": "B2 · 대합실",
+    "startNodeLabelEn": "B2 · Concourse",
     "fallbackOptions": [],
     "processingTimeMs": 2310
   },
@@ -1068,7 +1068,7 @@ FE가 WebXR 좌표를 지도에 정렬하려면 이 값이 필요하다(FE 좌�
 | mapVersion | string | 위치추정에 사용된 AI 맵 버전 |
 | position | object | 확정한 실내 위치(캐노니컬 미터). 확정하지 못했거나 해당 층 정합이 없으면 `null` |
 | startNodeId | number | 경로 탐색 시작 노드 ID. 위치를 확정하지 못하면 `null` |
-| startNodeLabel | string | 경로 시작 노드의 사용자용 한글 이름. 시설명·인접 시설·승강장 구역 순으로 생성 |
+| startNodeLabel | string | 경로 시작 노드의 사용자용 한글 이름. 층과 공간 유형(대합실·승강장)으로 생성 |
 | startNodeLabelEn | string | `startNodeLabel`과 같은 위치의 사용자용 영문 이름 |
 | fallbackOptions | string[] | 사용자에게 제공할 대체 행동 목록 |
 | processingTimeMs | number | AI 위치추정 처리 시간(ms). AI 호출 실패로 측정할 수 없으면 `null` 또는 생략 |
@@ -2635,9 +2635,14 @@ WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 
 {
   "floorCode": "B2",
   "floorName": "지하 2층",
+  "spaceType": "concourse",
   "floorOrder": 2
 }
 ```
+
+`spaceType`은 `concourse`(대합실), `platform`(승강장), `station_interior`(기타 역사 내부) 중 하나다.
+등록 시 생략하면 `station_interior`, 수정 시 생략하면 기존 값을 유지한다. 위치 인식 결과의 사용자용
+출발지 라벨은 층 코드가 아니라 이 값을 기준으로 생성한다.
 
 ### 층 등록 Response
 

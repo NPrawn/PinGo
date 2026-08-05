@@ -16,8 +16,8 @@ describe('LocateSuccessPage', () => {
     await i18n.changeLanguage('ko');
     useStationStore.setState({ station: '역삼역', floor: 'B3' });
     useNavigationStore.setState({
-      currentLocationLabel: 'B3 · B2-B3 엘리베이터 A 인근',
-      currentLocationLabelEn: 'B3 · Near B2-B3 Elevator A',
+      currentLocationLabel: 'B3 · 승강장',
+      currentLocationLabelEn: 'B3 · Platform',
       currentConfidenceScore: 0.87,
       currentAccuracyM: 1.095,
       relocalizing: false,
@@ -33,7 +33,7 @@ describe('LocateSuccessPage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getAllByText('Yeoksam Station · B3 · Near B2-B3 Elevator A')).toHaveLength(2);
+    expect(screen.getAllByText('Yeoksam Station · B3 · Platform')).toHaveLength(2);
   });
 
   it('shows the mapped departure label with real VPS metrics', () => {
@@ -43,7 +43,7 @@ describe('LocateSuccessPage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getAllByText('역삼역 · B3 · B2-B3 엘리베이터 A 인근')).toHaveLength(2);
+    expect(screen.getAllByText('역삼역 · B3 · 승강장')).toHaveLength(2);
     expect(screen.getByText('신뢰도 87%')).toBeInTheDocument();
     expect(screen.getByText('오차 범위 약 1.1m')).toBeInTheDocument();
     expect(screen.queryByText('3번 출구 방면 · 12번 기둥 부근')).toBeNull();

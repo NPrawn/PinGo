@@ -1,10 +1,6 @@
 package com.pingo.backend.localization.anchoring;
 
-import com.pingo.backend.facility.domain.Facility;
-import com.pingo.backend.facility.repository.FacilityRepository;
-import com.pingo.backend.route.domain.RouteEdge;
 import com.pingo.backend.route.domain.RouteNode;
-import com.pingo.backend.route.repository.RouteEdgeRepository;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.domain.StationFloor;
@@ -24,8 +20,6 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,26 +33,15 @@ class IndoorPositionResolverTest {
     @Mock
     private RouteNodeRepository routeNodeRepository;
     @Mock
-    private RouteEdgeRepository routeEdgeRepository;
-    @Mock
-    private FacilityRepository facilityRepository;
-    @Mock
     private StationFloorRepository stationFloorRepository;
 
     private IndoorPositionResolver resolver;
 
     @BeforeEach
     void setUp() {
-        resolver = new IndoorPositionResolver(
-                routeNodeRepository,
-                routeEdgeRepository,
-                facilityRepository,
-                stationFloorRepository
-        );
+        resolver = new IndoorPositionResolver(routeNodeRepository, stationFloorRepository);
         when(stationFloorRepository.findByStationIdAndFloorCode(STATION, "B2"))
                 .thenReturn(Optional.of(floor(B2_ID, "B2")));
-        when(facilityRepository.searchActive(eq(STATION), any(), eq(null))).thenReturn(List.of());
-        when(routeEdgeRepository.findAllByStationIdAndActiveTrueOrderByIdAsc(STATION)).thenReturn(List.of());
     }
 
     @Test
@@ -167,74 +150,64 @@ class IndoorPositionResolverTest {
     }
 
     @Test
-    @DisplayName("시설이 붙은 노드는 시설 이름으로 표시한다")
-    void usesFacilityNameAsStartNodeLabel() {
+    @DisplayName("B2 시설 노드도 세부 이름 대신 대합실로 표시한다")
+    void describesB2FacilityAsConcourse() {
         givenNodes(node(41L, "B2_F008", "0.000", "0.000", "0.000"));
-        when(facilityRepository.searchActive(STATION, B2_ID, null))
-                .thenReturn(List.of(facility(41L, "개찰구 A", "Fare Gate A")));
 
         AnchoredLocation got = resolver
                 .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.5)
                 .orElseThrow();
 
-        assertThat(got.startNodeLabel()).isEqualTo("B2 · 개찰구 A");
-        assertThat(got.startNodeLabelEn()).isEqualTo("B2 · Fare Gate A");
+        assertThat(got.startNodeLabel()).isEqualTo("B2 · 대합실");
+        assertThat(got.startNodeLabelEn()).isEqualTo("B2 · Concourse");
     }
 
     @Test
-    @DisplayName("가까운 시설이 없으면 내부 코드 대신 층과 통로를 표시한다")
-    void fallsBackToFloorAndPassage() {
+    @DisplayName("B2 복도 노드도 대합실로 표시한다")
+    void describesB2PassageAsConcourse() {
         givenNodes(node(51L, "B2_R010", "0.000", "0.000", "0.000"));
 
         AnchoredLocation got = resolver
                 .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.5)
                 .orElseThrow();
 
-        assertThat(got.startNodeLabel()).isEqualTo("B2 · 통로");
-        assertThat(got.startNodeLabelEn()).isEqualTo("B2 · Passage");
+        assertThat(got.startNodeLabel()).isEqualTo("B2 · 대합실");
+        assertThat(got.startNodeLabelEn()).isEqualTo("B2 · Concourse");
     }
 
     @Test
-    @DisplayName("그래프 거리 10m 이내 시설은 인근으로 표시한다")
-    void describesNearbyFacility() {
+    @DisplayName("인접 시설이 있어도 세부 시설명을 노출하지 않는다")
+    void omitsNearbyFacilityDetails() {
         RouteNode passage = node(61L, "B2_R010", "0.000", "0.000", "0.000");
         RouteNode gate = node(62L, "B2_F008", "5.000", "0.000", "0.000");
         givenNodes(passage, gate);
-        when(facilityRepository.searchActive(STATION, B2_ID, null))
-                .thenReturn(List.of(facility(62L, "개찰구 A", "Fare Gate A")));
-        when(routeEdgeRepository.findAllByStationIdAndActiveTrueOrderByIdAsc(STATION))
-                .thenReturn(List.of(edge(61L, 62L, "5.00")));
 
         AnchoredLocation got = resolver
                 .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.5)
                 .orElseThrow();
 
-        assertThat(got.startNodeLabel()).isEqualTo("B2 · 개찰구 A 인근");
-        assertThat(got.startNodeLabelEn()).isEqualTo("B2 · Near Fare Gate A");
+        assertThat(got.startNodeLabel()).isEqualTo("B2 · 대합실");
+        assertThat(got.startNodeLabelEn()).isEqualTo("B2 · Concourse");
     }
 
     @Test
-    @DisplayName("그래프 거리 10m 초과 20m 이내 시설은 방면 통로로 표시한다")
-    void describesPassageTowardFacility() {
+    @DisplayName("시설과 거리가 멀어도 층 공간 유형만 표시한다")
+    void omitsFacilityDistanceDetails() {
         RouteNode passage = node(71L, "B2_R001", "0.000", "0.000", "0.000");
         RouteNode pharmacy = node(72L, "B2_F001", "15.000", "0.000", "0.000");
         givenNodes(passage, pharmacy);
-        when(facilityRepository.searchActive(STATION, B2_ID, null))
-                .thenReturn(List.of(facility(72L, "약국 A", "Pharmacy A")));
-        when(routeEdgeRepository.findAllByStationIdAndActiveTrueOrderByIdAsc(STATION))
-                .thenReturn(List.of(edge(71L, 72L, "15.00")));
 
         AnchoredLocation got = resolver
                 .resolve(STATION, "B2", new CanonicalPoint(0.0, 0.0, 0.0), null, 0.5)
                 .orElseThrow();
 
-        assertThat(got.startNodeLabel()).isEqualTo("B2 · 약국 A 방면 통로");
-        assertThat(got.startNodeLabelEn()).isEqualTo("B2 · Passage toward Pharmacy A");
+        assertThat(got.startNodeLabel()).isEqualTo("B2 · 대합실");
+        assertThat(got.startNodeLabelEn()).isEqualTo("B2 · Concourse");
     }
 
     @Test
-    @DisplayName("멀리 떨어진 B3 복도는 좌표에 따라 승강장 구역으로 표시한다")
-    void describesB3PlatformZone() {
+    @DisplayName("B3 노드는 위치와 관계없이 승강장으로 표시한다")
+    void describesB3AsPlatform() {
         when(stationFloorRepository.findByStationIdAndFloorCode(STATION, "B3"))
                 .thenReturn(Optional.of(floor(B3_ID, "B3")));
         List<RouteNode> nodes = List.of(
@@ -248,19 +221,40 @@ class IndoorPositionResolverTest {
                 .resolve(STATION, "B3", new CanonicalPoint(-90.0, 0.0, -5.0), null, 0.5)
                 .orElseThrow();
 
-        assertThat(got.startNodeLabel()).isEqualTo("B3 · 승강장 서쪽 구간");
-        assertThat(got.startNodeLabelEn()).isEqualTo("B3 · West platform area");
+        assertThat(got.startNodeLabel()).isEqualTo("B3 · 승강장");
+        assertThat(got.startNodeLabelEn()).isEqualTo("B3 · Platform");
     }
 
     @Test
     @DisplayName("층이나 노드를 찾지 못하면 위치를 확정하지 않는다")
     void returnsEmptyWhenFloorOrNodesMissing() {
+        assertThat(resolver.resolve(STATION, null, new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
+        assertThat(resolver.resolve(STATION, "  ", new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
+
         when(stationFloorRepository.findByStationIdAndFloorCode(STATION, "B9"))
                 .thenReturn(Optional.empty());
         assertThat(resolver.resolve(STATION, "B9", new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
 
         givenNodes();
         assertThat(resolver.resolve(STATION, "B2", new CanonicalPoint(0, 0, 0), null, 0.5)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("알 수 없는 공간 유형은 역사 내부로 안전하게 표시한다")
+    void fallsBackForUnknownSpaceType() {
+        StationFloor floor = floor(4L, "B4", "unknown");
+        when(stationFloorRepository.findByStationIdAndFloorCode(STATION, "B4"))
+                .thenReturn(Optional.of(floor));
+        RouteNode node = node(91L, 4L, "B4_R001", "0.000", "0.000", "-10.000");
+        when(routeNodeRepository.search(STATION, 4L)).thenReturn(List.of(node));
+
+        AnchoredLocation got = resolver
+                .resolve(STATION, " b4 ", new CanonicalPoint(0.0, 0.0, -10.0), null, 0.5)
+                .orElseThrow();
+
+        assertThat(got.floorCode()).isEqualTo("B4");
+        assertThat(got.startNodeLabel()).isEqualTo("B4 · 역사 내부");
+        assertThat(got.startNodeLabelEn()).isEqualTo("B4 · Station interior");
     }
 
     private void givenNodes(RouteNode... nodes) {
@@ -279,31 +273,14 @@ class IndoorPositionResolverTest {
         return n;
     }
 
-    private RouteEdge edge(Long fromNodeId, Long toNodeId, String distanceM) {
-        return RouteEdge.create(
-                STATION,
-                fromNodeId,
-                toNodeId,
-                new BigDecimal(distanceM),
-                1,
-                "walkway",
-                true,
-                true
-        );
-    }
-
-    private Facility facility(Long linkedNodeId, String nameKo) {
-        return facility(linkedNodeId, nameKo, null);
-    }
-
-    private Facility facility(Long linkedNodeId, String nameKo, String nameEn) {
-        return Facility.create(STATION, B2_ID, "gate", nameKo, nameEn,
-                BigDecimal.ZERO, BigDecimal.ZERO, linkedNodeId, false);
-    }
-
     private StationFloor floor(Long id, String code) {
+        String spaceType = "B3".equals(code) ? "platform" : "concourse";
+        return floor(id, code, spaceType);
+    }
+
+    private StationFloor floor(Long id, String code, String spaceType) {
         Station station = Station.create("역삼역", "Yeoksam", "2호선", null, null);
-        StationFloor f = StationFloor.create(station, code, "지하", 1, null);
+        StationFloor f = StationFloor.create(station, code, "지하", spaceType, 1, null);
         ReflectionTestUtils.setField(f, "id", id);
         return f;
     }
