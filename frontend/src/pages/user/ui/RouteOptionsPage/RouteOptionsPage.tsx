@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  facilityAtNodeMatchingLabel,
+  localizedFacilityNameAtNode,
+  localizedFacilityNameOf,
+  useStationFacilities,
+} from '@/entities/facility';
 import { useNavigationStore } from '@/entities/navigation';
 import { routeOriginOf, routeUnavailableText, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
@@ -82,18 +88,34 @@ export function RouteOptionsPage() {
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
   const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
+  const facilities = useStationFacilities(stationId ?? 0).data;
+  const facilityLocationLabel = localizedFacilityNameAtNode(
+    facilities,
+    currentNodeId,
+    language,
+    currentLocationLabel ?? station,
+  );
   const locationLabel = localizedLocationLabelOf(
     currentLocationLabel,
     currentLocationLabelEn,
     language,
-    localizeUserLabel(station, language),
+    facilityLocationLabel,
   );
-  const destinationLabel = destination
+  const storedDestinationLabel = destination
     ? destination === destinationNameKo || destination === destinationNameEn
       ? (localizedNameOf(language, destinationNameKo, destinationNameEn) ??
         localizeUserLabel(destination, language))
       : localizeUserLabel(destination, language)
     : null;
+  const storedDestinationFacility = facilityAtNodeMatchingLabel(
+    facilities,
+    targetNodeId,
+    destinationNameKo,
+  ) ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destinationNameEn)
+    ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destination);
+  const destinationLabel = storedDestinationFacility
+    ? localizedFacilityNameOf(storedDestinationFacility, language)
+    : storedDestinationLabel;
   const externalDestination = isExternalDestination(destinationType);
 
   /**

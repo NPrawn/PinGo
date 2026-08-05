@@ -106,7 +106,16 @@ type NavigationStore = {
       destinationNameEn?: string;
     },
   ) => void;
-  setDestination: (destination: string) => void;
+  setDestination: (
+    destination: string,
+    details?: {
+      destinationId?: number;
+      destinationType?: string;
+      targetNodeId?: number;
+      destinationNameKo?: string;
+      destinationNameEn?: string | null;
+    },
+  ) => void;
   setCurrentLocation: (location: {
     nodeId: number;
     floorId: number;
@@ -194,17 +203,17 @@ export const useNavigationStore = create<NavigationStore>()(
           waypoints: [],
           relocalizing: false,
         }),
-      setDestination: (destination) =>
+      setDestination: (destination, details) =>
         set({
           destination,
-          destinationNameKo: null,
-          destinationNameEn: null,
-          destinationId: null,
-          destinationType: null,
+          destinationNameKo: details?.destinationNameKo ?? null,
+          destinationNameEn: details?.destinationNameEn ?? null,
+          destinationId: details?.destinationId ?? null,
+          destinationType: details?.destinationType ?? null,
           destinationLatitude: null,
           destinationLongitude: null,
           destinationAddress: null,
-          targetNodeId: null,
+          targetNodeId: details?.targetNodeId ?? null,
           targetExitLabel: null,
           routeResult: null,
         }),

@@ -4,7 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   FACILITY_MAP_FILTERS,
+  facilityAtNodeMatchingLabel,
   facilityIconOf,
+  localizedFacilityNameAtNode,
+  localizedFacilityNameOf,
   useStationFacilities,
   type Facility,
 } from '@/entities/facility';
@@ -26,7 +29,7 @@ import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
-import { useApiLanguage } from '@/shared/i18n';
+import { localizedNameOf, useApiLanguage } from '@/shared/i18n';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
 import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
 import { stopCamera } from '@/widgets/camera-preview';
@@ -106,19 +109,14 @@ export function NavigationPage() {
   const setFloor = useStationStore((state) => state.setFloor);
   const destination =
     useNavigationStore((state) => state.destination) ?? t('user.navigation.defaultDestination');
+  const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
+  const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
   const route = useNavigationStore((state) => state.route);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
-  const displayedOrigin = localizedLocationLabelOf(
-    currentLocationLabel,
-    currentLocationLabelEn,
-    language,
-    localizeUserLabel(station, language),
-  );
-  const displayedDestination = localizeUserLabel(destination, language);
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
@@ -161,7 +159,13 @@ export function NavigationPage() {
   const [exit] = useState(() => targetExitLabel ?? t('user.navigation.defaultExit'));
   /** 되돌리기가 복원할 도착 노드. `exit`과 같은 이유로 진입 시점 값에 고정한다. */
   const [initialTarget] = useState(() => ({ nodeId: targetNodeId, label: targetExitLabel }));
-  const initialDestination = useRef(destination);
+  const initialDestination = useRef({
+    label: destination,
+    nameKo: destinationNameKo,
+    nameEn: destinationNameEn,
+    id: useNavigationStore.getState().destinationId,
+    type: useNavigationStore.getState().destinationType,
+  });
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   /**
    * 지도에 그릴 시설.
@@ -458,8 +462,7 @@ export function NavigationPage() {
    */
   const exitsQuery = useStationFacilities(stationId ?? 0, { facilityType: 'exit' });
   const [pickedDestination, setPickedDestination] = useState<Facility | null>(null);
-  const destinationFacility =
-    pickedDestination ?? matchExitByName(exitsQuery.data ?? [], activeDestination);
+  const matchedExitDestination = matchExitByName(exitsQuery.data ?? [], activeDestination);
 
   /**
    * 표시 층에 실제로 있는 시설 유형. 칩을 이걸로 추린다.
@@ -469,6 +472,41 @@ export function NavigationPage() {
    */
   const facilitiesQuery = useStationFacilities(stationId ?? 0);
   const facilitiesLoaded = facilitiesQuery.data !== undefined;
+  const nodeDestinationFacility =
+    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, activeDestination) ??
+    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameKo) ??
+    facilityAtNodeMatchingLabel(facilitiesQuery.data, targetNodeId, destinationNameEn);
+  const storedDestinationFacility = pickedDestination ?? nodeDestinationFacility;
+  const destinationFacility =
+    storedDestinationFacility ?? matchedExitDestination ?? null;
+  const facilityOrigin = localizedFacilityNameAtNode(
+    facilitiesQuery.data,
+    currentNodeId,
+    language,
+    currentLocationLabel ?? station,
+  );
+  const displayedOrigin = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    language,
+    facilityOrigin,
+  );
+  const displayedDestination = storedDestinationFacility
+    ? localizedFacilityNameOf(storedDestinationFacility, language)
+    : (localizedNameOf(language, destinationNameKo, destinationNameEn) ??
+      localizeUserLabel(destination, language));
+  const initialDestinationFacility = facilityAtNodeMatchingLabel(
+    facilitiesQuery.data,
+    initialTarget.nodeId,
+    exit,
+  );
+  const initialDestinationLabel = initialDestinationFacility
+    ? localizedFacilityNameOf(initialDestinationFacility, language)
+    : localizeUserLabel(exit, language);
+  const activeDestinationLabel =
+    language === 'en' && destinationFacility
+      ? localizedFacilityNameOf(destinationFacility, language)
+      : localizeUserLabel(activeDestination, language);
   const waypointName = (waypoint: (typeof waypoints)[number]) => {
     if (language !== 'en') return waypoint.nameKo;
 
@@ -746,7 +784,13 @@ export function NavigationPage() {
                   type="button"
                   className={styles.resetDestination}
                   onClick={() => {
-                    setDestination(initialDestination.current);
+                    setDestination(initialDestination.current.label, {
+                      destinationId: initialDestination.current.id ?? undefined,
+                      destinationType: initialDestination.current.type ?? undefined,
+                      targetNodeId: initialTarget.nodeId ?? undefined,
+                      destinationNameKo: initialDestination.current.nameKo ?? undefined,
+                      destinationNameEn: initialDestination.current.nameEn,
+                    });
                     setActiveDestination(exit);
                     setPickedDestination(null);
                     // 처음 안내를 시작한 출구로 도착 노드도 함께 돌린다.
@@ -755,8 +799,12 @@ export function NavigationPage() {
                     }
                     setRecalculated(true);
                   }}
-                  aria-label={t('user.navigation.restoreDestination', { destination: exit })}
-                  title={t('user.navigation.restoreDestinationTitle', { destination: exit })}
+                  aria-label={t('user.navigation.restoreDestination', {
+                    destination: initialDestinationLabel,
+                  })}
+                  title={t('user.navigation.restoreDestinationTitle', {
+                    destination: initialDestinationLabel,
+                  })}
                 >
                   <Icon name="refresh" size={10} />
                 </button>
@@ -765,9 +813,7 @@ export function NavigationPage() {
                 <span className={`${styles.pointDot} ${styles.pointDotDestination}`} aria-hidden />
                 <small>{t('user.station.destination')}</small>
               </span>
-              <strong title={localizeUserLabel(activeDestination, language)}>
-                {localizeUserLabel(activeDestination, language)}
-              </strong>
+              <strong title={activeDestinationLabel}>{activeDestinationLabel}</strong>
             </div>
           </div>
 
@@ -870,7 +916,7 @@ export function NavigationPage() {
                   destinationLabel={
                     (effectiveType == null || effectiveType === 'exit') &&
                     destinationFacility !== null
-                      ? localizeUserLabel(destinationFacility.nameKo, language)
+                      ? localizedFacilityNameOf(destinationFacility, language)
                       : null
                   }
                   /* 목적지 시설의 아이콘에 도착지 표시를 붙인다. 지도에서 시설을 새 목적지로
@@ -1098,7 +1144,7 @@ export function NavigationPage() {
                   <span className={styles.stepIcon}>
                     <Icon name="flag" size={14} />
                   </span>
-                  <b>{t('user.navigation.arriveExit', { exit })}</b>
+                  <b>{t('user.navigation.arriveExit', { exit: activeDestinationLabel })}</b>
                   <span>{t('user.navigation.toward', { destination: displayedDestination })}</span>
                 </div>
               </div>
@@ -1189,7 +1235,13 @@ export function NavigationPage() {
                 disabled={selectedFacilityIsWaypoint || selectedFacilityIsDestination}
                 onClick={() => {
                   if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  setDestination(selectedFacility.nameKo);
+                  setDestination(selectedFacility.nameKo, {
+                    destinationId: selectedFacility.facilityId,
+                    destinationType: 'facility',
+                    targetNodeId: selectedFacility.linkedNodeId ?? undefined,
+                    destinationNameKo: selectedFacility.nameKo,
+                    destinationNameEn: selectedFacility.nameEn,
+                  });
                   setActiveDestination(selectedFacility.nameKo);
                   // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
                   setPickedDestination(selectedFacility);

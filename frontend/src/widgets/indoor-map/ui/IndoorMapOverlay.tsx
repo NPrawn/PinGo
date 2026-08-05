@@ -452,20 +452,6 @@ export function IndoorMapOverlay({
               height={facilityRadius}
               transform={upright(point)}
             />
-            {/* 이름은 고른 것에만 붙인다. 층당 30여 개를 모두 붙이면 도면이 글자로 덮인다. */}
-            {selected && (
-              <text
-                className={styles.facilityLabel}
-                x={point.px}
-                y={point.py + facilityRadius + labelFontSize}
-                fontSize={labelFontSize}
-                strokeWidth={labelHaloWidth}
-                textAnchor="middle"
-                transform={upright(point)}
-              >
-                {facility.nameKo}
-              </text>
-            )}
           </g>
         );
       })}
