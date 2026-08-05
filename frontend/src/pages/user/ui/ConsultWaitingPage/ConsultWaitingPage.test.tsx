@@ -234,26 +234,6 @@ describe('ConsultWaitingPage', () => {
   });
 
   /**
-   * 기기 뒤로가기로 대기 화면을 벗어나는 경우. (S15P11A206-353)
-   *
-   * 취소 버튼을 거치지 않으므로 예전에는 서버의 상담이 대기열에 그대로 남았다. 상담자가
-   * 수락해도 사용자는 이미 다른 화면에 있어 아무 응답이 없다.
-   */
-  it('기기 뒤로가기로 벗어나면 상담을 거둬들이고 장치를 놓는다', async () => {
-    renderPage(CONSULT_FLOW_ENTRIES);
-    expect(await screen.findByText('CONNECTING · 상담 대기 중')).toBeInTheDocument();
-
-    await act(async () => {
-      window.dispatchEvent(new PopStateEvent('popstate'));
-      await Promise.resolve();
-    });
-
-    expect(apiMocks.cancelConsultation).toHaveBeenCalledWith('cs_1', 'session-1');
-    expect(releaseConsultMedia).toHaveBeenCalled();
-    await waitFor(() => expect(useConsultStore.getState().consultationId).toBeNull());
-  });
-
-  /**
    * 기다릴 상담이 없는 채로 닿은 경우. (S15P11A206-353)
    *
    * 주소로 직접 들어오면 끝나지 않는 "상담원 연결 중" 화면이 그대로 보여, 사용자는 신청된

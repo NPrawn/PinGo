@@ -93,30 +93,13 @@ export function ConsultWaitingPage() {
     void navigate(USER_ROUTES.CONSULT_REQUEST, { replace: true });
   }, [consultationId, navigate]);
 
-  /**
-   * 기기 뒤로가기로 대기 화면을 벗어나는 경우. (S15P11A206-353)
-   *
-   * 취소 버튼을 거치지 않으므로 서버의 상담은 대기열에 그대로 남고 잡아 둔 카메라·마이크도
-   * 계속 물려 있다. 상담자가 수락해도 사용자는 이미 다른 화면에 있어 아무 응답이 없다.
-   *
-   * 언마운트 정리에 맡기지 않는다. StrictMode가 마운트 직후 정리 함수를 한 번 실행해서,
-   * 개발 빌드에서는 기다리기도 전에 상담이 취소된다. 실제로 되돌아갈 때만 오는 `popstate`를
-   * 듣는다. 새로고침은 이 통로로 오지 않으며, 상담 ID가 세션에 남아 대기가 이어진다.
-   */
-  useEffect(() => {
-    const handlePopState = () => {
-      if (leavingRef.current) return;
-      leavingRef.current = true;
-      releaseConsultMedia();
-      if (consultationId && userSessionId) {
-        void cancelConsultation(consultationId, userSessionId).catch(() => undefined);
-      }
-      clearConsultation();
-    };
+  /*
+    기기 뒤로가기로 이 화면을 벗어나는 경우는 여기서 잡지 못한다. (S15P11A206-353)
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [clearConsultation, consultationId, userSessionId]);
+    언마운트 정리는 StrictMode 가 마운트 직후 실행해 기다리기도 전에 상담을 취소하고,
+    `popstate` 는 라우터가 먼저 받아 이 화면을 걷어내면서 리스너까지 떼어 가 호출되지 않는다.
+    그래서 되돌아 도착하는 화면(`useWithdrawAbandonedConsultation`)이 상담을 거둬들인다.
+  */
 
   useEffect(() => {
     if (!consultationId || !userSessionId) return;
