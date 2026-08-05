@@ -29,6 +29,7 @@ public record AnchoredLocation(
         BigDecimal accuracyM,
         Long startNodeId,
         String startNodeLabel,
+        String startNodeLabelEn,
         BigDecimal startNodeDistanceM
 ) {
 }

@@ -13,6 +13,9 @@ public record LocalizationCandidateResponse(
         @Schema(description = "후보 경로 진입 노드 표시 이름", nullable = true)
         String startNodeLabel,
 
+        @Schema(description = "후보 경로 진입 노드 영문 표시 이름", nullable = true)
+        String startNodeLabelEn,
+
         @Schema(
                 description = "다중 프레임 투표 가중치. 강한 단일 프레임 기준을 1로 정규화한다.",
                 example = "0.72",

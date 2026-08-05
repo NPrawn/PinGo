@@ -95,6 +95,7 @@ public class LocalizationService {
                     anchored.map(LocalizationService::toPosition).orElse(null),
                     anchored.map(AnchoredLocation::startNodeId).orElse(null),
                     anchored.map(AnchoredLocation::startNodeLabel).orElse(null),
+                    anchored.map(AnchoredLocation::startNodeLabelEn).orElse(null),
                     candidate,
                     confidenceScore(aiResponse),
                     fallbackPolicy.optionsFor(finalStatus),
@@ -202,6 +203,7 @@ public class LocalizationService {
                 toPosition(value),
                 value.startNodeId(),
                 value.startNodeLabel(),
+                value.startNodeLabelEn(),
                 score
         );
     }
@@ -229,6 +231,7 @@ public class LocalizationService {
                 requestId,
                 resultStatus,
                 mapVersion,
+                null,
                 null,
                 null,
                 null,

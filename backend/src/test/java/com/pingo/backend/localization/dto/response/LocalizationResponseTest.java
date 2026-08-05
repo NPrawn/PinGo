@@ -28,6 +28,7 @@ class LocalizationResponseTest {
                         new java.math.BigDecimal("0.497")),
                 123L,
                 "B2-B3 엘리베이터 A",
+                "B2-B3 Elevator A",
                 null,
                 0.87,
                 List.of(),
@@ -44,6 +45,7 @@ class LocalizationResponseTest {
         assertThat(json).contains("\"accuracyM\":0.497");
         assertThat(json).contains("\"startNodeId\":123");
         assertThat(json).contains("\"startNodeLabel\":\"B2-B3 엘리베이터 A\"");
+        assertThat(json).contains("\"startNodeLabelEn\":\"B2-B3 Elevator A\"");
         assertThat(json).contains("\"confidenceScore\":0.87");
         // FE 는 forwardMap.x / forwardMap.y 로 읽는다. 평탄화하면 계약이 깨진다.
         assertThat(json).contains("\"forwardMap\":{\"x\":0.930418,\"y\":-0.366501}");
@@ -64,6 +66,7 @@ class LocalizationResponseTest {
                         new java.math.BigDecimal("0.497")),
                 123L,
                 "B2-B3 엘리베이터 A",
+                "B2-B3 Elevator A",
                 null,
                 0.87,
                 List.of(),
@@ -83,6 +86,7 @@ class LocalizationResponseTest {
                 "loc_01JABC",
                 LocalizationResultStatus.LOW_CONFIDENCE,
                 "YS-2026-07-23.1",
+                null,
                 null,
                 null,
                 null,
