@@ -58,7 +58,7 @@ public class Facility {
      * 그것이 맞다. 그래서 접근 경로의 도착점을 따로 둔다.
      *
      * <p>{@code null}은 계단 없이 나갈 수 없다는 뜻이다. 그때는 {@code elevator_only}도
-     * {@link #linkedNodeId} 로 풀린다. 사유와 값의 근거는 {@code V20}에 있다.
+     * {@link #linkedNodeId} 로 풀린다. 사유와 값의 근거는 {@code V22}에 있다.
      */
     @Column(name = "accessible_node_id")
     private Long accessibleNodeId;
