@@ -80,6 +80,18 @@ interface IndoorMapOverlayProps {
   facilities?: readonly Facility[];
   /** 이름을 함께 표시할 시설. 기본은 아이콘만 그린다 — 라벨을 다 붙이면 도면이 가려진다. */
   selectedFacilityId?: number | null;
+  /**
+   * 지금 목적지인 경로 노드. 그 노드에 연결된 시설 아이콘을 도착지로 표시한다.
+   * (S15P11A206-206)
+   *
+   * 목적지 마커(`destination`)만으로는 **어느 시설이 목적지인지** 알 수 없다. 마커는 경로
+   * 노드 좌표에 찍히고 아이콘은 시설 좌표에 그려지는데 이 둘이 정확히 겹치지 않는다. 그래서
+   * 상담자가 엘리베이터를 새 목적지로 짚어도, 지도에서는 아이콘 여러 개 사이에 점 하나가
+   * 늘어난 것으로만 보였다 — 짚은 그 아이콘이 목적지가 되었다는 표시가 없었다.
+   *
+   * 좌표로 맞추지 않고 **노드로** 맞춘다. 좌표 비교는 소수점 자리와 도면 갱신에 흔들린다.
+   */
+  destinationNodeId?: number | null;
   /** 시설 마커를 눌렀을 때. 넘기지 않으면 마커가 탭을 받지 않는다. */
   onSelectFacility?: (facility: Facility) => void;
   /**
@@ -124,6 +136,7 @@ export function IndoorMapOverlay({
   connectCurrentToRoute = false,
   facilities,
   selectedFacilityId,
+  destinationNodeId,
   onSelectFacility,
   viewScale = 1,
   mapRotationDeg = 0,
@@ -209,7 +222,31 @@ export function IndoorMapOverlay({
       )
     : [];
   const destinationPoint = pointOnFloor(destination, floorId, project);
-  const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project);
+  /**
+   * 고른 시설을 **맨 나중에** 그린다. (S15P11A206-206)
+   *
+   * SVG 에는 `z-index` 가 없어 나중에 그린 것이 위로 온다. 역삼역 B2 는 1m 가 1.2px 이라 그 층
+   * 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px 인데, 고른 것이 목록에서 앞에 있으면 뒤에
+   * 그려지는 이웃 마커에 아이콘과 이름표가 덮인다 — 눌렀는데 무엇을 눌렀는지 보이지 않았다.
+   *
+   * 정렬만 바꾼다. 경로·현재 위치보다 위로 올리지는 않는다 — 안내에 필요한 표시가 시설에 가리면
+   * 안 된다는 규칙(아래 렌더 순서)은 그대로다.
+   */
+  const isDestinationFacility = (facility: Facility): boolean =>
+    destinationNodeId != null && facility.linkedNodeId === destinationNodeId;
+  /**
+   * 그리는 순서. 큰 값이 위로 온다. 고른 것 > 목적지 > 나머지.
+   *
+   * 목적지 표시도 이웃 마커에 덮이면 없는 것과 같다. 고른 것을 목적지보다 위에 두는 이유는
+   * 이름표가 붙는 쪽이라 가려지면 무엇을 눌렀는지 알 수 없기 때문이다.
+   */
+  const paintRank = (facility: Facility): number => {
+    if (facility.facilityId === selectedFacilityId) return 2;
+    return isDestinationFacility(facility) ? 1 : 0;
+  };
+  const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project).sort(
+    (a, b) => paintRank(a.facility) - paintRank(b.facility),
+  );
   // 그릴 것이 하나도 없으면 오버레이 자체를 만들지 않는다.
   if (
     routeSegments.length === 0 &&
@@ -362,18 +399,40 @@ export function IndoorMapOverlay({
       {/* 시설은 경로·현재위치보다 아래에 둔다. 안내에 필요한 표시가 시설에 가리면 안 된다. */}
       {facilityPins.map(({ facility, point }) => {
         const selected = facility.facilityId === selectedFacilityId;
+        const isDestination = isDestinationFacility(facility);
 
         return (
           <g
             key={facility.facilityId}
             className={onSelectFacility ? styles.facilityTappable : undefined}
             role={onSelectFacility ? 'button' : 'img'}
-            aria-label={facility.nameKo}
+            /* 목적지라는 사실을 이름에도 싣는다. 색만으로 알리면 화면을 읽어 주는 사용자에게는
+               아무 표시도 없는 것과 같다. */
+            aria-label={
+              isDestination
+                ? `${facility.nameKo} · ${t('indoorMap.overlay.destination')}`
+                : facility.nameKo
+            }
             aria-pressed={onSelectFacility ? selected : undefined}
             onClick={onSelectFacility ? () => onSelectFacility(facility) : undefined}
           >
+            {/* 목적지 시설에는 테두리를 한 겹 더 두른다. 마커 자체를 목적지 색으로 바꾸면
+                유형 아이콘이 무엇인지 읽기 어려워진다. */}
+            {isDestination && (
+              <circle
+                className={styles.facilityDestinationRing}
+                cx={point.px}
+                cy={point.py}
+                r={facilityRadius + pinBorderWidth * 1.5}
+                strokeWidth={pinBorderWidth * 1.5}
+              />
+            )}
             <circle
-              className={[styles.facilityPin, selected && styles.facilityPinOn]
+              className={[
+                styles.facilityPin,
+                selected && styles.facilityPinOn,
+                isDestination && !selected && styles.facilityPinDestination,
+              ]
                 .filter(Boolean)
                 .join(' ')}
               cx={point.px}

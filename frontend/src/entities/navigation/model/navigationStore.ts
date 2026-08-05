@@ -46,9 +46,14 @@ type NavigationStore = {
   currentNodeId: number | null;
   currentFloorId: number | null;
   currentLocationLabel: string | null;
+  currentLocationLabelEn: string | null;
   currentMapX: number | null;
   currentMapY: number | null;
   currentForwardMap: MapDirection | null;
+  /** 마지막 VPS 인식의 AI 기하 품질 점수(0~1). 수동 위치 지정이면 null이다. */
+  currentConfidenceScore: number | null;
+  /** VPS 좌표를 평면도에 표시할 때 사용하는 층별 좌표 정합 평균 오차(m). */
+  currentAccuracyM: number | null;
   routeResult: RouteResponse | null;
   /**
    * 사용자가 고른 경로 유형.
@@ -115,9 +120,12 @@ type NavigationStore = {
     nodeId: number;
     floorId: number;
     label?: string;
+    labelEn?: string;
     mapX?: number;
     mapY?: number;
     forwardMap?: MapDirection | null;
+    confidenceScore?: number | null;
+    accuracyM?: number | null;
   }) => void;
   setRoute: (route: RouteType) => void;
   /**
@@ -165,9 +173,12 @@ export const useNavigationStore = create<NavigationStore>()(
       currentNodeId: null,
       currentFloorId: null,
       currentLocationLabel: null,
+      currentLocationLabelEn: null,
       currentMapX: null,
       currentMapY: null,
       currentForwardMap: null,
+      currentConfidenceScore: null,
+      currentAccuracyM: null,
       routeResult: null,
       route: 'fastest',
       stepsOpen: false,
@@ -211,8 +222,11 @@ export const useNavigationStore = create<NavigationStore>()(
           currentNodeId: location.nodeId,
           currentFloorId: location.floorId,
           currentLocationLabel: location.label ?? null,
+          currentLocationLabelEn: location.labelEn ?? null,
           currentMapX: location.mapX ?? null,
           currentMapY: location.mapY ?? null,
+          currentConfidenceScore: location.confidenceScore ?? null,
+          currentAccuracyM: location.accuracyM ?? null,
           /**
            * 방향은 넘기지 않으면 그대로 둔다. **위치를 옮기는 것이 방향을 지우는 일은 아니다.**
            *

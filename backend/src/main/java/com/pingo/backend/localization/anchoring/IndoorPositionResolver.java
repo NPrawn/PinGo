@@ -1,7 +1,5 @@
 package com.pingo.backend.localization.anchoring;
 
-import com.pingo.backend.facility.domain.Facility;
-import com.pingo.backend.facility.repository.FacilityRepository;
 import com.pingo.backend.route.domain.RouteNode;
 import com.pingo.backend.route.repository.RouteNodeRepository;
 import com.pingo.backend.station.domain.StationFloor;
@@ -12,6 +10,8 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -42,9 +42,7 @@ public class IndoorPositionResolver {
      * 1e-3 까지 벌어지지만 6자리면 1e-6 수준이라, FE 가 정규화 없이 그대로 써도 무해하다.
      */
     private static final int DIRECTION_SCALE = 6;
-
     private final RouteNodeRepository routeNodeRepository;
-    private final FacilityRepository facilityRepository;
     private final StationFloorRepository stationFloorRepository;
 
     /**
@@ -62,23 +60,31 @@ public class IndoorPositionResolver {
             CanonicalDirection forward,
             double accuracyM
     ) {
-        Optional<StationFloor> floor = stationFloorRepository.findByStationIdAndFloorCode(stationId, floorCode);
+        if (floorCode == null || floorCode.isBlank()) {
+            return Optional.empty();
+        }
+        String normalizedFloorCode = floorCode.trim().toUpperCase(Locale.ROOT);
+        Optional<StationFloor> floor = stationFloorRepository
+                .findByStationIdAndFloorCode(stationId, normalizedFloorCode);
         if (floor.isEmpty()) {
             return Optional.empty();
         }
 
-        Long floorId = floor.get().getId();
-        Optional<RouteNode> nearest = routeNodeRepository.search(stationId, floorId).stream()
+        StationFloor stationFloor = floor.orElseThrow();
+        Long floorId = stationFloor.getId();
+        List<RouteNode> floorNodes = routeNodeRepository.search(stationId, floorId);
+        Optional<RouteNode> nearest = floorNodes.stream()
                 .min(Comparator.comparingDouble(node -> distanceTo(node, point)));
         if (nearest.isEmpty()) {
             return Optional.empty();
         }
 
         RouteNode node = nearest.get();
+        NodeLabels labels = labelsOf(normalizedFloorCode, stationFloor.getSpaceType());
 
         return Optional.of(new AnchoredLocation(
                 floorId,
-                floorCode,
+                normalizedFloorCode,
                 round(point.x()),
                 round(point.y()),
                 round(point.z()),
@@ -86,7 +92,8 @@ public class IndoorPositionResolver {
                 forward == null ? null : roundDirection(forward.y()),
                 round(accuracyM),
                 node.getId(),
-                labelOf(stationId, floorId, node),
+                labels.ko(),
+                labels.en(),
                 round(distanceTo(node, point))
         ));
     }
@@ -111,20 +118,16 @@ public class IndoorPositionResolver {
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    /**
-     * 노드에 붙은 시설 이름. 경로 진입점을 "개찰구 A"처럼 보여줄 수 있게 한다.
-     *
-     * <p>이 노드에 연결된 시설만 조회한다. 층 전체를 받아 Map 으로 만들면 역삼역 B2 기준 36행을
-     * 읽어 35개를 버리게 된다. 시설이 붙어 있지 않은 노드가 대부분이라 대개 빈 결과다.
-     *
-     * <p>여럿 붙어 있으면 {@code id} 가 가장 작은 것을 쓴다. 층 전체를 Map 으로 모으던 때의
-     * 선택과 같아야 라벨이 바뀌지 않는다.
-     */
-    private String labelOf(Long stationId, Long floorId, RouteNode node) {
-        return facilityRepository.findActiveByLinkedNodeId(stationId, floorId, node.getId()).stream()
-                .findFirst()
-                .map(Facility::getNameKo)
-                .orElseGet(node::getName);
+    /** 세부 노드명 대신 사용자가 구분하기 쉬운 층과 공간 유형만 표시한다. */
+    private NodeLabels labelsOf(String floorCode, String spaceType) {
+        return switch (spaceType == null ? "" : spaceType) {
+            case "concourse" -> new NodeLabels(floorCode + " · 대합실", floorCode + " · Concourse");
+            case "platform" -> new NodeLabels(floorCode + " · 승강장", floorCode + " · Platform");
+            default -> new NodeLabels(floorCode + " · 역사 내부", floorCode + " · Station interior");
+        };
+    }
+
+    private record NodeLabels(String ko, String en) {
     }
 
     private BigDecimal round(double value) {

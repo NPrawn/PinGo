@@ -83,7 +83,7 @@ public class ConsultationSummaryService {
                 request.transcript().stream()
                         .sorted(Comparator.comparingInt(TranscriptSegmentRequest::seq))
                         .map(s -> ConsultationTranscript.of(
-                                consultationId, s.seq(), s.speaker(), s.content()))
+                                consultationId, s.seq(), s.speaker(), s.content(), s.translatedContent()))
                         .toList());
 
         eventPublisher.publishEvent(new TranscriptSavedEvent(consultationId));

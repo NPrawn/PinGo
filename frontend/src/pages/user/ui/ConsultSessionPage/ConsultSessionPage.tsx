@@ -34,6 +34,7 @@ import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-
 import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { localizedNameOf } from '@/shared/i18n';
+import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import {
   xrSessionController,
@@ -99,12 +100,27 @@ export function ConsultSessionPage() {
 
       if (event.eventType === 'DESTINATION_CHANGE_REQUESTED') {
         const { nameKo, linkedNodeId } = event.payload;
+        /**
+         * **노드를 모르는 시설은 목적지가 될 수 없다.** (S15P11A206-206)
+         *
+         * 경로는 노드로만 계산된다. 예전에는 이름을 먼저 바꾸고 노드를 아는 경우에만 도착 노드를
+         * 채웠는데, `setDestination` 이 이름만 바꾸는 것이 아니라 **`targetNodeId` 와
+         * `routeResult` 까지 비운다.** 그래서 노드를 모르는 시설을 짚으면 도착 노드가 빈 채로
+         * 남아 경로 조회 조건이 깨지고, 경로선과 목적지 마커가 통째로 사라졌다 — 상담자 화면에서
+         * "목적지 재지정을 해도 아무 일도 일어나지 않는" 것으로 보였다.
+         *
+         * 아래 `CURRENT_LOCATION_CORRECTED` 와 같은 순서로 맞춘다. 먼저 확인하고 나서 바꾼다.
+         * 상담자 쪽에서도 그런 시설은 애초에 보내지 않지만, 옛 화면이 보낼 수 있으므로 여기서도
+         * 막는다.
+         */
+        if (linkedNodeId == null) return;
+
         setDestinationName(nameKo);
         /**
          * 도착 노드까지 함께 옮긴다. 이름만 바꾸면 경로는 옛 목적지를 향한 채로 남아,
          * 화면에 적힌 곳과 지도에 그려진 길이 서로 다른 곳을 가리킨다.
          */
-        if (linkedNodeId != null) setTargetNode(linkedNodeId, nameKo);
+        setTargetNode(linkedNodeId, nameKo);
         return;
       }
 
@@ -128,6 +144,7 @@ export function ConsultSessionPage() {
     reconnecting,
     remoteCaption,
     remoteFinalCaption,
+    remoteFinalCaptionId,
     remoteCaptionFinal,
     remoteCaptionError,
     captionsSupported,
@@ -148,6 +165,7 @@ export function ConsultSessionPage() {
     consultationId,
     remoteFinalCaption,
     userLanguage,
+    remoteFinalCaptionId,
   );
   useTranslatedSpeech(translatedRemoteCaption, userLanguage, remoteCaptionFinal);
   /**
@@ -182,6 +200,7 @@ export function ConsultSessionPage() {
   const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
   const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
   const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
@@ -480,6 +499,7 @@ export function ConsultSessionPage() {
         nodeId: result.startNodeId,
         floorId: position.floorId,
         label: result.startNodeLabel ?? undefined,
+        labelEn: result.startNodeLabelEn ?? undefined,
         mapX: position.mapX,
         mapY: position.mapY,
         forwardMap,
@@ -565,11 +585,17 @@ export function ConsultSessionPage() {
   const [facilityView, setFacilityView] = useState<string>('all');
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   const facilities = useStationFacilities(stationId ?? 0).data;
-  const displayedOrigin = localizedFacilityNameAtNode(
+  const facilityOrigin = localizedFacilityNameAtNode(
     facilities,
     currentNodeId,
     displayLanguage,
     currentLocationLabel ?? station,
+  );
+  const displayedOrigin = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    displayLanguage,
+    facilityOrigin,
   );
   const storedDestinationFacility = facilityAtNodeMatchingLabel(
     facilities,
@@ -735,6 +761,8 @@ export function ConsultSessionPage() {
         headingDeg,
         destination: destinationPoint,
         destinationLabel: destination,
+        // 상담자 지도가 이 노드에 연결된 시설 아이콘을 도착지로 표시한다. (S15P11A206-206)
+        destinationNodeId: destinationPoint?.nodeId ?? null,
         pathNodes,
         /**
          * 이 화면이 나뉜 자리. 상담자 화면이 같은 배치의 거울을 만드는 근거다.
@@ -1077,6 +1105,7 @@ export function ConsultSessionPage() {
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
                 destinationLabel={displayedDestination}
+                destinationNodeId={destinationPoint?.nodeId ?? null}
                 pathNodes={pathNodes}
                 /* 경유지 번호 핀과 다리별 색. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
                 waypointNodeIds={waypointNodeIds}

@@ -144,14 +144,19 @@ export function SessionPage() {
     error,
     reconnecting,
     localCaption,
+    localCaptionFinal,
+    localFinalCaptionId,
     remoteCaption,
     remoteFinalCaption,
+    remoteFinalCaptionId,
     remoteCaptionFinal,
     remoteCaptionError,
     captionsSupported,
     captionError,
     restartCaptions,
     transcript,
+    transcriptTimeline,
+    updateTranscriptTranslation,
     sendConsultEvent,
     tokenRejected,
   } = useConsultSignaling(signalingRoomId, 'COUNSELOR', signalingAccessToken, handleDataEvent);
@@ -162,7 +167,30 @@ export function SessionPage() {
    * 상담자 콘솔은 한국어로 쓰인다. 사용자가 다른 언어로 말하면 상담자는 자막을 읽고도
    * 무슨 말인지 알 수 없어, 실시간 자막이 있으나 마나가 된다.
    */
-  const translatedUserCaption = useCaptionTranslation(consultationId, remoteFinalCaption, 'ko');
+  const handleUserCaptionTranslation = useCallback(
+    (captionId: string, _source: string, translated: string) =>
+      updateTranscriptTranslation(captionId, translated),
+    [updateTranscriptTranslation],
+  );
+  const handleCounselorCaptionTranslation = useCallback(
+    (captionId: string, _source: string, translated: string) =>
+      updateTranscriptTranslation(captionId, translated),
+    [updateTranscriptTranslation],
+  );
+  const translatedUserCaption = useCaptionTranslation(
+    consultationId,
+    remoteFinalCaption,
+    'ko',
+    remoteFinalCaptionId,
+    handleUserCaptionTranslation,
+  );
+  useCaptionTranslation(
+    consultationId,
+    localCaptionFinal ? localCaption : '',
+    'en',
+    localFinalCaptionId,
+    handleCounselorCaptionTranslation,
+  );
   useTranslatedSpeech(translatedUserCaption, 'ko-KR', remoteCaptionFinal);
   /**
    * 옮긴 문장은 큰 줄에, 지금 들어오는 원문은 아래 줄에 흘려보낸다.
@@ -170,11 +198,23 @@ export function SessionPage() {
    * 번역은 말이 끝난 문장에만 걸리므로, 옮긴 문장만 띄우면 사용자가 말하는 내내 화면이
    * 지난 문장에서 멈춰 있다. 상담원은 사용자가 말하는 중인지 끝난 것인지 알 수 없다.
    */
-  const userCaptionPrimary = translatedUserCaption || remoteCaption;
+  /** 확정 자막도 다음 발화가 시작될 때까지 실시간 영역에 유지해 언어별 표시 차이를 없앤다. */
+  const liveUserCaption = remoteCaption;
+  const userCaptionPrimary = translatedUserCaption || liveUserCaption;
   const userCaptionSource =
-    remoteCaption && remoteCaption !== userCaptionPrimary ? remoteCaption : '';
+    translatedUserCaption && translatedUserCaption !== liveUserCaption ? liveUserCaption : '';
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
   const userCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '사용자');
+  const displayTranscript = (
+    transcriptTimeline ??
+    transcript.map((segment) => ({
+      ...segment,
+      captionId: `${segment.speaker}:${segment.seq}`,
+    }))
+  ).filter(
+    (segment) =>
+      segment.captionId !== localFinalCaptionId && segment.captionId !== remoteFinalCaptionId,
+  );
 
   /** 그린 선을 사용자 화면에도 그대로 보낸다(명세 7장). */
   const drawEmitter = useMemo(
@@ -319,6 +359,25 @@ export function SessionPage() {
     (facility: Facility) => {
       if (!repinning) return;
 
+      /**
+       * **경로 노드를 모르는 시설은 보내지 않는다.** (S15P11A206-206)
+       *
+       * 경로는 노드로만 계산되므로 사용자 화면이 이런 시설로는 목적지도 현재 위치도 옮길 수 없다.
+       * 예전에는 그냥 보냈고 사용자 화면이 조용히 버렸다. 상담자에게는 "옮겼어요"라고 적혀 있어서,
+       * 사용자 지도가 왜 그대로인지 알 수 없었다.
+       *
+       * 어느 시설이 노드를 갖는지는 도면만 봐서는 알 수 없으니 눌러 본 자리에서 알려 준다.
+       */
+      if (facility.linkedNodeId == null) {
+        setLastPick(
+          `${facility.nameKo}은(는) 경로에 연결된 지점이 없어 ${
+            repinning === 'dest' ? '목적지로 지정' : '현재 위치로 지정'
+          }할 수 없어요. 가까운 출구나 계단을 짚어 주세요.`,
+        );
+        setRepinning(null);
+        return;
+      }
+
       const payload = {
         facilityId: facility.facilityId,
         nameKo: facility.nameKo,
@@ -341,6 +400,34 @@ export function SessionPage() {
       setRepinning(null);
     },
     [repinning, sendConsultEvent],
+  );
+
+  /** 이름표를 띄워 둔 시설. 지도에 아이콘만 있고 그것이 무엇인지 알 방법이 없었다. */
+  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
+
+  /**
+   * 지도에서 시설을 눌렀을 때. (S15P11A206-206)
+   *
+   * **예전에는 재지정 모드가 아니면 핸들러를 아예 붙이지 않았다.** 그래서 상담자가 시설을 눌러도
+   * 아무 일도 일어나지 않았다 — 도면에 아이콘이 잔뜩 있는데 각각이 무엇인지 알 길이 없었고,
+   * 이름을 확인하려면 목적지 재지정을 켜서 실제로 사용자에게 보내 보는 수밖에 없었다.
+   *
+   * 재지정 모드에서는 그대로 사용자에게 보내고, 그 밖에는 이름표만 띄운다. 훑어보다 잘못 눌러
+   * 사용자의 목적지가 바뀌는 일은 여전히 없다.
+   */
+  const selectFacility = useCallback(
+    (facility: Facility) => {
+      if (repinning) {
+        pickOnMap(facility);
+        return;
+      }
+
+      // 같은 것을 다시 누르면 접는다. 이름표를 치울 다른 방법이 없다.
+      setSelectedFacility((current) =>
+        current?.facilityId === facility.facilityId ? null : facility,
+      );
+    },
+    [pickOnMap, repinning],
   );
 
   /**
@@ -672,6 +759,8 @@ export function SessionPage() {
                 // 층을 직접 고르는 것은 사용자 시점을 벗어나겠다는 뜻이다.
                 setSynced(false);
                 setPickedFloorId(Number(value));
+                // 다른 층 시설의 이름표를 남기지 않는다.
+                setSelectedFacility(null);
               }}
             />
             <MapPreview className={styles.map}>
@@ -685,6 +774,9 @@ export function SessionPage() {
                       currentHeadingDeg={mapSync.headingDeg}
                       destination={mapSync.destination}
                       destinationLabel={mapSync.destinationLabel}
+                      /* 짚은 시설이 목적지가 되었다는 표시. 마커만으로는 아이콘이 빽빽한 층에서
+                         어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
+                      destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
@@ -692,10 +784,11 @@ export function SessionPage() {
                       /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼진다. */
                       showAllFacilities={effectiveView === 'all'}
                       /*
-                        재지정 모드일 때만 시설 선택을 사용자에게 보낸다. 켜지 않은 채로
-                        지도를 훑어보다 잘못 눌러 사용자의 목적지가 바뀌면 안 된다.
+                        재지정 모드일 때만 사용자에게 보낸다. 그 밖에는 이름표만 띄운다 —
+                        훑어보다 잘못 눌러 사용자의 목적지가 바뀌는 일은 없다.
                       */
-                      onSelectFacility={repinning ? pickOnMap : undefined}
+                      onSelectFacility={selectFacility}
+                      selectedFacilityId={selectedFacility?.facilityId}
                       /* 따라가기일 때만 사용자 위치를 좇는다. 자유 탐색은 층 전체를 본다. */
                       followCamera={synced}
                       /*
@@ -748,7 +841,11 @@ export function SessionPage() {
                       title={absent ? `이 층에는 ${filter.name}이 없어요` : undefined}
                       /* 켜 둔 것을 다시 누르면 전체 표시로 돌아간다. 되돌릴 길이 없으면
                          누르기를 망설이게 된다. */
-                      onClick={() => setFacilityView(active ? 'all' : filter.facilityType)}
+                      onClick={() => {
+                        setFacilityView(active ? 'all' : filter.facilityType);
+                        // 다른 유형으로 넘어가면 지워진 시설의 이름표가 남지 않게 한다.
+                        setSelectedFacility(null);
+                      }}
                     >
                       <Icon name={filter.icon} size={13} />
                       {filter.name}
@@ -827,7 +924,7 @@ export function SessionPage() {
                 AI 요약의 입력이 되는데, 예전에는 마지막 한 줄만 보여서 실제로 남고 있는지
                 끝날 때까지 알 수 없었다. 0에서 멈춰 있으면 음성 인식이 안 되고 있다는 뜻이다.
               */}
-              <span className={styles.notesCount}>{transcript.length}줄 기록됨</span>
+              <span className={styles.notesCount}>{displayTranscript.length}줄 기록됨</span>
             </div>
             {/*
               기록이 안 되고 있으면 그 사실을 상담 중에 알아야 한다. 끝난 뒤에 알면 이미
@@ -858,7 +955,73 @@ export function SessionPage() {
                 <span>{userCaptionNotice}</span>
               </div>
             )}
+            <div className={styles.liveCaptions} aria-live="polite">
+              <div className={[styles.liveCaption, styles.liveCaptionUser].join(' ')}>
+                <div className={styles.liveCaptionHeader}>
+                  <span className={styles.speakerUser}>사용자</span>
+                  <span className={styles.liveCaptionState}>
+                    {remoteCaptionFinal ? '확정' : '말하는 중'}
+                  </span>
+                </div>
+                <span className={styles.liveCaptionText}>
+                  {userCaptionPrimary ||
+                    (captionsSupported
+                      ? '사용자가 말하면 자막을 표시합니다.'
+                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
+                </span>
+                {userCaptionSource && (
+                  <span
+                    className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    {userCaptionSource}
+                  </span>
+                )}
+              </div>
+              <div className={[styles.liveCaption, styles.liveCaptionCounselor].join(' ')}>
+                <div className={styles.liveCaptionHeader}>
+                  <span className={styles.speakerAgent}>상담원</span>
+                  <span className={styles.liveCaptionState}>
+                    {localCaptionFinal ? '확정' : '말하는 중'}
+                  </span>
+                </div>
+                <span className={styles.liveCaptionText}>
+                  {localCaption ||
+                    (captionsSupported
+                      ? '마이크를 켜고 말하면 자막을 표시합니다.'
+                      : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
+                </span>
+              </div>
+            </div>
+            <div className={styles.transcriptHeader}>
+              <span className={styles.transcriptTitle}>대화 기록</span>
+              <span className={styles.notesCount}>{displayTranscript.length}줄</span>
+            </div>
             <div className={styles.notesBody}>
+              {displayTranscript.length === 0 ? (
+                <div className={styles.transcriptEmpty}>확정된 대화가 여기에 표시됩니다.</div>
+              ) : (
+                displayTranscript.map((segment) => (
+                  <div className={styles.transcriptEntry} key={segment.captionId}>
+                    <span
+                      className={
+                        segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
+                      }
+                    >
+                      {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
+                    </span>
+                    <span className={styles.line}>{segment.content}</span>
+                    {segment.translatedContent && segment.translatedContent !== segment.content && (
+                      <span className={styles.transcriptTranslation}>
+                        {segment.translatedContent}
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className={styles.legacyNotesBody}>
               <div>
                 <span className={styles.speakerUser}>사용자</span>
                 <br />
@@ -893,9 +1056,9 @@ export function SessionPage() {
                       : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                 </span>
               </div>
-              {/* 최신 확정 발화부터 보여 주고, 이전 대화는 아래로 스크롤해 확인한다. */}
-              {[...transcript].reverse().map((segment) => (
-                <div key={segment.seq}>
+              {/* 발화 시각 순서로 보여 주어 실제 상담 흐름을 따라갈 수 있게 한다. */}
+              {displayTranscript.map((segment) => (
+                <div key={segment.captionId}>
                   <span
                     className={
                       segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
@@ -992,6 +1155,9 @@ export function SessionPage() {
                       currentHeadingDeg={mapSync.headingDeg}
                       destination={mapSync.destination}
                       destinationLabel={mapSync.destinationLabel}
+                      /* 짚은 시설이 목적지가 되었다는 표시. 마커만으로는 아이콘이 빽빽한 층에서
+                         어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
+                      destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
                       /* 사용자 화면과 같은 값이어야 시점이 같아진다. 회전은 기본값(켬)이다. */
                       connectCurrentToRoute

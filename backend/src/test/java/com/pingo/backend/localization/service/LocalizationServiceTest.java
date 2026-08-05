@@ -199,7 +199,9 @@ class LocalizationServiceTest {
 
         assertThat(response.resultStatus()).isEqualTo(LocalizationResultStatus.SUCCESS);
         assertThat(response.startNodeId()).isEqualTo(123L);
-        assertThat(response.startNodeLabel()).isEqualTo("B2-B3 엘리베이터 A");
+        assertThat(response.startNodeLabel()).isEqualTo("B2 · 대합실");
+        assertThat(response.startNodeLabelEn()).isEqualTo("B2 · Concourse");
+        assertThat(response.confidenceScore()).isEqualTo(0.87);
         assertThat(response.fallbackOptions()).isEmpty();
         assertThat(response.position()).isNotNull();
         assertThat(response.position().floorId()).isEqualTo(2L);
@@ -268,6 +270,7 @@ class LocalizationServiceTest {
         assertThat(response.candidate()).isNotNull();
         assertThat(response.candidate().confidenceScore()).isEqualTo(1.0);
         assertThat(response.candidate().startNodeId()).isEqualTo(123L);
+        assertThat(response.candidate().startNodeLabelEn()).isEqualTo("B2 · Concourse");
         assertThat(response.candidate().position().floorCode()).isEqualTo("B2");
     }
 
@@ -332,7 +335,8 @@ class LocalizationServiceTest {
                 "loc-1", AiLocalizationStatus.LOCALIZED, "YS-2026-07-23.1", null,
                 "B2",
                 new AiPoseResponse("colmap", null, null, List.of(1.0736587455, -1.1765271796, 6.6548534318)),
-                null, List.of(), new AiTimingResponse(1234, null, null, null), null);
+                new AiQualityResponse(60, 45, 40, 0.40, 3.0, 20, 3, "browser", 0.87),
+                List.of(), new AiTimingResponse(1234, null, null, null), null);
     }
 
     private AnchoredLocation anchored() {
@@ -345,7 +349,10 @@ class LocalizationServiceTest {
                 new BigDecimal("-0.975"), new BigDecimal("27.717"), new BigDecimal("0.000"),
                 forwardMapX, forwardMapY,
                 new BigDecimal("0.497"),
-                123L, "B2-B3 엘리베이터 A", new BigDecimal("0.770"));
+                123L,
+                "B2 · 대합실",
+                "B2 · Concourse",
+                new BigDecimal("0.770"));
     }
 
     private AiLocalizationResponse aiResponse(AiLocalizationStatus status, String failureReason) {

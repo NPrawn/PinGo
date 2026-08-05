@@ -1,50 +1,73 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { translateConsultationCaption } from '@/shared/api';
 
-/**
- * 상대가 말한 자막을 내 언어로 옮겨 보여 준다.
- *
- * 확정된 문장만 옮긴다. 말하는 도중의 중간 결과는 계속 고쳐 쓰이므로, 그때마다 옮기면 번역
- * 요청이 초당 몇 번씩 나가고 화면의 글자도 쉴 새 없이 바뀌어 읽을 수 없다.
- *
- * 옮기지 못하면 원문을 그대로 둔다. 번역 하나가 실패했다고 자막까지 사라지면, 상대가 무슨
- * 말을 했는지조차 알 수 없게 된다.
- */
+type TranslationResult = {
+  consultationId: string;
+  targetLanguage: string;
+  captionId: string;
+  text: string;
+};
+
+/** Translates each confirmed caption once and keeps results associated with its caption ID. */
 export function useCaptionTranslation(
   consultationId: string | null,
   text: string,
   targetLanguage: string,
+  captionId: string | null = null,
+  onTranslated?: (captionId: string, source: string, translated: string) => void,
 ) {
-  /**
-   * 옮긴 결과를 어느 원문에서 얻었는지 함께 들고 있는다.
-   *
-   * 원문이 바뀌는 순간 지난 번역은 더 이상 그 말이 아니다. 따로 지우지 않고 짝이 맞는지만
-   * 보면, 지나간 문장의 번역이 새 원문 자리에 남아 있는 일이 생기지 않는다.
-   */
-  const [result, setResult] = useState<{ source: string; text: string } | null>(null);
+  const [result, setResult] = useState<TranslationResult | null>(null);
+  const queuedRef = useRef(new Set<string>());
+  const timersRef = useRef(new Map<string, number>());
+  const disposedRef = useRef(false);
+  const currentCaptionIdRef = useRef<string | null>(null);
   const source = text.trim();
 
   useEffect(() => {
-    if (!source || !consultationId) return;
+    disposedRef.current = false;
+    return () => {
+      disposedRef.current = true;
+      timersRef.current.forEach((timer) => window.clearTimeout(timer));
+      timersRef.current.clear();
+    };
+  }, []);
 
-    let cancelled = false;
-    // SpeechRecognition의 interim 결과는 단어마다 바뀐다. 짧게 모아서 번역하면
-    // 발화 중에도 자막이 흐르면서 요청 폭주와 오래된 응답의 역전을 막을 수 있다.
+  useEffect(() => {
+    if (!source || !consultationId || !captionId) return;
+
+    currentCaptionIdRef.current = captionId;
+    const requestKey = `${consultationId}:${targetLanguage}:${captionId}`;
+    if (queuedRef.current.has(requestKey)) return;
+    queuedRef.current.add(requestKey);
+
     const timer = window.setTimeout(() => {
+      timersRef.current.delete(requestKey);
       void translateConsultationCaption(consultationId, { text: source, targetLanguage })
         .then((response) => {
-          if (!cancelled) setResult({ source, text: response.text || source });
+          if (disposedRef.current) return;
+
+          const translated = response.text || source;
+          if (captionId === currentCaptionIdRef.current) {
+            setResult({ consultationId, targetLanguage, captionId, text: translated });
+          }
+          onTranslated?.(captionId, source, translated);
         })
         .catch(() => {
-          if (!cancelled) setResult({ source, text: source });
+          if (disposedRef.current) return;
+
+          if (captionId === currentCaptionIdRef.current) {
+            setResult({ consultationId, targetLanguage, captionId, text: source });
+          }
+          onTranslated?.(captionId, source, source);
         });
     }, 250);
 
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [consultationId, source, targetLanguage]);
+    timersRef.current.set(requestKey, timer);
+  }, [captionId, consultationId, onTranslated, source, targetLanguage]);
 
-  return result?.source === source ? result.text : '';
+  return source &&
+    result?.consultationId === consultationId &&
+    result.targetLanguage === targetLanguage
+    ? result.text
+    : '';
 }

@@ -12,6 +12,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
 import { localizedNameOf } from '@/shared/i18n';
+import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import type { RouteType } from '@/shared/types';
 import { ButtonLink, Icon, SelectRow } from '@/shared/ui';
@@ -77,6 +78,7 @@ export function RouteOptionsPage() {
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
   const destinationLatitude = useNavigationStore((state) => state.destinationLatitude);
@@ -87,11 +89,17 @@ export function RouteOptionsPage() {
   const camera = useCameraPreview();
   const [confirmation, setConfirmation] = useState<{ id: number; message: string } | null>(null);
   const facilities = useStationFacilities(stationId ?? 0).data;
-  const locationLabel = localizedFacilityNameAtNode(
+  const facilityLocationLabel = localizedFacilityNameAtNode(
     facilities,
     currentNodeId,
     language,
     currentLocationLabel ?? station,
+  );
+  const locationLabel = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    language,
+    facilityLocationLabel,
   );
   const storedDestinationLabel = destination
     ? destination === destinationNameKo || destination === destinationNameEn

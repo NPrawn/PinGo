@@ -83,8 +83,13 @@ async function flushSetup() {
   });
 }
 
+/** 트랙마다 다른 `id` 를 준다. 같은 트랙이 두 번 담기지 않는지 보는 검사가 이것에 기댄다. */
+let trackSequence = 0;
+
 function fakeTrack(kind: 'video' | 'audio') {
+  trackSequence += 1;
   return {
+    id: `track-${trackSequence}`,
     kind,
     stop: vi.fn(),
     addEventListener: vi.fn(),
@@ -110,6 +115,10 @@ class FakeMediaStream {
 
   getTracks() {
     return this.tracks;
+  }
+
+  addTrack(track: MediaStreamTrack) {
+    this.tracks.push(track);
   }
 
   getVideoTracks() {
@@ -152,13 +161,45 @@ class FakeRecognition {
  */
 class FakeSender {
   track: MediaStreamTrack | null;
+  /**
+   * 이 sender 가 소속된 스트림. **협상에 실리는 msid 가 여기서 나온다.**
+   *
+   * `addTrack(track, stream)` 은 이것을 채우고 `addTransceiver` 로 잡은 자리는 비운 채로
+   * 시작한다. 받는 쪽 `event.streams` 가 비어 오는지가 이 값에 달렸으므로, 가짜가 이것을
+   * 들고 있지 않으면 msid 가 빠진 결함을 테스트가 볼 수 없다. (S15P11A206-206 리뷰)
+   */
+  streams: MediaStream[];
   replaceTrack: ReturnType<typeof vi.fn>;
+  setStreams: ReturnType<typeof vi.fn>;
 
-  constructor(track: MediaStreamTrack) {
+  constructor(track: MediaStreamTrack | null, streams: MediaStream[] = []) {
     this.track = track;
+    this.streams = streams;
     this.replaceTrack = vi.fn(async (next: MediaStreamTrack | null) => {
       this.track = next;
     });
+    this.setStreams = vi.fn((...next: MediaStream[]) => {
+      this.streams = next;
+    });
+  }
+}
+
+/**
+ * `addTransceiver` 가 돌려주는 트랜시버. **sender 를 함께 준다.**
+ *
+ * 예전에는 `vi.fn()` 이라 undefined 를 돌려줬다. 그러면 자리를 미리 잡아 두는 코드가 있는지
+ * 없는지를 테스트가 구분할 수 없다 — 실제 브라우저는 언제나 트랜시버를 돌려주고, 그 sender 가
+ * 나중에 트랙을 채울 유일한 통로다. (S15P11A206-206)
+ */
+class FakeTransceiver {
+  kind: string;
+  direction: string;
+  sender: FakeSender;
+
+  constructor(kind: string, direction: string) {
+    this.kind = kind;
+    this.direction = direction;
+    this.sender = new FakeSender(null);
   }
 }
 
@@ -170,18 +211,25 @@ class FakePeerConnection {
   remoteDescription: RTCSessionDescriptionInit | null = null;
   localDescription: (RTCSessionDescriptionInit & { toJSON: () => unknown }) | null = null;
   onconnectionstatechange: (() => void) | null = null;
-  ontrack: (() => void) | null = null;
+  ontrack: ((event: RTCTrackEvent) => void) | null = null;
   onicecandidate: (() => void) | null = null;
   senders: FakeSender[] = [];
-  addTrack = vi.fn((track: MediaStreamTrack) => {
-    const sender = new FakeSender(track);
+  addTrack = vi.fn((track: MediaStreamTrack, stream?: MediaStream) => {
+    // 브라우저와 같이 넘어온 스트림을 sender 의 소속으로 남긴다.
+    const sender = new FakeSender(track, stream ? [stream] : []);
     this.senders.push(sender);
     return sender;
   });
   getSenders = vi.fn(() => this.senders);
   close = vi.fn();
   createDataChannel = vi.fn(() => ({ readyState: 'connecting', send: vi.fn(), onmessage: null }));
-  addTransceiver = vi.fn();
+  transceivers: FakeTransceiver[] = [];
+  addTransceiver = vi.fn((kind: string, init?: { direction?: string }) => {
+    const transceiver = new FakeTransceiver(kind, init?.direction ?? 'sendrecv');
+    this.transceivers.push(transceiver);
+    this.senders.push(transceiver.sender);
+    return transceiver;
+  });
   createOffer = vi.fn().mockResolvedValue({ type: 'offer', sdp: '' });
   createAnswer = vi.fn().mockResolvedValue({ type: 'answer', sdp: 'answer-sdp' });
   setLocalDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
@@ -415,6 +463,128 @@ describe('useConsultSignaling', () => {
     expect(view.result.current.transcript).toEqual([
       { seq: 1, speaker: 'COUNSELOR', content: '어디로 가시나요' },
       { seq: 2, speaker: 'USER', content: '3번 출구요' },
+    ]);
+
+    view.unmount();
+  });
+
+  it('확정 결과와 중간 결과를 분리하고 동일한 발화 ID를 중복 기록하지 않는다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const recognition = FakeRecognition.instances[0];
+    await act(async () => {
+      recognition?.onresult?.({
+        resultIndex: 0,
+        results: [
+          { isFinal: true, 0: { transcript: '첫 번째 문장' } },
+          { isFinal: false, 0: { transcript: '두 번째 문장' } },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([
+      { seq: 1, speaker: 'COUNSELOR', content: '첫 번째 문장' },
+    ]);
+    expect(view.result.current.localCaption).toBe('두 번째 문장');
+    expect(view.result.current.localCaptionFinal).toBe(false);
+    expect(view.result.current.localFinalCaptionId).toBeNull();
+
+    const socket = FakeSocket.instances[0];
+    const duplicate = {
+      data: JSON.stringify({
+        sessionId: 'room_1',
+        senderType: 'USER',
+        type: 'CAPTION',
+        payload: {
+          text: '세 번째 문장',
+          final: true,
+          language: 'ko-KR',
+          captionId: 'user-caption-1',
+          occurredAt: '2026-08-05T00:00:03.000Z',
+        },
+        timestamp: '2026-08-05T00:00:03.000Z',
+      }),
+    } as MessageEvent;
+
+    await act(async () => {
+      socket?.onmessage?.(duplicate);
+      socket?.onmessage?.(duplicate);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([
+      { seq: 1, speaker: 'USER', content: '세 번째 문장' },
+      { seq: 2, speaker: 'COUNSELOR', content: '첫 번째 문장' },
+    ]);
+    expect(view.result.current.remoteFinalCaptionId).toBe('user-caption-1');
+
+    view.unmount();
+  });
+
+  it('도착 순서가 달라도 발화 시각 기준으로 타임라인을 정렬한다', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      FakeRecognition.instances[0]?.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: '나중 발화' } }],
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onmessage?.({
+        data: JSON.stringify({
+          sessionId: 'room_1',
+          senderType: 'USER',
+          type: 'CAPTION',
+          payload: {
+            text: '먼저 발화',
+            final: true,
+            language: 'ko-KR',
+            captionId: 'user-caption-early',
+            occurredAt: '2026-08-05T00:00:01.000Z',
+          },
+          timestamp: '2026-08-05T00:00:01.000Z',
+        }),
+      } as MessageEvent);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([
+      { seq: 1, speaker: 'USER', content: '먼저 발화' },
+      { seq: 2, speaker: 'COUNSELOR', content: '나중 발화' },
     ]);
 
     view.unmount();
@@ -722,13 +892,29 @@ describe('useConsultSignaling', () => {
 
     // 한 마디라도 다시 오면 경고는 더 이상 사실이 아니다.
     await act(async () => {
-      caption({ text: '3번 출구로 가세요', final: true, language: 'ko-KR' });
+      caption({
+        text: '3번 출구로 가세요',
+        final: true,
+        language: 'ko-KR',
+        captionId: 'caption-1',
+      });
       await Promise.resolve();
     });
 
     expect(view.result.current.remoteCaptionError).toBeNull();
     expect(view.result.current.remoteCaptionFinal).toBe(true);
     expect(view.result.current.remoteFinalCaption).toBe('3번 출구로 가세요');
+    expect(view.result.current.remoteFinalCaptionId).toBe('caption-1');
+
+    await act(async () => {
+      caption({ text: '왼쪽으로 가세요', final: false, language: 'ko-KR' });
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.remoteCaption).toBe('왼쪽으로 가세요');
+    expect(view.result.current.remoteCaptionFinal).toBe(false);
+    expect(view.result.current.remoteFinalCaption).toBe('3번 출구로 가세요');
+    expect(view.result.current.remoteFinalCaptionId).toBe('caption-1');
 
     view.unmount();
   });
@@ -1040,6 +1226,104 @@ describe('useConsultSignaling', () => {
       // 첫 연결의 sender 는 건드리지 않는다. 이미 닫힌 연결이다.
       expect(FakePeerConnection.instances[0]?.senders[0]?.track).not.toBe(next);
       expect(rebuilt?.senders[0]?.track).toBe(next);
+
+      view.unmount();
+    });
+
+    /**
+     * **캡처가 실패한 상담에서도 나중에 온 카메라 트랙을 보낼 수 있어야 한다.** (S15P11A206-206)
+     *
+     * 이것이 상담 진입의 정상적인 한 경로다. 마이크가 다른 앱에 잡혀 있으면 `getUserMedia` 는
+     * 거절도 응답도 하지 않고, 8초 뒤 타임아웃으로 트랙 없이 협상이 진행된다. 그 뒤 사용자가
+     * XR 세션을 열면 카메라 트랙이 생기는데, 보낼 자리를 잡아 두지 않았으면 상담자 화면은
+     * 끝까지 검은 채다 — 영상 m-line 이 `inactive` 로 굳고 이 흐름은 재협상을 하지 않는다.
+     *
+     * 자리를 잡지 않은 코드에서는 `videoSenderRef` 가 null 이라 교체가 `false` 를 돌려주고
+     * 어느 sender 도 트랙을 들지 않는다.
+     */
+    it('캡처가 실패해도 나중에 온 카메라 트랙을 보낼 자리가 남아 있다', async () => {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockRejectedValue(new Error('NotReadableError')) },
+      });
+
+      const view = renderHook(() => useConsultSignaling('room_1', 'USER', 'token-1'));
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const peer = FakePeerConnection.instances[0];
+      // 보낼 트랙이 없어도 영상 자리는 잡혀 있다. 소리는 나중에 얻을 길이 없어 잡지 않는다.
+      expect(peer?.addTransceiver).toHaveBeenCalledWith('video', { direction: 'sendrecv' });
+      expect(peer?.addTransceiver).not.toHaveBeenCalledWith('audio', expect.anything());
+
+      const fromSession = fakeTrack('video');
+      let handedOver: boolean | undefined;
+
+      await act(async () => {
+        handedOver = await view.result.current.replaceLocalVideoTrack(fromSession);
+      });
+
+      expect(handedOver).toBe(true);
+      expect(peer?.transceivers[0]?.sender.track).toBe(fromSession);
+
+      view.unmount();
+    });
+
+    /**
+     * **잡아 둔 자리에는 스트림 소속을 따로 붙여야 한다.** (S15P11A206-206 리뷰)
+     *
+     * `addTransceiver` 로 만든 sender 에는 스트림이 딸려 있지 않고 `replaceTrack` 은 트랙만
+     * 바꾼다. 그대로 협상하면 영상 m-line 에 msid 가 빠지고, 받는 쪽 `ontrack` 은
+     * `event.streams` 를 빈 배열로 받는다. 소리는 `addTrack` 으로 소속이 있으므로 상담자
+     * 화면은 **소리만 나고 화면은 검은** 상태가 된다 — 캡처가 성공하는 정상 경로에서도 그렇다.
+     *
+     * 소리와 **같은** 스트림이어야 한다. 서로 다른 스트림으로 가면 화면이 보는 `srcObject` 는
+     * 하나뿐이라 나중에 도착한 쪽이 앞의 것을 덮는다.
+     */
+    it('잡아 둔 영상 자리를 소리와 같은 스트림에 넣는다', async () => {
+      const view = await connectedWithVideo();
+
+      const peer = FakePeerConnection.instances[0];
+      const videoSender = peer?.transceivers[0]?.sender;
+      const audioSender = peer?.senders.find((sender) => sender.track?.kind === 'audio');
+
+      // 잡아 둔 자리에 카메라 트랙이 들어갔다.
+      expect(videoSender?.track?.kind).toBe('video');
+      expect(audioSender?.streams[0]).toBeDefined();
+      expect(videoSender?.streams[0]).toBe(audioSender?.streams[0]);
+
+      view.unmount();
+    });
+
+    /**
+     * **스트림 소속 없이 온 트랙도 화면에 붙인다.** (S15P11A206-206 리뷰)
+     *
+     * 캡처가 8초를 넘겨 트랙 없이 answer 가 먼저 나간 경로에서는, 뒤늦게 자리를 채워도 msid 를
+     * 다시 알릴 재협상이 없다. 그때 `event.streams` 는 빈 배열로 오는데 예전에는 여기서 그대로
+     * 돌아섰다 — 영상이 흐르고 있는데도 화면은 끝까지 검었다. `setStreams` 가 없는 브라우저도
+     * 같은 자리에 놓인다.
+     */
+    it('스트림 소속 없이 온 트랙도 화면에 붙인다', async () => {
+      const view = await connectedWithVideo();
+      const element = { srcObject: null as MediaStream | null, play: vi.fn() };
+      view.result.current.remoteVideoRef.current = element as unknown as HTMLVideoElement;
+
+      const incoming = fakeTrack('video');
+
+      act(() => {
+        FakePeerConnection.instances[0]?.ontrack?.({
+          streams: [],
+          track: incoming,
+        } as unknown as RTCTrackEvent);
+      });
+
+      expect(element.srcObject?.getTracks()).toContain(incoming);
 
       view.unmount();
     });

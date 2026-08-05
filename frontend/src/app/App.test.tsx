@@ -198,6 +198,8 @@ describe('user routes', () => {
       destinationLatitude: 37.5007,
       destinationLongitude: 127.0365,
       currentFloorId: 1,
+      currentLocationLabel: null,
+      currentLocationLabelEn: null,
       currentMapX: -30,
       currentMapY: 10,
       /*
@@ -845,6 +847,110 @@ describe('user routes', () => {
   });
 
   /**
+   * 안내 카드에 같은 숫자를 두 번 적지 않는다. (S15P11A206-206)
+   *
+   * `24m 직진하세요` 위에 `다음 안내 · 24m`이 붙어 있었다. 상세 경로는 이미 같은 규칙으로 그린다 —
+   * 문장이 거리를 품는 구간은 문장 안에만 적고, 품지 않는 구간(층 이동·개찰구)은 따로 적는다.
+   *
+   * **품지 않는 구간에서는 남겨야 한다.** 카드에는 따로 적을 칸이 없어 그 줄이 유일한 거리
+   * 표시다. 지우면 엘리베이터를 몇 m 뒤에 타야 하는지가 화면에서 사라진다.
+   */
+  it('문장이 거리를 품으면 다음 안내 줄을 두지 않고, 품지 않으면 남긴다', async () => {
+    // 첫 구간(205 → 202)의 중간. `개찰구 방향으로 {거리} 직진하세요`가 거리를 품는다.
+    useNavigationStore.setState({ currentFloorId: 2, currentMapX: -12.85, currentMapY: 26.4 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    expect(await screen.findByText(/직진하세요/)).toBeInTheDocument();
+    expect(screen.queryByText(/^다음 안내 · /)).toBeNull();
+
+    cleanup();
+
+    // 층 전환 구간. `엘리베이터를 타고 B2로 이동하세요`에는 거리 자리가 없다.
+    useNavigationStore.setState({ currentFloorId: 2, currentMapX: -2, currentMapY: 27 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    expect(await screen.findByText('엘리베이터를 타고 B2로 이동하세요')).toBeInTheDocument();
+    // 숫자는 목업 구간 경계 보정에 딸리므로 형태만 본다.
+    expect(screen.getByText(/^다음 안내 · \d+m$/)).toBeInTheDocument();
+  });
+
+  /**
+   * 카드와 상세 경로가 같은 문장을 말한다. (S15P11A206-206)
+   *
+   * 예전에는 카드가 `activeStep.instruction`을 그대로 썼다. 그 문장에는 **구간 전체 길이**가 박혀
+   * 있어서, 남은 거리로 문장을 다시 쓰는 상세 경로와 어긋났다 — 한 화면에서 카드는
+   * `32m 직진하세요`, 목록은 `24m 직진하세요`였다. 게다가 카드 숫자는 걸어도 줄지 않으니 틀린
+   * 쪽이 카드다.
+   *
+   * 남은 거리를 값으로 박지 않는다. 목업의 구간 경계 보정에 딸린 숫자라 목업이 바뀌면 함께
+   * 흔들린다. 확인할 성질은 **두 자리가 같은 문장이고, 그것이 서버 원문이 아니라는 것**이다.
+   */
+  it('카드 안내 문장과 상세 경로의 강조된 줄이 같다', async () => {
+    // 첫 구간(205 → 202, 25m)의 중간. 남은 거리가 구간 전체 길이와 달라진다.
+    useNavigationStore.setState({ currentFloorId: 2, currentMapX: -12.85, currentMapY: 26.4 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /상세 경로/ }));
+
+    const activeRow = document.querySelector('[aria-current="step"]');
+    const sentence = activeRow?.querySelector('b')?.textContent ?? '';
+
+    // 첫 구간을 걷고 있어야 이 검사가 뜻을 갖는다.
+    expect(sentence).toMatch(/직진하세요/);
+    // 구간 전체 길이(25m)가 아니라 남은 거리로 쓰여 있다.
+    expect(sentence).not.toBe('개찰구 방향으로 25m 직진하세요');
+    // 카드와 목록, 두 자리에 같은 문장이 있다.
+    expect(screen.getAllByText(sentence)).toHaveLength(2);
+  });
+
+  /**
+   * 상세 경로가 지금 걷는 구간을 따라 올라온다. (S15P11A206-206)
+   *
+   * 칸이 150px이라 두 줄 반만 보인다. 예전에는 목록이 고정돼 있어서, 걸어가면 강조된 줄이 아래로
+   * 내려가다 칸 밖으로 나갔다. 그러면 보이는 것은 이미 지나온 구간뿐이라 지금 무엇을 해야 하는지가
+   * 화면에서 사라지고, 사용자가 목록을 직접 굴려 찾아야 했다.
+   *
+   * jsdom은 배치를 하지 않아 `offsetTop`이 언제나 0이다. 줄 높이를 형제 순서로 흉내 내 **어느
+   * 줄을 기준으로 스크롤했는지**를 본다 — 참조가 엉뚱한 요소에 붙었거나 effect가 다시 돌지 않으면
+   * 걸린다.
+   */
+  it('걸어가면 상세 경로가 지금 구간을 칸 맨 위로 올린다', async () => {
+    const ROW_HEIGHT = 40;
+    const offsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        const parent = this.parentElement;
+        if (!parent) return 0;
+        return Array.from(parent.children).indexOf(this) * ROW_HEIGHT;
+      },
+    });
+
+    try {
+      // 첫 구간(205 → 202)의 끝에 가까운 지점. 안내가 두 번째 구간으로 넘어간다.
+      useNavigationStore.setState({ currentFloorId: 2, currentMapX: -2, currentMapY: 27 });
+      await renderSection('/user/navigation');
+      fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /상세 경로/ }));
+
+      const active = screen
+        .getAllByText('엘리베이터를 타고 B2로 이동하세요')
+        .at(-1)
+        ?.closest('[aria-current="step"]') as HTMLElement;
+      const list = active.parentElement!;
+
+      // 두 번째 줄이 강조돼 있으므로 목록은 그 줄만큼 올라가 있어야 한다.
+      expect(Array.from(list.children).indexOf(active)).toBe(1);
+      expect(list.scrollTop).toBe(ROW_HEIGHT);
+    } finally {
+      if (offsetTop) Object.defineProperty(HTMLElement.prototype, 'offsetTop', offsetTop);
+    }
+  });
+
+  /**
    * `내 위치` 버튼과 층. (S15P11A206-83)
    *
    * 예전에는 시점만 되돌렸다. 층은 화면이 들고 있어서 다른 층을 보던 사용자는 그 층 지도가
@@ -915,7 +1021,7 @@ describe('user routes', () => {
     await renderSection('/user/navigation');
     fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
 
-    fireEvent.click(screen.getByRole('button', { name: '현재 위치 다시 인식' }));
+    fireEvent.click(screen.getByRole('button', { name: '위치 재촬영하기' }));
     expect(await screen.findByText('세 방향을 자유롭게 비춰주세요')).toBeInTheDocument();
     expect(useNavigationStore.getState().relocalizing).toBe(true);
 
@@ -1260,6 +1366,8 @@ describe('user routes', () => {
     useNavigationStore.setState({
       destination: 'GS25 역삼역점',
       route: 'elevator_only',
+      currentLocationLabel: 'B2 · 대합실',
+      currentLocationLabelEn: 'B2 · Concourse',
       // 경로 옵션 화면에서 엘리베이터 우선을 고르면 그 유형의 출구가 여기 남는다.
       targetExitLabel: '2번 출입구',
       waypoints: [
@@ -1281,6 +1389,7 @@ describe('user routes', () => {
     expect(await screen.findByText('출발지')).toBeInTheDocument();
     expect(screen.getByText('목적지')).toBeInTheDocument();
     const routeHeader = screen.getByLabelText('현재 경로');
+    expect(within(routeHeader).getByText('B2 · 대합실')).toBeInTheDocument();
     expect(within(routeHeader).getByText('2번 출입구')).toBeInTheDocument();
     expect(within(routeHeader).queryByText('GS25 역삼역점')).toBeNull();
     expect(within(routeHeader).getByText('경유 1')).toBeInTheDocument();
@@ -1343,10 +1452,14 @@ describe('user routes', () => {
      */
     expect(await screen.findByText('개찰구 방향으로 25m 직진하세요')).toBeInTheDocument();
     /*
-      다시 계산이 끝나면 거리 표시로 돌아온다. 예전에는 경유지를 한 번 건드리면 안내가 끝날
+      다시 계산이 끝나면 그 표시에서 벗어난다. 예전에는 경유지를 한 번 건드리면 안내가 끝날
       때까지 `경로 업데이트 완료`에 머물러, 다음 지점까지 몇 미터인지가 영영 사라졌다.
+
+      **거리는 위 문장이 말한다.** 예전에는 이 자리에서 `다음 안내 · 25m`을 확인했는데, 문장이
+      거리를 품는 구간에서는 그 줄을 두지 않게 됐다 — 같은 숫자가 두 번 나오기 때문이다
+      (S15P11A206-206). 그래서 여기서 볼 것은 다시 계산 표시가 사라졌다는 것이다.
     */
-    expect(await screen.findByText('다음 안내 · 25m')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/^다음 안내 · /)).toBeNull());
     expect(screen.getByText('총 224m · 약 5분')).toBeInTheDocument();
   });
 

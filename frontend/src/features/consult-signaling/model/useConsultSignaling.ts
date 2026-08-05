@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getIceServers,
   publishConsultationFallbackEvent,
@@ -98,6 +98,19 @@ type CaptionPayload = {
   text: string;
   final: boolean;
   language: string;
+  captionId?: string;
+  occurredAt?: string;
+};
+
+type TranscriptTimelineEntry = {
+  segment: ConsultationTranscriptSegment;
+  captionId: string;
+  occurredAt: number;
+  order: number;
+};
+
+type TranscriptTimelineSegment = ConsultationTranscriptSegment & {
+  captionId: string;
 };
 
 /**
@@ -219,8 +232,10 @@ export function useConsultSignaling(
   const eventFallbackRef = useRef<ConsultEventFallback | null>(null);
   /** Keep final captions until the signaling and peer connections can relay them. */
   const pendingFinalCaptionsRef = useRef<CaptionPayload[]>([]);
+  const captionSequenceRef = useRef(0);
   useEffect(() => {
     pendingFinalCaptionsRef.current = [];
+    captionSequenceRef.current = 0;
   }, [roomId]);
   /**
    * 상담 이벤트 채널이 열려 있는지.
@@ -257,6 +272,8 @@ export function useConsultSignaling(
    */
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [localCaption, setLocalCaption] = useState('');
+  const [localCaptionFinal, setLocalCaptionFinal] = useState(true);
+  const [localFinalCaptionId, setLocalFinalCaptionId] = useState<string | null>(null);
   const [remoteCaption, setRemoteCaption] = useState('');
   /** 상대가 말을 마친 마지막 문장. 번역은 이 값으로만 건다. */
   const [remoteFinalCaption, setRemoteFinalCaption] = useState('');
@@ -267,6 +284,7 @@ export function useConsultSignaling(
    * "옮길 준비가 끝난 문장"을 구분한다.
    */
   const [remoteCaptionFinal, setRemoteCaptionFinal] = useState(true);
+  const [remoteFinalCaptionId, setRemoteFinalCaptionId] = useState<string | null>(null);
   /**
    * 상대 쪽 음성 인식이 멈춘 이유. null 이면 정상이다.
    *
@@ -285,8 +303,51 @@ export function useConsultSignaling(
   /** 화면의 '자막 다시 시도'가 부를 함수. 연결을 끊지 않고 인식만 되살린다. */
   const restartCaptionsRef = useRef<() => void>(() => {});
   const restartCaptions = useCallback(() => restartCaptionsRef.current(), []);
-  const [transcript, setTranscript] = useState<ConsultationTranscriptSegment[]>([]);
+  const [transcriptEntries, setTranscriptEntries] = useState<TranscriptTimelineEntry[]>([]);
   const [transcriptRoomId, setTranscriptRoomId] = useState(roomId);
+  const transcriptTimeline = useMemo<TranscriptTimelineSegment[]>(
+    () =>
+      [...transcriptEntries]
+        .sort((left, right) => left.occurredAt - right.occurredAt || left.order - right.order)
+        .map((entry, index) => ({
+          ...entry.segment,
+          seq: index + 1,
+          captionId: entry.captionId,
+        })),
+    [transcriptEntries],
+  );
+  const transcript = useMemo(
+    () =>
+      transcriptTimeline.map((segment) => ({
+        seq: segment.seq,
+        speaker: segment.speaker,
+        content: segment.content,
+        ...(segment.translatedContent ? { translatedContent: segment.translatedContent } : {}),
+      })),
+    [transcriptTimeline],
+  );
+  const updateTranscriptTranslation = useCallback(
+    (captionId: string, translatedContent: string) => {
+      const normalizedTranslation = translatedContent.trim();
+      if (!captionId || !normalizedTranslation) return;
+
+      setTranscriptEntries((previous) => {
+        const entryIndex = previous.findIndex((entry) => entry.captionId === captionId);
+        if (entryIndex < 0) return previous;
+
+        const entry = previous[entryIndex];
+        if (entry.segment.translatedContent === normalizedTranslation) return previous;
+
+        const next = [...previous];
+        next[entryIndex] = {
+          ...entry,
+          segment: { ...entry.segment, translatedContent: normalizedTranslation },
+        };
+        return next;
+      });
+    },
+    [],
+  );
   /** 서버가 준 STUN·TURN 설정. 받기 전에는 연결을 시작하지 않는다. */
   const [rtcConfig, setRtcConfig] = useState<RTCConfiguration | null>(null);
   /** 연결을 처음부터 다시 맺어야 할 때 올린다. 값이 바뀌면 아래 effect 가 통째로 다시 돈다. */
@@ -390,7 +451,9 @@ export function useConsultSignaling(
   // 한 번은 이전 전문이 그대로 보이므로 렌더 중에 맞춘다.
   if (transcriptRoomId !== roomId) {
     setTranscriptRoomId(roomId);
-    setTranscript([]);
+    setTranscriptEntries([]);
+    setLocalFinalCaptionId(null);
+    setRemoteFinalCaptionId(null);
   }
 
   useEffect(() => {
@@ -498,6 +561,27 @@ export function useConsultSignaling(
       attachDataChannel(peer.createDataChannel('consult', { ordered: true }));
     } else {
       peer.ondatachannel = (event) => attachDataChannel(event.channel);
+      /**
+       * 보낼 트랙이 없어도 영상을 **보낼 자리**를 미리 잡는다. (S15P11A206-206)
+       *
+       * 상담자는 영상 m-line 을 `recvonly` 로 열고, 방향은 answer 를 만드는 이쪽이 정한다.
+       * 그때 영상 트랜시버가 하나도 없으면 그 m-line 은 `inactive` 로 협상되고 **그대로
+       * 굳는다.** 지금 협상 흐름은 재협상을 하지 않으므로(위 `mediaReady` 주석) 뒤늦게 트랙이
+       * 생겨도 흘려보낼 방향이 없다.
+       *
+       * 캡처가 실패·타임아웃하는 경로가 실제로 그랬다. 마이크가 다른 앱에 잡혀 8초를 넘기면
+       * 붙인 트랙 없이 answer 가 나가고, 그 뒤 XR 세션이 열려 카메라 트랙이 생겨도 상담자
+       * 화면은 끝까지 검은 채였다. 화면은 "소리 없이 연결합니다"만 안내해서, 영상까지 함께
+       * 죽은 것은 드러나지도 않았다.
+       *
+       * 자리만 잡고 트랙은 넣지 않는다. 트랙 없는 `sendonly` m-line 은 아무것도 보내지 않으므로
+       * 캡처가 성공하는 정상 경로에서 달라지는 것이 없고, 실패했다면 나중에 `replaceTrack` 으로
+       * 채울 곳이 남는다.
+       *
+       * **소리는 이렇게 하지 않는다.** 마이크는 여기서 실패하면 나중에 얻을 경로가 아예 없어
+       * (XR 세션은 카메라만 준다) 자리를 잡아 둘 이유가 없다.
+       */
+      videoSenderRef.current = peer.addTransceiver('video', { direction: 'sendrecv' }).sender;
     }
     markConsultPhase('signaling 소켓 생성'); // 추가
     const wsBase = signalingBaseUrl();
@@ -559,20 +643,40 @@ export function useConsultSignaling(
     /**
      * 확정된 자막만 상담 전문으로 쌓는다. 중간 결과는 말하는 도중 계속 고쳐 써서
      * 그대로 모으면 같은 문장이 여러 번 남는다.
+     *
+     * 발화 ID와 원본 시각은 화면에서 중복을 걸러 내고 양쪽 브라우저에서 도착 순서가 달라도
+     * 같은 타임라인으로 정렬하기 위해 함께 보관한다. 서버로 보낼 때는 API가 요구하는
+     * `seq`, `speaker`, `content`만 다시 꺼낸다.
      */
-    const appendFinalCaption = (speaker: SignalingRole, text: string) => {
+    const appendFinalCaption = (
+      speaker: SignalingRole,
+      text: string,
+      metadata: { captionId?: string; occurredAt?: string } = {},
+    ) => {
       const content = text.trim().slice(0, MAX_SEGMENT_LENGTH);
       if (!content) return;
 
-      setTranscript((previous) => {
+      const occurredAtValue = metadata.occurredAt ? Date.parse(metadata.occurredAt) : NaN;
+      const occurredAt = Number.isFinite(occurredAtValue) ? occurredAtValue : Date.now();
+      const captionId = metadata.captionId ?? `${speaker}:${occurredAt}:${content}`;
+
+      setTranscriptEntries((previous) => {
         // 앞부분이 요약에 더 중요하다. 한도를 넘으면 뒤를 버린다.
         if (previous.length >= MAX_TRANSCRIPT_SEGMENTS) return previous;
 
-        // 같은 문장을 두 번 확정해 보내는 브라우저가 있어 직전과 같은 말은 넘긴다.
-        const last = previous.at(-1);
-        if (last?.speaker === speaker && last.content === content) return previous;
+        // 재연결이나 서버 중계 재시도에서 같은 최종 자막이 다시 와도 한 번만 기록한다.
+        if (previous.some((entry) => entry.captionId === captionId)) return previous;
 
-        return [...previous, { seq: previous.length + 1, speaker, content }];
+        return [
+          ...previous,
+          {
+            captionId,
+            occurredAt,
+            // 중복·최대 개수 검사를 통과해 실제로 추가되는 경우에만 순서를 만든다.
+            order: previous.length,
+            segment: { seq: 0, speaker, content },
+          },
+        ];
       });
     };
     /** 잇따라 실패한 횟수. 한 번 알아들으면 0으로 돌아간다. */
@@ -655,43 +759,77 @@ export function useConsultSignaling(
       const currentRecognition = new Recognition();
       const generation = ++recognitionGeneration;
       recognition = currentRecognition;
+      const processedFinalResultKeys = new Set<string>();
       currentRecognition.continuous = true;
       currentRecognition.interimResults = true;
       currentRecognition.lang =
         role === 'COUNSELOR' ? 'ko-KR' : localSpeechLanguage || navigator.language || 'en-US';
       currentRecognition.onresult = (event) => {
         if (disposed || generation !== recognitionGeneration) return;
-        // 누적 전문(`transcript` 상태)과 헷갈리지 않게 이번 결과 조각은 `spoken`으로 둔다.
-        let spoken = '';
-        let final = false;
+        // `results`에는 이전 확정 결과도 남아 있을 수 있다. 이번 이벤트에서 바뀐 구간만
+        // 확정 결과와 중간 결과로 나눠 처리해야 이전 문장이 다음 문장에 다시 붙지 않는다.
+        const finalTexts: string[] = [];
+        let interimText = '';
         for (let index = event.resultIndex; index < event.results.length; index += 1) {
-          spoken += event.results[index][0].transcript;
-          final ||= event.results[index].isFinal;
+          const result = event.results[index];
+          const fragment = result[0].transcript;
+          if (result.isFinal) {
+            const finalResultKey = `${index}:${fragment.trim()}`;
+            if (processedFinalResultKeys.has(finalResultKey)) continue;
+            processedFinalResultKeys.add(finalResultKey);
+            finalTexts.push(fragment);
+          } else interimText += fragment;
         }
-        const text = spoken.trim();
-        if (!text) return;
+        const finalTextValues = finalTexts.map((text) => text.trim()).filter(Boolean);
+        const interimTextValue = interimText.trim();
+        if (finalTextValues.length === 0 && !interimTextValue) return;
         // 한 번이라도 알아들었으면 앞의 실패는 지나간 일이다.
         captionErrorStreak = 0;
         reportCaptionStatus(null, null);
-        setLocalCaption(text);
-        const payload: CaptionPayload = {
-          text,
-          final,
-          language: currentRecognition.lang || navigator.language,
-        };
-        if (final) appendFinalCaption(role, text);
-        else {
+
+        // 한 이벤트에 확정 결과가 여러 개 들어오면 각각의 발화 ID를 유지한다. 하나로 합치면
+        // 나중에 같은 문장이 다시 확정되는 것처럼 보이고, 타임라인 한 칸에 서로 다른 발화가
+        // 붙는다.
+        let lastFinalCaptionId: string | null = null;
+        for (const text of finalTextValues) {
+          const occurredAt = new Date().toISOString();
+          const captionId = `${roomId}:${role}:${occurredAt}:${captionSequenceRef.current++}`;
+          lastFinalCaptionId = captionId;
+          appendFinalCaption(role, text, { captionId, occurredAt });
+          sendCaption({
+            text,
+            final: true,
+            language: currentRecognition.lang || navigator.language,
+            captionId,
+            occurredAt,
+          });
+        }
+
+        if (interimTextValue) {
+          setLocalCaption(interimTextValue);
+          setLocalCaptionFinal(false);
+          setLocalFinalCaptionId(null);
           const now = Date.now();
           if (
             now - lastInterimCaptionSentAt < INTERIM_CAPTION_INTERVAL_MS ||
-            text === lastInterimCaption
+            interimTextValue === lastInterimCaption
           ) {
             return;
           }
           lastInterimCaptionSentAt = now;
-          lastInterimCaption = text;
+          lastInterimCaption = interimTextValue;
+          sendCaption({
+            text: interimTextValue,
+            final: false,
+            language: currentRecognition.lang || navigator.language,
+          });
+          return;
         }
-        sendCaption(payload);
+
+        setLocalCaption(finalTextValues.at(-1) ?? '');
+        setLocalCaptionFinal(true);
+        setLocalFinalCaptionId(lastFinalCaptionId);
+        lastInterimCaption = '';
       };
       /**
        * 왜 인식이 안 되는지 화면에 남긴다.
@@ -928,8 +1066,20 @@ export function useConsultSignaling(
       }
     };
     peer.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (!stream) return;
+      /**
+       * 스트림 소속 없이 온 트랙도 버리지 않는다. (S15P11A206-206 리뷰)
+       *
+       * 캡처가 8초를 넘겨 트랙 없이 answer 가 먼저 나간 경로에서는, 뒤늦게 `replaceTrack` 으로
+       * 자리를 채워도 msid 를 다시 알릴 재협상이 없다. 그때 `event.streams` 는 빈 배열로 오는데
+       * 예전에는 여기서 그대로 돌아섰다 — 영상이 흐르고 있는데도 화면은 끝까지 검었다.
+       *
+       * **처음 본 스트림 하나에 트랙을 모은다.** 화면은 `srcObject` 하나만 보므로, 소리와
+       * 영상이 서로 다른 스트림으로 오면 나중에 온 쪽이 앞의 것을 덮어 버린다.
+       */
+      const stream = remoteStreamRef.current ?? event.streams[0] ?? new MediaStream();
+      if (!stream.getTracks().some((existing) => existing.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
       remoteStreamRef.current = stream;
       attachRemoteStream(stream);
     };
@@ -1039,14 +1189,51 @@ export function useConsultSignaling(
         localStream = stream;
         setMediaError(null);
         if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-        localStream.getTracks().forEach((track) => {
-          const sender = peer.addTrack(track, localStream!);
+        for (const track of localStream.getTracks()) {
+          /**
+           * 영상은 위에서 잡아 둔 자리에 넣는다. (S15P11A206-206)
+           *
+           * `addTrack` 을 쓰지 않는다. 잡아 둔 트랜시버를 재사용할지는 구현에 맡겨진 부분이라,
+           * 재사용하지 않는 브라우저에서는 두 번째 영상 m-line 이 생긴다. 상담자의 offer 에는
+           * 영상 자리가 하나뿐이므로 그 여분은 협상되지 않고, 트랙이 어느 쪽에 실렸는지에 따라
+           * 영상이 나가다 말다 한다.
+           */
+          if (track.kind === 'video' && videoSenderRef.current) {
+            const videoSender = videoSenderRef.current;
+            /**
+             * 트랙보다 **스트림 소속**을 먼저 알려 준다. (S15P11A206-206 리뷰)
+             *
+             * 잡아 둔 자리에는 스트림이 딸려 있지 않다 — `addTransceiver` 에 넘길 스트림이 그
+             * 시점에는 없었다. `replaceTrack` 은 트랙만 바꾸고 소속을 만들지 않으므로, 그대로
+             * 협상하면 영상 m-line 에 msid 가 실리지 않는다. 받는 쪽 `ontrack` 은 msid 로
+             * `event.streams` 를 채우니 빈 배열이 오고, 소리는 `addTrack` 으로 소속이 있어
+             * **소리만 나고 화면은 검은** 상태가 된다.
+             *
+             * 오디오와 같은 스트림에 넣어 상담자가 트랙 둘을 하나로 받게 한다. 협상은 아래
+             * `mediaReady` 뒤에 열리므로 이 시점의 소속이 answer 에 그대로 실린다.
+             *
+             * Firefox 에는 아직 없는 메서드라 있는지 보고 부른다. 없으면 msid 가 비는데, 그
+             * 경우는 받는 쪽에서 트랙을 주워 담는다(`peer.ontrack`).
+             */
+            if (typeof videoSender.setStreams === 'function') {
+              videoSender.setStreams(localStream);
+            }
+            // 실패해도 소리는 붙여야 한다. 여기서 던지면 아래 오디오 차례가 오지 않는다.
+            try {
+              await videoSender.replaceTrack(track);
+            } catch {
+              if (!disposed) setMediaError('카메라 영상을 연결할 수 없습니다.');
+            }
+            continue;
+          }
+
+          const sender = peer.addTrack(track, localStream);
           /**
            * 영상 sender 를 붙일 때 받아 둔다. 나중에 `getSenders()` 에서 되찾을 수 없다 —
            * 트랙을 비우면 종류를 알 방법이 사라진다. (S15P11A206-89 리뷰)
            */
           if (track.kind === 'video') videoSenderRef.current = sender;
-        });
+        }
       } catch (cause) {
         const timedOut = cause instanceof Error && cause.message === 'media_capture_timeout';
         markConsultPhase(timedOut ? '미디어 캡처 타임아웃(8초)' : '미디어 캡처 실패'); // 추가
@@ -1174,8 +1361,16 @@ export function useConsultSignaling(
         setRemoteCaptionError(null);
         setRemoteCaption(caption.text);
         setRemoteCaptionFinal(Boolean(caption.final));
+        // 중간 결과에서는 직전 확정 ID를 유지한다. 실시간 번역문과 현재 원문을 함께 보여 주는 동안
+        // 같은 확정문을 로그에서 숨겨 중복 렌더링을 막는다.
         if (caption.final) {
-          appendFinalCaption(remoteRole, caption.text);
+          const captionId =
+            caption.captionId ?? `${remoteRole}:${message.timestamp}:${caption.text}`;
+          appendFinalCaption(remoteRole, caption.text, {
+            captionId,
+            occurredAt: caption.occurredAt ?? message.timestamp,
+          });
+          setRemoteFinalCaptionId(captionId);
           // 번역은 확정된 문장만 건다. 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라진다.
           setRemoteFinalCaption(caption.text);
         }
@@ -1408,9 +1603,12 @@ export function useConsultSignaling(
      */
     reconnecting,
     localCaption,
+    localCaptionFinal,
+    localFinalCaptionId,
     remoteCaption,
     /** 상대가 말을 마친 마지막 문장. 번역에 쓴다. */
     remoteFinalCaption,
+    remoteFinalCaptionId,
     /** `remoteCaption` 이 말을 마친 문장인지. 거짓이면 상대가 지금 말하는 중이다. */
     remoteCaptionFinal,
     /** 상대 쪽 음성 인식이 멈춘 이유. null 이면 정상이다. */
@@ -1422,6 +1620,9 @@ export function useConsultSignaling(
     restartCaptions,
     /** 상담 종료 뒤 서버에 넘길 확정 자막. 말한 순서대로 쌓인다. */
     transcript,
+    /** 실시간 영역에서 현재 확정 발화를 타임라인과 구분할 때 쓰는 식별자를 포함한다. */
+    transcriptTimeline,
+    updateTranscriptTranslation,
     sendConsultEvent,
     /** 상담 이벤트 채널이 열렸는지. 상태 스냅숏을 다시 보내야 할 시점이다. */
     eventChannelOpen,

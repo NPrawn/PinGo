@@ -24,6 +24,7 @@ function renderOverlay(props: {
   destinationLabel?: string | null;
   facilities?: readonly Facility[];
   selectedFacilityId?: number | null;
+  destinationNodeId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
   viewScale?: number;
   pathNodes?: readonly RoutePathNode[];
@@ -44,6 +45,7 @@ function renderOverlay(props: {
       destinationLabel={props.destinationLabel}
       facilities={props.facilities}
       selectedFacilityId={props.selectedFacilityId}
+      destinationNodeId={props.destinationNodeId}
       onSelectFacility={props.onSelectFacility}
       viewScale={props.viewScale}
       pathNodes={props.pathNodes}
@@ -193,6 +195,77 @@ describe('IndoorMapOverlay', () => {
       );
 
       expect(screen.getByRole('img', { name: '화장실' }).querySelector('text')).toBeNull();
+    });
+
+    /**
+     * 고른 시설이 이웃 마커에 덮이지 않는다. (S15P11A206-206)
+     *
+     * SVG 에는 `z-index` 가 없어 **나중에 그린 것이 위로 온다.** 역삼역 B2 는 1m 가 1.2px 이라
+     * 그 층 시설 36개의 마커 간 최소 간격이 3.9px 인데, 고른 것이 목록 앞에 있으면 뒤에 그려지는
+     * 이웃에 아이콘과 이름표가 덮였다 — 눌렀는데 무엇을 눌렀는지 보이지 않았다.
+     */
+    it('고른 시설을 이웃보다 나중에 그린다', () => {
+      // 목록에서 고른 것이 **앞**에 오게 둔다. 정렬하지 않으면 그대로 먼저 그려진다.
+      const NEIGHBOUR: Facility = { ...RESTROOM, facilityId: 61, nameKo: '옆 시설' };
+      renderOverlay({ facilities: [RESTROOM, NEIGHBOUR], selectedFacilityId: RESTROOM.facilityId });
+
+      const markers = screen.getAllByRole('img');
+      const picked = markers.findIndex((node) => node.getAttribute('aria-label') === '화장실');
+      const neighbour = markers.findIndex((node) => node.getAttribute('aria-label') === '옆 시설');
+
+      expect(picked).toBeGreaterThan(neighbour);
+    });
+
+    /**
+     * **목적지로 지정된 시설은 아이콘에 표시가 남아야 한다.** (S15P11A206-206)
+     *
+     * 목적지 마커만으로는 어느 시설이 목적지인지 알 수 없다. 마커는 경로 노드 좌표에 찍히고
+     * 아이콘은 시설 좌표에 그려지는데 이 둘이 정확히 겹치지 않아, 상담자가 엘리베이터를 새
+     * 목적지로 짚어도 지도에서는 아이콘 사이에 점 하나가 늘어난 것으로만 보였다.
+     *
+     * 좌표가 아니라 **노드**로 맞춘다. 좌표 비교는 소수점 자리와 도면 갱신에 흔들린다.
+     */
+    it('목적지 노드에 연결된 시설을 도착지로 표시한다', () => {
+      renderOverlay({ facilities: [RESTROOM], destinationNodeId: RESTROOM.linkedNodeId });
+
+      expect(screen.getByRole('img', { name: '화장실 · 목적지' })).toBeInTheDocument();
+    });
+
+    it('다른 노드가 목적지면 표시하지 않는다', () => {
+      renderOverlay({ facilities: [RESTROOM], destinationNodeId: 999 });
+
+      expect(screen.getByRole('img', { name: '화장실' })).toBeInTheDocument();
+    });
+
+    /** 노드가 없는 시설은 목적지가 될 수 없다. `null === null` 로 엉뚱한 것이 표시되면 안 된다. */
+    it('노드 없는 시설은 목적지가 없을 때도 표시하지 않는다', () => {
+      const NO_NODE: Facility = { ...RESTROOM, linkedNodeId: null };
+      renderOverlay({ facilities: [NO_NODE], destinationNodeId: null });
+
+      expect(screen.getByRole('img', { name: '화장실' })).toBeInTheDocument();
+    });
+
+    /** 표시가 이웃 마커에 덮이면 없는 것과 같다. 시설 36개가 3.9px 간격으로 놓이는 층이 있다. */
+    it('목적지 시설을 이웃보다 나중에 그린다', () => {
+      // 노드까지 바꾼다. 그대로 두면 이웃도 같은 노드라 둘 다 목적지로 표시된다.
+      const NEIGHBOUR: Facility = {
+        ...RESTROOM,
+        facilityId: 61,
+        nameKo: '옆 시설',
+        linkedNodeId: 131,
+      };
+      renderOverlay({
+        facilities: [RESTROOM, NEIGHBOUR],
+        destinationNodeId: RESTROOM.linkedNodeId,
+      });
+
+      const markers = screen.getAllByRole('img');
+      const target = markers.findIndex(
+        (node) => node.getAttribute('aria-label') === '화장실 · 목적지',
+      );
+      const neighbour = markers.findIndex((node) => node.getAttribute('aria-label') === '옆 시설');
+
+      expect(target).toBeGreaterThan(neighbour);
     });
 
     it('콜백을 넘기면 마커가 탭을 받는다', () => {

@@ -17,5 +17,12 @@ public record TranscriptSegmentRequest(
 
         @NotBlank
         @Size(max = 2000)
-        String content
-) {}
+        String content,
+
+        @Size(max = 2000)
+        String translatedContent
+) {
+    public TranscriptSegmentRequest(Integer seq, TranscriptSpeaker speaker, String content) {
+        this(seq, speaker, content, null);
+    }
+}

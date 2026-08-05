@@ -266,6 +266,7 @@ public class StationService {
                 station,
                 floorCode,
                 trimToNull(request.floorName()),
+                defaultSpaceType(request.spaceType()),
                 request.floorOrder(),
                 request.nominalZ()
         );
@@ -293,7 +294,13 @@ public class StationService {
             throw new BusinessException(ErrorCode.DUPLICATE_FLOOR_CODE);
         }
 
-        floor.update(floorCode, trimToNull(request.floorName()), request.floorOrder(), request.nominalZ());
+        floor.update(
+                floorCode,
+                trimToNull(request.floorName()),
+                preservedSpaceType(request.spaceType(), floor.getSpaceType()),
+                request.floorOrder(),
+                request.nominalZ()
+        );
 
         try {
             stationFloorRepository.flush();
@@ -345,6 +352,19 @@ public class StationService {
 
     private String normalizeFloorCode(String floorCode) {
         return floorCode.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String defaultSpaceType(String spaceType) {
+        String normalized = trimToNull(spaceType);
+        return normalized == null ? "station_interior" : normalized.toLowerCase(Locale.ROOT);
+    }
+
+    private String preservedSpaceType(String spaceType, String currentSpaceType) {
+        String normalized = trimToNull(spaceType);
+        if (normalized != null) {
+            return normalized.toLowerCase(Locale.ROOT);
+        }
+        return trimToNull(currentSpaceType) == null ? "station_interior" : currentSpaceType;
     }
 
     private String trimToNull(String value) {
