@@ -93,15 +93,22 @@ describe('useMapGestures', () => {
     expect(result.current.view.scale).toBe(1);
   });
 
-  it('확대는 6배에서 멈춘다', () => {
-    // 시점 추종이 폭 60m를 담으려면 약 5.4배가 필요하다. 손으로도 그만큼은 당길 수 있어야 한다.
+  it('확대는 12배에서 멈춘다', () => {
+    /*
+      시점 추종이 폭 60m를 담는 데 필요한 배율은 지도 박스 크기에 달렸다. 넉넉한 박스에서는
+      약 5.4배지만, 상세 경로를 펼쳐 박스가 낮아지면 `fit`이 높이로 정해져 9배까지 올라간다
+      (360×640 기기에서 328×115). 예전 상한 6은 그 경우를 자르고 있었다. (S15P11A206-206)
+
+      손 조작의 상한도 같은 값을 쓴다. 추종 배율과 따로 두면 추종 시점을 손으로 이어받는 순간
+      `clamp`가 배율을 끌어내려 화면이 튄다.
+    */
     const { result } = renderHook(() => useMapGestures());
 
     act(() => {
       for (let i = 0; i < 40; i += 1) result.current.handlers.onWheel(wheelEvent(-1));
     });
 
-    expect(result.current.view.scale).toBe(6);
+    expect(result.current.view.scale).toBe(12);
   });
 
   it('두 손가락 간격이 벌어지면 확대된다', () => {

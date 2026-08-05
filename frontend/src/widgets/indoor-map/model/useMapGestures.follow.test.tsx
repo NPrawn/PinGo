@@ -289,6 +289,25 @@ describe('시점 추종', () => {
     expect(state.current!.view.x).toBeCloseTo(inherited, 5);
   });
 
+  /**
+   * 낮은 박스에서도 지정한 폭을 담는다. (S15P11A206-206)
+   *
+   * `fit`이 폭이 아니라 높이로 정해지면 필요한 배율이 크게 올라간다. 배율 상한이 6이던 동안
+   * 360×640 기기에서 상세 경로를 펼치면(박스 328×115) 8.96배가 필요한데 6으로 잘려, 표시가
+   * 의도의 67%로 줄었다. 도면의 얇은 선이 사라지고 `viewScale`로 크기를 맞추는 마커·이름표까지
+   * 함께 작아져 화질이 깨진 것처럼 보였다.
+   */
+  it('박스가 낮아도 지정한 폭을 담는다', () => {
+    const SHORT = { width: 328, height: 115 };
+    stubResizeObserver(SHORT);
+
+    const { state } = mount(followOptions({ px: 1200, py: 400 }));
+    const fit = Math.min(SHORT.width / CANVAS.width, SHORT.height / CANVAS.height);
+    const metresAcross = SHORT.width / (state.current!.view.scale * fit) / (1 / 0.19);
+
+    expect(metresAcross).toBeCloseTo(60, 0);
+  });
+
   it('목표를 모르면 추종하지 않는다', () => {
     // 위치 인식 전이다. 전체 조망을 그대로 보여준다.
     const { state } = mount(followOptions(null));
