@@ -97,6 +97,36 @@ public class IndoorRouteService {
      */
     private static final double ENTRY_TIE_TOLERANCE_M = 1.0;
 
+    /**
+     * 사용자가 <b>노드 위에 서 있다</b>고 볼 거리(m). 이 안이면 총거리 비교를 하지 않고 그 노드에서
+     * 시작한다.
+     *
+     * <p>{@link #ENTRY_TIE_TOLERANCE_M} 로는 모자란 자리가 있다. 여유는 <b>동점</b>일 때만 닿는데,
+     * ㄱ자로 꺾이는 통로에서는 모서리를 대각선으로 자르는 노드가 동점이 아니라 <b>더 짧게</b> 나온다.
+     * 역삼역 B2 엘리베이터 A 앞({@code B2_R023})에 서서 3번 출구로 갈 때 이렇다.
+     *
+     * <pre>
+     *   B2_R023  직선  0.00m + 남은 (7.19 + 8.42 + r)  =  15.61 + r
+     *   B2_R004  직선  7.19m + 남은 (8.42 + r)         =  15.61 + r   &lt;- 동점, 여유가 R023 을 고른다
+     *   B2_R005  직선 10.88m + 남은 r                  =  10.88 + r   &lt;- 4.73m 더 짧아 이것이 뽑힌다
+     * </pre>
+     *
+     * <p>그 10.88m 대각선은 통로 모서리를 관통한다. 직선 거리라 벽을 모르는 탓인데, 사용자가 서 있는
+     * 자리가 이미 통로 노드라면 <b>추정할 것이 없다</b> — 발밑에서 시작하는 것이 언제나 맞다. 지름길을
+     * 치는 상한({@link #MAX_ENTRY_STRAIGHT_M})은 위치가 노드 사이에 있을 때를 위한 근사이고, 이
+     * 값은 그 근사를 쓸 필요가 없는 경우를 먼저 걷어낸다.
+     *
+     * <p>화면에서는 이 어긋남이 <b>내 점이 순간이동한 것</b>으로 보인다. 안내 지도는 내 점을 경로
+     * 간선 위에 올리므로(S15P11A206-345), 서 있는 노드가 경로에서 빠지면 점이 10.88m 떨어진
+     * 대각선 위에 그려진다. 층을 옮긴 직후가 특히 그렇다 — 그때는 클라이언트가 노드를 정확히
+     * 알고 좌표를 그 노드값으로 보낸다.
+     *
+     * <p>1.5m 인 것은 통로 폭의 절반 남짓이다. 여기까지는 그 노드 앞에 선 것으로 볼 수 있고,
+     * 되돌아 걷는 군더더기도 최대 3m 다. 이보다 키우면 목적지 반대쪽 노드를 집어 337 이 고친
+     * 유턴이 되살아난다.
+     */
+    private static final double ON_NODE_M = 1.5;
+
     private final RouteNodeRepository routeNodeRepository;
     private final RouteEdgeRepository routeEdgeRepository;
     private final StationRepository stationRepository;
@@ -321,6 +351,10 @@ public class IndoorRouteService {
      * 하나에만 붙어 있어서, 그것을 진입점으로 삼으면 첫 구간이 통로로 되돌아 나오는 군더더기가
      * 된다. {@code is_landmark} 가 둘을 가른다 — 복도(normal·junction)는 거짓, 시설은 참이다.
      *
+     * <p><b>노드 위에 서 있으면 그 노드에서 시작한다.</b> 위의 총거리 비교를 건너뛴다. 추정할
+     * 것이 없는 자리이고, 비교에 맡기면 통로 모서리를 대각선으로 자르는 노드가 뽑힌다
+     * ({@link #ON_NODE_M}).
+     *
      * <p><b>직선 거리라 벽을 모른다.</b> 직선으로 가깝지만 실제로는 벽 너머인 노드가 뽑힐 수
      * 있다. 지금 {@code IndoorPositionResolver} 도 같은 한계를 갖고 있어 일관은 하다. 제대로
      * 하려면 노드가 아니라 간선 위의 점에 투영해야 하고, 그것은 그래프 모델을 바꾸는 일이다.
@@ -364,19 +398,15 @@ public class IndoorRouteService {
                 .toList();
 
         /*
-          총 이동 거리가 가장 짧은 것을 고르되, 비슷하면 가까운 쪽을 고른다.
-          왜 동점이 생기고 왜 가까운 쪽이 나은지는 ENTRY_TIE_TOLERANCE_M 에 적어 두었다.
+          노드 위에 서 있으면 그 노드에서 시작한다. 총거리를 비교하지 않는다 — ON_NODE_M 참고.
+          아니면 총 이동 거리가 가장 짧은 것을 고르되, 비슷하면 가까운 쪽을 고른다
+          (왜 동점이 생기고 왜 가까운 쪽이 나은지는 ENTRY_TIE_TOLERANCE_M 에 적어 두었다).
         */
-        double best = candidates.stream()
-                .mapToDouble(node -> straightDistance(x, y, node) + toFirstStop.distanceFrom(node.getId()).doubleValue())
-                .min()
-                .orElse(Double.NaN);
         Long chosen = candidates.stream()
-                .filter(node -> straightDistance(x, y, node)
-                        + toFirstStop.distanceFrom(node.getId()).doubleValue() <= best + ENTRY_TIE_TOLERANCE_M)
+                .filter(node -> straightDistance(x, y, node) <= ON_NODE_M)
                 .min(Comparator.comparingDouble(node -> straightDistance(x, y, node)))
                 .map(RouteNode::getId)
-                .orElse(requestedEntry);
+                .orElseGet(() -> shortestTotalEntry(candidates, toFirstStop, x, y, requestedEntry));
 
         if (chosen.equals(requestedEntry)) {
             return stopNodeIds;
@@ -408,6 +438,33 @@ public class IndoorRouteService {
             return null;
         }
         return routeFinder.searchInbound(data.graph(), stopNodeIds.get(1), routeType);
+    }
+
+    /**
+     * {@code 직선 거리 + 남은 경로 거리} 가 가장 짧은 후보. 비슷하면 가까운 쪽을 고른다
+     * ({@link #ENTRY_TIE_TOLERANCE_M}).
+     *
+     * <p>사용자 위치가 노드 사이에 있을 때 쓴다. 노드 위에 서 있으면 부르지 않는다
+     * ({@link #ON_NODE_M}).
+     */
+    private Long shortestTotalEntry(
+            List<RouteNode> candidates,
+            InboundSearch toFirstStop,
+            double x,
+            double y,
+            Long fallback
+    ) {
+        double best = candidates.stream()
+                .mapToDouble(node -> straightDistance(x, y, node) + toFirstStop.distanceFrom(node.getId()).doubleValue())
+                .min()
+                .orElse(Double.NaN);
+
+        return candidates.stream()
+                .filter(node -> straightDistance(x, y, node)
+                        + toFirstStop.distanceFrom(node.getId()).doubleValue() <= best + ENTRY_TIE_TOLERANCE_M)
+                .min(Comparator.comparingDouble(node -> straightDistance(x, y, node)))
+                .map(RouteNode::getId)
+                .orElse(fallback);
     }
 
     private double straightDistance(double x, double y, RouteNode node) {

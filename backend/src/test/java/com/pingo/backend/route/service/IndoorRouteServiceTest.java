@@ -570,6 +570,77 @@ class IndoorRouteServiceTest {
     }
 
     /**
+     * 노드 위에 서 있으면 총 거리 비교를 건너뛰고 그 노드에서 시작한다.
+     *
+     * <p>역삼역 B2 엘리베이터 A 앞({@code B2_R023})에서 3번 출구로 가는 모양을 줄여 옮겼다. 통로가
+     * ㄱ자로 꺾이고, 모서리를 대각선으로 자르면 총 거리가 <b>더 짧게</b> 나온다 — 동점이 아니므로
+     * {@code ENTRY_TIE_TOLERANCE_M} 로는 막지 못한다.
+     *
+     * <pre>
+     *   2(0,0)  &lt;- 사용자가 이 노드 위에 서 있다
+     *     |  8            2 로   0 + (8 + 6 + 14) = 28   &lt;- 발밑
+     *   3(0,-8)          3 으로  8 + (6 + 14)     = 28   &lt;- 동점, 여유가 2를 고른다
+     *     |  6            4 로  10 + 14           = 24   &lt;- 4m 짧아 이것이 뽑혔다
+     *   4(-6,-8) --- 목적지 5(-20,-8)
+     *          14
+     * </pre>
+     *
+     * <p>2 에서 4 로 가는 10m 직선은 통로 모서리를 관통한다. 화면에서는 내 점이 경로 간선 위에
+     * 올라가므로(S15P11A206-345) 발밑 노드가 경로에서 빠지면 점이 10m 순간이동한 것으로 보인다.
+     * 층을 옮긴 직후가 특히 그렇다 — 그때는 클라이언트가 좌표를 노드값 그대로 보낸다.
+     * (S15P11A206-351)
+     */
+    @Test
+    @DisplayName("노드 위에 서 있으면 지름길이 더 짧아도 발밑 노드에서 시작한다")
+    void startsAtTheNodeUnderfootInsteadOfCuttingTheCorner() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 0, -8), nodeAt(4L, -6, -8), nodeAt(5L, -20, -8));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 8, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 6, RouteMoveType.WALKWAY),
+                edge(1L, 4L, 5L, 14, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 5L, null, "fastest", Language.KO,
+                new BigDecimal("0.0"), new BigDecimal("0.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(2L);
+        // 모서리를 잘랐다면 4에서 시작해 14m 였다.
+        assertThat(response.totalDistanceM()).isEqualByComparingTo("28");
+    }
+
+    /**
+     * 노드 사이에 서 있으면 예전대로 총 거리로 고른다. 위 규칙이 그 판단을 삼키지 않아야 한다.
+     *
+     * <p>같은 ㄱ자 통로인데 사용자만 {@code ON_NODE_M} 밖에 둔다 — 2에서 3m 내려온 자리다.
+     *
+     * <pre>
+     *   2 로   3 + 28 = 31
+     *   3 으로 5 + 20 = 25
+     *   4 로  7.81 + 14 = 21.81   &lt;- 뽑힌다
+     * </pre>
+     */
+    @Test
+    @DisplayName("노드에서 떨어져 있으면 총 거리가 짧은 노드를 진입점으로 고른다")
+    void stillComparesTotalDistanceWhenNotStandingOnANode() {
+        givenActiveStation(1L);
+        givenNodes(1L, nodeAt(2L, 0, 0), nodeAt(3L, 0, -8), nodeAt(4L, -6, -8), nodeAt(5L, -20, -8));
+        givenEdges(1L,
+                edge(1L, 2L, 3L, 8, RouteMoveType.WALKWAY),
+                edge(1L, 3L, 4L, 6, RouteMoveType.WALKWAY),
+                edge(1L, 4L, 5L, 14, RouteMoveType.WALKWAY));
+        givenFloors(1L, new long[] {1L});
+
+        RouteResponse response = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 2L, 5L, null, "fastest", Language.KO,
+                new BigDecimal("0.0"), new BigDecimal("-3.0")));
+
+        assertThat(response.startNodeId()).isEqualTo(4L);
+        assertThat(response.totalDistanceM()).isEqualByComparingTo("14");
+    }
+
+    /**
      * 시설 노드는 통로에 매달린 끝점이라 경로가 거기서 시작하면 안내가 "교통카드 충전기에서
      * 출발"처럼 읽힌다. 사용자가 실제로 서 있는 곳은 그 앞 통로다. (S15P11A206-345)
      */
