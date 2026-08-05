@@ -858,7 +858,15 @@ export function SessionPage() {
             </p>
           )}
 
-          <div className={styles.notes}>
+          <div className={styles.captionWorkspace}>
+            <section className={styles.liveCaptionPanel} aria-live="polite">
+              <div className={styles.captionPanelHeader}>
+                <div className={styles.captionPanelHeading}>
+                  <span className={styles.captionPanelKicker}>LIVE</span>
+                  <h3 className={styles.captionPanelTitle}>실시간 자막</h3>
+                </div>
+                <span className={styles.captionPanelStatus}>실시간 반영</span>
+              </div>
             <div className={styles.notesLabel}>
               <Icon name="note" size={13} />
               상담 메모 · 실시간 STT
@@ -898,7 +906,7 @@ export function SessionPage() {
                 <span>{userCaptionNotice}</span>
               </div>
             )}
-            <div className={styles.liveCaptions} aria-live="polite">
+            <div className={styles.liveCaptions}>
               <div className={[styles.liveCaption, styles.liveCaptionUser].join(' ')}>
                 <div className={styles.liveCaptionHeader}>
                   <span className={styles.speakerUser}>사용자</span>
@@ -937,6 +945,15 @@ export function SessionPage() {
                 </span>
               </div>
             </div>
+          </section>
+          <section className={styles.transcriptPanel}>
+            <div className={styles.captionPanelHeader}>
+              <div className={styles.captionPanelHeading}>
+                <span className={styles.captionPanelKicker}>LOG</span>
+                <h3 className={styles.captionPanelTitle}>대화 로그</h3>
+              </div>
+              <span className={styles.captionPanelStatus}>{displayTranscript.length}줄</span>
+            </div>
             <div className={styles.transcriptHeader}>
               <span className={styles.transcriptTitle}>대화 기록</span>
               <span className={styles.notesCount}>{displayTranscript.length}줄</span>
@@ -947,18 +964,26 @@ export function SessionPage() {
               ) : (
                 displayTranscript.map((segment) => (
                   <div className={styles.transcriptEntry} key={segment.captionId}>
-                    <span
-                      className={
-                        segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
-                      }
-                    >
-                      {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
-                    </span>
-                    <span className={styles.line}>{segment.content}</span>
-                    {segment.translatedContent && segment.translatedContent !== segment.content && (
-                      <span className={styles.transcriptTranslation}>
-                        {segment.translatedContent}
+                    <div className={styles.transcriptSpeaker}>
+                      <span
+                        className={
+                          segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
+                        }
+                      >
+                        {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
                       </span>
+                    </div>
+                    <div className={styles.transcriptLine}>
+                      <span className={styles.transcriptLanguage}>원문</span>
+                      <span className={styles.line}>{segment.content}</span>
+                    </div>
+                    {segment.translatedContent && (
+                      <div className={styles.transcriptLine}>
+                        <span className={styles.transcriptLanguage}>번역</span>
+                        <span className={styles.transcriptTranslation}>
+                          {segment.translatedContent}
+                        </span>
+                      </div>
                     )}
                   </div>
                 ))
@@ -1014,7 +1039,8 @@ export function SessionPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </section>
+        </div>
         </div>
 
         <div className={styles.rail}>

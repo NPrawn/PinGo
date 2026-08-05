@@ -388,16 +388,77 @@
   justify-content: center;
 }
 
-/* Transcript panel. */
-.notes {
-  padding: 12px;
+/* Live captions and transcript are intentionally separate visual surfaces. */
+.captionWorkspace {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-top: 20px;
-  background: #2b2b34;
-  border-radius: 12px;
+}
+
+.liveCaptionPanel,
+.transcriptPanel {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #3a3a44;
+  border-radius: 10px;
+}
+
+.liveCaptionPanel {
+  background: #202027;
+  border-color: rgb(60 216 160 / 32%);
+}
+
+.transcriptPanel {
+  background: #17171d;
+}
+
+.captionPanelHeader {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.captionPanelHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.captionPanelKicker {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #3cd8a0;
+}
+
+.transcriptPanel .captionPanelKicker {
+  color: #aeb7ff;
+}
+
+.captionPanelTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #f3f3f7;
+}
+
+.captionPanelStatus {
+  flex: none;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #b8b8c4;
+  background: rgb(255 255 255 / 7%);
+  border-radius: 999px;
 }
 
 .notesLabel {
-  display: flex;
+  display: none;
   gap: 6px;
   align-items: center;
   margin-bottom: 8px;
@@ -528,9 +589,7 @@
 }
 
 .transcriptHeader {
-  display: flex;
-  align-items: center;
-  margin-bottom: 6px;
+  display: none;
 }
 
 .transcriptTitle {
@@ -543,16 +602,15 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  height: 220px;
-  padding: 4px 10px;
+  height: 250px;
+  padding: 0 2px;
   overflow-y: auto;
   font-size: 11.5px;
   line-height: 1.5;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  background: #1a1a20;
-  border: 1px solid #3a3a44;
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
 }
 
 .transcriptEntry {
@@ -568,9 +626,34 @@
   border-bottom: 0;
 }
 
+.transcriptSpeaker {
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+}
+
+.transcriptLine {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.transcriptLanguage {
+  padding-top: 2px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #777783;
+}
+
+.transcriptLine .line,
 .transcriptTranslation {
-  padding-left: 8px;
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.transcriptTranslation {
+  display: block;
   color: #aeb7ff;
 }
 
