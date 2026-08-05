@@ -181,6 +181,9 @@ function ConsultationSummaryView({ consultationId }: { consultationId: string })
                 {speaker}
               </b>{' '}
               {segment.content}
+              {segment.translatedContent && segment.translatedContent !== segment.content && (
+                <span className={styles.translation}> ({segment.translatedContent})</span>
+              )}
             </span>
           );
         })

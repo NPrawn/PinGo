@@ -210,6 +210,13 @@ const ROUTE_DETAIL = {
       estimatedTimeSec: 28,
       moveType: 'walk',
       instruction: '개찰구 방향으로 25m 직진하세요',
+      /*
+        거리 자리를 비운 같은 문장. **실제 서버가 함께 내려보내는 값이다**(S15P11A206-339).
+        목업에 없어서 화면이 걷는 동안 거리를 갱신하는지를 테스트가 볼 수 없었다 — 템플릿이 없으면
+        `instructionAt`이 완성 문장을 그대로 돌려주므로, 남은 거리를 쓰든 구간 전체를 쓰든 결과가
+        같아진다. 카드와 상세 경로가 서로 다른 숫자를 말하던 것도 그래서 드러나지 않았다.
+      */
+      instructionTemplate: '개찰구 방향으로 {distance} 직진하세요',
     },
     {
       order: 2,
@@ -219,6 +226,8 @@ const ROUTE_DETAIL = {
       estimatedTimeSec: 40,
       moveType: 'elevator',
       instruction: '엘리베이터를 타고 B2로 이동하세요',
+      // 층 이동 문장에는 거리가 들어가지 않는다. 채울 자리가 없다.
+      instructionTemplate: '엘리베이터를 타고 B2로 이동하세요',
     },
   ],
   pathNodes: [

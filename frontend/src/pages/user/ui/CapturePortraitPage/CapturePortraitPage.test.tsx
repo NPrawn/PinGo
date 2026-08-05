@@ -173,11 +173,13 @@ describe('CapturePortraitPage', () => {
       resultStatus: 'success',
       startNodeId: 123,
       startNodeLabel: 'B2 엘리베이터',
+      confidenceScore: 0.87,
       position: {
         floorId: 1,
         floorCode: 'B2',
         mapX: -0.975,
         mapY: 27.717,
+        accuracyM: 0.497,
         forwardMap: { x: 0.6, y: 0.8 },
       },
     });
@@ -198,6 +200,8 @@ describe('CapturePortraitPage', () => {
 
       expect(useStationStore.getState().floor).toBe('B2');
       expect(useNavigationStore.getState().currentNodeId).toBe(123);
+      expect(useNavigationStore.getState().currentConfidenceScore).toBe(0.87);
+      expect(useNavigationStore.getState().currentAccuracyM).toBe(0.497);
       expect(useNavigationStore.getState().currentForwardMap).toEqual({ x: 0.6, y: 0.8 });
       expect(apiMocks.localize.mock.calls[0]?.[1]).not.toHaveProperty('mapVersion');
     } finally {
@@ -207,6 +211,8 @@ describe('CapturePortraitPage', () => {
         currentNodeId: null,
         currentFloorId: null,
         currentForwardMap: null,
+        currentConfidenceScore: null,
+        currentAccuracyM: null,
       });
       cameraMocks.capture.mockReset();
       apiMocks.localize.mockReset();

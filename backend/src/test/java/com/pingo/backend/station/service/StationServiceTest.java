@@ -257,6 +257,25 @@ class StationServiceTest {
     }
 
     @Test
+    void createFloorStoresRequestedSpaceType() {
+        Station station = createStation(1L);
+        FloorCreateRequest request = new FloorCreateRequest("B2", "지하 2층", "platform", 1, null);
+        when(stationRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(station));
+        when(stationFloorRepository.existsByStationIdAndFloorCode(1L, "B2")).thenReturn(false);
+        when(stationFloorRepository.saveAndFlush(any(StationFloor.class))).thenAnswer(invocation -> {
+            StationFloor floor = invocation.getArgument(0);
+            ReflectionTestUtils.setField(floor, "id", 2L);
+            return floor;
+        });
+
+        stationService.createFloor(1L, request);
+
+        org.mockito.ArgumentCaptor<StationFloor> floorCaptor = org.mockito.ArgumentCaptor.forClass(StationFloor.class);
+        verify(stationFloorRepository).saveAndFlush(floorCaptor.capture());
+        assertThat(floorCaptor.getValue().getSpaceType()).isEqualTo("platform");
+    }
+
+    @Test
     void createFloorThrowsWhenFloorCodeIsDuplicated() {
         Station station = createStation(1L);
         FloorCreateRequest request = new FloorCreateRequest("B2", "지하 2층", 1, null);
@@ -281,6 +300,33 @@ class StationServiceTest {
         assertThatThrownBy(() -> stationService.updateFloor(2L, request))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_FLOOR_CODE));
+    }
+
+    @Test
+    void updateFloorChangesSpaceTypeWhenProvided() {
+        Station station = createStation(1L);
+        StationFloor floor = createFloor(2L, station, "B2", 1);
+        FloorUpdateRequest request = new FloorUpdateRequest("B2", "지하 2층", "platform", 1, null);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+        when(stationFloorRepository.existsByStationIdAndFloorCodeAndIdNot(1L, "B2", 2L))
+                .thenReturn(false);
+
+        FloorResponse response = stationService.updateFloor(2L, request);
+
+        assertThat(response.spaceType()).isEqualTo("platform");
+    }
+
+    @Test
+    void updateFloorKeepsSpaceTypeWhenOmitted() {
+        Station station = createStation(1L);
+        StationFloor floor = StationFloor.create(station, "B2", "지하 2층", "concourse", 1, null);
+        ReflectionTestUtils.setField(floor, "id", 2L);
+        FloorUpdateRequest request = new FloorUpdateRequest("B2", "지하 2층", 1, null);
+        when(stationFloorRepository.findById(2L)).thenReturn(Optional.of(floor));
+
+        FloorResponse response = stationService.updateFloor(2L, request);
+
+        assertThat(response.spaceType()).isEqualTo("concourse");
     }
 
     @Test

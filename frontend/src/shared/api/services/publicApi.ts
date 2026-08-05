@@ -37,10 +37,12 @@ export type LocalizationCandidateResponse = {
   position: LocalizationCandidatePositionResponse;
   startNodeId: number;
   startNodeLabel?: string | null;
+  startNodeLabelEn?: string | null;
   confidenceScore: number;
 };
 export type LocalizationResponse = GeneratedLocalizationResponse & {
   candidate?: LocalizationCandidateResponse | null;
+  confidenceScore?: number | null;
 };
 export type ExternalDirectionRequest = Schemas['ExternalDirectionRequest'];
 export type ExternalDirectionResponse = Schemas['ExternalDirectionResponse'];

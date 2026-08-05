@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 
 import java.math.BigDecimal;
 
@@ -14,6 +15,10 @@ public record FloorCreateRequest(
 
         @Size(max = 100)
         String floorName,
+
+        @Pattern(regexp = "concourse|platform|station_interior")
+        @Schema(description = "층 공간 유형", example = "concourse")
+        String spaceType,
 
         @NotNull
         Integer floorOrder,
@@ -27,4 +32,7 @@ public record FloorCreateRequest(
         )
         BigDecimal nominalZ
 ) {
+    public FloorCreateRequest(String floorCode, String floorName, Integer floorOrder, BigDecimal nominalZ) {
+        this(floorCode, floorName, null, floorOrder, nominalZ);
+    }
 }
