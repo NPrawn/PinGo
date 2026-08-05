@@ -356,7 +356,20 @@ export function SessionPage() {
    * 그려 두지 않는 이유다 — 실제로 사용자 화면이 받아들인 것만 보여야 한다.
    */
   /** 이름표를 띄워 둔 시설. 지도에 아이콘만 있고 그것이 무엇인지 알 방법이 없었다. */
-  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
+  const [pickedFacility, setPickedFacility] = useState<Facility | null>(null);
+  /**
+   * **표시 층의 것만 유효하다.** (S15P11A206-206 리뷰)
+   *
+   * 층은 상담자가 직접 넘기지 않아도 바뀐다 — 따라가기 중에 사용자가 계단을 오르면
+   * `mapSync.floorId` 가 바뀌고 `displayedFloorId` 가 따라간다. 고른 시설을 그대로 두면 화면은
+   * 다른 층인데 안내에는 이전 층 시설 이름이 남고, 그 상태에서 재지정 버튼을 누르면 **화면에
+   * 보이지도 않는 시설**로 목적지가 지정된다.
+   *
+   * 층이 바뀔 때 지우는 `useEffect` 를 두지 않고 여기서 판단한다. 효과는 그린 뒤에 실행되므로
+   * 한 프레임 동안 옛 이름이 그대로 보이고 그 사이의 클릭도 받는다. 조건을 렌더에서 풀면 그
+   * 틈이 아예 없고, 층이 어떤 경로로 바뀌었는지도 따질 필요가 없다.
+   */
+  const selectedFacility = pickedFacility?.floorId === displayedFloorId ? pickedFacility : null;
 
   /**
    * 짚은 시설을 목적지 또는 현재 위치로 보낸다.
@@ -412,7 +425,7 @@ export function SessionPage() {
        * 남겨 두면 아래 안내가 "골랐어요"에 머물러, 방금 보낸 결과를 읽을 자리가 사라진다.
        * 지도에서는 사용자 화면이 받아들인 뒤 도착지 표시가 그 아이콘에 붙어 남는다.
        */
-      setSelectedFacility(null);
+      setPickedFacility(null);
     },
     [sendConsultEvent],
   );
@@ -435,11 +448,9 @@ export function SessionPage() {
       }
 
       // 같은 것을 다시 누르면 접는다. 이름표를 치울 다른 방법이 없다.
-      setSelectedFacility((current) =>
-        current?.facilityId === facility.facilityId ? null : facility,
-      );
+      setPickedFacility(selectedFacility?.facilityId === facility.facilityId ? null : facility);
     },
-    [applyPick, repinning],
+    [applyPick, repinning, selectedFacility],
   );
 
   /**
@@ -793,8 +804,8 @@ export function SessionPage() {
                 // 층을 직접 고르는 것은 사용자 시점을 벗어나겠다는 뜻이다.
                 setSynced(false);
                 setPickedFloorId(Number(value));
-                // 다른 층 시설의 이름표를 남기지 않는다.
-                setSelectedFacility(null);
+                /* 다른 층 시설의 이름표는 따로 지우지 않는다. 표시 층의 것만 유효하다고
+                   렌더에서 판단하므로(`selectedFacility`) 층이 바뀌면 저절로 풀린다. */
               }}
             />
             <MapPreview className={styles.map}>
@@ -889,7 +900,7 @@ export function SessionPage() {
                       onClick={() => {
                         setFacilityView(active ? 'all' : filter.facilityType);
                         // 다른 유형으로 넘어가면 지워진 시설의 이름표가 남지 않게 한다.
-                        setSelectedFacility(null);
+                        setPickedFacility(null);
                       }}
                     >
                       <Icon name={filter.icon} size={13} />

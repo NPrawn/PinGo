@@ -95,18 +95,8 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
   },
 }));
 
-/** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
-async function renderWithMapSync(
-  floorId: number | null = null,
-  extra: Partial<MapSyncPayload> = {},
-) {
-  apiMocks.getCounselorConsultations.mockResolvedValue([
-    { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
-  ]);
-
-  renderPage();
-  await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.');
-
+/** 사용자가 보내오는 지도 스냅숏 한 통. 층이 바뀌는 상황도 이것으로 만든다. */
+function sendMapSync(floorId: number | null = null, extra: Partial<MapSyncPayload> = {}) {
   act(() => {
     signalingMocks.onEvent?.({
       eventType: 'MAP_SYNC',
@@ -129,6 +119,21 @@ async function renderWithMapSync(
       },
     });
   });
+}
+
+/** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
+async function renderWithMapSync(
+  floorId: number | null = null,
+  extra: Partial<MapSyncPayload> = {},
+) {
+  apiMocks.getCounselorConsultations.mockResolvedValue([
+    { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
+  ]);
+
+  renderPage();
+  await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.');
+
+  sendMapSync(floorId, extra);
 }
 
 function renderPage() {
@@ -519,6 +524,34 @@ describe('SessionPage', () => {
         expect.objectContaining({ eventType: 'CURRENT_LOCATION_CORRECTED' }),
       );
       expect(screen.getByRole('status')).toHaveTextContent('엘리베이터(으)로 현재 위치를 옮겼어요');
+    });
+
+    /**
+     * **층이 바뀌면 고른 것이 풀려야 한다.** (S15P11A206-206 리뷰)
+     *
+     * 층은 상담자가 직접 넘기지 않아도 바뀐다 — 따라가기 중에 사용자가 계단을 오르면
+     * `mapSync.floorId` 가 바뀌고 표시 층이 따라간다. 고른 시설이 남아 있으면 화면은 다른 층인데
+     * 안내에는 이전 층 시설 이름이 뜨고, 그 상태에서 재지정을 누르면 **화면에 보이지도 않는
+     * 시설**로 목적지가 지정된다.
+     */
+    it('사용자 층이 바뀌면 고른 시설이 풀린다', async () => {
+      facilityMocks.data = [ELEVATOR];
+      await renderWithMapSync(1);
+
+      fireEvent.click(facilityMarker('엘리베이터'));
+      expect(screen.getByRole('status')).toHaveTextContent('엘리베이터을(를) 골랐어요');
+
+      // 사용자가 다른 층으로 옮겼다. 상담자는 아무것도 누르지 않았다.
+      sendMapSync(2);
+
+      // 안내 줄 자체가 사라진다 — 켜 둔 모드도, 고른 것도, 방금 보낸 결과도 없다.
+      expect(screen.queryByText(/골랐어요/)).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: /목적지 재지정/ }));
+
+      // 보이지 않는 시설로 보내지 않는다. 모드만 켜고 지도에서 짚기를 기다린다.
+      expect(signalingMocks.sendConsultEvent).not.toHaveBeenCalled();
+      expect(screen.getByRole('status')).toHaveTextContent('지도에서 새 목적지를 누르세요');
     });
 
     /** 고른 것이 없으면 예전처럼 모드를 켠다. 그때는 지도에서 짚는 것이 유일한 입력이다. */
