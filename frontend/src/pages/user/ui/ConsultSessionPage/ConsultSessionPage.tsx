@@ -732,6 +732,8 @@ export function ConsultSessionPage() {
         headingDeg,
         destination: destinationPoint,
         destinationLabel: destination,
+        // 상담자 지도가 이 노드에 연결된 시설 아이콘을 도착지로 표시한다. (S15P11A206-206)
+        destinationNodeId: destinationPoint?.nodeId ?? null,
         pathNodes,
         /**
          * 이 화면이 나뉜 자리. 상담자 화면이 같은 배치의 거울을 만드는 근거다.
@@ -1062,6 +1064,7 @@ export function ConsultSessionPage() {
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
                 destinationLabel={destination}
+                destinationNodeId={destinationPoint?.nodeId ?? null}
                 pathNodes={pathNodes}
                 /* 경유지 번호 핀과 다리별 색. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
                 waypointNodeIds={waypointNodeIds}

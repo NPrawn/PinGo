@@ -94,6 +94,17 @@ export interface MapSyncPayload {
   headingDeg: number | null;
   destination: MapPointPayload | null;
   destinationLabel: string | null;
+  /**
+   * 목적지인 경로 노드. 상담자 지도가 **어느 시설이 목적지인지** 표시하는 데 쓴다.
+   * (S15P11A206-206)
+   *
+   * 좌표만으로는 알 수 없다. 목적지 마커는 경로 노드 좌표에 찍히고 시설 아이콘은 시설 좌표에
+   * 그려지는데 이 둘이 정확히 겹치지 않아, 상담자가 짚은 시설이 목적지가 되었다는 표시가
+   * 지도에 남지 않았다.
+   *
+   * 옛 사용자 화면은 이 값을 보내지 않으므로 null 로 읽힌다. 그때는 표시만 없고 나머지는 같다.
+   */
+  destinationNodeId: number | null;
   /** 경로가 지나는 노드. 상담자 화면도 같은 선을 그린다. */
   pathNodes: (MapPointPayload & { nodeId: number })[];
   /**

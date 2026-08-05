@@ -873,6 +873,9 @@ export function NavigationPage() {
                       ? localizeUserLabel(destinationFacility.nameKo, language)
                       : null
                   }
+                  /* 목적지 시설의 아이콘에 도착지 표시를 붙인다. 지도에서 시설을 새 목적지로
+                     지정했을 때, 어느 아이콘이 목적지가 되었는지 알 방법이 이것뿐이다. */
+                  destinationNodeId={targetNodeId}
                   /* 실제로 안내 중인 경로를 그린다. 조회 전이거나 실패하면 빈 배열이라
                      선이 그려지지 않는다 — 예전에는 이 자리를 목업이 채워, 사용자가 가지도
                      않을 B3 승강장 → 3번출구 경로가 늘 그려져 있었다. */

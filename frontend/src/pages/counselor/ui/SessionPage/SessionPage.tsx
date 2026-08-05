@@ -749,6 +749,9 @@ export function SessionPage() {
                       currentHeadingDeg={mapSync.headingDeg}
                       destination={mapSync.destination}
                       destinationLabel={mapSync.destinationLabel}
+                      /* 짚은 시설이 목적지가 되었다는 표시. 마커만으로는 아이콘이 빽빽한 층에서
+                         어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
+                      destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
@@ -1061,6 +1064,9 @@ export function SessionPage() {
                       currentHeadingDeg={mapSync.headingDeg}
                       destination={mapSync.destination}
                       destinationLabel={mapSync.destinationLabel}
+                      /* 짚은 시설이 목적지가 되었다는 표시. 마커만으로는 아이콘이 빽빽한 층에서
+                         어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
+                      destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
                       /* 사용자 화면과 같은 값이어야 시점이 같아진다. 회전은 기본값(켬)이다. */
                       connectCurrentToRoute
