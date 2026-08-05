@@ -197,6 +197,25 @@ describe('IndoorMapOverlay', () => {
       );
     });
 
+    /**
+     * 고른 시설이 이웃 마커에 덮이지 않는다. (S15P11A206-206)
+     *
+     * SVG 에는 `z-index` 가 없어 **나중에 그린 것이 위로 온다.** 역삼역 B2 는 1m 가 1.2px 이라
+     * 그 층 시설 36개의 마커 간 최소 간격이 3.9px 인데, 고른 것이 목록 앞에 있으면 뒤에 그려지는
+     * 이웃에 아이콘과 이름표가 덮였다 — 눌렀는데 무엇을 눌렀는지 보이지 않았다.
+     */
+    it('고른 시설을 이웃보다 나중에 그린다', () => {
+      // 목록에서 고른 것이 **앞**에 오게 둔다. 정렬하지 않으면 그대로 먼저 그려진다.
+      const NEIGHBOUR: Facility = { ...RESTROOM, facilityId: 61, nameKo: '옆 시설' };
+      renderOverlay({ facilities: [RESTROOM, NEIGHBOUR], selectedFacilityId: RESTROOM.facilityId });
+
+      const markers = screen.getAllByRole('img');
+      const picked = markers.findIndex((node) => node.getAttribute('aria-label') === '화장실');
+      const neighbour = markers.findIndex((node) => node.getAttribute('aria-label') === '옆 시설');
+
+      expect(picked).toBeGreaterThan(neighbour);
+    });
+
     it('콜백을 넘기면 마커가 탭을 받는다', () => {
       const onSelect = vi.fn();
       renderOverlay({ facilities: [RESTROOM], onSelectFacility: onSelect });

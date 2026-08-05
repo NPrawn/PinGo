@@ -209,7 +209,21 @@ export function IndoorMapOverlay({
       )
     : [];
   const destinationPoint = pointOnFloor(destination, floorId, project);
-  const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project);
+  /**
+   * 고른 시설을 **맨 나중에** 그린다. (S15P11A206-206)
+   *
+   * SVG 에는 `z-index` 가 없어 나중에 그린 것이 위로 온다. 역삼역 B2 는 1m 가 1.2px 이라 그 층
+   * 시설 36개를 모두 그리면 마커 간 최소 간격이 3.9px 인데, 고른 것이 목록에서 앞에 있으면 뒤에
+   * 그려지는 이웃 마커에 아이콘과 이름표가 덮인다 — 눌렀는데 무엇을 눌렀는지 보이지 않았다.
+   *
+   * 정렬만 바꾼다. 경로·현재 위치보다 위로 올리지는 않는다 — 안내에 필요한 표시가 시설에 가리면
+   * 안 된다는 규칙(아래 렌더 순서)은 그대로다.
+   */
+  const facilityPins = facilitiesOnFloor(facilities ?? [], floorId, project).sort(
+    (a, b) =>
+      Number(a.facility.facilityId === selectedFacilityId) -
+      Number(b.facility.facilityId === selectedFacilityId),
+  );
   // 그릴 것이 하나도 없으면 오버레이 자체를 만들지 않는다.
   if (
     routeSegments.length === 0 &&
