@@ -20,6 +20,8 @@ const signalingMocks = vi.hoisted(() => ({
   ],
   /** 화면이 등록한 이벤트 수신 함수. 사용자가 보낸 것처럼 흘려 넣는 데 쓴다. */
   onEvent: null as ((event: unknown) => void) | null,
+  /** 사용자에게 나간 이벤트. 렌더마다 새로 만들면 무엇이 나갔는지 검사할 수 없다. */
+  sendConsultEvent: vi.fn(() => true),
 }));
 
 const facilityMocks = vi.hoisted(() => ({
@@ -36,6 +38,18 @@ vi.mock('@/entities/facility', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/facility')>()),
   useStationFacilities: () => ({ data: facilityMocks.data }),
 }));
+
+/**
+ * 층별 지도. 도면이 있어야 시설 마커가 그려진다.
+ *
+ * MSW 에는 층별 지도 핸들러가 없어 조회가 실패하고, 그러면 지도가 비어 마커를 누를 수 없다.
+ * 좌표 프레임까지 갖춘 목업이 이미 있으므로 그것을 그대로 쓴다. (S15P11A206-206)
+ */
+vi.mock('@/entities/floor-map', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/entities/floor-map')>();
+
+  return { ...actual, useStationFloorMaps: () => ({ data: actual.MOCK_FLOOR_MAPS }) };
+});
 
 vi.mock('@/shared/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/api')>()),
@@ -75,10 +89,42 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
       remoteCaptionError: null,
       captionsSupported: true,
       transcript: signalingMocks.transcript,
-      sendConsultEvent: vi.fn(() => true),
+      sendConsultEvent: signalingMocks.sendConsultEvent,
     };
   },
 }));
+
+/** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
+async function renderWithMapSync(floorId: number | null = null) {
+  apiMocks.getCounselorConsultations.mockResolvedValue([
+    { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
+  ]);
+
+  renderPage();
+  await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.');
+
+  act(() => {
+    signalingMocks.onEvent?.({
+      eventType: 'MAP_SYNC',
+      eventId: 'evt_1',
+      sessionId: 'cs_1',
+      senderType: 'USER',
+      timestamp: '2026-08-03T00:00:00Z',
+      version: 1,
+      payload: {
+        stationId: 1,
+        floorId,
+        current: null,
+        headingDeg: null,
+        destination: null,
+        destinationLabel: null,
+        destinationNodeId: null,
+        pathNodes: [],
+        screen: null,
+      },
+    });
+  });
+}
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -297,37 +343,6 @@ describe('SessionPage', () => {
       facilityMocks.data = undefined;
     });
 
-    /** MAP_SYNC 를 받아야 지도와 시설 칩이 그려진다. */
-    async function renderWithMapSync(floorId: number | null = null) {
-      apiMocks.getCounselorConsultations.mockResolvedValue([
-        { consultationId: 'cs_1', status: 'ACCEPTED', requestedAt: '2026-08-03T00:00:00Z' },
-      ]);
-
-      renderPage();
-      await screen.findByText('사용자 화면의 지도를 기다리는 중입니다.');
-
-      act(() => {
-        signalingMocks.onEvent?.({
-          eventType: 'MAP_SYNC',
-          eventId: 'evt_1',
-          sessionId: 'cs_1',
-          senderType: 'USER',
-          timestamp: '2026-08-03T00:00:00Z',
-          version: 1,
-          payload: {
-            stationId: 1,
-            floorId,
-            current: null,
-            headingDeg: null,
-            destination: null,
-            destinationLabel: null,
-            pathNodes: [],
-            screen: null,
-          },
-        });
-      });
-    }
-
     it('처음에는 전체 표시이고 켜진 유형 칩이 없다', async () => {
       await renderWithMapSync();
 
@@ -399,6 +414,91 @@ describe('SessionPage', () => {
       await renderWithMapSync(7);
 
       expect(screen.getByRole('button', { name: /승차권 충전/ })).toBeEnabled();
+    });
+  });
+
+  /**
+   * 지점 재지정. **두 순서를 모두 받는다.** (S15P11A206-206)
+   *
+   * 예전에는 버튼이 모드를 켜는 일만 했다. 그래서 아이콘을 눌러 이름을 확인한 상담자는 그 이름표를
+   * 보면서도 버튼을 켜고 **같은 아이콘을 한 번 더** 눌러야 했다. 고른 것이 눈앞에 있는데 다시
+   * 짚으라는 요구다.
+   */
+  describe('고른 시설에 곧바로 적용', () => {
+    /** 도면에 실제로 그려질 수 있는 시설. 좌표와 노드가 온전해야 마커가 나온다. */
+    const ELEVATOR = {
+      facilityId: 52,
+      stationId: 1,
+      floorId: 1,
+      facilityType: 'elevator',
+      nameKo: '엘리베이터',
+      nameEn: 'Elevator',
+      mapX: -0.4,
+      mapY: 27.2,
+      linkedNodeId: 123,
+      isAccessible: true,
+    };
+
+    afterEach(() => {
+      facilityMocks.data = undefined;
+    });
+
+    /** 지도 마커. 같은 이름의 유형 칩과 구분해야 한다 — 마커는 SVG `g` 다. */
+    function facilityMarker(name: string): HTMLElement {
+      const found = screen
+        .getAllByRole('button', { name })
+        .find((node) => node.tagName.toLowerCase() === 'g');
+      if (!found) throw new Error(`지도에 ${name} 마커가 없다`);
+
+      return found;
+    }
+
+    it('시설을 골라 둔 채 목적지 재지정을 누르면 바로 보낸다', async () => {
+      facilityMocks.data = [ELEVATOR];
+      await renderWithMapSync(1);
+
+      fireEvent.click(facilityMarker('엘리베이터'));
+      // 버튼이 곧바로 적용된다는 것을 화면에서 알 수 있어야 한다.
+      expect(screen.getByRole('status')).toHaveTextContent('엘리베이터을(를) 골랐어요');
+
+      fireEvent.click(screen.getByRole('button', { name: /목적지 재지정/ }));
+
+      expect(signalingMocks.sendConsultEvent).toHaveBeenCalledWith({
+        eventType: 'DESTINATION_CHANGE_REQUESTED',
+        payload: {
+          facilityId: 52,
+          nameKo: '엘리베이터',
+          floorId: 1,
+          mapX: -0.4,
+          mapY: 27.2,
+          linkedNodeId: 123,
+        },
+      });
+      expect(screen.getByRole('status')).toHaveTextContent('엘리베이터(으)로 목적지를 옮겼어요');
+    });
+
+    it('현재 위치 수정도 같은 순서를 받는다', async () => {
+      facilityMocks.data = [ELEVATOR];
+      await renderWithMapSync(1);
+
+      fireEvent.click(facilityMarker('엘리베이터'));
+      fireEvent.click(screen.getByRole('button', { name: /현재 위치 수정/ }));
+
+      expect(signalingMocks.sendConsultEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'CURRENT_LOCATION_CORRECTED' }),
+      );
+      expect(screen.getByRole('status')).toHaveTextContent('엘리베이터(으)로 현재 위치를 옮겼어요');
+    });
+
+    /** 고른 것이 없으면 예전처럼 모드를 켠다. 그때는 지도에서 짚는 것이 유일한 입력이다. */
+    it('고른 시설이 없으면 모드만 켠다', async () => {
+      facilityMocks.data = [ELEVATOR];
+      await renderWithMapSync(1);
+
+      fireEvent.click(screen.getByRole('button', { name: /목적지 재지정/ }));
+
+      expect(signalingMocks.sendConsultEvent).not.toHaveBeenCalled();
+      expect(screen.getByRole('status')).toHaveTextContent('지도에서 새 목적지를 누르세요');
     });
   });
 });
