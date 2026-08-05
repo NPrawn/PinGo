@@ -843,6 +843,36 @@ describe('user routes', () => {
   });
 
   /**
+   * 안내 카드에 같은 숫자를 두 번 적지 않는다. (S15P11A206-206)
+   *
+   * `24m 직진하세요` 위에 `다음 안내 · 24m`이 붙어 있었다. 상세 경로는 이미 같은 규칙으로 그린다 —
+   * 문장이 거리를 품는 구간은 문장 안에만 적고, 품지 않는 구간(층 이동·개찰구)은 따로 적는다.
+   *
+   * **품지 않는 구간에서는 남겨야 한다.** 카드에는 따로 적을 칸이 없어 그 줄이 유일한 거리
+   * 표시다. 지우면 엘리베이터를 몇 m 뒤에 타야 하는지가 화면에서 사라진다.
+   */
+  it('문장이 거리를 품으면 다음 안내 줄을 두지 않고, 품지 않으면 남긴다', async () => {
+    // 첫 구간(205 → 202)의 중간. `개찰구 방향으로 {거리} 직진하세요`가 거리를 품는다.
+    useNavigationStore.setState({ currentFloorId: 2, currentMapX: -12.85, currentMapY: 26.4 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    expect(await screen.findByText(/직진하세요/)).toBeInTheDocument();
+    expect(screen.queryByText(/^다음 안내 · /)).toBeNull();
+
+    cleanup();
+
+    // 층 전환 구간. `엘리베이터를 타고 B2로 이동하세요`에는 거리 자리가 없다.
+    useNavigationStore.setState({ currentFloorId: 2, currentMapX: -2, currentMapY: 27 });
+    await renderSection('/user/navigation');
+    fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+
+    expect(await screen.findByText('엘리베이터를 타고 B2로 이동하세요')).toBeInTheDocument();
+    // 숫자는 목업 구간 경계 보정에 딸리므로 형태만 본다.
+    expect(screen.getByText(/^다음 안내 · \d+m$/)).toBeInTheDocument();
+  });
+
+  /**
    * 카드와 상세 경로가 같은 문장을 말한다. (S15P11A206-206)
    *
    * 예전에는 카드가 `activeStep.instruction`을 그대로 썼다. 그 문장에는 **구간 전체 길이**가 박혀
@@ -1375,10 +1405,14 @@ describe('user routes', () => {
      */
     expect(await screen.findByText('개찰구 방향으로 25m 직진하세요')).toBeInTheDocument();
     /*
-      다시 계산이 끝나면 거리 표시로 돌아온다. 예전에는 경유지를 한 번 건드리면 안내가 끝날
+      다시 계산이 끝나면 그 표시에서 벗어난다. 예전에는 경유지를 한 번 건드리면 안내가 끝날
       때까지 `경로 업데이트 완료`에 머물러, 다음 지점까지 몇 미터인지가 영영 사라졌다.
+
+      **거리는 위 문장이 말한다.** 예전에는 이 자리에서 `다음 안내 · 25m`을 확인했는데, 문장이
+      거리를 품는 구간에서는 그 줄을 두지 않게 됐다 — 같은 숫자가 두 번 나오기 때문이다
+      (S15P11A206-206). 그래서 여기서 볼 것은 다시 계산 표시가 사라졌다는 것이다.
     */
-    expect(await screen.findByText('다음 안내 · 25m')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/^다음 안내 · /)).toBeNull());
     expect(screen.getByText('총 224m · 약 5분')).toBeInTheDocument();
   });
 

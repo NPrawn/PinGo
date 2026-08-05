@@ -509,7 +509,7 @@ export function NavigationPage() {
    * 조회를 끄는데, 꺼진 쿼리는 `isPending`에 머무른다. 그것을 로딩으로 읽으면 카드가
    * `경로 계산 중`에서 영구히 멈춘다.
    */
-  const instruction = ((): { eyebrow: string; title: string; meta: string } => {
+  const instruction = ((): { eyebrow?: string; title: string; meta: string } => {
     if (currentNodeId == null) {
       return {
         eyebrow: t('user.navigation.preparing'),
@@ -591,11 +591,23 @@ export function NavigationPage() {
       /*
         다시 계산하는 동안에만 그렇게 적는다. 예전에는 한 번 경유지를 건드리면 안내가 끝날
         때까지 `경로 업데이트 완료`에 머물러, 다음 지점까지 몇 미터인지가 영영 사라졌다.
+
+        **문장이 거리를 품으면 이 줄을 두지 않는다.** (S15P11A206-206)
+
+        `24m 직진하세요` 위에 `다음 안내 · 24m`이 붙어 같은 숫자가 두 번 나왔다. 상세 경로는
+        이미 같은 규칙으로 그린다 — 문장이 거리를 품는 구간은 문장 안에만, 품지 않는 구간
+        (층 이동·개찰구)은 따로 적는다(`carriesDistance`). 카드에는 따로 적을 칸이 없으므로
+        그 자리를 이 줄이 맡는다.
+
+        그래서 엘리베이터·계단 구간에서는 남는다. 거기서는 중복이 아니라 카드의 유일한 거리
+        표시다 — 지우면 몇 m 뒤에 타야 하는지가 화면에서 사라진다.
       */
       eyebrow:
         recalculated && routeQuery.isFetching
           ? t('user.navigation.recalculating')
-          : t('user.navigation.nextDistance', { distance: Math.round(nextDistance) }),
+          : carriesDistance(activeStep)
+            ? undefined
+            : t('user.navigation.nextDistance', { distance: Math.round(nextDistance) }),
       /*
         **문장에 남은 거리를 채워 넣는다.** (S15P11A206-206)
 
@@ -843,7 +855,11 @@ export function NavigationPage() {
               <Icon name="arrow-right" size={16} className={styles.upArrow} />
             </span>
             <div className={styles.instructionBody}>
-              <span className={styles.instructionEyebrow}>{instruction.eyebrow}</span>
+              {/* 문장이 이미 거리를 말하는 구간에는 이 줄이 없다. 빈 span을 남기면 그만큼 자리를
+                  차지해 제목이 아래로 밀린다. */}
+              {instruction.eyebrow !== undefined && (
+                <span className={styles.instructionEyebrow}>{instruction.eyebrow}</span>
+              )}
               <strong className={styles.instructionTitle}>{instruction.title}</strong>
               <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
