@@ -843,6 +843,51 @@ describe('user routes', () => {
   });
 
   /**
+   * 상세 경로가 지금 걷는 구간을 따라 올라온다. (S15P11A206-206)
+   *
+   * 칸이 150px이라 두 줄 반만 보인다. 예전에는 목록이 고정돼 있어서, 걸어가면 강조된 줄이 아래로
+   * 내려가다 칸 밖으로 나갔다. 그러면 보이는 것은 이미 지나온 구간뿐이라 지금 무엇을 해야 하는지가
+   * 화면에서 사라지고, 사용자가 목록을 직접 굴려 찾아야 했다.
+   *
+   * jsdom은 배치를 하지 않아 `offsetTop`이 언제나 0이다. 줄 높이를 형제 순서로 흉내 내 **어느
+   * 줄을 기준으로 스크롤했는지**를 본다 — 참조가 엉뚱한 요소에 붙었거나 effect가 다시 돌지 않으면
+   * 걸린다.
+   */
+  it('걸어가면 상세 경로가 지금 구간을 칸 맨 위로 올린다', async () => {
+    const ROW_HEIGHT = 40;
+    const offsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        const parent = this.parentElement;
+        if (!parent) return 0;
+        return Array.from(parent.children).indexOf(this) * ROW_HEIGHT;
+      },
+    });
+
+    try {
+      // 첫 구간(205 → 202)의 끝에 가까운 지점. 안내가 두 번째 구간으로 넘어간다.
+      useNavigationStore.setState({ currentFloorId: 2, currentMapX: -2, currentMapY: 27 });
+      await renderSection('/user/navigation');
+      fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /상세 경로/ }));
+
+      const active = screen
+        .getAllByText('엘리베이터를 타고 B2로 이동하세요')
+        .at(-1)
+        ?.closest('[aria-current="step"]') as HTMLElement;
+      const list = active.parentElement!;
+
+      // 두 번째 줄이 강조돼 있으므로 목록은 그 줄만큼 올라가 있어야 한다.
+      expect(Array.from(list.children).indexOf(active)).toBe(1);
+      expect(list.scrollTop).toBe(ROW_HEIGHT);
+    } finally {
+      if (offsetTop) Object.defineProperty(HTMLElement.prototype, 'offsetTop', offsetTop);
+    }
+  });
+
+  /**
    * `내 위치` 버튼과 층. (S15P11A206-83)
    *
    * 예전에는 시점만 되돌렸다. 층은 화면이 들고 있어서 다른 층을 보던 사용자는 그 층 지도가

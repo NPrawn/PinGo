@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -224,17 +224,26 @@ export function NavigationPage() {
   /**
    * 안내 진입 시점의 확정 실내 위치. 위치 인식(FR-U-004)이 앵커링해 준 좌표다.
    *
-   * **첫 렌더 값에 고정한다.** 296 훅이 이 값을 진입 시점에 고정된 입력으로 다루므로(앵커가
-   * 생긴 뒤 바꾸면 조용히 무시된다) 렌더마다 새 객체를 만들면 앵커 발화 effect가 불필요하게
-   * 다시 돈다. 지연 초기화 `useState`를 쓰는 이유는 ref를 렌더 중에 읽지 않기 위해서다.
+   * **좌표가 같은 동안 같은 객체여야 한다.** 296 훅이 이 값을 앵커 발화 effect의 입력으로 쓰므로,
+   * 렌더마다 새 객체를 만들면 좌표가 그대로인데도 effect가 다시 돈다. 그것을 막는 것이 목적이다.
+   *
+   * 값 자체를 첫 렌더에 **고정하지는 않는다.** 예전에는 `useState`로 얼려 뒀는데 그럴 이유가 없다 —
+   * 앵커가 생긴 뒤에는 훅이 이 값의 변화를 어차피 무시하고(그래서 실기기 동작은 같다), 앵커가 없는
+   * 동안에는 훅이 이 값을 그대로 현재 위치로 돌려주므로 얼려 두면 스토어와 화면이 어긋난다.
+   * 얼려 둔 탓에 개발 도구로 위치를 옮겨도 마커가 그 자리에 남아 새로고침해야 했다.
+   *
+   * 안내 중에 이 값이 바뀌는 경로는 실기기에 없다. 재인식은 U-04·U-05를 거쳐 오므로 이 화면이
+   * 다시 마운트된다.
    *
    * 좌표 정합이 없는 층(역삼역 B1)은 위치 인식이 좌표를 주지 못해 null이다. 그때는 XR 앵커링
    * 없이 안내만 한다 — 훅이 null을 그대로 받는다.
    */
-  const [confirmedLocation] = useState<IndoorPoint | null>(() =>
-    currentFloorId != null && currentMapX != null && currentMapY != null
-      ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
-      : null,
+  const confirmedLocation = useMemo<IndoorPoint | null>(
+    () =>
+      currentFloorId != null && currentMapX != null && currentMapY != null
+        ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
+        : null,
+    [currentFloorId, currentMapX, currentMapY],
   );
   const [confirmedForwardMap] = useState(() => currentForwardMap);
   const xrDistanceScale = routeDistanceScaleOf(routeResult, confirmedLocation?.floorId);
@@ -338,6 +347,37 @@ export function NavigationPage() {
       setRouteProgress(routeKey, progress.travelledM);
     }
   }, [progressKey, routeKey, progress.travelledM, storedTravelledM, setRouteProgress]);
+
+  /** 상세 경로의 스크롤 칸과 지금 걷는 줄. 아래 effect가 둘을 맞춰 놓는다. */
+  const stepsListRef = useRef<HTMLDivElement | null>(null);
+  const activeStepRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * 지금 걷는 구간을 보이는 칸의 맨 위로 올린다. (S15P11A206-206)
+   *
+   * 칸이 150px이라 두 줄 반만 보인다. 걸어가면 강조된 줄이 아래로 내려가다 칸 밖으로 나가고,
+   * 그러면 목록에 남는 것은 이미 지나온 구간뿐이다 — 정작 지금 무엇을 해야 하는지가 화면에서
+   * 사라진다. 사용자는 목록을 직접 굴려 찾아야 했다.
+   *
+   * **맨 위에 붙인다.** 가운데에 두면 위쪽 절반을 지나온 구간이 차지하는데, 걷는 사람에게 필요한
+   * 것은 앞으로 갈 구간이다. 지도의 시점 추종이 내 위치를 화면 아래쪽에 두는 것과 같은 이유다.
+   *
+   * 부드럽게 움직이는 것은 CSS(`scroll-behavior`)에 맡긴다. 여기서 `scrollTo`에 옵션을 주면
+   * jsdom이 구현하지 않아 테스트마다 경고가 쌓인다.
+   */
+  useEffect(() => {
+    const list = stepsListRef.current;
+    const active = activeStepRef.current;
+
+    /*
+      경로에서 벗어난 동안에는 강조된 줄이 없다. 그때 옛 줄로 끌어당기면, 이탈해서 아무 줄도
+      강조되지 않은 목록이 엉뚱한 자리에 멈춰 선다.
+    */
+    if (!list || !active || progress.offRoute) return;
+
+    // `.steps`가 `position: relative`라 이 값이 곧 스크롤 좌표다.
+    list.scrollTop = active.offsetTop;
+  }, [progress.currentStepIndex, progress.offRoute, stepsOpen]);
 
   /** 지금 안내할 구간. 예전에는 `steps[0]`에 고정돼 걸어도 안내가 넘어가지 않았다. */
   const activeStep =
@@ -1000,7 +1040,7 @@ export function NavigationPage() {
             </div>
 
             {stepsOpen && (
-              <div className={styles.steps}>
+              <div className={styles.steps} ref={stepsListRef}>
                 {routeResult?.steps?.map((step, index) => {
                   /*
                     지나온 구간은 지우지 않고 흐리게 둔다. 지워 버리면 목록이 짧아지면서 남은
@@ -1032,6 +1072,8 @@ export function NavigationPage() {
                   return (
                     <div
                       key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
+                      /* 지금 걷는 줄만 표시해 둔다. 위 effect가 이 줄을 칸 맨 위로 올린다. */
+                      ref={active ? activeStepRef : null}
                       className={[styles.step, passed && styles.stepPassed, active && styles.stepOn]
                         .filter(Boolean)
                         .join(' ')}

@@ -540,10 +540,15 @@
 }
 
 .steps {
+  /* 지금 걷는 줄을 맨 위로 올리는 계산의 기준. 이것이 없으면 자식의 offsetTop이 이 칸이 아니라
+     더 바깥 요소를 기준으로 잡혀 엉뚱한 자리로 스크롤된다. */
+  position: relative;
   max-height: 150px;
   padding: 3px 10px;
   margin-top: 7px;
   overflow: auto;
+  /* 줄이 넘어갈 때 목록이 미끄러지듯 올라간다. 순간이동하면 무엇이 어디로 갔는지 읽히지 않는다. */
+  scroll-behavior: smooth;
   background: #fff;
   border: 1px solid var(--color-line);
   border-radius: 12px;
