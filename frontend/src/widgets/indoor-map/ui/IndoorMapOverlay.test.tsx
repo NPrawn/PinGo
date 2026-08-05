@@ -358,6 +358,30 @@ describe('IndoorMapOverlay', () => {
     });
 
     /**
+     * 길이 0인 마디를 남기지 않는다.
+     *
+     * 나눌 때 닿는 점이 이미 있는 점과 겹치면 같은 좌표가 잇달아 들어간다. 그 마디는
+     * `Math.atan2(0, 0)` 이 0 이라 방향 화살표가 엉뚱한 쪽을 가리킨다. 여기서는 경로에 같은
+     * 좌표 노드가 잇달아 온 경우로 확인한다 — 닿는 점이 선분의 시작점과 겹쳐도 같은 일이 생긴다.
+     */
+    it('같은 자리인 점이 잇달아 오면 하나로 줄인다', () => {
+      renderOverlay({
+        pathNodes: [
+          { nodeId: 1, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          // 앞 노드와 같은 자리. 지나온 쪽에 0,0 이 두 번 들어갈 자리다.
+          { nodeId: 2, floorId: FLOOR_B2, mapX: 0, mapY: 0 },
+          { nodeId: 3, floorId: FLOOR_B2, mapX: 1000, mapY: 0 },
+        ],
+        currentLocation: { floorId: FLOOR_B2, mapX: 500, mapY: 300 },
+        connectCurrentToRoute: true,
+      });
+
+      expect(routeSegments()).toEqual(['0,0 500,0', '500,300 500,0 1000,0']);
+      // 화살표가 각도를 잃지 않는다.
+      expect(directionAngles().every((angle) => Number.isFinite(angle))).toBe(true);
+    });
+
+    /**
      * **그 층에 경로 노드가 하나뿐인 경우.** (S15P11A206-337 반영 뒤 실제로 생겼다)
      *
      * 서버가 진입 노드를 목적지 기준으로 다시 고르면서 계단·엘리베이터 노드를 집으면, 그 층의

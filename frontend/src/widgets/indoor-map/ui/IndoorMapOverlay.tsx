@@ -781,18 +781,37 @@ function segmentsFromCurrent(
     const { point, pointIndex, distance } = attachment;
     const atNode =
       pointIndex < segment.points.length && samePoint(segment.points[pointIndex], point);
-    const behind = { ...segment, points: [...segment.points.slice(0, pointIndex), point] };
+    const behind = {
+      ...segment,
+      points: withoutRepeats([...segment.points.slice(0, pointIndex), point]),
+    };
     const forward = {
       ...segment,
-      points: [
+      points: withoutRepeats([
         ...(distance >= minLength ? [current] : []),
         point,
         ...segment.points.slice(atNode ? pointIndex + 1 : pointIndex),
-      ],
+      ]),
     };
 
     return [behind, forward];
   });
+}
+
+/**
+ * 잇달아 같은 자리인 점을 걸러낸다.
+ *
+ * <p>위의 {@code atNode} 는 닿는 점이 <b>선분의 끝점</b>과 겹치는 경우만 본다. 시작점과 겹치면
+ * 걸러지지 않아 지나온 쪽의 마지막 두 점이 같아지고, 길이 0인 마디가 생겨 방향 화살표가 그 자리에서
+ * 각도를 잃는다(`Math.atan2(0, 0)` 이 0 이므로 엉뚱한 쪽을 가리킨다).
+ *
+ * 끝점만 보아도 대개 괜찮다 — `routeAttachment` 가 동점에서 앞선 후보를 남기므로, 투영이 시작점으로
+ * 잘리면 그 시작점을 가리키는 이전 인덱스가 뽑힌다. 다만 그 비교가 부동소수라 아주 좁은 틈이 남고,
+ * 여기서 한 번 걸러 두면 그 틈과 앞으로 생길 다른 경로를 함께 막는다. 겹침 판정은 위와 같은
+ * `samePoint` 를 쓰므로 반올림 오차만큼 떨어진 점도 같은 자리로 본다.
+ */
+function withoutRepeats(points: readonly PixelPoint[]): PixelPoint[] {
+  return points.filter((point, index) => index === 0 || !samePoint(points[index - 1], point));
 }
 
 /** 같은 자리인지. 픽셀 좌표라 반올림 오차만 흡수하면 된다. */
