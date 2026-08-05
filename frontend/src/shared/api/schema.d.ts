@@ -972,7 +972,7 @@ export interface components {
       startNodeId?: number;
       /**
        * @description 경로 시작 노드의 사용자용 한글 표시 이름.
-       * @example B2 · B2-B3 엘리베이터 A 인근
+       * @example B2 · 대합실
        */
       startNodeLabel?: string;
       /** @description 경로 시작 노드의 영문 표시 이름. */
@@ -1550,6 +1550,7 @@ export interface components {
       /** @enum {string} */
       speaker: 'USER' | 'COUNSELOR';
       content: string;
+      translatedContent?: string;
     };
     ApiResponseConsultationSummaryStatusResponse: {
       success?: boolean;
@@ -1642,6 +1643,8 @@ export interface components {
     FloorCreateRequest: {
       floorCode: string;
       floorName?: string;
+      /** @description 층 공간 유형 */
+      spaceType?: 'concourse' | 'platform' | 'station_interior';
       /** Format: int32 */
       floorOrder: number;
       /**
@@ -1887,6 +1890,7 @@ export interface components {
       floorId?: number;
       floorCode?: string;
       floorName?: string;
+      spaceType?: 'concourse' | 'platform' | 'station_interior';
       /** Format: int32 */
       floorOrder?: number;
       /**
@@ -2006,6 +2010,8 @@ export interface components {
     FloorUpdateRequest: {
       floorCode: string;
       floorName?: string;
+      /** @description 층 공간 유형. 생략하면 기존 값을 유지한다. */
+      spaceType?: 'concourse' | 'platform' | 'station_interior';
       /** Format: int32 */
       floorOrder: number;
       /**
@@ -2338,6 +2344,7 @@ export interface components {
       /** @enum {string} */
       speaker?: 'USER' | 'COUNSELOR';
       content?: string;
+      translatedContent?: string;
     };
     ApiResponseBoolean: {
       success?: boolean;

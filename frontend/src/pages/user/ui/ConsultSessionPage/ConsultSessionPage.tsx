@@ -136,6 +136,7 @@ export function ConsultSessionPage() {
     reconnecting,
     remoteCaption,
     remoteFinalCaption,
+    remoteFinalCaptionId,
     remoteCaptionFinal,
     remoteCaptionError,
     captionsSupported,
@@ -156,6 +157,7 @@ export function ConsultSessionPage() {
     consultationId,
     remoteFinalCaption,
     userLanguage,
+    remoteFinalCaptionId,
   );
   useTranslatedSpeech(translatedRemoteCaption, userLanguage, remoteCaptionFinal);
   /**

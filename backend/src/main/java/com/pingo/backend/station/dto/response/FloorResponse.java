@@ -9,6 +9,7 @@ public record FloorResponse(
         Long floorId,
         String floorCode,
         String floorName,
+        String spaceType,
         int floorOrder,
 
         @Schema(
@@ -27,6 +28,7 @@ public record FloorResponse(
                 floor.getId(),
                 floor.getFloorCode(),
                 floor.getFloorName(),
+                floor.getSpaceType(),
                 floor.getFloorOrder(),
                 floor.getNominalZ()
         );
