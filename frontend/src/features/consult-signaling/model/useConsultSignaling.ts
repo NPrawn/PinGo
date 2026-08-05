@@ -327,27 +327,19 @@ export function useConsultSignaling(
     [transcriptTimeline],
   );
   const updateTranscriptTranslation = useCallback(
-    (speaker: SignalingRole, content: string, translatedContent: string) => {
-      const normalizedContent = content.trim();
+    (captionId: string, translatedContent: string) => {
       const normalizedTranslation = translatedContent.trim();
-      if (!normalizedContent || !normalizedTranslation) return;
+      if (!captionId || !normalizedTranslation) return;
 
       setTranscriptEntries((previous) => {
-        const entryIndex = [...previous]
-          .reverse()
-          .findIndex(
-            (entry) =>
-              entry.segment.speaker === speaker &&
-              entry.segment.content.trim() === normalizedContent,
-          );
+        const entryIndex = previous.findIndex((entry) => entry.captionId === captionId);
         if (entryIndex < 0) return previous;
 
-        const actualIndex = previous.length - 1 - entryIndex;
-        const entry = previous[actualIndex];
+        const entry = previous[entryIndex];
         if (entry.segment.translatedContent === normalizedTranslation) return previous;
 
         const next = [...previous];
-        next[actualIndex] = {
+        next[entryIndex] = {
           ...entry,
           segment: { ...entry.segment, translatedContent: normalizedTranslation },
         };

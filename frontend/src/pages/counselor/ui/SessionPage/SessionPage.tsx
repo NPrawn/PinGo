@@ -168,24 +168,27 @@ export function SessionPage() {
    * 무슨 말인지 알 수 없어, 실시간 자막이 있으나 마나가 된다.
    */
   const handleUserCaptionTranslation = useCallback(
-    (source: string, translated: string) => updateTranscriptTranslation('USER', source, translated),
+    (captionId: string, _source: string, translated: string) =>
+      updateTranscriptTranslation(captionId, translated),
     [updateTranscriptTranslation],
   );
   const handleCounselorCaptionTranslation = useCallback(
-    (source: string, translated: string) =>
-      updateTranscriptTranslation('COUNSELOR', source, translated),
+    (captionId: string, _source: string, translated: string) =>
+      updateTranscriptTranslation(captionId, translated),
     [updateTranscriptTranslation],
   );
   const translatedUserCaption = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
     'ko',
+    remoteFinalCaptionId,
     handleUserCaptionTranslation,
   );
   useCaptionTranslation(
     consultationId,
     localCaptionFinal ? localCaption : '',
     'en',
+    localFinalCaptionId,
     handleCounselorCaptionTranslation,
   );
   useTranslatedSpeech(translatedUserCaption, 'ko-KR', remoteCaptionFinal);

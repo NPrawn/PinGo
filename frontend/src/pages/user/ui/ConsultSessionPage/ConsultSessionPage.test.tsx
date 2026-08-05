@@ -164,7 +164,7 @@ describe('ConsultSessionPage', () => {
     renderPage();
 
     await screen.findByRole('button', { name: 'End consultation' });
-    expect(apiMocks.useCaptionTranslation).toHaveBeenCalledWith('cs_1', '', 'en');
+    expect(apiMocks.useCaptionTranslation).toHaveBeenCalledWith('cs_1', '', 'en', undefined);
   });
 
   /**
@@ -308,7 +308,9 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Connection: connected · Event channel closed')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Connection: connected · Event channel closed'),
+    ).toBeInTheDocument();
   });
 
   it('채널이 열리면 열렸다고 적는다', async () => {
@@ -317,7 +319,9 @@ describe('ConsultSessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Connection: connected · Event channel open')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Connection: connected · Event channel open'),
+    ).toBeInTheDocument();
   });
 
   /**
