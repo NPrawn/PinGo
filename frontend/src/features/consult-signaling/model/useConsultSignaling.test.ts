@@ -1327,5 +1327,49 @@ describe('useConsultSignaling', () => {
 
       view.unmount();
     });
+
+    /**
+     * **소리가 먼저 붙은 뒤 영상이 와도 함께 그려야 한다.** (S15P11A206-206)
+     *
+     * 실기기에서 이 순서로 걸렸다 — 소리는 나는데 화면만 끝까지 검었다. 소리에는 msid 가 있어
+     * 스트림이 먼저 붙고, 뒤에 온 영상 트랙을 **그 스트림에 더하기만** 하면 크롬은 그것을 그리지
+     * 않는다. 요소는 `srcObject` 가 다른 객체로 바뀔 때 트랙 구성을 다시 읽는다.
+     *
+     * 그래서 붙는 스트림이 **새 객체**여야 하고, 두 트랙이 모두 담겨 있어야 한다.
+     */
+    it('소리가 먼저 붙은 뒤 온 영상도 같은 화면에 붙인다', async () => {
+      const view = await connectedWithVideo();
+      const element = { srcObject: null as MediaStream | null, play: vi.fn() };
+      view.result.current.remoteVideoRef.current = element as unknown as HTMLVideoElement;
+
+      const remoteAudio = fakeTrack('audio');
+      const remoteVideo = fakeTrack('video');
+      // 소리는 소속이 있어 스트림째로 온다.
+      const audioStream = fakeStream([remoteAudio]);
+
+      act(() => {
+        FakePeerConnection.instances[0]?.ontrack?.({
+          streams: [audioStream],
+          track: remoteAudio,
+        } as unknown as RTCTrackEvent);
+      });
+
+      const afterAudio = element.srcObject;
+      expect(afterAudio?.getTracks()).toContain(remoteAudio);
+
+      act(() => {
+        FakePeerConnection.instances[0]?.ontrack?.({
+          streams: [],
+          track: remoteVideo,
+        } as unknown as RTCTrackEvent);
+      });
+
+      // 같은 객체를 그대로 두면 요소가 새 트랙을 읽지 않는다.
+      expect(element.srcObject).not.toBe(afterAudio);
+      expect(element.srcObject?.getTracks()).toContain(remoteAudio);
+      expect(element.srcObject?.getTracks()).toContain(remoteVideo);
+
+      view.unmount();
+    });
   });
 });

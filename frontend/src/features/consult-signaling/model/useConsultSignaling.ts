@@ -1053,10 +1053,20 @@ export function useConsultSignaling(
        * **처음 본 스트림 하나에 트랙을 모은다.** 화면은 `srcObject` 하나만 보므로, 소리와
        * 영상이 서로 다른 스트림으로 오면 나중에 온 쪽이 앞의 것을 덮어 버린다.
        */
-      const stream = remoteStreamRef.current ?? event.streams[0] ?? new MediaStream();
-      if (!stream.getTracks().some((existing) => existing.id === event.track.id)) {
-        stream.addTrack(event.track);
-      }
+      const known = remoteStreamRef.current?.getTracks() ?? event.streams[0]?.getTracks() ?? [];
+      const tracks = known.some((existing) => existing.id === event.track.id)
+        ? [...known]
+        : [...known, event.track];
+      /**
+       * **매번 새 스트림 객체로 만들어 붙인다.** (S15P11A206-206)
+       *
+       * 붙어 있는 스트림에 `addTrack` 으로 더하기만 하면 크롬은 그 트랙을 그리기 시작하지
+       * 않는다. 요소는 `srcObject` 가 **다른 객체로 바뀔 때** 트랙 구성을 다시 읽는다.
+       *
+       * 소리가 먼저 붙고 영상이 뒤에 오는 순서에서 실제로 그랬다 — 소리는 나는데 화면만 끝까지
+       * 검었다. 같은 객체를 그대로 돌려주면 `attachRemoteStream` 도 대입을 건너뛴다.
+       */
+      const stream = new MediaStream(tracks);
       remoteStreamRef.current = stream;
       attachRemoteStream(stream);
     };
