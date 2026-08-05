@@ -1,5 +1,6 @@
 package com.pingo.backend.route.service;
 
+import com.pingo.backend.facility.repository.FacilityRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.route.domain.RouteEdge;
@@ -52,6 +53,9 @@ class IndoorRouteServiceTest {
     @Mock
     private StationFloorRepository stationFloorRepository;
 
+    @Mock
+    private FacilityRepository facilityRepository;
+
     private IndoorRouteService indoorRouteService;
 
     @BeforeEach
@@ -61,6 +65,7 @@ class IndoorRouteServiceTest {
                 routeEdgeRepository,
                 stationRepository,
                 stationFloorRepository,
+                facilityRepository,
                 new RouteFinder(),
                 new RouteInstructionWriter());
     }
@@ -110,6 +115,52 @@ class IndoorRouteServiceTest {
         assertThat(options.get(1).hasStairsOrEscalator()).isFalse();
     }
 
+    /**
+     * 두 유형이 층을 오르는 수단은 겹치지 않는다. (S15P11A206-345)
+     *
+     * <p>예전에는 {@code fastest} 가 모든 간선을 허용해서 엘리베이터가 최단이면 그것을 골랐고,
+     * 그러면 두 카드가 같은 엘리베이터를 타서 무엇을 고르는지 알 수 없었다.
+     */
+    @Test
+    @DisplayName("빠른 경로는 엘리베이터를 쓰지 않고 계단으로 올라간다")
+    void fastestAvoidsElevator() {
+        givenActiveStation(1L);
+        //  1 ─(엘리베이터 5m)─ 3     짧지만 fastest 는 못 쓴다
+        //    └(계단 20m)────── 3
+        givenNodes(1L, node(1L), node(3L));
+        givenEdges(1L,
+                edge(1L, 1L, 3L, 5, RouteMoveType.ELEVATOR),
+                edge(1L, 1L, 3L, 20, RouteMoveType.STAIR));
+
+        List<RouteOptionResponse> options =
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 3L, null, null));
+
+        // 빠른 경로는 더 먼 계단을 쓴다. 이름과 달리 최단이 아닐 수 있음을 받아들인 결과다.
+        assertThat(options.get(0).totalDistanceM()).isEqualByComparingTo("20");
+        assertThat(options.get(0).hasStairsOrEscalator()).isTrue();
+        // 엘리베이터 경로는 계단을 못 쓰므로 엘리베이터로 간다.
+        assertThat(options.get(1).totalDistanceM()).isEqualByComparingTo("5");
+        assertThat(options.get(1).hasStairsOrEscalator()).isFalse();
+    }
+
+    /**
+     * 층 사이가 엘리베이터로만 이어져 있으면 {@code fastest} 는 도달 불가다. 지금 역삼역
+     * 데이터에는 그런 구간이 없지만, 엘리베이터 제외의 대가가 이것임을 여기서 붙잡아 둔다.
+     */
+    @Test
+    @DisplayName("엘리베이터로만 이어진 구간은 빠른 경로가 도달 불가다")
+    void fastestCannotReachElevatorOnlyLink() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L));
+        givenEdges(1L, edge(1L, 1L, 2L, 5, RouteMoveType.ELEVATOR));
+
+        List<RouteOptionResponse> options =
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 2L, null, null));
+
+        assertThat(options.get(0).available()).isFalse();
+        assertThat(options.get(1).available()).isTrue();
+    }
+
     @Test
     @DisplayName("통로만 지나는 경로는 계단 포함이 아니다")
     void marksWalkwayOnlyPathAsStepFree() {
@@ -124,6 +175,56 @@ class IndoorRouteServiceTest {
 
         assertThat(options).allSatisfy(option ->
                 assertThat(option.hasStairsOrEscalator()).isFalse());
+    }
+
+    /**
+     * 역삼역 3·4번 출구가 이 모양이다. 출구 노드에 닿는 길은 에스컬레이터 쪽 하나뿐이고, 나란히
+     * 있는 엘리베이터는 출구 노드로 이어지지 않는다 — 타면 지상으로 올라가므로 그것이 맞다.
+     * 그래서 접근 경로는 엘리베이터가 종점이다. (S15P11A206-345)
+     */
+    @Test
+    @DisplayName("엘리베이터 이용 경로는 출구의 접근 대안 노드로 안내한다")
+    void routesAccessibleOptionToAccessibleNode() {
+        givenActiveStation(1L);
+        //  1 ── 2(엘리베이터, 접근 대안) 은 여기서 끝
+        //    └─ 3(에스컬레이터) ── 4(출구)
+        givenNodes(1L, node(1L), node(2L), node(3L), node(4L));
+        givenEdges(1L,
+                edge(1L, 1L, 2L, 4, RouteMoveType.WALKWAY),
+                edge(1L, 1L, 3L, 11, RouteMoveType.ESCALATOR),
+                edge(1L, 3L, 4L, 9, RouteMoveType.WALKWAY));
+        when(facilityRepository.findAccessibleNodeIds(1L, 4L)).thenReturn(List.of(2L));
+
+        List<RouteOptionResponse> options =
+                indoorRouteService.getRouteOptions(optionsRequest(1L, 1L, 4L, null, null));
+        RouteResponse accessible = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 1L, 4L, null, "elevator_only", Language.KO, null, null));
+
+        // 최단 경로는 출구 노드(4)까지 20m. 엘리베이터 경로는 대안 노드(2)까지 4m.
+        assertThat(options.get(0).totalDistanceM()).isEqualByComparingTo("20");
+        assertThat(options.get(1).totalDistanceM()).isEqualByComparingTo("4");
+        // 응답이 실제로 안내한 도착 노드를 알려준다. 부르는 쪽이 요청한 4가 아니다.
+        assertThat(accessible.targetNodeId()).isEqualTo(2L);
+        assertThat(accessible.totalDistanceM()).isEqualByComparingTo("4");
+    }
+
+    /**
+     * 접근 대안이 없는 출구는 바꿔치기하지 않는다. 계단 간선이 걸러져 닿지 못하면 그대로 도달
+     * 불가로 답해야 한다 — "다른 노드로 보낸다"와 "계단 없이는 갈 수 없다"는 다른 사실이다.
+     */
+    @Test
+    @DisplayName("접근 대안이 없으면 엘리베이터 경로도 요청한 도착 노드를 쓴다")
+    void keepsRequestedTargetWhenNoAccessibleAlternative() {
+        givenActiveStation(1L);
+        givenNodes(1L, node(1L), node(2L));
+        givenEdges(1L, edge(1L, 1L, 2L, 10, RouteMoveType.STAIR));
+
+        RouteResponse accessible = indoorRouteService.createRoute(new RouteCreateRequest(
+                1L, 1L, 2L, null, "elevator_only", Language.KO, null, null));
+
+        assertThat(accessible.targetNodeId()).isEqualTo(2L);
+        assertThat(accessible.available()).isFalse();
+        assertThat(accessible.unavailableReason()).isEqualTo("NO_ACCESSIBLE_ROUTE");
     }
 
     @Test
@@ -241,7 +342,9 @@ class IndoorRouteServiceTest {
                 edge(1L, 1L, 4L, 5, RouteMoveType.WALKWAY, false),
                 edge(1L, 1L, 2L, 10, RouteMoveType.WALKWAY),
                 edge(1L, 2L, 3L, 10, RouteMoveType.WALKWAY),
-                edge(1L, 3L, 4L, 10, RouteMoveType.ELEVATOR, false));
+                /* 수직 이동을 섞어 두는 것이 이 테스트의 관심사는 아니지만, 계단이어야 한다 —
+                   `fastest` 는 엘리베이터를 제외하므로 그 간선으로는 도착지에 닿지 못한다. */
+                edge(1L, 3L, 4L, 10, RouteMoveType.STAIR, false));
 
         RouteResponse response =
                 indoorRouteService.createRoute(createRequest(
