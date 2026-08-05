@@ -111,6 +111,19 @@ describe('routeProgressOf', () => {
     expect(progress.travelledM).toBeCloseTo(10);
   });
 
+  it('경로 스냅을 끄면 진행도는 계산하되 원본 위치를 대체하지 않는다', () => {
+    const progress = routeProgressOf({
+      pathNodes: PATH,
+      steps: STEPS,
+      currentLocation: { floorId: B3, mapX: 30, mapY: 2 },
+      snapToRoute: false,
+    });
+
+    expect(progress.travelledM).toBeCloseTo(30);
+    expect(progress.offRoute).toBe(false);
+    expect(progress.snappedLocation).toBeNull();
+  });
+
   it('지나온 노드를 순서대로 모은다', () => {
     const progress = routeProgressOf({
       pathNodes: PATH,

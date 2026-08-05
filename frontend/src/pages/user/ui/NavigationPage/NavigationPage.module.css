@@ -394,6 +394,26 @@
   inset: 0;
 }
 
+/* 실측 디버깅용. 경로 위 투영과 WebXR 원본 좌표를 즉시 비교할 수 있다. */
+.routeSnapControl {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 3px 6px 3px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--color-ink);
+  background: rgb(255 255 255 / 88%);
+  border: 1px solid rgb(255 255 255 / 92%);
+  border-radius: 10px;
+  box-shadow: 0 5px 14px -8px rgb(15 44 34 / 42%);
+}
+
 /* 오버레이 SVG만 시설 칩 위로 올린다. 현재 위치와 목적지 이름이 칩에 가리면 안 된다 —
    원본에도 목적지 라벨이 지도 위 요소들보다 나중에 그려져 있었다.
    IndoorMapView의 .viewport·.stage가 stacking context를 만들지 않으므로, 그 자손인 오버레이의

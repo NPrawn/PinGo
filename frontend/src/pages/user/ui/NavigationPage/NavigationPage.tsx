@@ -32,7 +32,7 @@ import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { localizedNameOf, useApiLanguage } from '@/shared/i18n';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
-import { Button, ButtonLink, Icon, MapPreview, Sheet } from '@/shared/ui';
+import { Button, ButtonLink, Icon, MapPreview, Sheet, Toggle } from '@/shared/ui';
 import { stopCamera } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { IndoorMapView } from '@/widgets/indoor-map';
@@ -349,11 +349,13 @@ export function NavigationPage() {
   ].join('-');
   const pathNodes = routePathNodesOf(routeResult);
   const travelledM = progressKey === routeKey ? storedTravelledM : 0;
+  const [snapToRoute, setSnapToRoute] = useState(true);
   const progress = routeProgressOf({
     pathNodes,
     steps: routeResult?.steps,
     currentLocation,
     travelledM,
+    snapToRoute,
   });
 
   useEffect(() => {
@@ -916,6 +918,14 @@ export function NavigationPage() {
                   평면도로 떨어지므로 보이는 그림은 그대로이고, 좌표 프레임만 응답의 것을
                   쓴다. 이 화면이 목업에 기대던 마지막 하나가 경로선이었다. */}
               <div className={styles.mapCanvas}>
+                <div className={styles.routeSnapControl}>
+                  <span>{snapToRoute ? '경로 위 표시' : '원본 위치 표시'}</span>
+                  <Toggle
+                    checked={snapToRoute}
+                    label="경로 위 위치 표시"
+                    onCheckedChange={setSnapToRoute}
+                  />
+                </div>
                 <IndoorMapView
                   stationId={stationId ?? 0}
                   floorId={displayedFloorId}
@@ -978,7 +988,7 @@ export function NavigationPage() {
 
                      벗어난 자리에서 가장 가까운 경로 지점으로 이어 주는 것이 필요한 안내다.
                      아무것도 그리지 않으면 사용자는 자기 층에 경로가 없다고 읽는다. */
-                  connectCurrentToRoute={progress.snappedLocation === null}
+                  connectCurrentToRoute={!snapToRoute || progress.snappedLocation === null}
                   facilityType={effectiveType}
                   /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼져
                      아무 시설도 그리지 않는다. */
