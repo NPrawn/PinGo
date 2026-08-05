@@ -50,6 +50,19 @@ public class Facility {
     @Column(name = "linked_node_id")
     private Long linkedNodeId;
 
+    /**
+     * 계단·에스컬레이터를 쓸 수 없을 때 안내할 도착 노드. 없으면 {@code null}.
+     *
+     * <p>출구에만 쓴다. 역삼역 3·4번 출구는 출구 노드에 닿는 길이 에스컬레이터 쪽 하나뿐이고,
+     * 나란히 있는 엘리베이터 노드는 출구 노드로 이어지지 않는다 — 타면 지상으로 올라가므로
+     * 그것이 맞다. 그래서 접근 경로의 도착점을 따로 둔다.
+     *
+     * <p>{@code null}은 계단 없이 나갈 수 없다는 뜻이다. 그때는 {@code elevator_only}도
+     * {@link #linkedNodeId} 로 풀린다. 사유와 값의 근거는 {@code V20}에 있다.
+     */
+    @Column(name = "accessible_node_id")
+    private Long accessibleNodeId;
+
     @Column(name = "is_accessible", nullable = false)
     private boolean accessible;
 
