@@ -9,6 +9,7 @@ import { ConsultPermissionPage } from './ConsultPermissionPage';
 
 const apiMocks = vi.hoisted(() => ({
   createConsultation: vi.fn(),
+  cancelConsultation: vi.fn(),
 }));
 
 const mediaMocks = vi.hoisted(() => ({
@@ -23,6 +24,7 @@ const mediaMocks = vi.hoisted(() => ({
 vi.mock('@/shared/api', () => ({
   ApiError: class ApiError extends Error {},
   createConsultation: apiMocks.createConsultation,
+  cancelConsultation: apiMocks.cancelConsultation,
 }));
 
 vi.mock('@/features/consult-signaling', () => mediaMocks);
@@ -51,6 +53,7 @@ describe('ConsultPermissionPage', () => {
     useUserSessionStore.setState({ userSessionId: 'session-1' });
     usePermissionStore.setState({ granted: { loc: true, cam: false, mic: false } });
     apiMocks.createConsultation.mockResolvedValue({ consultationId: 'consultation-1' });
+    apiMocks.cancelConsultation.mockResolvedValue(undefined);
     mediaMocks.captureConsultMicrophone.mockResolvedValue({
       getAudioTracks: () => [{ kind: 'audio' }],
     } as unknown as MediaStream);
@@ -117,6 +120,37 @@ describe('ConsultPermissionPage', () => {
     const request = apiMocks.createConsultation.mock.calls[0]?.[0];
     expect(request).not.toHaveProperty('destinationId');
     expect(request).not.toHaveProperty('destinationType');
+  });
+
+  /**
+   * 대기 화면에서 기기 뒤로가기로 되돌아오면 이 화면에 도착한다. (S15P11A206-353)
+   *
+   * 취소 버튼을 거치지 않았으므로 서버의 상담은 대기열에 그대로 남아 있다. 상담자가 수락해도
+   * 사용자는 이미 이 화면에 있어 아무 응답이 없다. 대기 화면 쪽에서는 잡을 수 없는 통로라
+   * (StrictMode·popstate 제약) 도착하는 이 화면이 거둬들인다.
+   */
+  it('대기 화면에서 되돌아오면 남은 상담을 거둬들인다', async () => {
+    useConsultStore.setState({ issue: 0, consultationId: 'consultation-1' });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(apiMocks.cancelConsultation).toHaveBeenCalledWith('consultation-1', 'session-1'),
+    );
+    expect(mediaMocks.releaseConsultMedia).toHaveBeenCalled();
+    await waitFor(() => expect(useConsultStore.getState().consultationId).toBeNull());
+    // 문의 유형은 그대로 남아 이 화면에서 다시 연결할 수 있다.
+    expect(useConsultStore.getState().issue).toBe(0);
+    expect(screen.getByRole('heading', { name: '무엇을 공유할지 정해주세요' })).toBeInTheDocument();
+  });
+
+  /** 앞으로 나아가는 길에서는 방금 만든 상담을 거둬들이지 않는다. */
+  it('상담을 만든 직후에는 취소하지 않는다', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: '동의하고 상담 연결' }));
+
+    expect(await screen.findByText('상담 대기 화면')).toBeInTheDocument();
+    expect(apiMocks.cancelConsultation).not.toHaveBeenCalled();
   });
 
   it('마이크를 거절하면 상담을 만들지 않는다', async () => {

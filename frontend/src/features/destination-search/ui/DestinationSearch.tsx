@@ -8,7 +8,7 @@ import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
 import { findNearestExit, getFacility, getRecommendedExits, updateUserSession } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
-import { useApiLanguage } from '@/shared/i18n';
+import { localizedNameOf, useApiLanguage } from '@/shared/i18n';
 import { Field, Icon3d, Kicker, SelectRow } from '@/shared/ui';
 import type { Icon3dTone } from '@/shared/ui';
 import styles from './DestinationSearch.module.css';
@@ -131,10 +131,15 @@ export function DestinationSearch({
         if (resolvedPoi) {
           selectedPoi = {
             ...resolvedPoi,
-            // External providers may only return a Korean name. Preserve the
-            // English quick-tile label selected by the user in that case.
-            name: language === 'en' ? poi.name : resolvedPoi.name,
+            // Quick destinations already own a canonical bilingual pair.
+            // External search can return only a Korean display name, so do not
+            // discard the tile's names while enriching it with id/coordinates.
+            nameKo: resolvedPoi.nameKo ?? poi.nameKo,
+            nameEn: resolvedPoi.nameEn ?? poi.nameEn,
           };
+          selectedPoi.name =
+            localizedNameOf(language, selectedPoi.nameKo, selectedPoi.nameEn) ??
+            resolvedPoi.name;
         }
       }
 

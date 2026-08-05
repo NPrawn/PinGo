@@ -19,10 +19,16 @@ const ENGLISH_LABELS: Readonly<Record<string, string>> = {
 
 /** Translates backend/demo labels that do not yet provide a separate English field. */
 export function localizeUserLabel(label: string, language: string): string {
-  if (language !== 'en') return label;
+  if (language !== 'en') {
+    const korean = Object.entries(ENGLISH_LABELS).find(([, english]) => english === label)?.[0];
+    return korean ?? label;
+  }
 
   const exact = ENGLISH_LABELS[label];
   if (exact) return exact;
+
+  if (label === '출입구' || label === '출구') return 'Exit';
+  if (label === '목적지') return 'Destination';
 
   const bottomOfStairs = /^(B\d+) 계단 하단$/.exec(label);
   if (bottomOfStairs) return `${bottomOfStairs[1]} Bottom of stairs`;
@@ -35,6 +41,15 @@ export function localizeUserLabel(label: string, language: string): string {
 
   const numberedExit = /^(\d+)번 (?:출구|출입구)$/.exec(label);
   if (numberedExit) return `Exit ${numberedExit[1]}`;
+
+  const verticalFacility = label
+    .replace(/에스컬레이터/g, 'Escalator')
+    .replace(/엘리베이터/g, 'Elevator')
+    .replace(/계단/g, 'Stairs')
+    .replace(/출발점/g, 'Start')
+    .replace(/도착점/g, 'End')
+    .replace(/→/g, ' to ');
+  if (verticalFacility !== label) return verticalFacility.replace(/\s+/g, ' ').trim();
 
   return label;
 }

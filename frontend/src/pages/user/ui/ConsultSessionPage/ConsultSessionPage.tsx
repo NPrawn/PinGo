@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { isClosedConsultation, useConsultStore } from '@/entities/consult';
 import {
   FACILITY_MAP_FILTERS,
-  facilityAtNodeMatchingLabel,
+  destinationFacilityOf,
   localizedFacilityNameAtNode,
   localizedFacilityNameOf,
   useStationFacilities,
@@ -199,6 +199,8 @@ export function ConsultSessionPage() {
   const destination = useNavigationStore((state) => state.destination);
   const destinationNameKo = useNavigationStore((state) => state.destinationNameKo);
   const destinationNameEn = useNavigationStore((state) => state.destinationNameEn);
+  const destinationId = useNavigationStore((state) => state.destinationId);
+  const destinationType = useNavigationStore((state) => state.destinationType);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
   const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
@@ -597,12 +599,14 @@ export function ConsultSessionPage() {
     displayLanguage,
     facilityOrigin,
   );
-  const storedDestinationFacility = facilityAtNodeMatchingLabel(
+  const storedDestinationFacility = destinationFacilityOf(
     facilities,
+    destinationType?.toLowerCase() === 'facility' ? destinationId : null,
     targetNodeId,
     destinationNameKo,
-  ) ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destinationNameEn)
-    ?? facilityAtNodeMatchingLabel(facilities, targetNodeId, destination);
+    destinationNameEn,
+    destination,
+  );
   const displayedDestination = destination
     ? (storedDestinationFacility
         ? localizedFacilityNameOf(storedDestinationFacility, displayLanguage)
@@ -1107,7 +1111,7 @@ export function ConsultSessionPage() {
                 /* 사용자 화면은 안내 화면과 같이 진행 방향이 위를 향하게 돈다. */
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
-                destinationLabel={displayedDestination}
+                destinationLabel={selectedFacility ? null : displayedDestination}
                 destinationNodeId={destinationPoint?.nodeId ?? null}
                 pathNodes={pathNodes}
                 /* 경유지 번호 핀과 다리별 색. 겹치는 복도에서 순서를 알려주는 것이 이 번호다. */
