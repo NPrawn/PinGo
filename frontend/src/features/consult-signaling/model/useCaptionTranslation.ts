@@ -14,6 +14,7 @@ export function useCaptionTranslation(
   consultationId: string | null,
   text: string,
   targetLanguage: string,
+  onTranslated?: (source: string, translated: string) => void,
 ) {
   /**
    * 옮긴 결과를 어느 원문에서 얻었는지 함께 들고 있는다.
@@ -21,7 +22,11 @@ export function useCaptionTranslation(
    * 원문이 바뀌는 순간 지난 번역은 더 이상 그 말이 아니다. 따로 지우지 않고 짝이 맞는지만
    * 보면, 지나간 문장의 번역이 새 원문 자리에 남아 있는 일이 생기지 않는다.
    */
-  const [result, setResult] = useState<{ source: string; text: string } | null>(null);
+  const [result, setResult] = useState<{
+    consultationId: string;
+    targetLanguage: string;
+    text: string;
+  } | null>(null);
   const source = text.trim();
 
   useEffect(() => {
@@ -33,10 +38,21 @@ export function useCaptionTranslation(
     const timer = window.setTimeout(() => {
       void translateConsultationCaption(consultationId, { text: source, targetLanguage })
         .then((response) => {
-          if (!cancelled) setResult({ source, text: response.text || source });
+          if (!cancelled) {
+            const translated = response.text || source;
+            setResult({
+              consultationId,
+              targetLanguage,
+              text: translated,
+            });
+            onTranslated?.(source, translated);
+          }
         })
         .catch(() => {
-          if (!cancelled) setResult({ source, text: source });
+          if (!cancelled) {
+            setResult({ consultationId, targetLanguage, text: source });
+            onTranslated?.(source, source);
+          }
         });
     }, 250);
 
@@ -44,7 +60,11 @@ export function useCaptionTranslation(
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [consultationId, source, targetLanguage]);
+  }, [consultationId, onTranslated, source, targetLanguage]);
 
-  return result?.source === source ? result.text : '';
+  return source &&
+    result?.consultationId === consultationId &&
+    result.targetLanguage === targetLanguage
+    ? result.text
+    : '';
 }
