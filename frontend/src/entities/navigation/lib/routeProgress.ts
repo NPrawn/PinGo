@@ -84,8 +84,16 @@ export function routeProgressOf(options: {
   currentLocation: IndoorPoint | null;
   /** 지금까지의 최대 진행 거리. 부르는 쪽이 들고 있다가 그대로 넘긴다. */
   travelledM?: number;
+  /** 경로 진행도는 계산하되, 표시 위치를 경로 위에 투영할지 정한다. */
+  snapToRoute?: boolean;
 }): RouteProgress {
-  const { pathNodes, steps = [], currentLocation, travelledM = 0 } = options;
+  const {
+    pathNodes,
+    steps = [],
+    currentLocation,
+    travelledM = 0,
+    snapToRoute = true,
+  } = options;
   const segments = pathSegments(pathNodes);
   const pathLengthM = segments.reduce((sum, segment) => sum + segment.lengthM, 0);
   const boundaries = stepBoundaries(steps, pathLengthM);
@@ -120,7 +128,7 @@ export function routeProgressOf(options: {
     passedNodeIds: passedNodesAt(points, advancedM),
     offRoute,
     snappedLocation:
-      currentLocation !== null && nearest !== null && !offRoute
+      snapToRoute && currentLocation !== null && nearest !== null && !offRoute
         ? { floorId: currentLocation.floorId, mapX: nearest.mapX, mapY: nearest.mapY }
         : null,
   };
