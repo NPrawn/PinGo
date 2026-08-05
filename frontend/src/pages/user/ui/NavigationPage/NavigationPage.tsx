@@ -24,6 +24,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { useApiLanguage } from '@/shared/i18n';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
@@ -110,7 +111,13 @@ export function NavigationPage() {
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
-  const displayedOrigin = localizeUserLabel(currentLocationLabel ?? station, language);
+  const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
+  const displayedOrigin = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    language,
+    localizeUserLabel(station, language),
+  );
   const displayedDestination = localizeUserLabel(destination, language);
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);

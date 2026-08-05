@@ -119,9 +119,8 @@ export const ko = {
       },
       locateSuccess: {
         camera: '후면 카메라 화면', found: '현재 위치를 찾았어요', matched: 'VPS 매칭 완료',
-        confidence: '신뢰도 92%', eyebrow: '현재 위치 확인', title: '여기가 맞는지 확인해 주세요',
-        nearby: '3번 출구 방면 · 12번 기둥 부근', recognized: '인식 완료',
-        stationMeta: '2호선 · 출구 1–8', accuracy: '오차 범위 약 1.2m',
+        confidence: '신뢰도 {{percent}}%', confidenceUnavailable: '신뢰도 확인됨', eyebrow: '현재 위치 확인', title: '여기가 맞는지 확인해 주세요',
+        recognized: '인식 완료', accuracy: '오차 범위 약 {{meters}}m', accuracyUnavailable: '오차 범위 확인 불가',
         continue: '이 위치에서 안내 계속하기 →', chooseRoute: '이 위치에서 경로 선택하기 →',
         retake: '이 위치가 아니에요 · 다시 촬영',
       },

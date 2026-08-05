@@ -26,6 +26,7 @@ import { readForwardMap } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
+import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import {
   xrSessionController,
@@ -134,6 +135,7 @@ export function ConsultSessionPage() {
     error,
     reconnecting,
     remoteCaption,
+    remoteFinalCaption,
     remoteCaptionFinal,
     remoteCaptionError,
     captionsSupported,
@@ -152,7 +154,7 @@ export function ConsultSessionPage() {
   /** 상담원이 말한 한국어를 영어 자막으로 옮겨 보여 준다. */
   const translatedRemoteCaption = useCaptionTranslation(
     consultationId,
-    remoteCaption,
+    remoteFinalCaption,
     userLanguage,
   );
   useTranslatedSpeech(translatedRemoteCaption, userLanguage, remoteCaptionFinal);
@@ -186,11 +188,15 @@ export function ConsultSessionPage() {
    */
   const destination = useNavigationStore((state) => state.destination);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
+  const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
   const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
-  const displayedOrigin = localizeUserLabel(currentLocationLabel ?? station, displayLanguage);
-  const displayedDestination = destination
-    ? localizeUserLabel(destination, displayLanguage)
-    : null;
+  const displayedOrigin = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    displayLanguage,
+    localizeUserLabel(station, displayLanguage),
+  );
+  const displayedDestination = destination ? localizeUserLabel(destination, displayLanguage) : null;
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
@@ -474,10 +480,7 @@ export function ConsultSessionPage() {
      * 방향이 없으면(정합되지 않은 층 등) 앵커를 만들지 못한다. 그때는 지금 앵커를 그대로 두는
      * 편이 낫다 — 오차가 남더라도 방향 없는 앵커보다는 정확하다.
      */
-    setAnchor(
-      { floorId: position.floorId, mapX: position.mapX, mapY: position.mapY },
-      forwardMap,
-    );
+    setAnchor({ floorId: position.floorId, mapX: position.mapX, mapY: position.mapY }, forwardMap);
 
     /**
      * 경로 시작 노드가 달라졌을 때만 스토어를 건드린다.
@@ -491,6 +494,7 @@ export function ConsultSessionPage() {
         nodeId: result.startNodeId,
         floorId: position.floorId,
         label: result.startNodeLabel ?? undefined,
+        labelEn: result.startNodeLabelEn ?? undefined,
         mapX: position.mapX,
         mapY: position.mapY,
         forwardMap,
@@ -1166,7 +1170,6 @@ export function ConsultSessionPage() {
             <p className={styles.syncText}>{t('user.consultSession.mapSync')}</p>
           </div>
         </div>
-
       </div>
     </PhoneFrame>
   );

@@ -971,12 +971,20 @@ export interface components {
        */
       startNodeId?: number;
       /**
-       * @description 경로 시작 노드의 표시 이름. 시설이 붙어 있으면 시설명이다.
-       * @example B2-B3 엘리베이터 A
+       * @description 경로 시작 노드의 사용자용 한글 표시 이름.
+       * @example B2 · B2-B3 엘리베이터 A 인근
        */
       startNodeLabel?: string;
+      /** @description 경로 시작 노드의 영문 표시 이름. */
+      startNodeLabelEn?: string;
       /** @description 낮은 신뢰도 응답에서만 제공하는 다중 프레임 투표용 위치 후보 */
       candidate?: components['schemas']['LocalizationCandidateResponse'];
+      /**
+       * Format: double
+       * @description AI 기하 품질 지표를 0~1로 정규화한 위치 인식 신뢰도
+       * @example 0.87
+       */
+      confidenceScore?: number;
       fallbackOptions?: (
         | 'retry_capture'
         | 'select_landmark'
@@ -1000,6 +1008,7 @@ export interface components {
       /** Format: int64 */
       startNodeId: number;
       startNodeLabel?: string;
+      startNodeLabelEn?: string;
       /**
        * Format: double
        * @description 다중 프레임 투표 가중치. 강한 단일 프레임 기준을 1로 정규화한다.

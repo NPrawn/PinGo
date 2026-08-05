@@ -3,6 +3,8 @@ import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { USER_ROUTES } from '@/shared/config';
+import { useApiLanguage } from '@/shared/i18n';
+import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { ButtonLink, Card, GhostLink, Icon, Icon3d } from '@/shared/ui';
 import { CameraFallbackNotice, CameraFeed, useCameraPreview } from '@/widgets/camera-preview';
@@ -12,15 +14,31 @@ import styles from './LocateSuccessPage.module.css';
 
 /** Keep the live camera visible while the user confirms the matched position. */
 export function LocateSuccessPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const language = useApiLanguage();
   const station = useStationStore((state) => state.station);
   const floor = useStationStore((state) => state.floor);
-  /** 위치 인식이 준 경로 시작 노드의 이름. 역·층 표기보다 구체적이다. */
+  const confidenceScore = useNavigationStore((state) => state.currentConfidenceScore);
+  const accuracyM = useNavigationStore((state) => state.currentAccuracyM);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
-  const locationText = localizeUserLabel(
-    currentLocationLabel ?? `${station} · ${floor}`,
-    i18n.resolvedLanguage === 'en' ? 'en' : 'ko',
+  const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
+  const confidencePercent =
+    confidenceScore != null && Number.isFinite(confidenceScore)
+      ? Math.round(Math.min(Math.max(confidenceScore, 0), 1) * 100)
+      : null;
+  // 백엔드가 시설·인접 시설·승강장 구역 순으로 만든 사용자용 라벨을 우선한다.
+  // 배포 전 저장된 세션의 내부 코드가 남아 있으면 층만 보여줘 코드가 다시 노출되지 않게 한다.
+  const visibleLocationLabel = localizedLocationLabelOf(
+    currentLocationLabel,
+    currentLocationLabelEn,
+    language,
+    floor,
   );
+  const locationText = `${localizeUserLabel(station, language)} · ${visibleLocationLabel}`;
+  const accuracyText =
+    accuracyM != null && Number.isFinite(accuracyM)
+      ? t('user.locateSuccess.accuracy', { meters: Math.max(accuracyM, 0).toFixed(1) })
+      : t('user.locateSuccess.accuracyUnavailable');
   /** 안내 중 재인식으로 왔는지. 돌아갈 화면을 가른다. (S15P11A206-141) */
   const relocalizing = useNavigationStore((state) => state.relocalizing);
   const camera = useCameraPreview();
@@ -91,7 +109,11 @@ export function LocateSuccessPage() {
               <span className={styles.confidenceDot} aria-hidden />
               {t('user.locateSuccess.matched')}
             </span>
-            <strong>{t('user.locateSuccess.confidence')}</strong>
+            <strong>
+              {confidencePercent == null
+                ? t('user.locateSuccess.confidenceUnavailable')
+                : t('user.locateSuccess.confidence', { percent: confidencePercent })}
+            </strong>
           </div>
         </section>
 
@@ -111,7 +133,6 @@ export function LocateSuccessPage() {
               <Icon3d name="pin" iconSize={20} className={styles.mark} />
               <div className={styles.locationBody}>
                 <b>{locationText}</b>
-                <span>{t('user.locateSuccess.nearby')}</span>
               </div>
               <span className={styles.confirmedBadge}>
                 <Icon name="check" size={11} />
@@ -119,8 +140,7 @@ export function LocateSuccessPage() {
               </span>
             </div>
             <div className={styles.locationMeta}>
-              <span>{t('user.locateSuccess.stationMeta')}</span>
-              <span>{t('user.locateSuccess.accuracy')}</span>
+              <span>{accuracyText}</span>
             </div>
           </Card>
 
@@ -133,9 +153,13 @@ export function LocateSuccessPage() {
               사용자가 목적지 선택부터 다시 밟는다.
             */}
             {relocalizing ? (
-              <ButtonLink to={USER_ROUTES.NAVIGATION}>{t('user.locateSuccess.continue')}</ButtonLink>
+              <ButtonLink to={USER_ROUTES.NAVIGATION}>
+                {t('user.locateSuccess.continue')}
+              </ButtonLink>
             ) : (
-              <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>{t('user.locateSuccess.chooseRoute')}</ButtonLink>
+              <ButtonLink to={USER_ROUTES.ROUTE_OPTIONS}>
+                {t('user.locateSuccess.chooseRoute')}
+              </ButtonLink>
             )}
             <GhostLink to={USER_ROUTES.CAPTURE_PORTRAIT} className={styles.retake}>
               {t('user.locateSuccess.retake')}

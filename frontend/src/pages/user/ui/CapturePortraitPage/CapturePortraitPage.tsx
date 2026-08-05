@@ -134,6 +134,7 @@ export function CapturePortraitPage() {
         // 좌표 정합이 없는 층(역삼역 B1)은 status가 map_not_ready로 내려온다. (S15P11A206-128)
         if (disposed) return;
         let confirmed: LocalizationCandidateResponse | null = null;
+        let confidenceScore: number | null = null;
         if (
           result.resultStatus === 'success' &&
           result.startNodeId != null &&
@@ -152,14 +153,19 @@ export function CapturePortraitPage() {
             },
             startNodeId: result.startNodeId,
             startNodeLabel: result.startNodeLabel,
-            confidenceScore: 1,
+            startNodeLabelEn: result.startNodeLabelEn,
+            // 가중 투표 타입에는 점수가 필수다. 구버전 서버 응답은 강한 단일 프레임으로 취급하되,
+            // 화면에 표시할 값은 아래 confidenceScore를 null로 유지해 가짜 100%를 만들지 않는다.
+            confidenceScore: result.confidenceScore ?? 1,
           };
+          confidenceScore = result.confidenceScore ?? null;
         } else if (result.resultStatus === 'low_confidence' && result.candidate) {
           candidateVotes.current = appendLocalizationCandidate(
             candidateVotes.current,
             result.candidate,
           );
           confirmed = selectWeightedLocalization(candidateVotes.current);
+          confidenceScore = confirmed?.confidenceScore ?? null;
         }
 
         if (confirmed) {
@@ -171,9 +177,12 @@ export function CapturePortraitPage() {
             nodeId: confirmed.startNodeId,
             floorId: position.floorId,
             label: confirmed.startNodeLabel ?? undefined,
+            labelEn: confirmed.startNodeLabelEn ?? undefined,
             mapX: position.mapX,
             mapY: position.mapY,
             forwardMap: readForwardMap(position),
+            confidenceScore,
+            accuracyM: position.accuracyM ?? null,
           });
           const floorCode = position.floorCode;
           if (

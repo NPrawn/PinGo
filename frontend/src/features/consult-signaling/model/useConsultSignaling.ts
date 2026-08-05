@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getIceServers,
   publishConsultationFallbackEvent,
@@ -12,19 +12,11 @@ import type {
 } from '@/shared/api';
 import { createConsultEvent, parseConsultEvent } from '@/shared/types';
 import type { ConsultDataEvent, ConsultEventBody } from '@/shared/types';
-import {
-  captureConsultMicrophone,
-  peekConsultMedia,
-  swapConsultVideoTrack,
-} from './consultMedia';
+import { captureConsultMicrophone, peekConsultMedia, swapConsultVideoTrack } from './consultMedia';
 import { createConsultEventFallback } from './consultEventFallback';
 import type { ConsultEventFallback } from './consultEventFallback';
 import { signalingBaseUrl } from './signalingBaseUrl';
-import {
-  flushConsultPhaseReport,
-  markConsultPhase,
-  startRtcStatsMonitor,
-} from '@/shared/lib/perf';
+import { flushConsultPhaseReport, markConsultPhase, startRtcStatsMonitor } from '@/shared/lib/perf';
 import type { CaptionTrouble } from './captionTrouble';
 
 /** 서버가 한 번에 받는 전문 조각 수와 조각당 길이. 넘기면 400으로 거절된다. */
@@ -67,6 +59,9 @@ const MAX_TOKEN_REFRESH_ATTEMPTS = 3;
  * 다시 시도해도 달라지지 않으므로 멈추고 알린다.
  */
 const MAX_CAPTION_ERROR_STREAK = 3;
+const INTERIM_CAPTION_INTERVAL_MS = 200;
+const MAX_PENDING_FINAL_CAPTIONS = 50;
+const CAPTION_RESTART_DELAY_MS = 500;
 
 /**
  * 인식을 시작한 뒤 이만큼 아무 말도 못 알아들으면 무언가 잘못된 것으로 본다.
@@ -97,19 +92,25 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 type SignalingRole = 'USER' | 'COUNSELOR';
 type SignalingType =
-  | 'JOIN'
-  | 'LEAVE'
-  | 'OFFER'
-  | 'ANSWER'
-  | 'ICE_CANDIDATE'
-  | 'CAPTION'
-  | 'RENEGOTIATE'
-  | 'ERROR';
+  'JOIN' | 'LEAVE' | 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'CAPTION' | 'RENEGOTIATE' | 'ERROR';
 
 type CaptionPayload = {
   text: string;
   final: boolean;
   language: string;
+  captionId?: string;
+  occurredAt?: string;
+};
+
+type TranscriptTimelineEntry = {
+  segment: ConsultationTranscriptSegment;
+  captionId: string;
+  occurredAt: number;
+  order: number;
+};
+
+type TranscriptTimelineSegment = ConsultationTranscriptSegment & {
+  captionId: string;
 };
 
 /**
@@ -229,6 +230,13 @@ export function useConsultSignaling(
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
   /** DataChannel 이 열리지 않았을 때 상담 이벤트를 서버 편으로 보내는 우회로. */
   const eventFallbackRef = useRef<ConsultEventFallback | null>(null);
+  /** Keep final captions until the signaling and peer connections can relay them. */
+  const pendingFinalCaptionsRef = useRef<CaptionPayload[]>([]);
+  const captionSequenceRef = useRef(0);
+  useEffect(() => {
+    pendingFinalCaptionsRef.current = [];
+    captionSequenceRef.current = 0;
+  }, [roomId]);
   /**
    * 상담 이벤트 채널이 열려 있는지.
    *
@@ -264,6 +272,8 @@ export function useConsultSignaling(
    */
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [localCaption, setLocalCaption] = useState('');
+  const [localCaptionFinal, setLocalCaptionFinal] = useState(true);
+  const [localFinalCaptionId, setLocalFinalCaptionId] = useState<string | null>(null);
   const [remoteCaption, setRemoteCaption] = useState('');
   /** 상대가 말을 마친 마지막 문장. 번역은 이 값으로만 건다. */
   const [remoteFinalCaption, setRemoteFinalCaption] = useState('');
@@ -274,6 +284,7 @@ export function useConsultSignaling(
    * "옮길 준비가 끝난 문장"을 구분한다.
    */
   const [remoteCaptionFinal, setRemoteCaptionFinal] = useState(true);
+  const [remoteFinalCaptionId, setRemoteFinalCaptionId] = useState<string | null>(null);
   /**
    * 상대 쪽 음성 인식이 멈춘 이유. null 이면 정상이다.
    *
@@ -292,8 +303,28 @@ export function useConsultSignaling(
   /** 화면의 '자막 다시 시도'가 부를 함수. 연결을 끊지 않고 인식만 되살린다. */
   const restartCaptionsRef = useRef<() => void>(() => {});
   const restartCaptions = useCallback(() => restartCaptionsRef.current(), []);
-  const [transcript, setTranscript] = useState<ConsultationTranscriptSegment[]>([]);
+  const [transcriptEntries, setTranscriptEntries] = useState<TranscriptTimelineEntry[]>([]);
   const [transcriptRoomId, setTranscriptRoomId] = useState(roomId);
+  const transcriptTimeline = useMemo<TranscriptTimelineSegment[]>(
+    () =>
+      [...transcriptEntries]
+        .sort((left, right) => left.occurredAt - right.occurredAt || left.order - right.order)
+        .map((entry, index) => ({
+          ...entry.segment,
+          seq: index + 1,
+          captionId: entry.captionId,
+        })),
+    [transcriptEntries],
+  );
+  const transcript = useMemo(
+    () =>
+      transcriptTimeline.map((segment) => ({
+        seq: segment.seq,
+        speaker: segment.speaker,
+        content: segment.content,
+      })),
+    [transcriptTimeline],
+  );
   /** 서버가 준 STUN·TURN 설정. 받기 전에는 연결을 시작하지 않는다. */
   const [rtcConfig, setRtcConfig] = useState<RTCConfiguration | null>(null);
   /** 연결을 처음부터 다시 맺어야 할 때 올린다. 값이 바뀌면 아래 effect 가 통째로 다시 돈다. */
@@ -376,12 +407,12 @@ export function useConsultSignaling(
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
-    markConsultPhase('ICE 서버 조회 시작');   // LOGGING
+    markConsultPhase('ICE 서버 조회 시작'); // LOGGING
 
     void getIceServers(accessToken)
       .then((response) => {
         if (!cancelled) setRtcConfig(toRtcConfiguration(response));
-        markConsultPhase('ICE 서버 조회 완료');   // 추가
+        markConsultPhase('ICE 서버 조회 완료'); // 추가
       })
       .catch(() => {
         // 설정을 못 받았다고 상담을 포기할 수는 없다. 빌드 값으로라도 시도한다.
@@ -397,7 +428,9 @@ export function useConsultSignaling(
   // 한 번은 이전 전문이 그대로 보이므로 렌더 중에 맞춘다.
   if (transcriptRoomId !== roomId) {
     setTranscriptRoomId(roomId);
-    setTranscript([]);
+    setTranscriptEntries([]);
+    setLocalFinalCaptionId(null);
+    setRemoteFinalCaptionId(null);
   }
 
   useEffect(() => {
@@ -424,6 +457,8 @@ export function useConsultSignaling(
      */
     let reusedPreparedStream = false;
     let recognition: SpeechRecognitionLike | null = null;
+    let recognitionGeneration = 0;
+    let captionRestartTimer: number | undefined;
     let shouldRecognize = true;
     let socketOpened = false;
     // 메시지 처리가 서로 끼어들지 않게 한 줄로 세운다. OFFER를 적용하는 동안
@@ -525,7 +560,7 @@ export function useConsultSignaling(
        */
       videoSenderRef.current = peer.addTransceiver('video', { direction: 'sendrecv' }).sender;
     }
-    markConsultPhase('signaling 소켓 생성');   // 추가
+    markConsultPhase('signaling 소켓 생성'); // 추가
     const wsBase = signalingBaseUrl();
     const socket = new WebSocket(`${wsBase}/ws/signaling?token=${encodeURIComponent(accessToken)}`);
     const consultationId = roomId.startsWith('room_') ? roomId.slice('room_'.length) : roomId;
@@ -585,20 +620,40 @@ export function useConsultSignaling(
     /**
      * 확정된 자막만 상담 전문으로 쌓는다. 중간 결과는 말하는 도중 계속 고쳐 써서
      * 그대로 모으면 같은 문장이 여러 번 남는다.
+     *
+     * 발화 ID와 원본 시각은 화면에서 중복을 걸러 내고 양쪽 브라우저에서 도착 순서가 달라도
+     * 같은 타임라인으로 정렬하기 위해 함께 보관한다. 서버로 보낼 때는 API가 요구하는
+     * `seq`, `speaker`, `content`만 다시 꺼낸다.
      */
-    const appendFinalCaption = (speaker: SignalingRole, text: string) => {
+    const appendFinalCaption = (
+      speaker: SignalingRole,
+      text: string,
+      metadata: { captionId?: string; occurredAt?: string } = {},
+    ) => {
       const content = text.trim().slice(0, MAX_SEGMENT_LENGTH);
       if (!content) return;
 
-      setTranscript((previous) => {
+      const occurredAtValue = metadata.occurredAt ? Date.parse(metadata.occurredAt) : NaN;
+      const occurredAt = Number.isFinite(occurredAtValue) ? occurredAtValue : Date.now();
+      const captionId = metadata.captionId ?? `${speaker}:${occurredAt}:${content}`;
+
+      setTranscriptEntries((previous) => {
         // 앞부분이 요약에 더 중요하다. 한도를 넘으면 뒤를 버린다.
         if (previous.length >= MAX_TRANSCRIPT_SEGMENTS) return previous;
 
-        // 같은 문장을 두 번 확정해 보내는 브라우저가 있어 직전과 같은 말은 넘긴다.
-        const last = previous.at(-1);
-        if (last?.speaker === speaker && last.content === content) return previous;
+        // 재연결이나 서버 중계 재시도에서 같은 최종 자막이 다시 와도 한 번만 기록한다.
+        if (previous.some((entry) => entry.captionId === captionId)) return previous;
 
-        return [...previous, { seq: previous.length + 1, speaker, content }];
+        return [
+          ...previous,
+          {
+            captionId,
+            occurredAt,
+            // 중복·최대 개수 검사를 통과해 실제로 추가되는 경우에만 순서를 만든다.
+            order: previous.length,
+            segment: { seq: 0, speaker, content },
+          },
+        ];
       });
     };
     /** 잇따라 실패한 횟수. 한 번 알아들으면 0으로 돌아간다. */
@@ -606,6 +661,8 @@ export function useConsultSignaling(
     /** 한 번이라도 알아들었는지. 조용히 아무것도 못 듣는 상태를 가려낸다. */
     /** 상대에게 마지막으로 알린 자막 상태. 달라졌을 때만 다시 보낸다. */
     let captionStatus: CaptionTrouble | null = null;
+    let lastInterimCaptionSentAt = 0;
+    let lastInterimCaption = '';
 
     const sendCaptionStatus = () => send('CAPTION', { captionStatus });
 
@@ -644,7 +701,24 @@ export function useConsultSignaling(
      * `onerror` 도 오지 않아 화면에는 "인식하고 있습니다"만 떠 있고, 상담자는 자기 말이
      * 기록되는 줄 알고 상담을 끝낸다. 전문은 비어 있고 요약도 만들어지지 않는다.
      */
+    const scheduleRecognitionRestart = (instance: SpeechRecognitionLike, generation: number) => {
+      if (!shouldRecognize || disposed || captionRestartTimer !== undefined) return;
+
+      captionRestartTimer = window.setTimeout(() => {
+        captionRestartTimer = undefined;
+        if (!shouldRecognize || disposed || generation !== recognitionGeneration) return;
+
+        try {
+          instance.start();
+        } catch {
+          // Create a fresh instance when the browser has not released the old one yet.
+          startCaptions();
+        }
+      }, CAPTION_RESTART_DELAY_MS);
+    };
+
     const startCaptions = () => {
+      if (!shouldRecognize || disposed) return;
       const speechWindow = window as typeof window & {
         SpeechRecognition?: SpeechRecognitionConstructor;
         webkitSpeechRecognition?: SpeechRecognitionConstructor;
@@ -659,27 +733,80 @@ export function useConsultSignaling(
         return;
       }
 
-      recognition = new Recognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang =
+      const currentRecognition = new Recognition();
+      const generation = ++recognitionGeneration;
+      recognition = currentRecognition;
+      const processedFinalResultKeys = new Set<string>();
+      currentRecognition.continuous = true;
+      currentRecognition.interimResults = true;
+      currentRecognition.lang =
         role === 'COUNSELOR' ? 'ko-KR' : localSpeechLanguage || navigator.language || 'en-US';
-      recognition.onresult = (event) => {
-        // 누적 전문(`transcript` 상태)과 헷갈리지 않게 이번 결과 조각은 `spoken`으로 둔다.
-        let spoken = '';
-        let final = false;
+      currentRecognition.onresult = (event) => {
+        if (disposed || generation !== recognitionGeneration) return;
+        // `results`에는 이전 확정 결과도 남아 있을 수 있다. 이번 이벤트에서 바뀐 구간만
+        // 확정 결과와 중간 결과로 나눠 처리해야 이전 문장이 다음 문장에 다시 붙지 않는다.
+        const finalTexts: string[] = [];
+        let interimText = '';
         for (let index = event.resultIndex; index < event.results.length; index += 1) {
-          spoken += event.results[index][0].transcript;
-          final ||= event.results[index].isFinal;
+          const result = event.results[index];
+          const fragment = result[0].transcript;
+          if (result.isFinal) {
+            const finalResultKey = `${index}:${fragment.trim()}`;
+            if (processedFinalResultKeys.has(finalResultKey)) continue;
+            processedFinalResultKeys.add(finalResultKey);
+            finalTexts.push(fragment);
+          } else interimText += fragment;
         }
-        const text = spoken.trim();
-        if (!text) return;
+        const finalTextValues = finalTexts.map((text) => text.trim()).filter(Boolean);
+        const interimTextValue = interimText.trim();
+        if (finalTextValues.length === 0 && !interimTextValue) return;
         // 한 번이라도 알아들었으면 앞의 실패는 지나간 일이다.
         captionErrorStreak = 0;
         reportCaptionStatus(null, null);
-        setLocalCaption(text);
-        if (final) appendFinalCaption(role, text);
-        send('CAPTION', { text, final, language: recognition?.lang ?? navigator.language });
+
+        // 한 이벤트에 확정 결과가 여러 개 들어오면 각각의 발화 ID를 유지한다. 하나로 합치면
+        // 나중에 같은 문장이 다시 확정되는 것처럼 보이고, 타임라인 한 칸에 서로 다른 발화가
+        // 붙는다.
+        let lastFinalCaptionId: string | null = null;
+        for (const text of finalTextValues) {
+          const occurredAt = new Date().toISOString();
+          const captionId = `${roomId}:${role}:${occurredAt}:${captionSequenceRef.current++}`;
+          lastFinalCaptionId = captionId;
+          appendFinalCaption(role, text, { captionId, occurredAt });
+          sendCaption({
+            text,
+            final: true,
+            language: currentRecognition.lang || navigator.language,
+            captionId,
+            occurredAt,
+          });
+        }
+
+        if (interimTextValue) {
+          setLocalCaption(interimTextValue);
+          setLocalCaptionFinal(false);
+          setLocalFinalCaptionId(null);
+          const now = Date.now();
+          if (
+            now - lastInterimCaptionSentAt < INTERIM_CAPTION_INTERVAL_MS ||
+            interimTextValue === lastInterimCaption
+          ) {
+            return;
+          }
+          lastInterimCaptionSentAt = now;
+          lastInterimCaption = interimTextValue;
+          sendCaption({
+            text: interimTextValue,
+            final: false,
+            language: currentRecognition.lang || navigator.language,
+          });
+          return;
+        }
+
+        setLocalCaption(finalTextValues.at(-1) ?? '');
+        setLocalCaptionFinal(true);
+        setLocalFinalCaptionId(lastFinalCaptionId);
+        lastInterimCaption = '';
       };
       /**
        * 왜 인식이 안 되는지 화면에 남긴다.
@@ -690,7 +817,8 @@ export function useConsultSignaling(
        * 없는 빌드도 늘 이 오류가 난다. 그때 화면에는 "인식하고 있습니다"만 떠 있어서,
        * 상담자는 자기 말이 기록되는 줄 알고 상담을 끝냈고 전문은 비어 있었다.
        */
-      recognition.onerror = (event) => {
+      currentRecognition.onerror = (event) => {
+        if (disposed || generation !== recognitionGeneration) return;
         // 말이 끊긴 것뿐이다. 브라우저가 곧 `onend` 를 부르고 아래에서 다시 시작한다.
         if (event.error === 'no-speech' || event.error === 'aborted') return;
 
@@ -726,19 +854,22 @@ export function useConsultSignaling(
        * 마이크만 쓰는 일이라 소켓과 상관이 없는데, 소켓이 한 번 끊기면 통화가 멀쩡히
        * 이어지는 중에도 상담 메모가 그대로 멈춰 버렸다.
        */
-      recognition.onend = () => {
-        if (!shouldRecognize || disposed) return;
+      currentRecognition.onend = () => {
+        if (!shouldRecognize || disposed || generation !== recognitionGeneration) return;
         try {
-          recognition?.start();
+          scheduleRecognitionRestart(currentRecognition, generation);
         } catch {
           // The browser can still be winding down the previous recognition session.
         }
       };
       try {
-        recognition.start();
+        currentRecognition.start();
       } catch {
-        setCaptionsSupported(false);
-        reportCaptionStatus('stopped', '음성 인식을 시작하지 못했습니다. 상담 내용이 기록되지 않습니다.');
+        scheduleRecognitionRestart(currentRecognition, generation);
+        reportCaptionStatus(
+          'stopped',
+          '음성 인식을 시작하지 못했습니다. 상담 내용이 기록되지 않습니다.',
+        );
       }
     };
 
@@ -753,8 +884,11 @@ export function useConsultSignaling(
       captionErrorStreak = 0;
       setCaptionsSupported(true);
       reportCaptionStatus(null, null);
+      recognitionGeneration += 1;
+      const previousRecognition = recognition;
+      recognition = null;
       try {
-        recognition?.stop();
+        previousRecognition?.stop();
       } catch {
         // 이미 멈춰 있으면 그대로 두고 새로 시작한다.
       }
@@ -762,7 +896,7 @@ export function useConsultSignaling(
     };
 
     const send = (type: SignalingType, payload?: unknown) => {
-      if (socket.readyState !== WebSocket.OPEN) return;
+      if (socket.readyState !== WebSocket.OPEN) return false;
       const message: SignalingMessage = {
         sessionId: roomId,
         senderType: role,
@@ -770,7 +904,38 @@ export function useConsultSignaling(
         payload,
         timestamp: new Date().toISOString(),
       };
-      socket.send(JSON.stringify(message));
+      try {
+        socket.send(JSON.stringify(message));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const flushPendingFinalCaptions = () => {
+      if (socket.readyState !== WebSocket.OPEN || peer.connectionState !== 'connected') return;
+      const pending = pendingFinalCaptionsRef.current.splice(0);
+      pending.forEach((payload) => {
+        if (!send('CAPTION', payload)) pendingFinalCaptionsRef.current.push(payload);
+      });
+    };
+
+    const sendCaption = (payload: CaptionPayload) => {
+      if (
+        payload.final &&
+        (socket.readyState !== WebSocket.OPEN || peer.connectionState !== 'connected')
+      ) {
+        if (pendingFinalCaptionsRef.current.length < MAX_PENDING_FINAL_CAPTIONS) {
+          pendingFinalCaptionsRef.current.push(payload);
+        }
+        return;
+      }
+
+      if (!send('CAPTION', payload) && payload.final) {
+        if (pendingFinalCaptionsRef.current.length < MAX_PENDING_FINAL_CAPTIONS) {
+          pendingFinalCaptionsRef.current.push(payload);
+        }
+      }
     };
 
     const addRemoteCandidate = async (candidate: RTCIceCandidateInit) => {
@@ -801,8 +966,8 @@ export function useConsultSignaling(
 
       if (peer.signalingState === 'have-local-offer' && peer.localDescription) {
         send('OFFER', peer.localDescription.toJSON());
-        markConsultPhase('OFFER 재전송');   // 추가
-       localCandidates.forEach((candidate) => send('ICE_CANDIDATE', candidate));
+        markConsultPhase('OFFER 재전송'); // 추가
+        localCandidates.forEach((candidate) => send('ICE_CANDIDATE', candidate));
         return;
       }
       if (peer.signalingState !== 'stable') return;
@@ -810,7 +975,7 @@ export function useConsultSignaling(
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
       send('OFFER', offer);
-      markConsultPhase('OFFER 최초 전송');   // 추가
+      markConsultPhase('OFFER 최초 전송'); // 추가
     };
 
     /**
@@ -845,7 +1010,7 @@ export function useConsultSignaling(
       if (disposed) return;
       setStatus(peer.connectionState);
       if (peer.connectionState === 'connected') {
-        markConsultPhase('연결 완료(connected)');   // 추가
+        markConsultPhase('연결 완료(connected)'); // 추가
         flushConsultPhaseReport(); // 추가 — 여기서 표로 출력
         if (offerTimer) window.clearInterval(offerTimer);
         if (recoverTimer) window.clearTimeout(recoverTimer);
@@ -861,6 +1026,7 @@ export function useConsultSignaling(
         stopRtcStatsMonitor ??= startRtcStatsMonitor(peer);
         // 상대가 확실히 방에 있는 시점이다. 붙기 전에 보낸 자막 경고는 버려졌으므로 다시 알린다.
         resendCaptionStatus();
+        flushPendingFinalCaptions();
       }
       if (peer.connectionState === 'failed') {
         publishMediaFailure('VIDEO_FAILED', 'peer_connection_failed');
@@ -950,7 +1116,7 @@ export function useConsultSignaling(
 
     socket.onopen = async () => {
       socketOpened = true;
-      markConsultPhase('소켓 open, JOIN 전송');   // 추가
+      markConsultPhase('소켓 open, JOIN 전송'); // 추가
       // 붙었으니 토큰은 멀쩡하다. 다음에 거절당하면 다시 처음부터 셈한다.
       tokenRefreshAttemptsRef.current = 0;
       setStatus('signaling');
@@ -970,9 +1136,9 @@ export function useConsultSignaling(
          * 멈춰 있다. 예전에는 그 뒤에 offer 를 만들었기 때문에, 장치 하나가 상담 전체를
          * 세워 버렸다 — `연결 상태: signaling` 에서 더 나아가지 못하던 것이 이것이다.
          */
-        markConsultPhase('미디어 캡처 시작');   // 추가
+        markConsultPhase('미디어 캡처 시작'); // 추가
         const stream = await withTimeout(captureLocalStream(), MEDIA_CAPTURE_TIMEOUT_MS);
-        markConsultPhase('미디어 캡처 완료');   // 추가
+        markConsultPhase('미디어 캡처 완료'); // 추가
         /**
          * 기다리는 사이에 화면을 벗어났으면 여기서 직접 끈다.
          *
@@ -1016,7 +1182,7 @@ export function useConsultSignaling(
         }
       } catch (cause) {
         const timedOut = cause instanceof Error && cause.message === 'media_capture_timeout';
-        markConsultPhase(timedOut ? '미디어 캡처 타임아웃(8초)' : '미디어 캡처 실패');   // 추가
+        markConsultPhase(timedOut ? '미디어 캡처 타임아웃(8초)' : '미디어 캡처 실패'); // 추가
         if (!disposed) {
           setMediaError(
             timedOut
@@ -1041,7 +1207,7 @@ export function useConsultSignaling(
        * 남아 무엇이 잘못됐는지 알 수 없었다.
        */
       markMediaReady();
-      markConsultPhase('협상 시작');   // 추가
+      markConsultPhase('협상 시작'); // 추가
       await startNegotiation();
     };
 
@@ -1095,7 +1261,7 @@ export function useConsultSignaling(
         await peer.setLocalDescription(answer);
         answeredOfferSdp = offer.sdp ?? '';
         send('ANSWER', answer);
-        markConsultPhase('ANSWER 전송');   // 추가
+        markConsultPhase('ANSWER 전송'); // 추가
         return;
       }
       if (message.type === 'ANSWER' && role === 'COUNSELOR') {
@@ -1141,8 +1307,16 @@ export function useConsultSignaling(
         setRemoteCaptionError(null);
         setRemoteCaption(caption.text);
         setRemoteCaptionFinal(Boolean(caption.final));
+        // 중간 결과에서는 직전 확정 ID를 유지한다. 실시간 번역문과 현재 원문을 함께 보여 주는 동안
+        // 같은 확정문을 로그에서 숨겨 중복 렌더링을 막는다.
         if (caption.final) {
-          appendFinalCaption(remoteRole, caption.text);
+          const captionId =
+            caption.captionId ?? `${remoteRole}:${message.timestamp}:${caption.text}`;
+          appendFinalCaption(remoteRole, caption.text, {
+            captionId,
+            occurredAt: caption.occurredAt ?? message.timestamp,
+          });
+          setRemoteFinalCaptionId(captionId);
           // 번역은 확정된 문장만 건다. 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라진다.
           setRemoteFinalCaption(caption.text);
         }
@@ -1223,12 +1397,23 @@ export function useConsultSignaling(
      * 오류 없이 시작되고도 소리를 한 조각도 받지 못하는 일이 있다. 그러면 화면에는 아무
      * 경고도 없이 자막만 영영 비어 있다. 인식을 먼저 걸어 두면 이 순서 문제를 피한다.
      */
-    startCaptions();
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    if (!speechWindow.SpeechRecognition && !speechWindow.webkitSpeechRecognition) {
+      startCaptions();
+    } else {
+      void mediaReady.then(() => {
+        if (!disposed) startCaptions();
+      });
+    }
 
     return () => {
       disposed = true;
       if (offerTimer) window.clearInterval(offerTimer);
       if (recoverTimer) window.clearTimeout(recoverTimer);
+      if (captionRestartTimer) window.clearTimeout(captionRestartTimer);
       stopRtcStatsMonitor?.();
       /**
        * 다시 맺는 중이면 자리를 비운다고 알리지 않는다.
@@ -1238,6 +1423,7 @@ export function useConsultSignaling(
        */
       if (!rebuildingRef.current) send('LEAVE');
       shouldRecognize = false;
+      recognitionGeneration += 1;
       recognition?.stop();
       dataChannelRef.current = null;
       setEventChannelOpen(false);
@@ -1253,7 +1439,15 @@ export function useConsultSignaling(
       }
       if (!reusedPreparedStream) localStream?.getTracks().forEach((track) => track.stop());
     };
-  }, [accessToken, attachRemoteStream, connectionEpoch, localSpeechLanguage, role, roomId, rtcConfig]);
+  }, [
+    accessToken,
+    attachRemoteStream,
+    connectionEpoch,
+    localSpeechLanguage,
+    role,
+    roomId,
+    rtcConfig,
+  ]);
 
   /**
    * 상담 이벤트를 상대에게 보낸다.
@@ -1355,9 +1549,12 @@ export function useConsultSignaling(
      */
     reconnecting,
     localCaption,
+    localCaptionFinal,
+    localFinalCaptionId,
     remoteCaption,
     /** 상대가 말을 마친 마지막 문장. 번역에 쓴다. */
     remoteFinalCaption,
+    remoteFinalCaptionId,
     /** `remoteCaption` 이 말을 마친 문장인지. 거짓이면 상대가 지금 말하는 중이다. */
     remoteCaptionFinal,
     /** 상대 쪽 음성 인식이 멈춘 이유. null 이면 정상이다. */
@@ -1369,6 +1566,8 @@ export function useConsultSignaling(
     restartCaptions,
     /** 상담 종료 뒤 서버에 넘길 확정 자막. 말한 순서대로 쌓인다. */
     transcript,
+    /** 실시간 영역에서 현재 확정 발화를 타임라인과 구분할 때 쓰는 식별자를 포함한다. */
+    transcriptTimeline,
     sendConsultEvent,
     /** 상담 이벤트 채널이 열렸는지. 상태 스냅숏을 다시 보내야 할 시점이다. */
     eventChannelOpen,

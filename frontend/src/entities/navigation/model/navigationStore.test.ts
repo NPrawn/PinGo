@@ -22,12 +22,15 @@ describe('useNavigationStore.setCurrentLocation', () => {
       nodeId: 12,
       floorId: 3,
       label: '3번 개찰구',
+      labelEn: 'Fare Gate 3',
       mapX: 10,
       mapY: 20,
     });
 
     expect(useNavigationStore.getState().currentForwardMap).toEqual({ x: 0.6, y: 0.8 });
     expect(useNavigationStore.getState().currentNodeId).toBe(12);
+    expect(useNavigationStore.getState().currentLocationLabel).toBe('3번 개찰구');
+    expect(useNavigationStore.getState().currentLocationLabelEn).toBe('Fare Gate 3');
   });
 
   /** 다시 인식해 방향이 실제로 달라졌으면 그 값으로 바꾼다. */
@@ -41,9 +44,7 @@ describe('useNavigationStore.setCurrentLocation', () => {
 
   /** 방향을 잃었다는 것을 알릴 길도 남긴다. `null` 을 명시하면 지운다. */
   it('null 을 명시하면 방향을 지운다', () => {
-    useNavigationStore
-      .getState()
-      .setCurrentLocation({ nodeId: 12, floorId: 3, forwardMap: null });
+    useNavigationStore.getState().setCurrentLocation({ nodeId: 12, floorId: 3, forwardMap: null });
 
     expect(useNavigationStore.getState().currentForwardMap).toBeNull();
   });

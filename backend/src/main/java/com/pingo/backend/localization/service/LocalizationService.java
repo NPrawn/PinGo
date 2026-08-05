@@ -95,7 +95,9 @@ public class LocalizationService {
                     anchored.map(LocalizationService::toPosition).orElse(null),
                     anchored.map(AnchoredLocation::startNodeId).orElse(null),
                     anchored.map(AnchoredLocation::startNodeLabel).orElse(null),
+                    anchored.map(AnchoredLocation::startNodeLabelEn).orElse(null),
                     candidate,
+                    confidenceScore(aiResponse),
                     fallbackPolicy.optionsFor(finalStatus),
                     processingTimeMs(aiResponse)
             );
@@ -201,6 +203,7 @@ public class LocalizationService {
                 toPosition(value),
                 value.startNodeId(),
                 value.startNodeLabel(),
+                value.startNodeLabelEn(),
                 score
         );
     }
@@ -232,9 +235,22 @@ public class LocalizationService {
                 null,
                 null,
                 null,
+                null,
+                null,
                 fallbackPolicy.optionsFor(resultStatus),
                 processingTimeMs
         );
+    }
+
+    private static Double confidenceScore(AiLocalizationResponse aiResponse) {
+        if (aiResponse == null || aiResponse.quality() == null) {
+            return null;
+        }
+        Double score = aiResponse.quality().confidenceScore();
+        if (score == null || !Double.isFinite(score) || score < 0.0 || score > 1.0) {
+            return null;
+        }
+        return score;
     }
 
     private Integer processingTimeMs(AiLocalizationResponse aiResponse) {
