@@ -72,6 +72,8 @@ interface IndoorMapViewProps {
   showAllFacilities?: boolean;
   /** 이름을 함께 보여줄 시설. */
   selectedFacilityId?: number | null;
+  /** 목적지인 경로 노드. 그 노드에 연결된 시설 아이콘을 도착지로 표시한다. */
+  destinationNodeId?: number | null;
   /** 시설 마커를 눌렀을 때. */
   onSelectFacility?: (facility: Facility) => void;
   /**
@@ -172,6 +174,7 @@ export function IndoorMapView({
   facilityType,
   showAllFacilities = false,
   selectedFacilityId,
+  destinationNodeId,
   onSelectFacility,
   followCamera = false,
   rotateWithHeading = true,
@@ -400,6 +403,7 @@ export function IndoorMapView({
           connectCurrentToRoute={connectCurrentToRoute}
           facilities={facilities}
           selectedFacilityId={selectedFacilityId}
+          destinationNodeId={destinationNodeId}
           onSelectFacility={onSelectFacility}
           /* 지도가 커져도 마커는 화면상 크기를 유지한다. 확대는 도면을 크게 보려는 조작이고,
              마커까지 커지면 가리는 면적만 늘어난다. */
@@ -478,6 +482,7 @@ function MapOverlay({
   connectCurrentToRoute,
   facilities,
   selectedFacilityId,
+  destinationNodeId,
   onSelectFacility,
   viewScale,
   mapRotationDeg,
@@ -496,6 +501,7 @@ function MapOverlay({
   connectCurrentToRoute?: boolean;
   facilities?: readonly Facility[];
   selectedFacilityId?: number | null;
+  destinationNodeId?: number | null;
   onSelectFacility?: (facility: Facility) => void;
   viewScale: number;
   mapRotationDeg: number;
@@ -529,6 +535,7 @@ function MapOverlay({
       connectCurrentToRoute={connectCurrentToRoute}
       facilities={facilities}
       selectedFacilityId={selectedFacilityId}
+      destinationNodeId={destinationNodeId}
       onSelectFacility={onSelectFacility}
       viewScale={viewScale}
       mapRotationDeg={mapRotationDeg}

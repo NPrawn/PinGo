@@ -255,7 +255,7 @@ export const ko = {
         cannotAddDestination: '현재 목적지는 추가 불가', alreadyWaypoint: '이미 추가된 경유지', notRoutable: '경유지로 지정할 수 없는 곳', waypointLimit: '경유지 2개 추가 완료', addWaypoint: '경유지로 추가',
         registeredWaypoint: '경유지로 등록된 장소', currentDestination: '현재 목적지', setDestination: '새 목적지로 설정', currentRoute: '현재 경로',
         removeWaypoint: '{{name}} 경유지 삭제', waypoint: '경유 {{order}}', restoreDestination: '목적지를 {{destination}}로 되돌리기', restoreDestinationTitle: '처음 목적지 {{destination}}로 되돌리기',
-        relocalize: '현재 위치 다시 인식', relocalizeShort: '재인식', floorSelect: '층 선택', facilityFilter: '시설 필터',
+        relocalize: '위치 재촬영하기', relocalizeShort: '위치 재촬영', floorSelect: '층 선택', facilityFilter: '시설 필터',
         filterOff: '{{name}} 필터 해제', filterOn: '{{name}} 필터 적용', showFacilities: '시설 아이콘 다시 보기', hideFacilities: '시설 아이콘 모두 숨기기',
         mapHint: '지도 시설을 눌러 경유지 추가', move: '이동', stepMeta: '{{distance}}m · 약 {{minutes}}분', arriveExit: '{{exit}} 도착', toward: '{{destination}} 방면', details: '상세 경로', arrived: '도착',
       },

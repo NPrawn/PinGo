@@ -261,7 +261,7 @@ export const en = {
         cannotAddDestination: 'Current destination cannot be added', alreadyWaypoint: 'Already added as a waypoint', notRoutable: 'Cannot be used as a waypoint', waypointLimit: 'Two waypoints added', addWaypoint: 'Add waypoint',
         registeredWaypoint: 'Already a waypoint', currentDestination: 'Current destination', setDestination: 'Set as new destination', currentRoute: 'Current route',
         removeWaypoint: 'Remove {{name}} waypoint', waypoint: 'Stop {{order}}', restoreDestination: 'Restore destination to {{destination}}', restoreDestinationTitle: 'Restore original destination {{destination}}',
-        relocalize: 'Locate me again', relocalizeShort: 'Relocate', floorSelect: 'Select floor', facilityFilter: 'Facility filters',
+        relocalize: 'Rescan location', relocalizeShort: 'Rescan', floorSelect: 'Select floor', facilityFilter: 'Facility filters',
         filterOff: 'Turn off {{name}} filter', filterOn: 'Apply {{name}} filter', showFacilities: 'Show facility icons', hideFacilities: 'Hide all facility icons',
         mapHint: 'Select a map facility to add a waypoint', move: 'Move', stepMeta: '{{distance}}m · about {{minutes}} min', arriveExit: 'Arrive at {{exit}}', toward: 'Toward {{destination}}', details: 'Route details', arrived: 'Arrived',
       },

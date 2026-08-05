@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -231,17 +231,26 @@ export function NavigationPage() {
   /**
    * 안내 진입 시점의 확정 실내 위치. 위치 인식(FR-U-004)이 앵커링해 준 좌표다.
    *
-   * **첫 렌더 값에 고정한다.** 296 훅이 이 값을 진입 시점에 고정된 입력으로 다루므로(앵커가
-   * 생긴 뒤 바꾸면 조용히 무시된다) 렌더마다 새 객체를 만들면 앵커 발화 effect가 불필요하게
-   * 다시 돈다. 지연 초기화 `useState`를 쓰는 이유는 ref를 렌더 중에 읽지 않기 위해서다.
+   * **좌표가 같은 동안 같은 객체여야 한다.** 296 훅이 이 값을 앵커 발화 effect의 입력으로 쓰므로,
+   * 렌더마다 새 객체를 만들면 좌표가 그대로인데도 effect가 다시 돈다. 그것을 막는 것이 목적이다.
+   *
+   * 값 자체를 첫 렌더에 **고정하지는 않는다.** 예전에는 `useState`로 얼려 뒀는데 그럴 이유가 없다 —
+   * 앵커가 생긴 뒤에는 훅이 이 값의 변화를 어차피 무시하고(그래서 실기기 동작은 같다), 앵커가 없는
+   * 동안에는 훅이 이 값을 그대로 현재 위치로 돌려주므로 얼려 두면 스토어와 화면이 어긋난다.
+   * 얼려 둔 탓에 개발 도구로 위치를 옮겨도 마커가 그 자리에 남아 새로고침해야 했다.
+   *
+   * 안내 중에 이 값이 바뀌는 경로는 실기기에 없다. 재인식은 U-04·U-05를 거쳐 오므로 이 화면이
+   * 다시 마운트된다.
    *
    * 좌표 정합이 없는 층(역삼역 B1)은 위치 인식이 좌표를 주지 못해 null이다. 그때는 XR 앵커링
    * 없이 안내만 한다 — 훅이 null을 그대로 받는다.
    */
-  const [confirmedLocation] = useState<IndoorPoint | null>(() =>
-    currentFloorId != null && currentMapX != null && currentMapY != null
-      ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
-      : null,
+  const confirmedLocation = useMemo<IndoorPoint | null>(
+    () =>
+      currentFloorId != null && currentMapX != null && currentMapY != null
+        ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
+        : null,
+    [currentFloorId, currentMapX, currentMapY],
   );
   const [confirmedForwardMap] = useState(() => currentForwardMap);
   const xrDistanceScale = routeDistanceScaleOf(routeResult, confirmedLocation?.floorId);
@@ -345,6 +354,37 @@ export function NavigationPage() {
       setRouteProgress(routeKey, progress.travelledM);
     }
   }, [progressKey, routeKey, progress.travelledM, storedTravelledM, setRouteProgress]);
+
+  /** 상세 경로의 스크롤 칸과 지금 걷는 줄. 아래 effect가 둘을 맞춰 놓는다. */
+  const stepsListRef = useRef<HTMLDivElement | null>(null);
+  const activeStepRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * 지금 걷는 구간을 보이는 칸의 맨 위로 올린다. (S15P11A206-206)
+   *
+   * 칸이 150px이라 두 줄 반만 보인다. 걸어가면 강조된 줄이 아래로 내려가다 칸 밖으로 나가고,
+   * 그러면 목록에 남는 것은 이미 지나온 구간뿐이다 — 정작 지금 무엇을 해야 하는지가 화면에서
+   * 사라진다. 사용자는 목록을 직접 굴려 찾아야 했다.
+   *
+   * **맨 위에 붙인다.** 가운데에 두면 위쪽 절반을 지나온 구간이 차지하는데, 걷는 사람에게 필요한
+   * 것은 앞으로 갈 구간이다. 지도의 시점 추종이 내 위치를 화면 아래쪽에 두는 것과 같은 이유다.
+   *
+   * 부드럽게 움직이는 것은 CSS(`scroll-behavior`)에 맡긴다. 여기서 `scrollTo`에 옵션을 주면
+   * jsdom이 구현하지 않아 테스트마다 경고가 쌓인다.
+   */
+  useEffect(() => {
+    const list = stepsListRef.current;
+    const active = activeStepRef.current;
+
+    /*
+      경로에서 벗어난 동안에는 강조된 줄이 없다. 그때 옛 줄로 끌어당기면, 이탈해서 아무 줄도
+      강조되지 않은 목록이 엉뚱한 자리에 멈춰 선다.
+    */
+    if (!list || !active || progress.offRoute) return;
+
+    // `.steps`가 `position: relative`라 이 값이 곧 스크롤 좌표다.
+    list.scrollTop = active.offsetTop;
+  }, [progress.currentStepIndex, progress.offRoute, stepsOpen]);
 
   /** 지금 안내할 구간. 예전에는 `steps[0]`에 고정돼 걸어도 안내가 넘어가지 않았다. */
   const activeStep =
@@ -476,7 +516,7 @@ export function NavigationPage() {
    * 조회를 끄는데, 꺼진 쿼리는 `isPending`에 머무른다. 그것을 로딩으로 읽으면 카드가
    * `경로 계산 중`에서 영구히 멈춘다.
    */
-  const instruction = ((): { eyebrow: string; title: string; meta: string } => {
+  const instruction = ((): { eyebrow?: string; title: string; meta: string } => {
     if (currentNodeId == null) {
       return {
         eyebrow: t('user.navigation.preparing'),
@@ -550,17 +590,47 @@ export function NavigationPage() {
     const nextDistance = progress.offRoute
       ? (activeStep.distanceM ?? 0)
       : (progress.stepRemainingM ?? activeStep.distanceM ?? 0);
+    /** 보여줄 문장이 있는지. 없으면 거리를 채울 것도 없다. */
+    const hasInstruction = activeStep.instructionTemplate != null || activeStep.instruction != null;
 
     return {
       /*
         다시 계산하는 동안에만 그렇게 적는다. 예전에는 한 번 경유지를 건드리면 안내가 끝날
         때까지 `경로 업데이트 완료`에 머물러, 다음 지점까지 몇 미터인지가 영영 사라졌다.
+
+        **문장이 거리를 품으면 이 줄을 두지 않는다.** (S15P11A206-206)
+
+        `24m 직진하세요` 위에 `다음 안내 · 24m`이 붙어 같은 숫자가 두 번 나왔다. 상세 경로는
+        이미 같은 규칙으로 그린다 — 문장이 거리를 품는 구간은 문장 안에만, 품지 않는 구간
+        (층 이동·개찰구)은 따로 적는다(`carriesDistance`). 카드에는 따로 적을 칸이 없으므로
+        그 자리를 이 줄이 맡는다.
+
+        그래서 엘리베이터·계단 구간에서는 남는다. 거기서는 중복이 아니라 카드의 유일한 거리
+        표시다 — 지우면 몇 m 뒤에 타야 하는지가 화면에서 사라진다.
       */
       eyebrow:
         recalculated && routeQuery.isFetching
           ? t('user.navigation.recalculating')
-          : t('user.navigation.nextDistance', { distance: Math.round(nextDistance) }),
-      title: activeStep.instruction ?? t('user.navigation.followRoute'),
+          : carriesDistance(activeStep)
+            ? undefined
+            : t('user.navigation.nextDistance', { distance: Math.round(nextDistance) }),
+      /*
+        **문장에 남은 거리를 채워 넣는다.** (S15P11A206-206)
+
+        예전에는 `activeStep.instruction`을 그대로 썼다. 그 문장에는 구간 전체 길이가 박혀 있어
+        (`instructionAt` 주석) 아래 상세 경로가 같은 구간을 남은 거리로 다시 쓰는 것과 어긋났다 —
+        한 화면에서 카드는 `32m 직진하세요`, 목록은 `24m 직진하세요`였다. 어느 쪽을 믿어야 하는지
+        알 수 없고, 카드 쪽 숫자는 걸어도 줄지 않으므로 틀린 쪽이 카드다.
+
+        위 `nextDistance`를 그대로 넘긴다. 상세 경로의 강조된 줄도 같은 값을 쓰므로 둘이 반드시
+        같은 문장이 된다.
+
+        문장이 아예 없을 때만 번역된 대체 문구로 간다. `instructionAt`의 마지막 수단은
+        `moveType`(`walkway` 같은 원본 코드)이라 사용자에게 보일 말이 아니다.
+      */
+      title: hasInstruction
+        ? instructionAt(activeStep, nextDistance)
+        : t('user.navigation.followRoute'),
       meta:
         totalMinutes === null
           ? t('user.navigation.totalDistance', { distance: totalDistance })
@@ -613,89 +683,6 @@ export function NavigationPage() {
             onConfirm={startXrSession}
             onContinueWithoutTracking={continueWithoutTracking}
           />
-        ) : selectedFacility ? (
-          <Sheet
-            label={t('user.navigation.facilityRoute', { name: selectedFacilityName })}
-            onDismiss={() => setSelectedFacility(null)}
-          >
-            <div className={styles.sheetHandle} aria-hidden />
-            <div className={styles.sheetHead}>
-              <span className={styles.sheetIcon}>
-                <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
-              </span>
-              <div>
-                <h2>{selectedFacilityName}</h2>
-                {/* 목업이던 거리·층 설명 대신 응답에 있는 값을 쓴다. 거리는 경로 계산(297)이
-                    붙으면 넣는다 — 지금 임의로 만들면 틀린 숫자를 보여주게 된다. */}
-                <p>
-                  {selectedFacility.isAccessible
-                    ? t('user.navigation.accessible')
-                    : t('user.navigation.mayHaveStairs')}
-                </p>
-              </div>
-            </div>
-            <p className={styles.sheetNote}>{t('user.navigation.waypointNote')}</p>
-            <div className={styles.sheetActions}>
-              <Button
-                disabled={
-                  waypoints.length >= 2 ||
-                  selectedFacilityIsWaypoint ||
-                  selectedFacilityIsDestination ||
-                  !selectedFacilityRoutable
-                }
-                onClick={() => {
-                  if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  if (selectedFacility.linkedNodeId == null) return;
-                  addWaypoint({
-                    nodeId: selectedFacility.linkedNodeId,
-                    nameKo: selectedFacility.nameKo,
-                  });
-                  setRecalculated(true);
-                  setSelectedFacility(null);
-                }}
-              >
-                {selectedFacilityIsDestination
-                  ? t('user.navigation.cannotAddDestination')
-                  : selectedFacilityIsWaypoint
-                    ? t('user.navigation.alreadyWaypoint')
-                    : !selectedFacilityRoutable
-                      ? t('user.navigation.notRoutable')
-                      : waypoints.length >= 2
-                        ? t('user.navigation.waypointLimit')
-                        : t('user.navigation.addWaypoint')}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={selectedFacilityIsWaypoint || selectedFacilityIsDestination}
-                onClick={() => {
-                  if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
-                  setDestination(selectedFacility.nameKo);
-                  setActiveDestination(selectedFacility.nameKo);
-                  // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
-                  setPickedDestination(selectedFacility);
-                  /**
-                   * 도착 노드도 그 시설로 옮긴다.
-                   *
-                   * `setDestination`은 이름만 바꾸고 도착 노드를 비운다 — 이름과 노드가 다른
-                   * 곳을 가리키는 것을 막기 위해서다. 여기서는 고른 시설의 노드를 알고 있으므로
-                   * 곧바로 채워 경로를 다시 계산하게 한다. 비워 둔 채로 두면 안내 카드가
-                   * "목적지를 선택해 주세요"로 돌아가 방금 고른 것이 무시된 것처럼 보인다.
-                   */
-                  if (selectedFacility.linkedNodeId != null) {
-                    setTargetNode(selectedFacility.linkedNodeId, selectedFacility.nameKo);
-                  }
-                  setRecalculated(true);
-                  setSelectedFacility(null);
-                }}
-              >
-                {selectedFacilityIsWaypoint
-                  ? t('user.navigation.registeredWaypoint')
-                  : selectedFacilityIsDestination
-                    ? t('user.navigation.currentDestination')
-                    : t('user.navigation.setDestination')}
-              </Button>
-            </div>
-          </Sheet>
         ) : undefined
       }
     >
@@ -784,12 +771,45 @@ export function NavigationPage() {
             </div>
           </div>
 
+          {/*
+            U-10의 "현재 위치 다시 촬영". 주변을 다시 촬영해 위치를 새로 확정하는 흐름이므로
+            U-04로 나간다(화면 정의서 U-10 사용자 액션).
+
+            **지도가 아니라 카메라 화면 아래쪽에 둔다.** 지도 위에 있으면 도면을 가리고
+            `내 위치`·시설 숨기기와 같은 모서리를 다툰다. 상단 바에 두면 뒤로·추적 배지·상담과
+            네 개가 한 줄에 몰려 좁은 화면에서 서로 붙는다. (S15P11A206-206)
+
+            **세션이 끊기고 앵커가 사라지는 것이 정상이다.** 이 버튼을 누르는 상황은 이미
+            위치를 신뢰할 수 없는 상태(경로 이탈, 엘리베이터 하차 등)라 지킬 앵커가 없다.
+            앵커를 유지한 채 좌표만 갱신하는 세션 안 위치 인식은 이것과 별개이며, 그쪽은
+            camera-access로 프레임을 얻어 화면을 벗어나지 않는다(11.8).
+
+            돌아오는 경로는 스토어의 relocalizing 표시가 담당한다 — U-05의 기본 CTA가 경로
+            옵션 선택이라, 표시가 없으면 목적지를 다시 고르는 화면부터 밟게 된다.
+          */}
+          <button
+            type="button"
+            className={styles.relocalize}
+            aria-label={t('user.navigation.relocalize')}
+            onClick={() => {
+              beginRelocalize();
+              navigate(USER_ROUTES.CAPTURE_PORTRAIT);
+            }}
+          >
+            <Icon name="refresh" size={14} />
+            {t('user.navigation.relocalizeShort')}
+          </button>
+
           <div className={styles.instructionCard}>
             <span className={styles.instructionIcon}>
               <Icon name="arrow-right" size={16} className={styles.upArrow} />
             </span>
             <div className={styles.instructionBody}>
-              <span className={styles.instructionEyebrow}>{instruction.eyebrow}</span>
+              {/* 문장이 이미 거리를 말하는 구간에는 이 줄이 없다. 빈 span을 남기면 그만큼 자리를
+                  차지해 제목이 아래로 밀린다. */}
+              {instruction.eyebrow !== undefined && (
+                <span className={styles.instructionEyebrow}>{instruction.eyebrow}</span>
+              )}
               <strong className={styles.instructionTitle}>{instruction.title}</strong>
               <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
@@ -853,6 +873,9 @@ export function NavigationPage() {
                       ? localizeUserLabel(destinationFacility.nameKo, language)
                       : null
                   }
+                  /* 목적지 시설의 아이콘에 도착지 표시를 붙인다. 지도에서 시설을 새 목적지로
+                     지정했을 때, 어느 아이콘이 목적지가 되었는지 알 방법이 이것뿐이다. */
+                  destinationNodeId={targetNodeId}
                   /* 실제로 안내 중인 경로를 그린다. 조회 전이거나 실패하면 빈 배열이라
                      선이 그려지지 않는다 — 예전에는 이 자리를 목업이 채워, 사용자가 가지도
                      않을 B3 승강장 → 3번출구 경로가 늘 그려져 있었다. */
@@ -880,35 +903,6 @@ export function NavigationPage() {
                   onSelectFacility={setSelectedFacility}
                 />
               </div>
-
-              {/*
-                U-10의 "현재 위치 다시 인식". 주변을 다시 촬영해 위치를 새로 확정하는 흐름이므로
-                U-04로 나간다(화면 정의서 U-10 사용자 액션).
-
-                하단 액션 행이 아니라 지도 위에 둔다. 원본 액션 행은 버튼이 두 개이고, 셋으로
-                늘리면 좁은 화면에서 글자가 눌린다. 위치 표시를 다시 잡는 조작이라 지도에 붙는
-                편이 뜻도 더 분명하다.
-
-                **세션이 끊기고 앵커가 사라지는 것이 정상이다.** 이 버튼을 누르는 상황은 이미
-                위치를 신뢰할 수 없는 상태(경로 이탈, 엘리베이터 하차 등)라 지킬 앵커가 없다.
-                앵커를 유지한 채 좌표만 갱신하는 세션 안 위치 인식은 이것과 별개이며, 그쪽은
-                camera-access로 프레임을 얻어 화면을 벗어나지 않는다(11.8).
-
-                돌아오는 경로는 스토어의 relocalizing 표시가 담당한다 — U-05의 기본 CTA가 경로
-                옵션 선택이라, 표시가 없으면 목적지를 다시 고르는 화면부터 밟게 된다.
-              */}
-              <button
-                type="button"
-                className={styles.relocalize}
-                aria-label={t('user.navigation.relocalize')}
-                onClick={() => {
-                  beginRelocalize();
-                  navigate(USER_ROUTES.CAPTURE_PORTRAIT);
-                }}
-              >
-                <Icon name="refresh" size={14} />
-                {t('user.navigation.relocalizeShort')}
-              </button>
 
               <div
                 className={styles.floorButtons}
@@ -975,6 +969,18 @@ export function NavigationPage() {
                 })}
 
                 {/*
+                  유형 칩과 감추기 사이의 구분선. (S15P11A206-206)
+
+                  유형을 고르는 조작과 표시 자체를 끄는 조작은 성격이 다르다. 나란히 두면 감추기가
+                  칩 하나처럼 보여 또 하나의 유형으로 읽힌다. 줄을 하나 그어 두 갈래임을 알린다.
+
+                  표시 층에 유형 칩이 하나도 없으면 가를 것이 없어 그리지 않는다.
+                */}
+                {availableFilters.length > 0 && (
+                  <span className={styles.facilityDivider} aria-hidden />
+                )}
+
+                {/*
                   전부 감추기.
 
                   유형 칩만으로는 시설을 하나도 없는 상태로 만들 수 없다. 다시 누르면 전체
@@ -1022,7 +1028,7 @@ export function NavigationPage() {
             </div>
 
             {stepsOpen && (
-              <div className={styles.steps}>
+              <div className={styles.steps} ref={stepsListRef}>
                 {routeResult?.steps?.map((step, index) => {
                   /*
                     지나온 구간은 지우지 않고 흐리게 둔다. 지워 버리면 목록이 짧아지면서 남은
@@ -1054,6 +1060,8 @@ export function NavigationPage() {
                   return (
                     <div
                       key={`${step.order}-${step.fromNodeId}-${step.toNodeId}`}
+                      /* 지금 걷는 줄만 표시해 둔다. 위 effect가 이 줄을 칸 맨 위로 올린다. */
+                      ref={active ? activeStepRef : null}
                       className={[styles.step, passed && styles.stepPassed, active && styles.stepOn]
                         .filter(Boolean)
                         .join(' ')}
@@ -1113,6 +1121,102 @@ export function NavigationPage() {
             </div>
           </div>
         </div>
+
+        {/*
+          시설 시트. **`dom-overlay` 루트 안에 둔다.** (S15P11A206-206)
+
+          예전에는 `PhoneFrame` 의 `overlay` 로 넘겼는데, 그쪽은 `children` 의 형제로 그려지므로
+          이 화면이 세션에 넘긴 루트(`overlayRoot`) **밖**이다. XR 세션이 열리면 컴포지터는 그 루트
+          아래만 카메라 위에 합성하므로, 시트는 열려 있어도 화면에 나타나지 않았다 — 세션 전에는
+          시설을 눌러 경유지를 추가할 수 있는데 세션에 들어가면 아무 일도 일어나지 않던 이유다.
+
+          세션 안내는 그대로 `overlay` 에 둔다. 그것이 뜨는 구간에는 세션이 떠 있지 않아 일반 DOM
+          이 그대로 보이고, 안내가 시트보다 앞서야 한다는 순서도 아래 조건으로 유지된다.
+        */}
+        {!isNoticeOpen && selectedFacility && (
+          <Sheet
+            label={t('user.navigation.facilityRoute', { name: selectedFacilityName })}
+            onDismiss={() => setSelectedFacility(null)}
+          >
+            <div className={styles.sheetHandle} aria-hidden />
+            <div className={styles.sheetHead}>
+              <span className={styles.sheetIcon}>
+                <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
+              </span>
+              <div>
+                <h2>{selectedFacilityName}</h2>
+                {/* 목업이던 거리·층 설명 대신 응답에 있는 값을 쓴다. 거리는 경로 계산(297)이
+                  붙으면 넣는다 — 지금 임의로 만들면 틀린 숫자를 보여주게 된다. */}
+                <p>
+                  {selectedFacility.isAccessible
+                    ? t('user.navigation.accessible')
+                    : t('user.navigation.mayHaveStairs')}
+                </p>
+              </div>
+            </div>
+            <p className={styles.sheetNote}>{t('user.navigation.waypointNote')}</p>
+            <div className={styles.sheetActions}>
+              <Button
+                disabled={
+                  waypoints.length >= 2 ||
+                  selectedFacilityIsWaypoint ||
+                  selectedFacilityIsDestination ||
+                  !selectedFacilityRoutable
+                }
+                onClick={() => {
+                  if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
+                  if (selectedFacility.linkedNodeId == null) return;
+                  addWaypoint({
+                    nodeId: selectedFacility.linkedNodeId,
+                    nameKo: selectedFacility.nameKo,
+                  });
+                  setRecalculated(true);
+                  setSelectedFacility(null);
+                }}
+              >
+                {selectedFacilityIsDestination
+                  ? t('user.navigation.cannotAddDestination')
+                  : selectedFacilityIsWaypoint
+                    ? t('user.navigation.alreadyWaypoint')
+                    : !selectedFacilityRoutable
+                      ? t('user.navigation.notRoutable')
+                      : waypoints.length >= 2
+                        ? t('user.navigation.waypointLimit')
+                        : t('user.navigation.addWaypoint')}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={selectedFacilityIsWaypoint || selectedFacilityIsDestination}
+                onClick={() => {
+                  if (selectedFacilityIsWaypoint || selectedFacilityIsDestination) return;
+                  setDestination(selectedFacility.nameKo);
+                  setActiveDestination(selectedFacility.nameKo);
+                  // 좌표를 아는 시설이므로 그대로 목적지 마커로 쓴다.
+                  setPickedDestination(selectedFacility);
+                  /**
+                   * 도착 노드도 그 시설로 옮긴다.
+                   *
+                   * `setDestination`은 이름만 바꾸고 도착 노드를 비운다 — 이름과 노드가 다른
+                   * 곳을 가리키는 것을 막기 위해서다. 여기서는 고른 시설의 노드를 알고 있으므로
+                   * 곧바로 채워 경로를 다시 계산하게 한다. 비워 둔 채로 두면 안내 카드가
+                   * "목적지를 선택해 주세요"로 돌아가 방금 고른 것이 무시된 것처럼 보인다.
+                   */
+                  if (selectedFacility.linkedNodeId != null) {
+                    setTargetNode(selectedFacility.linkedNodeId, selectedFacility.nameKo);
+                  }
+                  setRecalculated(true);
+                  setSelectedFacility(null);
+                }}
+              >
+                {selectedFacilityIsWaypoint
+                  ? t('user.navigation.registeredWaypoint')
+                  : selectedFacilityIsDestination
+                    ? t('user.navigation.currentDestination')
+                    : t('user.navigation.setDestination')}
+              </Button>
+            </div>
+          </Sheet>
+        )}
       </div>
     </PhoneFrame>
   );
