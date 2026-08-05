@@ -844,13 +844,19 @@ describe('useConsultSignaling', () => {
 
     // 한 마디라도 다시 오면 경고는 더 이상 사실이 아니다.
     await act(async () => {
-      caption({ text: '3번 출구로 가세요', final: true, language: 'ko-KR' });
+      caption({
+        text: '3번 출구로 가세요',
+        final: true,
+        language: 'ko-KR',
+        captionId: 'caption-1',
+      });
       await Promise.resolve();
     });
 
     expect(view.result.current.remoteCaptionError).toBeNull();
     expect(view.result.current.remoteCaptionFinal).toBe(true);
     expect(view.result.current.remoteFinalCaption).toBe('3번 출구로 가세요');
+    expect(view.result.current.remoteFinalCaptionId).toBe('caption-1');
 
     await act(async () => {
       caption({ text: '왼쪽으로 가세요', final: false, language: 'ko-KR' });
@@ -860,6 +866,7 @@ describe('useConsultSignaling', () => {
     expect(view.result.current.remoteCaption).toBe('왼쪽으로 가세요');
     expect(view.result.current.remoteCaptionFinal).toBe(false);
     expect(view.result.current.remoteFinalCaption).toBe('3번 출구로 가세요');
+    expect(view.result.current.remoteFinalCaptionId).toBe('caption-1');
 
     view.unmount();
   });

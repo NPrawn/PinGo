@@ -186,7 +186,7 @@ describe('ConsultSessionPage', () => {
 
     await screen.findByRole('button', { name: 'End consultation' });
     // 읽어야 하는 것은 자기 언어로 된 쪽이라 옮긴 문장이 큰 자리를 지킨다.
-    expect(screen.queryByText('Go to exit 3')).not.toBeInTheDocument();
+    expect(screen.getByText('Go to exit 3')).toBeInTheDocument();
     // 그 아래로 지금 들어오는 말이 흘러간다. 이것이 없으면 화면은 멈춰 보인다.
     expect(screen.getByText('그리고 왼쪽으로')).toBeInTheDocument();
   });

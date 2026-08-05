@@ -175,13 +175,9 @@ export function SessionPage() {
    */
   /** 확정 자막도 다음 발화가 시작될 때까지 실시간 영역에 유지해 언어별 표시 차이를 없앤다. */
   const liveUserCaption = remoteCaption;
-  const userCaptionPrimary = remoteCaptionFinal
-    ? translatedUserCaption || liveUserCaption
-    : liveUserCaption;
+  const userCaptionPrimary = translatedUserCaption || liveUserCaption;
   const userCaptionSource =
-    remoteCaptionFinal && translatedUserCaption && translatedUserCaption !== liveUserCaption
-      ? liveUserCaption
-      : '';
+    translatedUserCaption && translatedUserCaption !== liveUserCaption ? liveUserCaption : '';
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
   const userCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '사용자');
   const displayTranscript = (

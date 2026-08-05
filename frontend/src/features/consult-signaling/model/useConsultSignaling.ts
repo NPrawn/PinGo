@@ -1268,6 +1268,8 @@ export function useConsultSignaling(
         setRemoteCaptionError(null);
         setRemoteCaption(caption.text);
         setRemoteCaptionFinal(Boolean(caption.final));
+        // 중간 결과에서는 직전 확정 ID를 유지한다. 실시간 번역문과 현재 원문을 함께 보여 주는 동안
+        // 같은 확정문을 로그에서 숨겨 중복 렌더링을 막는다.
         if (caption.final) {
           const captionId =
             caption.captionId ?? `${remoteRole}:${message.timestamp}:${caption.text}`;
@@ -1278,8 +1280,6 @@ export function useConsultSignaling(
           setRemoteFinalCaptionId(captionId);
           // 번역은 확정된 문장만 건다. 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라진다.
           setRemoteFinalCaption(caption.text);
-        } else {
-          setRemoteFinalCaptionId(null);
         }
       }
     };
