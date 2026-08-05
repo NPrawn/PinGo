@@ -302,7 +302,9 @@
         <div class="field">
           <span>angleDeg</span><input type="number" id="inAngle" step="0.01" />
         </div>
-        <div class="field"><span>mpp (m/px)</span><input type="number" id="inMpp" step="0.001" /></div>
+        <div class="field">
+          <span>mpp (m/px)</span><input type="number" id="inMpp" step="0.001" />
+        </div>
       </div>
       <div class="row">
         <button id="btnFetchFrame">서버 프레임 가져오기</button>
@@ -310,10 +312,33 @@
       </div>
       <p class="hint">
         기본값은 <code>docs/역삼역_FE_좌표연동_스펙.md §2</code>다. <code>mpp</code>와 층별
-        <code>z</code>는 provisional이고 B1 <code>originPx</code>는 미검증 추정값(최대 4.4m 오차)이라,
-        여기서 값을 바꿔가며 어느 쪽이 맞는지 볼 수 있다. 서버 값이 있으면 그게 기준이다.
+        <code>z</code>는 provisional이고 B1 <code>originPx</code>는 미검증 추정값(최대 4.4m
+        오차)이라, 여기서 값을 바꿔가며 어느 쪽이 맞는지 볼 수 있다. 서버 값이 있으면 그게 기준이다.
       </p>
       <table id="frameInfo"></table>
+
+      <h2 style="margin-top: 14px">백엔드 좌표 → 픽셀 대조</h2>
+      <p class="hint" style="margin-top: 0">
+        위치 인식 응답의 <code>position.mapX</code>·<code>position.mapY</code>를 입력한다. COLMAP
+        원본 좌표가 아니라 백엔드가 변환을 끝낸 <b>캐노니컬 미터 좌표</b>여야 한다. 아래 표는 회전
+        전 픽셀 변위부터 최종 픽셀까지 식의 각 항을 보여 주고, WebXR 앵커가 있으면 두 결과의 차이도
+        같이 계산한다.
+      </p>
+      <div class="grid2">
+        <div class="field">
+          <span>backend position.mapX (m)</span>
+          <input type="number" id="inBackendMapX" step="0.001" placeholder="예: -12.433" />
+        </div>
+        <div class="field">
+          <span>backend position.mapY (m)</span>
+          <input type="number" id="inBackendMapY" step="0.001" placeholder="예: 23.863" />
+        </div>
+      </div>
+      <div class="row">
+        <button id="btnApplyBackend">백엔드 좌표 적용 · 로그</button>
+        <button id="btnClearBackend">백엔드 좌표 지우기</button>
+      </div>
+      <table id="backendCompare"></table>
     </section>
 
     <!-- ── 2. 세션 ────────────────────────────────────────────────────────── -->
@@ -331,8 +356,8 @@
       <h2>3. 앵커 — 지도 두 번 탭</h2>
       <p class="hint" style="margin-top: 0">
         ① <b>지금 서 있는 자리</b>를 탭하고 ② <b>지금 바라보는 쪽의 아무 지점</b>을 탭한다. 둘의
-        차이가 <code>forwardMap</code>이 된다. 앵커는 <b>그 순간의 원시 pose</b>로 만든다 —
-        스냅샷을 쓰면 정지 heartbeat(5초)만큼 어긋난다(좌표 스펙 8.2).
+        차이가 <code>forwardMap</code>이 된다. 앵커는 <b>그 순간의 원시 pose</b>로 만든다 — 스냅샷을
+        쓰면 정지 heartbeat(5초)만큼 어긋난다(좌표 스펙 8.2).
       </p>
       <div class="row">
         <button id="btnAnchorStep" class="step" disabled>① 현재 위치 탭 대기…</button>
@@ -361,6 +386,7 @@
         <span><i style="background: #bc8cff"></i>앵커</span>
         <span><i style="background: #58a6ff"></i>XR 궤적</span>
         <span><i style="background: #eb6834"></i>현재 위치 + heading</span>
+        <span><i style="background: #f2cc60"></i>백엔드 mapX/mapY</span>
         <span><i style="background: #1baf7a"></i>실측 대조 지점</span>
       </div>
       <div class="row">
@@ -378,16 +404,35 @@
     <section>
       <h2>6. 기록 · 내보내기</h2>
       <div class="row">
+        <button id="btnRecordStart" class="primary">연속 기록 시작 (5Hz)</button>
+        <button id="btnRecordStop" disabled>연속 기록 중지</button>
         <button id="btnMark">지금 값 기록</button>
         <button id="btnCsv">CSV 내려받기</button>
         <button id="btnCopy">로그 복사</button>
         <button id="btnClearLog">로그 지우기</button>
       </div>
+      <div class="grid2" style="margin-top: 8px">
+        <div class="field">
+          <span>이벤트 메모</span>
+          <input
+            type="text"
+            id="inEventLabel"
+            maxlength="60"
+            placeholder="예: 정지 시작, 10m 도착, 제자리 회전"
+          />
+        </div>
+        <div class="field" style="align-self: end">
+          <button id="btnEvent">현재 시점에 이벤트 표시</button>
+        </div>
+      </div>
       <p class="hint">
-        CSV 열은 <code>tools/coord_overlay.py</code>와 같은 이름 규칙을 쓴다
-        (<code>map_x, map_y, pixel_px, pixel_py, roundtrip_err_m</code>) — 파이썬에서 바로 겹쳐
-        그릴 수 있다.
+        연속 기록은 200ms마다 좌표를 저장한다. 추적 상실 중에는 마지막 pose를 정상값처럼 반복하지
+        않고 빈 좌표와 <code>tracking_status=lost</code>를 남긴다. CSV 열은
+        <code>tools/coord_overlay.py</code>와 같은 이름 규칙을 쓴다 (<code
+          >map_x, map_y, pixel_px, pixel_py, roundtrip_err_m</code
+        >) — 파이썬에서 바로 겹쳐 그릴 수 있다.
       </p>
+      <table id="recordInfo"></table>
       <table id="bufInfo"></table>
     </section>
 
@@ -506,8 +551,14 @@
       let floor = 'B2';
       let session = null;
       let refSpace = null;
+      let refSpaceType = null;
+      let refSpaceResetCount = 0;
+      let xrSessionId = '';
+      let trackingStatus = 'idle';
+      let poseMissingSince = null;
+      let lastPoseReceivedAt = null;
       let glCtx = null;
-      let lastReading = null; // { x,y,z,yawDeg, t }
+      let lastReading = null; // position, quaternion, yaw, optional velocity/quality, timestamp
       let anchor = null; // { map:{mapX,mapY}, xr:{x,z}, forwardXr, forwardMap, rotation, revision }
       let anchorRevision = -1;
       let pendingAnchorPoint = null; // 1탭 결과 (미터)
@@ -515,8 +566,17 @@
       let track = []; // 지도 미터 궤적
       let groundTruth = null; // { tapped:{x,y}, computed:{x,y}, errM }
       let buffer = []; // 기록 행
+      let backendPoint = null; // 백엔드 position.mapX/mapY (캐노니컬 미터)
       let mapImg = null;
       let poseFrames = 0;
+      let captureId = '';
+      let recordingStartedAt = null;
+      let recordingTimer = null;
+      let recordingSampleCount = 0;
+      let recordingEventCount = 0;
+
+      const RECORD_INTERVAL_MS = 200;
+      const TRACKING_LOST_AFTER_MS = 500;
 
       // ── 프레임 UI ─────────────────────────────────────────────────────────
       const el = (id) => document.getElementById(id);
@@ -532,6 +592,7 @@
         frame.angleDeg = Number(el('inAngle').value);
         frame.mpp = Number(el('inMpp').value);
         renderFrame();
+        renderBackendCompare();
         drawMap();
       }
       function renderFrame() {
@@ -559,17 +620,25 @@
         frameSource = '문서 기본값';
         frameToInputs();
         renderFrame();
+        renderBackendCompare();
         loadMapImage();
         log('INFO', '층 변경', { floor });
       });
       ['inOx', 'inOy', 'inAngle', 'inMpp'].forEach((id) =>
         el(id).addEventListener('change', inputsToFrame),
       );
+      el('inScale').addEventListener('change', () => {
+        renderChain();
+        renderBackendCompare();
+        drawMap();
+        log('INFO', 'distanceScale 수정', { distanceScale: Number(el('inScale').value) || 1 });
+      });
       el('btnResetFrame').addEventListener('click', () => {
         frame = { ...DOC_FRAME[floor] };
         frameSource = '문서 기본값';
         frameToInputs();
         renderFrame();
+        renderBackendCompare();
         drawMap();
       });
 
@@ -609,11 +678,154 @@
           frameSource = `서버 (${hit.version || 'version 없음'})`;
           frameToInputs();
           renderFrame();
+          renderBackendCompare();
+          drawMap();
           log('OK', '서버 프레임 적용', frame);
           if (hit.mapUrl) log('INFO', '서버 지도 이미지 경로', { mapUrl: hit.mapUrl });
         } catch (e) {
           log('WARN', '서버 프레임 가져오기 실패 — 문서 기본값을 쓴다', { error: String(e) });
         }
+      });
+
+      // ── 백엔드 캐노니컬 미터 ↔ 픽셀 대조 ───────────────────────────────────
+      function currentXrProjection() {
+        if (!anchor || !lastReading) return { map: null, pixel: null };
+        const scale = Number(el('inScale').value) || 1;
+        const map = xrToMapPoint({ x: lastReading.x, z: lastReading.z }, anchor, scale);
+        return { map, pixel: map ? meterToPixel(map.mapX, map.mapY, frame) : null };
+      }
+
+      function backendProjection() {
+        if (!backendPoint) return null;
+        const theta = (frame.angleDeg * Math.PI) / 180;
+        const cos = Math.cos(theta);
+        const sin = Math.sin(theta);
+        const rotatedX = cos * backendPoint.mapX - sin * backendPoint.mapY;
+        const rotatedY = sin * backendPoint.mapX + cos * backendPoint.mapY;
+        const offsetPxX = rotatedX / frame.mpp;
+        const offsetPxY = rotatedY / frame.mpp;
+        const pixel = meterToPixel(backendPoint.mapX, backendPoint.mapY, frame);
+        const back = pixel ? pixelToMeter(pixel.px, pixel.py, frame) : null;
+        return {
+          theta,
+          cos,
+          sin,
+          rotatedX,
+          rotatedY,
+          offsetPxX,
+          offsetPxY,
+          pixel,
+          roundtrip:
+            back === null
+              ? NaN
+              : Math.hypot(back.x - backendPoint.mapX, back.y - backendPoint.mapY),
+        };
+      }
+
+      function renderBackendCompare() {
+        const backend = backendProjection();
+        if (!backend) {
+          renderTable('backendCompare', [['상태', '백엔드 mapX/mapY 입력 대기', 'warn']]);
+          return;
+        }
+        const xr = currentXrProjection();
+        const mapDelta =
+          xr.map === null
+            ? NaN
+            : Math.hypot(xr.map.mapX - backendPoint.mapX, xr.map.mapY - backendPoint.mapY);
+        const pixelDelta =
+          xr.pixel === null || backend.pixel === null
+            ? NaN
+            : Math.hypot(xr.pixel.px - backend.pixel.px, xr.pixel.py - backend.pixel.py);
+        const inside =
+          backend.pixel &&
+          backend.pixel.px >= 0 &&
+          backend.pixel.px <= frame.w &&
+          backend.pixel.py >= 0 &&
+          backend.pixel.py <= frame.h;
+        renderTable('backendCompare', [
+          ['입력 backend map (m)', `(${f3(backendPoint.mapX)}, ${f3(backendPoint.mapY)})`],
+          ['θ / cosθ / sinθ', `${f3(frame.angleDeg)}° / ${f3(backend.cos)} / ${f3(backend.sin)}`],
+          ['회전 후 미터 R·map', `(${f3(backend.rotatedX)}, ${f3(backend.rotatedY)}) m`],
+          ['mpp 나눔 픽셀 변위', `(${f3(backend.offsetPxX)}, ${f3(backend.offsetPxY)}) px`],
+          [
+            'originPx 더한 최종 픽셀',
+            backend.pixel ? `(${f1(backend.pixel.px)}, ${f1(backend.pixel.py)}) px` : '—',
+            inside ? 'ok' : 'err',
+          ],
+          [
+            '백엔드 변환 왕복 오차',
+            Number.isFinite(backend.roundtrip) ? `${backend.roundtrip.toExponential(2)} m` : '—',
+            backend.roundtrip < 1e-9 ? 'ok' : 'err',
+          ],
+          [
+            '현재 XR 계산 map',
+            xr.map ? `(${f3(xr.map.mapX)}, ${f3(xr.map.mapY)}) m` : '앵커/pose 없음',
+            xr.map ? '' : 'warn',
+          ],
+          [
+            'backend ↔ XR 차이',
+            Number.isFinite(mapDelta)
+              ? `${f3(mapDelta)} m / ${f1(pixelDelta)} px`
+              : '앵커가 생기면 계산',
+            Number.isFinite(mapDelta)
+              ? mapDelta < 1
+                ? 'ok'
+                : mapDelta < 3
+                  ? 'warn'
+                  : 'err'
+              : 'warn',
+          ],
+        ]);
+      }
+
+      function readBackendInputs() {
+        const rawX = el('inBackendMapX').value.trim();
+        const rawY = el('inBackendMapY').value.trim();
+        if (!rawX || !rawY) return null;
+        const mapX = Number(rawX);
+        const mapY = Number(rawY);
+        return Number.isFinite(mapX) && Number.isFinite(mapY) ? { mapX, mapY } : null;
+      }
+
+      el('btnApplyBackend').addEventListener('click', () => {
+        const point = readBackendInputs();
+        if (!point) {
+          log('WARN', '백엔드 mapX/mapY를 숫자로 모두 입력해야 한다');
+          return;
+        }
+        backendPoint = point;
+        const backend = backendProjection();
+        const xr = currentXrProjection();
+        const mapDelta =
+          xr.map === null ? null : Math.hypot(xr.map.mapX - point.mapX, xr.map.mapY - point.mapY);
+        const pixelDelta =
+          xr.pixel === null || !backend || !backend.pixel
+            ? null
+            : Math.hypot(xr.pixel.px - backend.pixel.px, xr.pixel.py - backend.pixel.py);
+        renderBackendCompare();
+        drawMap();
+        log('OK', '백엔드 좌표 → 픽셀 계산', {
+          backendMap: [point.mapX, point.mapY],
+          backendPixel: backend && backend.pixel ? [backend.pixel.px, backend.pixel.py] : null,
+          formula: {
+            originPx: [frame.ox, frame.oy],
+            angleDeg: frame.angleDeg,
+            scaleMPerPx: frame.mpp,
+            rotatedMeter: backend ? [backend.rotatedX, backend.rotatedY] : null,
+          },
+          xrMap: xr.map ? [xr.map.mapX, xr.map.mapY] : null,
+          deltaMapM: mapDelta,
+          deltaPixelPx: pixelDelta,
+        });
+      });
+      el('btnClearBackend').addEventListener('click', () => {
+        backendPoint = null;
+        el('inBackendMapX').value = '';
+        el('inBackendMapY').value = '';
+        renderBackendCompare();
+        drawMap();
+        log('INFO', '백엔드 대조 좌표 지움');
       });
 
       // ── 지원 여부 ─────────────────────────────────────────────────────────
@@ -644,6 +856,7 @@
       el('btnOvEnd').addEventListener('click', end);
 
       async function start() {
+        refSpaceResetCount = 0;
         try {
           session = await navigator.xr.requestSession('immersive-ar', {
             optionalFeatures: ['dom-overlay'],
@@ -653,7 +866,13 @@
           log('ERR', '세션 시작 실패', { error: String(e) });
           return;
         }
-        log('OK', '세션 시작됨');
+        xrSessionId = `xr-${Date.now()}`;
+        trackingStatus = 'warming-up';
+        poseMissingSince = null;
+        lastPoseReceivedAt = null;
+        lastReading = null;
+        mark('session_start', { rowType: 'event', force: true, allowStalePose: false });
+        log('OK', '세션 시작됨', { xrSessionId });
         try {
           const canvas = document.createElement('canvas');
           const gl = canvas.getContext('webgl', { xrCompatible: true });
@@ -670,6 +889,7 @@
         for (const type of ['local', 'local-floor', 'viewer']) {
           try {
             refSpace = await session.requestReferenceSpace(type);
+            refSpaceType = type;
             log('OK', 'referenceSpace 확보', { type });
             break;
           } catch (e) {
@@ -681,6 +901,19 @@
           await session.end().catch(() => {});
           return;
         }
+        refSpace.addEventListener('reset', (event) => {
+          refSpaceResetCount += 1;
+          mark('reference_space_reset', {
+            rowType: 'event',
+            force: true,
+            allowStalePose: false,
+          });
+          log('WARN', 'XRReferenceSpace reset', {
+            count: refSpaceResetCount,
+            type: refSpaceType,
+            hasTransform: !!event.transform,
+          });
+        });
         session.addEventListener('end', onEnd);
         overlay.classList.add('on');
         el('btnStart').disabled = true;
@@ -693,11 +926,52 @@
         if (!session) return;
         session.requestAnimationFrame(onFrame);
         const pose = xrFrame.getViewerPose(refSpace);
-        if (!pose) return;
+        const receivedAt = performance.now();
+        if (!pose) {
+          if (poseMissingSince === null) poseMissingSince = receivedAt;
+          if (
+            trackingStatus === 'tracking' &&
+            receivedAt - poseMissingSince >= TRACKING_LOST_AFTER_MS
+          ) {
+            trackingStatus = 'lost';
+            mark('tracking_lost', { rowType: 'event', force: true, allowStalePose: false });
+            log('WARN', 'WebXR pose 추적 상실', {
+              missingMs: Math.round(receivedAt - poseMissingSince),
+            });
+            renderRecordInfo();
+          }
+          return;
+        }
+        const recovered = trackingStatus === 'lost';
+        const missingMs = poseMissingSince === null ? 0 : receivedAt - poseMissingSince;
+        poseMissingSince = null;
+        trackingStatus = 'tracking';
+        lastPoseReceivedAt = receivedAt;
         const p = pose.transform.position;
-        const yawDeg = yawDegOf(pose.transform.orientation);
-        lastReading = { x: p.x, y: p.y, z: p.z, yawDeg, t: time };
+        const o = pose.transform.orientation;
+        const yawDeg = yawDegOf(o);
+        const lv = pose.linearVelocity || null;
+        const av = pose.angularVelocity || null;
+        lastReading = {
+          x: p.x,
+          y: p.y,
+          z: p.z,
+          qx: o.x,
+          qy: o.y,
+          qz: o.z,
+          qw: o.w,
+          yawDeg,
+          emulatedPosition: pose.emulatedPosition,
+          linearVelocity: lv ? { x: lv.x, y: lv.y, z: lv.z } : null,
+          angularVelocity: av ? { x: av.x, y: av.y, z: av.z } : null,
+          t: time,
+        };
         poseFrames += 1;
+
+        if (recovered) {
+          mark('tracking_recovered', { rowType: 'event', force: true });
+          log('OK', 'WebXR pose 추적 복구', { missingMs: Math.round(missingMs) });
+        }
 
         if (anchor) {
           const mp = xrToMapPoint({ x: p.x, z: p.z }, anchor, Number(el('inScale').value) || 1);
@@ -711,14 +985,19 @@
           }
         }
         renderChain();
+        renderBackendCompare();
         // 지도는 매 프레임 그리지 않는다. pose 는 60fps 로 오고 캔버스는 그만큼 필요 없다.
         if (poseFrames % 6 === 0) drawMap();
       }
 
       function onEnd() {
-        log('INFO', '세션 종료됨');
+        trackingStatus = 'ended';
+        mark('session_end', { rowType: 'event', force: true, allowStalePose: false });
+        stopContinuousRecording('session_end');
+        log('INFO', '세션 종료됨', { xrSessionId });
         session = null;
         refSpace = null;
+        refSpaceType = null;
         glCtx = null;
         overlay.classList.remove('on');
         el('btnStart').disabled = false;
@@ -726,7 +1005,8 @@
         el('btnAnchorStep').disabled = true;
       }
       async function end() {
-        if (session) await session.end().catch((e) => log('WARN', '종료 실패', { error: String(e) }));
+        if (session)
+          await session.end().catch((e) => log('WARN', '종료 실패', { error: String(e) }));
       }
 
       // ── 앵커 ──────────────────────────────────────────────────────────────
@@ -808,11 +1088,7 @@
           ['forwardXr', `(${f3(anchor.forwardXr.x)}, ${f3(anchor.forwardXr.y)})`],
           ['forwardMap', `(${f3(anchor.forwardMap.x)}, ${f3(anchor.forwardMap.y)})`],
           ['rotation cosA/sinA', `${f3(cosA)} / ${f3(sinA)}  (${f1(rotDeg)}°)`],
-          [
-            '회전 단위성 |R|',
-            f3(det),
-            Math.abs(det - 1) < 1e-6 ? 'ok' : 'err',
-          ],
+          ['회전 단위성 |R|', f3(det), Math.abs(det - 1) < 1e-6 ? 'ok' : 'err'],
         ]);
       }
 
@@ -826,11 +1102,29 @@
         const scale = Number(el('inScale').value) || 1;
         const rows = [
           ['① XR raw (x, y, z)', `(${f3(r.x)}, ${f3(r.y)}, ${f3(r.z)})`],
+          ['① orientation quaternion', `(${f3(r.qx)}, ${f3(r.qy)}, ${f3(r.qz)}, ${f3(r.qw)})`],
           ['① XR yaw ψ', `${f1(r.yawDeg)}°`],
-          ['① forwardXr = (-sinψ, -cosψ)', (() => {
-            const f = forwardXrOf(r.yawDeg);
-            return `(${f3(f.x)}, ${f3(f.y)})`;
-          })()],
+          ['① emulatedPosition', String(r.emulatedPosition), r.emulatedPosition ? 'warn' : 'ok'],
+          [
+            '① linearVelocity (m/s)',
+            r.linearVelocity
+              ? `(${f3(r.linearVelocity.x)}, ${f3(r.linearVelocity.y)}, ${f3(r.linearVelocity.z)})`
+              : 'null / 미지원',
+          ],
+          [
+            '① angularVelocity (rad/s)',
+            r.angularVelocity
+              ? `(${f3(r.angularVelocity.x)}, ${f3(r.angularVelocity.y)}, ${f3(r.angularVelocity.z)})`
+              : 'null / 미지원',
+          ],
+          ['① referenceSpace / reset', `${refSpaceType || '—'} / ${refSpaceResetCount}회`],
+          [
+            '① forwardXr = (-sinψ, -cosψ)',
+            (() => {
+              const f = forwardXrOf(r.yawDeg);
+              return `(${f3(f.x)}, ${f3(f.y)})`;
+            })(),
+          ],
         ];
         if (!anchor) {
           rows.push(['②③ 변환', '앵커 없음 — 변환할 수 없다', 'warn']);
@@ -844,9 +1138,7 @@
         const back = px ? pixelToMeter(px.px, px.py, frame) : null;
         const rt = back && mp ? Math.hypot(back.x - mp.mapX, back.y - mp.mapY) : NaN;
         const dXr = Math.hypot(r.x - anchor.xr.x, r.z - anchor.xr.z);
-        const dMap = mp
-          ? Math.hypot(mp.mapX - anchor.map.mapX, mp.mapY - anchor.map.mapY)
-          : NaN;
+        const dMap = mp ? Math.hypot(mp.mapX - anchor.map.mapX, mp.mapY - anchor.map.mapY) : NaN;
         const inside = px && px.px >= 0 && px.px <= frame.w && px.py >= 0 && px.py <= frame.h;
         rows.push(
           ['② xrToMapPoint (m)', mp ? `(${f3(mp.mapX)}, ${f3(mp.mapY)})` : '—'],
@@ -882,9 +1174,7 @@
       function updateOverlayBox(rows) {
         const box = el('ovBox');
         if (!box || !overlay.classList.contains('on')) return;
-        box.textContent = rows
-          .map(([k, v]) => `${k.replace(/^[①②③] ?/, '')}\n  ${v}`)
-          .join('\n');
+        box.textContent = rows.map(([k, v]) => `${k.replace(/^[①②③] ?/, '')}\n  ${v}`).join('\n');
       }
 
       // ── 지도 캔버스 ───────────────────────────────────────────────────────
@@ -895,7 +1185,10 @@
         const img = new Image();
         img.onload = () => {
           mapImg = img;
-          log('OK', '평면도 이미지 로드', { src: MAP_IMAGE[floor], size: `${img.width}×${img.height}` });
+          log('OK', '평면도 이미지 로드', {
+            src: MAP_IMAGE[floor],
+            size: `${img.width}×${img.height}`,
+          });
           drawMap();
         };
         img.onerror = () => {
@@ -988,11 +1281,7 @@
           if (p) {
             dot(p.px, p.py, 6 * S, '#bc8cff');
             const fm = anchor.forwardMap;
-            const tip = meterToPixel(
-              anchor.map.mapX + fm.x * 6,
-              anchor.map.mapY + fm.y * 6,
-              frame,
-            );
+            const tip = meterToPixel(anchor.map.mapX + fm.x * 6, anchor.map.mapY + fm.y * 6, frame);
             if (tip) {
               ctx.strokeStyle = '#bc8cff';
               ctx.lineWidth = 2.5 * S;
@@ -1025,6 +1314,23 @@
                 line(p.px, p.py, tip.px, tip.py);
               }
               dot(p.px, p.py, 5.5 * S, '#eb6834');
+            }
+          }
+        }
+
+        // 백엔드가 반환한 캐노니컬 미터 위치. 현재 XR 위치와 연결해 차이 방향도 보인다.
+        if (backendPoint) {
+          const backendPixel = meterToPixel(backendPoint.mapX, backendPoint.mapY, frame);
+          if (backendPixel) {
+            dot(backendPixel.px, backendPixel.py, 6 * S, '#f2cc60');
+            label(backendPixel.px, backendPixel.py - 10 * S, '백엔드', '#f2cc60');
+            const xr = currentXrProjection();
+            if (xr.pixel) {
+              ctx.strokeStyle = '#f2cc60';
+              ctx.lineWidth = 2 * S;
+              ctx.setLineDash([7 * S, 5 * S]);
+              line(backendPixel.px, backendPixel.py, xr.pixel.px, xr.pixel.py);
+              ctx.setLineDash([]);
             }
           }
         }
@@ -1103,10 +1409,7 @@
             log('WARN', '두 점이 너무 가깝다. 방향이 부정확해진다. 더 멀리 탭할 것.');
             return;
           }
-          createAnchor(
-            { mapX: pendingAnchorPoint.x, mapY: pendingAnchorPoint.y },
-            fwd,
-          );
+          createAnchor({ mapX: pendingAnchorPoint.x, mapY: pendingAnchorPoint.y }, fwd);
           pendingAnchorPoint = null;
           tapMode = 'idle';
           return;
@@ -1121,18 +1424,11 @@
           if (!mp) return;
           const errM = Math.hypot(m.x - mp.mapX, m.y - mp.mapY);
           groundTruth = { tapped: m, computed: { x: mp.mapX, y: mp.mapY }, errM };
-          const dAnchor = Math.hypot(
-            mp.mapX - anchor.map.mapX,
-            mp.mapY - anchor.map.mapY,
-          );
+          const dAnchor = Math.hypot(mp.mapX - anchor.map.mapX, mp.mapY - anchor.map.mapY);
           renderTable('gtInfo', [
             ['탭한 실측 위치 (m)', `(${f3(m.x)}, ${f3(m.y)})`],
             ['계산된 위치 (m)', `(${f3(mp.mapX)}, ${f3(mp.mapY)})`],
-            [
-              '오차',
-              `${f3(errM)} m`,
-              errM < 1 ? 'ok' : errM < 3 ? 'warn' : 'err',
-            ],
+            ['오차', `${f3(errM)} m`, errM < 1 ? 'ok' : errM < 3 ? 'warn' : 'err'],
             ['앵커 이후 이동거리', `${f3(dAnchor)} m`],
             [
               '이동거리 대비 오차율',
@@ -1174,12 +1470,33 @@
       // ── 기록 · 내보내기 ───────────────────────────────────────────────────
       const CSV_COLS = [
         'idx',
+        'row_type',
+        'reason',
+        'capture_id',
+        'xr_session_id',
+        'wall_time_iso',
+        'record_elapsed_ms',
         't_ms',
+        'tracking_status',
+        'pose_age_ms',
         'floor',
         'xr_x',
         'xr_y',
         'xr_z',
+        'xr_qx',
+        'xr_qy',
+        'xr_qz',
+        'xr_qw',
         'yaw_deg',
+        'xr_emulated_position',
+        'xr_linear_vx',
+        'xr_linear_vy',
+        'xr_linear_vz',
+        'xr_angular_vx',
+        'xr_angular_vy',
+        'xr_angular_vz',
+        'xr_reference_space',
+        'xr_reference_reset_count',
         'anchor_rev',
         'anchor_map_x',
         'anchor_map_y',
@@ -1194,25 +1511,80 @@
         'roundtrip_err_m',
         'moved_xr_m',
         'moved_map_m',
+        'backend_map_x',
+        'backend_map_y',
+        'backend_pixel_px',
+        'backend_pixel_py',
+        'backend_vs_xr_map_err_m',
+        'backend_vs_xr_pixel_err_px',
+        'frame_origin_px_x',
+        'frame_origin_px_y',
+        'frame_angle_deg',
+        'frame_scale_m_per_px',
+        'frame_source',
       ];
-      function mark(reason) {
-        if (!lastReading) {
-          log('WARN', '기록할 pose 가 없다');
-          return;
+      function mark(reason = '', options = {}) {
+        const now = performance.now();
+        const rowType = options.rowType || 'manual';
+        const poseAge = lastPoseReceivedAt === null ? NaN : now - lastPoseReceivedAt;
+        const poseIsFresh =
+          lastReading && trackingStatus === 'tracking' && poseAge <= TRACKING_LOST_AFTER_MS;
+        const allowStalePose = options.allowStalePose !== false;
+        const r =
+          rowType === 'sample'
+            ? poseIsFresh
+              ? lastReading
+              : null
+            : allowStalePose
+              ? lastReading
+              : null;
+        if (!r && !backendPoint && !options.force) {
+          log('WARN', '기록할 pose 또는 백엔드 좌표가 없다');
+          return false;
         }
-        const r = lastReading;
         const scale = Number(el('inScale').value) || 1;
-        const mp = anchor ? xrToMapPoint({ x: r.x, z: r.z }, anchor, scale) : null;
+        const mp = anchor && r ? xrToMapPoint({ x: r.x, z: r.z }, anchor, scale) : null;
         const px = mp ? meterToPixel(mp.mapX, mp.mapY, frame) : null;
         const back = px ? pixelToMeter(px.px, px.py, frame) : null;
+        const backend = backendProjection();
+        const backendMapDelta =
+          backendPoint && mp
+            ? Math.hypot(mp.mapX - backendPoint.mapX, mp.mapY - backendPoint.mapY)
+            : '';
+        const backendPixelDelta =
+          backend && backend.pixel && px
+            ? Math.hypot(px.px - backend.pixel.px, px.py - backend.pixel.py)
+            : '';
         const row = {
           idx: buffer.length + 1,
-          t_ms: Math.round(r.t),
+          row_type: rowType,
+          reason,
+          capture_id: captureId,
+          xr_session_id: xrSessionId,
+          wall_time_iso: new Date().toISOString(),
+          record_elapsed_ms:
+            recordingStartedAt === null ? '' : Math.max(0, now - recordingStartedAt),
+          t_ms: r ? Math.round(r.t) : Math.round(performance.now()),
+          tracking_status: trackingStatus,
+          pose_age_ms: Number.isFinite(poseAge) ? Math.max(0, poseAge) : '',
           floor,
-          xr_x: r.x,
-          xr_y: r.y,
-          xr_z: r.z,
-          yaw_deg: r.yawDeg,
+          xr_x: r ? r.x : '',
+          xr_y: r ? r.y : '',
+          xr_z: r ? r.z : '',
+          xr_qx: r ? r.qx : '',
+          xr_qy: r ? r.qy : '',
+          xr_qz: r ? r.qz : '',
+          xr_qw: r ? r.qw : '',
+          yaw_deg: r ? r.yawDeg : '',
+          xr_emulated_position: r ? r.emulatedPosition : '',
+          xr_linear_vx: r && r.linearVelocity ? r.linearVelocity.x : '',
+          xr_linear_vy: r && r.linearVelocity ? r.linearVelocity.y : '',
+          xr_linear_vz: r && r.linearVelocity ? r.linearVelocity.z : '',
+          xr_angular_vx: r && r.angularVelocity ? r.angularVelocity.x : '',
+          xr_angular_vy: r && r.angularVelocity ? r.angularVelocity.y : '',
+          xr_angular_vz: r && r.angularVelocity ? r.angularVelocity.z : '',
+          xr_reference_space: refSpaceType || '',
+          xr_reference_reset_count: refSpaceResetCount,
           anchor_rev: anchor ? anchor.revision : '',
           anchor_map_x: anchor ? anchor.map.mapX : '',
           anchor_map_y: anchor ? anchor.map.mapY : '',
@@ -1221,23 +1593,106 @@
           map_x: mp ? mp.mapX : '',
           map_y: mp ? mp.mapY : '',
           map_z: frame.z,
-          heading_deg: anchor ? mapHeadingDegOf(r.yawDeg, anchor) : '',
+          heading_deg: anchor && r ? mapHeadingDegOf(r.yawDeg, anchor) : '',
           pixel_px: px ? px.px : '',
           pixel_py: px ? px.py : '',
           roundtrip_err_m: back && mp ? Math.hypot(back.x - mp.mapX, back.y - mp.mapY) : '',
-          moved_xr_m: anchor ? Math.hypot(r.x - anchor.xr.x, r.z - anchor.xr.z) : '',
+          moved_xr_m: anchor && r ? Math.hypot(r.x - anchor.xr.x, r.z - anchor.xr.z) : '',
           moved_map_m:
-            anchor && mp
-              ? Math.hypot(mp.mapX - anchor.map.mapX, mp.mapY - anchor.map.mapY)
-              : '',
+            anchor && mp ? Math.hypot(mp.mapX - anchor.map.mapX, mp.mapY - anchor.map.mapY) : '',
+          backend_map_x: backendPoint ? backendPoint.mapX : '',
+          backend_map_y: backendPoint ? backendPoint.mapY : '',
+          backend_pixel_px: backend && backend.pixel ? backend.pixel.px : '',
+          backend_pixel_py: backend && backend.pixel ? backend.pixel.py : '',
+          backend_vs_xr_map_err_m: backendMapDelta,
+          backend_vs_xr_pixel_err_px: backendPixelDelta,
+          frame_origin_px_x: frame.ox,
+          frame_origin_px_y: frame.oy,
+          frame_angle_deg: frame.angleDeg,
+          frame_scale_m_per_px: frame.mpp,
+          frame_source: frameSource,
         };
         buffer.push(row);
-        log('OK', `기록 #${row.idx}${reason ? ' — ' + reason : ''}`, {
-          map: mp ? [Number(mp.mapX.toFixed(3)), Number(mp.mapY.toFixed(3))] : null,
-          pixel: px ? [Number(px.px.toFixed(1)), Number(px.py.toFixed(1))] : null,
-        });
+        if (rowType === 'sample') recordingSampleCount += 1;
+        if (rowType === 'event') recordingEventCount += 1;
+        if (!options.silent) {
+          log('OK', `기록 #${row.idx}${reason ? ' — ' + reason : ''}`, {
+            rowType,
+            trackingStatus,
+            map: mp ? [Number(mp.mapX.toFixed(3)), Number(mp.mapY.toFixed(3))] : null,
+            pixel: px ? [Number(px.px.toFixed(1)), Number(px.py.toFixed(1))] : null,
+            backendMap: backendPoint ? [backendPoint.mapX, backendPoint.mapY] : null,
+            backendPixel: backend && backend.pixel ? [backend.pixel.px, backend.pixel.py] : null,
+            backendVsXrMapM: backendMapDelta === '' ? null : backendMapDelta,
+            backendVsXrPixelPx: backendPixelDelta === '' ? null : backendPixelDelta,
+          });
+        }
         renderBuf();
+        renderRecordInfo();
+        return true;
       }
+
+      function renderRecordInfo() {
+        const elapsed =
+          recordingStartedAt === null ? 0 : Math.max(0, performance.now() - recordingStartedAt);
+        renderTable('recordInfo', [
+          [
+            '연속 기록',
+            recordingTimer === null ? '중지됨' : `기록 중 · ${(elapsed / 1000).toFixed(1)}초`,
+            recordingTimer === null ? 'warn' : 'ok',
+          ],
+          ['capture ID', captureId || '—'],
+          ['주기', `${RECORD_INTERVAL_MS}ms (${1000 / RECORD_INTERVAL_MS}Hz)`],
+          ['tracking 상태', trackingStatus, trackingStatus === 'tracking' ? 'ok' : 'warn'],
+          ['자동 sample / event', `${recordingSampleCount} / ${recordingEventCount}`],
+        ]);
+      }
+
+      function startContinuousRecording() {
+        if (recordingTimer !== null) {
+          log('WARN', '이미 연속 기록 중이다', { captureId });
+          return;
+        }
+        captureId = `capture-${Date.now()}`;
+        recordingStartedAt = performance.now();
+        recordingSampleCount = 0;
+        recordingEventCount = 0;
+        el('btnRecordStart').disabled = true;
+        el('btnRecordStop').disabled = false;
+        mark('recording_start', { rowType: 'event', force: true, allowStalePose: false });
+        recordingTimer = window.setInterval(() => {
+          mark('continuous_5hz', {
+            rowType: 'sample',
+            force: true,
+            allowStalePose: false,
+            silent: true,
+          });
+        }, RECORD_INTERVAL_MS);
+        renderRecordInfo();
+        log('OK', '연속 기록 시작', { captureId, intervalMs: RECORD_INTERVAL_MS });
+      }
+
+      function stopContinuousRecording(reason = 'manual') {
+        if (recordingTimer === null) return;
+        mark(`recording_stop:${reason}`, {
+          rowType: 'event',
+          force: true,
+          allowStalePose: false,
+        });
+        window.clearInterval(recordingTimer);
+        recordingTimer = null;
+        recordingStartedAt = null;
+        el('btnRecordStart').disabled = false;
+        el('btnRecordStop').disabled = true;
+        renderRecordInfo();
+        log('INFO', '연속 기록 중지', {
+          captureId,
+          samples: recordingSampleCount,
+          events: recordingEventCount,
+          reason,
+        });
+      }
+
       function renderBuf() {
         renderTable('bufInfo', [
           ['기록 개수', String(buffer.length)],
@@ -1245,8 +1700,34 @@
           ['받은 pose 프레임', String(poseFrames)],
         ]);
       }
-      el('btnMark').addEventListener('click', () => mark());
-      el('btnOvMark').addEventListener('click', () => mark('오버레이'));
+      el('btnRecordStart').addEventListener('click', startContinuousRecording);
+      el('btnRecordStop').addEventListener('click', () => stopContinuousRecording());
+      el('btnMark').addEventListener('click', () => mark('manual_snapshot'));
+      el('btnOvMark').addEventListener('click', () => mark('overlay_snapshot'));
+      function addUserEvent() {
+        const label = el('inEventLabel').value.trim();
+        if (!label) {
+          log('WARN', '이벤트 메모를 입력해야 한다');
+          return;
+        }
+        mark(`user:${label}`, { rowType: 'event', force: true });
+        el('inEventLabel').value = '';
+      }
+      el('btnEvent').addEventListener('click', addUserEvent);
+      el('inEventLabel').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') addUserEvent();
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (recordingTimer === null) return;
+        mark(document.hidden ? 'page_hidden' : 'page_visible', {
+          rowType: 'event',
+          force: true,
+          allowStalePose: false,
+        });
+      });
+      window.addEventListener('beforeunload', () => {
+        if (recordingTimer !== null) window.clearInterval(recordingTimer);
+      });
       el('btnCsv').addEventListener('click', () => {
         if (!buffer.length) {
           log('WARN', '기록이 없다');
@@ -1254,21 +1735,21 @@
         }
         const lines = [CSV_COLS.join(',')];
         for (const row of buffer) {
-          lines.push(
-            CSV_COLS.map((c) => {
-              const v = row[c];
-              return typeof v === 'number' ? v.toFixed(6) : String(v ?? '');
-            }).join(','),
-          );
+          lines.push(CSV_COLS.map((c) => csvCell(row[c])).join(','));
         }
         const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `coord_probe_${floor}_${Date.now()}.csv`;
+        a.download = `coord_probe_${floor}_${captureId || Date.now()}.csv`;
         a.click();
         URL.revokeObjectURL(a.href);
         log('OK', 'CSV 내려받기', { rows: buffer.length });
       });
+
+      function csvCell(value) {
+        const text = typeof value === 'number' ? value.toFixed(6) : String(value ?? '');
+        return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      }
       el('btnCopy').addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(logLines.join('\n'));
@@ -1285,8 +1766,10 @@
       // ── 초기화 ────────────────────────────────────────────────────────────
       frameToInputs();
       renderFrame();
+      renderBackendCompare();
       renderAnchor();
       renderChain();
+      renderRecordInfo();
       renderBuf();
       loadMapImage();
       detect();
