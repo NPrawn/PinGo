@@ -144,14 +144,17 @@ export function SessionPage() {
     error,
     reconnecting,
     localCaption,
+    localFinalCaptionId,
     remoteCaption,
     remoteFinalCaption,
+    remoteFinalCaptionId,
     remoteCaptionFinal,
     remoteCaptionError,
     captionsSupported,
     captionError,
     restartCaptions,
     transcript,
+    transcriptTimeline,
     sendConsultEvent,
     tokenRejected,
   } = useConsultSignaling(signalingRoomId, 'COUNSELOR', signalingAccessToken, handleDataEvent);
@@ -170,11 +173,27 @@ export function SessionPage() {
    * 번역은 말이 끝난 문장에만 걸리므로, 옮긴 문장만 띄우면 사용자가 말하는 내내 화면이
    * 지난 문장에서 멈춰 있다. 상담원은 사용자가 말하는 중인지 끝난 것인지 알 수 없다.
    */
-  const userCaptionPrimary = translatedUserCaption || remoteCaption;
+  /** 확정 자막도 다음 발화가 시작될 때까지 실시간 영역에 유지해 언어별 표시 차이를 없앤다. */
+  const liveUserCaption = remoteCaption;
+  const userCaptionPrimary = remoteCaptionFinal
+    ? translatedUserCaption || liveUserCaption
+    : liveUserCaption;
   const userCaptionSource =
-    remoteCaption && remoteCaption !== userCaptionPrimary ? remoteCaption : '';
+    remoteCaptionFinal && translatedUserCaption && translatedUserCaption !== liveUserCaption
+      ? liveUserCaption
+      : '';
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
   const userCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '사용자');
+  const displayTranscript = (
+    transcriptTimeline ??
+    transcript.map((segment) => ({
+      ...segment,
+      captionId: `${segment.speaker}:${segment.seq}`,
+    }))
+  ).filter(
+    (segment) =>
+      segment.captionId !== localFinalCaptionId && segment.captionId !== remoteFinalCaptionId,
+  );
 
   /** 그린 선을 사용자 화면에도 그대로 보낸다(명세 7장). */
   const drawEmitter = useMemo(
@@ -893,9 +912,9 @@ export function SessionPage() {
                       : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
                 </span>
               </div>
-              {/* 최신 확정 발화부터 보여 주고, 이전 대화는 아래로 스크롤해 확인한다. */}
-              {[...transcript].reverse().map((segment) => (
-                <div key={segment.seq}>
+              {/* 발화 시각 순서로 보여 주어 실제 상담 흐름을 따라갈 수 있게 한다. */}
+              {displayTranscript.map((segment) => (
+                <div key={segment.captionId}>
                   <span
                     className={
                       segment.speaker === 'COUNSELOR' ? styles.speakerAgent : styles.speakerUser
