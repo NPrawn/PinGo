@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>PinGo 좌표계 정합 검증 (webxr-probe 확장)</title>
+    <!--
+      세 좌표계가 한 줄에서 맞는지 확인하는 단독 검증 페이지.
+
+          WebXR pose (x,z,yaw)
+            → [ 앵커 rotation·평행이동 ] → 캐노니컬 미터 (mapX,mapY)
+            → [ 프레임 originPx/angleDeg/mpp ] → 원본 평면도 픽셀 (px,py)
+
+      - `webxr-probe.html`과 같은 방식의 단독 페이지다. 앱 번들·FSD 계층·프로덕션 코드를
+        건드리지 않고, 백엔드도 수정하지 않는다. 쓰는 것은 이미 있는 정적 자산
+        (`/maps/yeoksam_*.png`)과 이미 있는 조회 API(`GET /api/stations/{id}/maps`)뿐이다.
+      - 변환식은 프로덕션 구현을 그대로 옮겼다. 여기서 맞으면 앱에서도 맞다.
+          yawDegOf              <- shared/lib/webxr/pose.ts
+          forwardXrOf/rotation  <- features/xr-tracking/lib/mapAlignment.ts
+          xrToMapPoint          <- 같은 파일 (dZ 부호 반전 없음)
+          meterToPixel/pixelToMeter <- entities/floor-map/lib/coordinates.ts
+      - 표시 평활(displaySmoothing)은 걸지 않는다. 평활은 표시용이고 정합 검증에는
+        원시 값이 필요하다.
+      - COLMAP 원시 좌표는 이 페이지로 볼 수 없다. AiPoseResponse.cameraCenter 가
+        ColmapToCanonicalMapper 에서 변환된 뒤 응답에 담기지 않기 때문이다. COLMAP↔캐노니컬
+        대조는 오프라인 도구(tools/coord_overlay.py)로 하고, 여기서는 그 아래 두 단계
+        (XR↔캐노니컬, 캐노니컬↔픽셀)를 본다.
+      - 파일명이 `pingo-`로 시작하면 vite.config.ts 의 excludePrototypeFromBuild 가 dist 에서
+        지우므로 접두사를 붙이지 않는다. 실기기 검증을 배포 HTTPS 주소로 해야 한다.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --panel: #161b22;
+        --line: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --ok: #3fb950;
+        --warn: #d29922;
+        --err: #f85149;
+        --accent: #3eb489;
+        --xr: #58a6ff;
+        --map: #eb6834;
+        --px: #1baf7a;
+        --anchor: #bc8cff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 12px;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          14px/1.5 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 0 0 12px;
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+      }
+      h2 {
+        font-size: 13px;
+        margin: 0 0 8px;
+        color: var(--accent);
+        letter-spacing: 0.02em;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 3px 6px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 500;
+        white-space: nowrap;
+        width: 34%;
+      }
+      td {
+        font-variant-numeric: tabular-nums;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      tr:last-child th,
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      .ok {
+        color: var(--ok);
+      }
+      .warn {
+        color: var(--warn);
+      }
+      .err {
+        color: var(--err);
+      }
+      .chain td:first-child {
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+      button {
+        flex: 1 1 auto;
+        min-width: 120px;
+        padding: 9px 10px;
+        font-size: 13px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: #21262d;
+        color: var(--text);
+      }
+      button.primary {
+        background: #238636;
+        border-color: #2ea043;
+        font-weight: 600;
+      }
+      button.step {
+        background: #2d2440;
+        border-color: #5a3f8f;
+      }
+      button:disabled {
+        opacity: 0.45;
+      }
+      label.inline {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      input[type='number'],
+      input[type='text'],
+      select {
+        background: #0d1117;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 5px 7px;
+        font-size: 12px;
+        font-family: ui-monospace, monospace;
+        width: 100%;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 8px;
+      }
+      .grid4 {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px 8px;
+      }
+      .field > span {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 2px;
+      }
+      #mapWrap {
+        position: relative;
+        width: 100%;
+        max-height: 62vh;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #0b0e13;
+        -webkit-overflow-scrolling: touch;
+      }
+      #mapCanvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        touch-action: none;
+      }
+      #zoomRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      #zoomRow input[type='range'] {
+        flex: 1;
+      }
+      .legend {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 6px;
+      }
+      .legend i {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 2px;
+        margin-right: 4px;
+        vertical-align: -1px;
+      }
+      pre#log {
+        margin: 0;
+        max-height: 34vh;
+        overflow: auto;
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-all;
+        color: var(--text);
+      }
+      .hint {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 6px 0 0;
+      }
+      #overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        padding: 10px;
+        font:
+          13px/1.45 system-ui,
+          sans-serif;
+        color: #fff;
+      }
+      #overlay.on {
+        display: block;
+      }
+      #ovBox {
+        background: rgba(13, 17, 23, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        white-space: pre;
+      }
+      #ovBtns {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: 12px;
+        display: flex;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>좌표계 정합 검증</h1>
+    <p class="sub">
+      WebXR pose → 캐노니컬 미터 → 평면도 픽셀을 한 줄에 나란히 놓고, 왕복 오차와 누적 드리프트를
+      본다. 백엔드 수정 없음. 변환식은 프로덕션 구현과 동일.
+    </p>
+
+    <!-- ── 1. 좌표 프레임 ──────────────────────────────────────────────────── -->
+    <section>
+      <h2>1. 좌표 프레임</h2>
+      <div class="grid2">
+        <div class="field">
+          <span>층</span>
+          <select id="selFloor">
+            <option value="B1">B1 (originPx 미검증 추정값)</option>
+            <option value="B2" selected>B2</option>
+            <option value="B3">B3</option>
+          </select>
+        </div>
+        <div class="field">
+          <span>distanceScale (지도단위/XR미터)</span>
+          <input type="number" id="inScale" value="1" step="0.01" />
+        </div>
+      </div>
+      <div class="grid4" style="margin-top: 6px">
+        <div class="field"><span>originPx X</span><input type="number" id="inOx" step="0.1" /></div>
+        <div class="field"><span>originPx Y</span><input type="number" id="inOy" step="0.1" /></div>
+        <div class="field">
+          <span>angleDeg</span><input type="number" id="inAngle" step="0.01" />
+        </div>
+        <div class="field"><span>mpp (m/px)</span><input type="number" id="inMpp" step="0.001" /></div>
+      </div>
+      <div class="row">
+        <button id="btnFetchFrame">서버 프레임 가져오기</button>
+        <button id="btnResetFrame">문서 기본값으로</button>
+      </div>
+      <p class="hint">
+        기본값은 <code>docs/역삼역_FE_좌표연동_스펙.md §2</code>다. <code>mpp</code>와 층별
+        <code>z</code>는 provisional이고 B1 <code>originPx</code>는 미검증 추정값(최대 4.4m 오차)이라,
+        여기서 값을 바꿔가며 어느 쪽이 맞는지 볼 수 있다. 서버 값이 있으면 그게 기준이다.
+      </p>
+      <table id="frameInfo"></table>
+    </section>
+
+    <!-- ── 2. 세션 ────────────────────────────────────────────────────────── -->
+    <section>
+      <h2>2. WebXR 세션</h2>
+      <table id="support"></table>
+      <div class="row">
+        <button id="btnStart" class="primary" disabled>immersive-ar 세션 시작</button>
+        <button id="btnEnd" disabled>세션 종료</button>
+      </div>
+    </section>
+
+    <!-- ── 3. 앵커 ────────────────────────────────────────────────────────── -->
+    <section>
+      <h2>3. 앵커 — 지도 두 번 탭</h2>
+      <p class="hint" style="margin-top: 0">
+        ① <b>지금 서 있는 자리</b>를 탭하고 ② <b>지금 바라보는 쪽의 아무 지점</b>을 탭한다. 둘의
+        차이가 <code>forwardMap</code>이 된다. 앵커는 <b>그 순간의 원시 pose</b>로 만든다 —
+        스냅샷을 쓰면 정지 heartbeat(5초)만큼 어긋난다(좌표 스펙 8.2).
+      </p>
+      <div class="row">
+        <button id="btnAnchorStep" class="step" disabled>① 현재 위치 탭 대기…</button>
+        <button id="btnAnchorClear" disabled>앵커 버리기</button>
+      </div>
+      <table id="anchorInfo"></table>
+    </section>
+
+    <!-- ── 4. 좌표 사슬 ───────────────────────────────────────────────────── -->
+    <section>
+      <h2>4. 좌표 사슬 (실시간)</h2>
+      <table id="chain" class="chain"></table>
+    </section>
+
+    <!-- ── 5. 지도 ────────────────────────────────────────────────────────── -->
+    <section>
+      <h2>5. 평면도 오버레이</h2>
+      <div id="mapWrap"><canvas id="mapCanvas"></canvas></div>
+      <div id="zoomRow">
+        <span>확대</span>
+        <input type="range" id="inZoom" min="1" max="6" step="0.5" value="1" />
+        <span id="zoomLabel">1.0×</span>
+        <span id="tapScale">—</span>
+      </div>
+      <div class="legend">
+        <span><i style="background: #bc8cff"></i>앵커</span>
+        <span><i style="background: #58a6ff"></i>XR 궤적</span>
+        <span><i style="background: #eb6834"></i>현재 위치 + heading</span>
+        <span><i style="background: #1baf7a"></i>실측 대조 지점</span>
+      </div>
+      <div class="row">
+        <button id="btnGroundTruth" disabled>실측 대조 — 지금 여기를 탭</button>
+        <button id="btnClearTrack">궤적 지우기</button>
+      </div>
+      <p class="hint">
+        걷다가 아는 지점(개찰구·엘리베이터 등)에 서서 실측 대조를 누르고 그 자리를 탭하면, 계산된
+        위치와의 차이가 곧 <b>누적 드리프트</b>다.
+      </p>
+      <table id="gtInfo"></table>
+    </section>
+
+    <!-- ── 6. 내보내기 ────────────────────────────────────────────────────── -->
+    <section>
+      <h2>6. 기록 · 내보내기</h2>
+      <div class="row">
+        <button id="btnMark">지금 값 기록</button>
+        <button id="btnCsv">CSV 내려받기</button>
+        <button id="btnCopy">로그 복사</button>
+        <button id="btnClearLog">로그 지우기</button>
+      </div>
+      <p class="hint">
+        CSV 열은 <code>tools/coord_overlay.py</code>와 같은 이름 규칙을 쓴다
+        (<code>map_x, map_y, pixel_px, pixel_py, roundtrip_err_m</code>) — 파이썬에서 바로 겹쳐
+        그릴 수 있다.
+      </p>
+      <table id="bufInfo"></table>
+    </section>
+
+    <section>
+      <h2>7. 로그</h2>
+      <pre id="log"></pre>
+    </section>
+
+    <!-- 세션 중에도 값을 보기 위한 dom-overlay -->
+    <div id="overlay">
+      <div id="ovBox">pose 대기 중</div>
+      <div id="ovBtns">
+        <button id="btnOvMark">기록</button>
+        <button id="btnOvEnd">세션 종료</button>
+      </div>
+    </div>
+
+    <script>
+      'use strict';
+
+      // ── 문서 기본 프레임 (좌표 스펙 §2). 원본 이미지 픽셀 크기 기준이다. ──────────
+      const DOC_FRAME = {
+        B1: { ox: 594, oy: 501, angleDeg: -21.28, mpp: 0.19, w: 1626, h: 967, z: 5 },
+        B2: { ox: 622, oy: 512, angleDeg: -21.28, mpp: 0.19, w: 1624, h: 969, z: 0 },
+        B3: { ox: 597, oy: 497, angleDeg: -21.28, mpp: 0.19, w: 1659, h: 948, z: -5 },
+      };
+      const MAP_IMAGE = {
+        B1: '/maps/yeoksam_B1.png',
+        B2: '/maps/yeoksam_B2.png',
+        B3: '/maps/yeoksam_B3.png',
+      };
+      const STATION_ID = 1;
+
+      // ── 로그 ──────────────────────────────────────────────────────────────
+      const logEl = document.getElementById('log');
+      const logLines = [];
+      function log(kind, message, detail) {
+        const t = new Date().toISOString().slice(11, 23);
+        let line = `[${t}] ${kind} ${message}`;
+        if (detail !== undefined) line += ' ' + JSON.stringify(detail);
+        logLines.push(line);
+        logEl.textContent = logLines.join('\n');
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+      function renderTable(id, rows) {
+        const html = rows
+          .map(
+            ([k, v, cls]) =>
+              `<tr><th>${k}</th><td${cls ? ` class="${cls}"` : ''}>${v === undefined || v === null ? '—' : v}</td></tr>`,
+          )
+          .join('');
+        document.getElementById(id).innerHTML = html;
+      }
+      const f3 = (n) => (Number.isFinite(n) ? n.toFixed(3) : '—');
+      const f1 = (n) => (Number.isFinite(n) ? n.toFixed(1) : '—');
+
+      // ── 변환식 — 프로덕션 구현과 동일 ────────────────────────────────────────
+      /** shared/lib/webxr/pose.ts */
+      function yawDegOf(o) {
+        const rad = Math.atan2(2 * (o.w * o.y + o.x * o.z), 1 - 2 * (o.y * o.y + o.z * o.z));
+        return (rad * 180) / Math.PI;
+      }
+      /** mapAlignment.ts — WebXR 뷰어의 전방이 -Z 라서 (-sin ψ, -cos ψ)다. */
+      function forwardXrOf(yawDeg) {
+        const r = (yawDeg * Math.PI) / 180;
+        return { x: -Math.sin(r), y: -Math.cos(r) };
+      }
+      function normalizePlanar(v) {
+        if (!v) return null;
+        const len = Math.hypot(v.x, v.y);
+        if (!Number.isFinite(len) || len === 0) return null;
+        return { x: v.x / len, y: v.y / len };
+      }
+      /** entities/floor-map/lib/coordinates.ts */
+      function meterToPixel(x, y, fr) {
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !(fr.mpp > 0)) return null;
+        const t = (fr.angleDeg * Math.PI) / 180;
+        const c = Math.cos(t);
+        const s = Math.sin(t);
+        return { px: fr.ox + (c * x - s * y) / fr.mpp, py: fr.oy + (s * x + c * y) / fr.mpp };
+      }
+      function pixelToMeter(px, py, fr) {
+        if (!Number.isFinite(px) || !Number.isFinite(py) || !(fr.mpp > 0)) return null;
+        const t = (fr.angleDeg * Math.PI) / 180;
+        const c = Math.cos(t);
+        const s = Math.sin(t);
+        const dx = px - fr.ox;
+        const dy = py - fr.oy;
+        return { x: (dx * c + dy * s) * fr.mpp, y: (-dx * s + dy * c) * fr.mpp };
+      }
+      /** mapAlignment.ts — dZ 부호 반전 없음, 거울 보정 없음. */
+      function xrToMapPoint(pos, anchor, scale) {
+        const dX = pos.x - anchor.xr.x;
+        const dZ = pos.z - anchor.xr.z;
+        if (!Number.isFinite(dX) || !Number.isFinite(dZ) || !(scale > 0)) return null;
+        const { cosA, sinA } = anchor.rotation;
+        const sX = dX * scale;
+        const sZ = dZ * scale;
+        return {
+          mapX: anchor.map.mapX + (cosA * sX - sinA * sZ),
+          mapY: anchor.map.mapY + (sinA * sX + cosA * sZ),
+        };
+      }
+      /** mapAlignment.ts — 위치와 같은 회전을 전방 벡터에 적용한다. */
+      function mapHeadingDegOf(yawDeg, anchor) {
+        const f = forwardXrOf(yawDeg);
+        const { cosA, sinA } = anchor.rotation;
+        const x = cosA * f.x - sinA * f.y;
+        const y = sinA * f.x + cosA * f.y;
+        return (Math.atan2(y, x) * 180) / Math.PI;
+      }
+
+      // ── 상태 ──────────────────────────────────────────────────────────────
+      let frame = { ...DOC_FRAME.B2 };
+      let frameSource = '문서 기본값';
+      let floor = 'B2';
+      let session = null;
+      let refSpace = null;
+      let glCtx = null;
+      let lastReading = null; // { x,y,z,yawDeg, t }
+      let anchor = null; // { map:{mapX,mapY}, xr:{x,z}, forwardXr, forwardMap, rotation, revision }
+      let anchorRevision = -1;
+      let pendingAnchorPoint = null; // 1탭 결과 (미터)
+      let tapMode = 'idle'; // 'anchor1' | 'anchor2' | 'gt' | 'idle'
+      let track = []; // 지도 미터 궤적
+      let groundTruth = null; // { tapped:{x,y}, computed:{x,y}, errM }
+      let buffer = []; // 기록 행
+      let mapImg = null;
+      let poseFrames = 0;
+
+      // ── 프레임 UI ─────────────────────────────────────────────────────────
+      const el = (id) => document.getElementById(id);
+      function frameToInputs() {
+        el('inOx').value = frame.ox;
+        el('inOy').value = frame.oy;
+        el('inAngle').value = frame.angleDeg;
+        el('inMpp').value = frame.mpp;
+      }
+      function inputsToFrame() {
+        frame.ox = Number(el('inOx').value);
+        frame.oy = Number(el('inOy').value);
+        frame.angleDeg = Number(el('inAngle').value);
+        frame.mpp = Number(el('inMpp').value);
+        renderFrame();
+        drawMap();
+      }
+      function renderFrame() {
+        // 왕복 검증: 원점에서 20m 떨어진 점을 픽셀로 보내고 되돌린다. 변환식이 맞으면 0에 수렴한다.
+        const probe = { x: -20.5, y: 13.25 };
+        const p = meterToPixel(probe.x, probe.y, frame);
+        const back = p ? pixelToMeter(p.px, p.py, frame) : null;
+        const rt = back ? Math.hypot(back.x - probe.x, back.y - probe.y) : NaN;
+        renderTable('frameInfo', [
+          ['출처', frameSource, frameSource.startsWith('서버') ? 'ok' : 'warn'],
+          ['원본 이미지', `${frame.w}×${frame.h} px`],
+          ['원점(0,0) 픽셀', `(${f1(frame.ox)}, ${f1(frame.oy)})`],
+          ['angleDeg / mpp', `${frame.angleDeg}° / ${frame.mpp} m/px`],
+          ['층 nominal z', `${frame.z} m`],
+          [
+            '변환식 왕복 오차',
+            `${rt.toExponential(2)} m`,
+            rt < 1e-9 ? 'ok' : rt < 1e-3 ? 'warn' : 'err',
+          ],
+        ]);
+      }
+      el('selFloor').addEventListener('change', () => {
+        floor = el('selFloor').value;
+        frame = { ...DOC_FRAME[floor] };
+        frameSource = '문서 기본값';
+        frameToInputs();
+        renderFrame();
+        loadMapImage();
+        log('INFO', '층 변경', { floor });
+      });
+      ['inOx', 'inOy', 'inAngle', 'inMpp'].forEach((id) =>
+        el(id).addEventListener('change', inputsToFrame),
+      );
+      el('btnResetFrame').addEventListener('click', () => {
+        frame = { ...DOC_FRAME[floor] };
+        frameSource = '문서 기본값';
+        frameToInputs();
+        renderFrame();
+        drawMap();
+      });
+
+      /**
+       * 이미 있는 조회 API 로 프레임을 받아온다. 백엔드 수정 없음.
+       * 응답에 프레임 컬럼이 비어 있을 수 있으므로(V9 seed) 실패를 정상 분기로 다룬다.
+       */
+      el('btnFetchFrame').addEventListener('click', async () => {
+        try {
+          const res = await fetch(`/api/stations/${STATION_ID}/maps`, {
+            headers: { Accept: 'application/json' },
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const body = await res.json();
+          const list = body && body.data ? body.data : body;
+          const maps = Array.isArray(list) ? list : list && list.maps;
+          const hit = (maps || []).find((m) => m.floorCode === floor);
+          if (!hit) throw new Error(`${floor} 지도 없음`);
+          if (
+            hit.originPxX == null ||
+            hit.originPxY == null ||
+            hit.frameAngleDeg == null ||
+            hit.scaleMPerPx == null
+          ) {
+            log('WARN', '서버 프레임 필드가 비어 있다. 문서 기본값을 유지한다.', hit);
+            return;
+          }
+          frame = {
+            ox: hit.originPxX,
+            oy: hit.originPxY,
+            angleDeg: hit.frameAngleDeg,
+            mpp: hit.scaleMPerPx,
+            w: hit.width,
+            h: hit.height,
+            z: DOC_FRAME[floor].z,
+          };
+          frameSource = `서버 (${hit.version || 'version 없음'})`;
+          frameToInputs();
+          renderFrame();
+          log('OK', '서버 프레임 적용', frame);
+          if (hit.mapUrl) log('INFO', '서버 지도 이미지 경로', { mapUrl: hit.mapUrl });
+        } catch (e) {
+          log('WARN', '서버 프레임 가져오기 실패 — 문서 기본값을 쓴다', { error: String(e) });
+        }
+      });
+
+      // ── 지원 여부 ─────────────────────────────────────────────────────────
+      async function detect() {
+        const rows = [];
+        const secure = window.isSecureContext;
+        rows.push(['secureContext', String(secure), secure ? 'ok' : 'err']);
+        const hasXr = 'xr' in navigator;
+        rows.push(['navigator.xr', String(hasXr), hasXr ? 'ok' : 'err']);
+        let ar = false;
+        if (hasXr) {
+          try {
+            ar = await navigator.xr.isSessionSupported('immersive-ar');
+          } catch (e) {
+            log('WARN', 'isSessionSupported 실패', { error: String(e) });
+          }
+        }
+        rows.push(['immersive-ar', String(ar), ar ? 'ok' : 'err']);
+        renderTable('support', rows);
+        el('btnStart').disabled = !ar;
+        if (!ar) log('WARN', 'immersive-ar 미지원. 프레임·픽셀 변환 확인은 세션 없이도 된다.');
+      }
+
+      // ── 세션 ──────────────────────────────────────────────────────────────
+      const overlay = el('overlay');
+      el('btnStart').addEventListener('click', start);
+      el('btnEnd').addEventListener('click', end);
+      el('btnOvEnd').addEventListener('click', end);
+
+      async function start() {
+        try {
+          session = await navigator.xr.requestSession('immersive-ar', {
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: overlay },
+          });
+        } catch (e) {
+          log('ERR', '세션 시작 실패', { error: String(e) });
+          return;
+        }
+        log('OK', '세션 시작됨');
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl', { xrCompatible: true });
+          if (!gl) throw new Error('WebGL 컨텍스트를 만들 수 없다');
+          await gl.makeXRCompatible();
+          session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+          glCtx = gl;
+        } catch (e) {
+          log('ERR', 'XRWebGLLayer 연결 실패', { error: String(e) });
+          await session.end().catch(() => {});
+          return;
+        }
+        // local 이 없는 기기도 있어 순서대로 시도한다.
+        for (const type of ['local', 'local-floor', 'viewer']) {
+          try {
+            refSpace = await session.requestReferenceSpace(type);
+            log('OK', 'referenceSpace 확보', { type });
+            break;
+          } catch (e) {
+            log('WARN', `referenceSpace ${type} 실패`, { error: String(e) });
+          }
+        }
+        if (!refSpace) {
+          log('ERR', 'referenceSpace 없음. 세션을 닫는다.');
+          await session.end().catch(() => {});
+          return;
+        }
+        session.addEventListener('end', onEnd);
+        overlay.classList.add('on');
+        el('btnStart').disabled = true;
+        el('btnEnd').disabled = false;
+        el('btnAnchorStep').disabled = false;
+        session.requestAnimationFrame(onFrame);
+      }
+
+      function onFrame(time, xrFrame) {
+        if (!session) return;
+        session.requestAnimationFrame(onFrame);
+        const pose = xrFrame.getViewerPose(refSpace);
+        if (!pose) return;
+        const p = pose.transform.position;
+        const yawDeg = yawDegOf(pose.transform.orientation);
+        lastReading = { x: p.x, y: p.y, z: p.z, yawDeg, t: time };
+        poseFrames += 1;
+
+        if (anchor) {
+          const mp = xrToMapPoint({ x: p.x, z: p.z }, anchor, Number(el('inScale').value) || 1);
+          if (mp) {
+            const last = track[track.length - 1];
+            // 5cm 넘게 움직였을 때만 궤적에 넣는다. 정지 중 점이 쌓이는 것을 막는다.
+            if (!last || Math.hypot(mp.mapX - last.mapX, mp.mapY - last.mapY) > 0.05) {
+              track.push(mp);
+              if (track.length > 4000) track.shift();
+            }
+          }
+        }
+        renderChain();
+        // 지도는 매 프레임 그리지 않는다. pose 는 60fps 로 오고 캔버스는 그만큼 필요 없다.
+        if (poseFrames % 6 === 0) drawMap();
+      }
+
+      function onEnd() {
+        log('INFO', '세션 종료됨');
+        session = null;
+        refSpace = null;
+        glCtx = null;
+        overlay.classList.remove('on');
+        el('btnStart').disabled = false;
+        el('btnEnd').disabled = true;
+        el('btnAnchorStep').disabled = true;
+      }
+      async function end() {
+        if (session) await session.end().catch((e) => log('WARN', '종료 실패', { error: String(e) }));
+      }
+
+      // ── 앵커 ──────────────────────────────────────────────────────────────
+      el('btnAnchorStep').addEventListener('click', () => {
+        if (!lastReading) {
+          log('WARN', 'pose 가 아직 없다. 세션이 추적을 잡은 뒤 눌러야 한다.');
+          return;
+        }
+        tapMode = 'anchor1';
+        pendingAnchorPoint = null;
+        el('btnAnchorStep').textContent = '① 지금 서 있는 자리를 지도에서 탭';
+        log('INFO', '앵커 1단계 — 현재 위치 탭 대기');
+      });
+      el('btnAnchorClear').addEventListener('click', () => {
+        anchor = null;
+        track = [];
+        groundTruth = null;
+        el('btnAnchorClear').disabled = true;
+        el('btnGroundTruth').disabled = true;
+        renderAnchor();
+        renderChain();
+        drawMap();
+        log('INFO', '앵커 버림. 확정 위치 표시로 돌아간다.');
+      });
+
+      function createAnchor(map, forwardMapRaw) {
+        const forwardMap = normalizePlanar(forwardMapRaw);
+        if (!forwardMap) {
+          log('ERR', 'forwardMap 을 정할 수 없다. 앵커를 만들지 않는다.');
+          return;
+        }
+        if (!lastReading) {
+          log('ERR', '원시 pose 가 없다. 앵커를 만들지 않는다.');
+          return;
+        }
+        const forwardXr = normalizePlanar(forwardXrOf(lastReading.yawDeg));
+        if (!forwardXr) return;
+        anchorRevision += 1;
+        anchor = {
+          map,
+          xr: { x: lastReading.x, z: lastReading.z },
+          forwardXr,
+          forwardMap,
+          // 각도가 아니라 내적·2D 외적으로 들고 있다 (좌표 스펙 8.3).
+          rotation: {
+            cosA: forwardXr.x * forwardMap.x + forwardXr.y * forwardMap.y,
+            sinA: forwardXr.x * forwardMap.y - forwardXr.y * forwardMap.x,
+          },
+          revision: anchorRevision,
+        };
+        track = [];
+        groundTruth = null;
+        el('btnAnchorClear').disabled = false;
+        el('btnGroundTruth').disabled = false;
+        el('btnAnchorStep').textContent = '앵커 다시 만들기';
+        const rotDeg = (Math.atan2(anchor.rotation.sinA, anchor.rotation.cosA) * 180) / Math.PI;
+        log('OK', '앵커 생성', {
+          revision: anchor.revision,
+          map,
+          xr: anchor.xr,
+          rotationDeg: Number(rotDeg.toFixed(3)),
+        });
+        renderAnchor();
+        drawMap();
+      }
+
+      function renderAnchor() {
+        if (!anchor) {
+          renderTable('anchorInfo', [['앵커 상태', 'none — 확정 위치만 표시된다', 'warn']]);
+          return;
+        }
+        const { cosA, sinA } = anchor.rotation;
+        const rotDeg = (Math.atan2(sinA, cosA) * 180) / Math.PI;
+        const det = cosA * cosA + sinA * sinA;
+        renderTable('anchorInfo', [
+          ['앵커 상태', `established · revision ${anchor.revision}`, 'ok'],
+          ['anchor.map (m)', `(${f3(anchor.map.mapX)}, ${f3(anchor.map.mapY)})`],
+          ['anchor.xr (x,z)', `(${f3(anchor.xr.x)}, ${f3(anchor.xr.z)})`],
+          ['forwardXr', `(${f3(anchor.forwardXr.x)}, ${f3(anchor.forwardXr.y)})`],
+          ['forwardMap', `(${f3(anchor.forwardMap.x)}, ${f3(anchor.forwardMap.y)})`],
+          ['rotation cosA/sinA', `${f3(cosA)} / ${f3(sinA)}  (${f1(rotDeg)}°)`],
+          [
+            '회전 단위성 |R|',
+            f3(det),
+            Math.abs(det - 1) < 1e-6 ? 'ok' : 'err',
+          ],
+        ]);
+      }
+
+      // ── 좌표 사슬 ─────────────────────────────────────────────────────────
+      function renderChain() {
+        if (!lastReading) {
+          renderTable('chain', [['상태', 'pose 대기 중', 'warn']]);
+          return;
+        }
+        const r = lastReading;
+        const scale = Number(el('inScale').value) || 1;
+        const rows = [
+          ['① XR raw (x, y, z)', `(${f3(r.x)}, ${f3(r.y)}, ${f3(r.z)})`],
+          ['① XR yaw ψ', `${f1(r.yawDeg)}°`],
+          ['① forwardXr = (-sinψ, -cosψ)', (() => {
+            const f = forwardXrOf(r.yawDeg);
+            return `(${f3(f.x)}, ${f3(f.y)})`;
+          })()],
+        ];
+        if (!anchor) {
+          rows.push(['②③ 변환', '앵커 없음 — 변환할 수 없다', 'warn']);
+          renderTable('chain', rows);
+          updateOverlayBox(rows);
+          return;
+        }
+        const mp = xrToMapPoint({ x: r.x, z: r.z }, anchor, scale);
+        const heading = mapHeadingDegOf(r.yawDeg, anchor);
+        const px = mp ? meterToPixel(mp.mapX, mp.mapY, frame) : null;
+        const back = px ? pixelToMeter(px.px, px.py, frame) : null;
+        const rt = back && mp ? Math.hypot(back.x - mp.mapX, back.y - mp.mapY) : NaN;
+        const dXr = Math.hypot(r.x - anchor.xr.x, r.z - anchor.xr.z);
+        const dMap = mp
+          ? Math.hypot(mp.mapX - anchor.map.mapX, mp.mapY - anchor.map.mapY)
+          : NaN;
+        const inside = px && px.px >= 0 && px.px <= frame.w && px.py >= 0 && px.py <= frame.h;
+        rows.push(
+          ['② xrToMapPoint (m)', mp ? `(${f3(mp.mapX)}, ${f3(mp.mapY)})` : '—'],
+          ['② mapHeadingDeg', `${f1(heading)}°  (지도 +X 기준)`],
+          ['③ meterToPixel (px)', px ? `(${f1(px.px)}, ${f1(px.py)})` : '—', inside ? 'ok' : 'err'],
+          [
+            '③ 이미지 범위 안',
+            inside ? `예 (${frame.w}×${frame.h})` : '아니오 — 평면도에 그릴 수 없다',
+            inside ? 'ok' : 'err',
+          ],
+          [
+            '왕복 오차 pixelToMeter∘meterToPixel',
+            `${Number.isFinite(rt) ? rt.toExponential(2) : '—'} m`,
+            rt < 1e-9 ? 'ok' : rt < 1e-3 ? 'warn' : 'err',
+          ],
+          [
+            '앵커 이후 이동 XR / 지도',
+            `${f3(dXr)} m / ${f3(dMap)} m`,
+            Math.abs(dMap - dXr * scale) < 1e-6 ? 'ok' : 'warn',
+          ],
+        );
+        if (groundTruth) {
+          rows.push([
+            '실측 대조 오차',
+            `${f3(groundTruth.errM)} m`,
+            groundTruth.errM < 1 ? 'ok' : groundTruth.errM < 3 ? 'warn' : 'err',
+          ]);
+        }
+        renderTable('chain', rows);
+        updateOverlayBox(rows);
+      }
+
+      function updateOverlayBox(rows) {
+        const box = el('ovBox');
+        if (!box || !overlay.classList.contains('on')) return;
+        box.textContent = rows
+          .map(([k, v]) => `${k.replace(/^[①②③] ?/, '')}\n  ${v}`)
+          .join('\n');
+      }
+
+      // ── 지도 캔버스 ───────────────────────────────────────────────────────
+      const canvas = el('mapCanvas');
+      const ctx = canvas.getContext('2d');
+
+      function loadMapImage() {
+        const img = new Image();
+        img.onload = () => {
+          mapImg = img;
+          log('OK', '평면도 이미지 로드', { src: MAP_IMAGE[floor], size: `${img.width}×${img.height}` });
+          drawMap();
+        };
+        img.onerror = () => {
+          mapImg = null;
+          log('WARN', '평면도 이미지 로드 실패 — 격자만 그린다', { src: MAP_IMAGE[floor] });
+          drawMap();
+        };
+        img.src = MAP_IMAGE[floor];
+      }
+
+      /**
+       * 원본 픽셀 1개가 화면에서 몇 CSS 픽셀인지의 역수.
+       *
+       * 캔버스는 원본 프레임 크기(1624×969 등)로 두고 CSS 로 줄여 보여주므로, 마커·선·글자를
+       * 원본 픽셀 기준으로 그리면 화면에서 4~5배 작아져 읽을 수 없다. 이 배수를 곱해 화면에서
+       * 일정한 크기로 보이게 한다.
+       */
+      let S = 4;
+      function updateDisplayScale() {
+        const shown = canvas.clientWidth || frame.w;
+        S = Math.max(1, frame.w / shown);
+        const mPerCssPx = frame.mpp * S;
+        el('tapScale').textContent = `탭 정밀도 ≈ ${mPerCssPx.toFixed(2)} m/화면px`;
+      }
+
+      function drawMap() {
+        // 캔버스는 항상 프레임의 원본 픽셀 크기로 둔다. 표시 배율은 CSS 가 맡는다.
+        if (canvas.width !== frame.w || canvas.height !== frame.h) {
+          canvas.width = frame.w;
+          canvas.height = frame.h;
+        }
+        updateDisplayScale();
+        ctx.clearRect(0, 0, frame.w, frame.h);
+        ctx.fillStyle = '#0b0e13';
+        ctx.fillRect(0, 0, frame.w, frame.h);
+        if (mapImg) {
+          ctx.globalAlpha = 0.85;
+          ctx.drawImage(mapImg, 0, 0, frame.w, frame.h);
+          ctx.globalAlpha = 1;
+        }
+
+        // 미터 격자 10m. 프레임이 맞으면 격자가 평면도의 축과 나란해야 한다.
+        ctx.strokeStyle = 'rgba(120,140,170,0.25)';
+        ctx.lineWidth = 1 * S;
+        for (let m = -120; m <= 140; m += 10) {
+          const a = meterToPixel(m, -60, frame);
+          const b = meterToPixel(m, 80, frame);
+          const c = meterToPixel(-120, m, frame);
+          const d = meterToPixel(140, m, frame);
+          if (a && b) line(a.px, a.py, b.px, b.py);
+          if (c && d) line(c.px, c.py, d.px, d.py);
+        }
+        // 원점과 축
+        const o = meterToPixel(0, 0, frame);
+        const ax = meterToPixel(10, 0, frame);
+        const ay = meterToPixel(0, 10, frame);
+        if (o && ax && ay) {
+          ctx.strokeStyle = '#e6edf3';
+          ctx.lineWidth = 2 * S;
+          line(o.px, o.py, ax.px, ax.py);
+          ctx.strokeStyle = '#8b949e';
+          line(o.px, o.py, ay.px, ay.py);
+          dot(o.px, o.py, 4 * S, '#e6edf3');
+          label(ax.px, ax.py, '+X (10m)', '#e6edf3');
+          label(ay.px, ay.py, '+Y (10m)', '#8b949e');
+          label(o.px - 62 * S, o.py + 26 * S, 'EVA (0,0)', '#e6edf3');
+        }
+
+        // XR 궤적
+        if (track.length > 1) {
+          ctx.strokeStyle = '#58a6ff';
+          ctx.lineWidth = 2.5 * S;
+          ctx.beginPath();
+          let started = false;
+          for (const t of track) {
+            const p = meterToPixel(t.mapX, t.mapY, frame);
+            if (!p) continue;
+            if (started) ctx.lineTo(p.px, p.py);
+            else {
+              ctx.moveTo(p.px, p.py);
+              started = true;
+            }
+          }
+          ctx.stroke();
+        }
+
+        // 앵커
+        if (anchor) {
+          const p = meterToPixel(anchor.map.mapX, anchor.map.mapY, frame);
+          if (p) {
+            dot(p.px, p.py, 6 * S, '#bc8cff');
+            const fm = anchor.forwardMap;
+            const tip = meterToPixel(
+              anchor.map.mapX + fm.x * 6,
+              anchor.map.mapY + fm.y * 6,
+              frame,
+            );
+            if (tip) {
+              ctx.strokeStyle = '#bc8cff';
+              ctx.lineWidth = 2.5 * S;
+              line(p.px, p.py, tip.px, tip.py);
+            }
+            label(p.px, p.py - 10 * S, `앵커 r${anchor.revision}`, '#bc8cff');
+          }
+        }
+
+        // 현재 위치 + heading
+        if (anchor && lastReading) {
+          const mp = xrToMapPoint(
+            { x: lastReading.x, z: lastReading.z },
+            anchor,
+            Number(el('inScale').value) || 1,
+          );
+          if (mp) {
+            const p = meterToPixel(mp.mapX, mp.mapY, frame);
+            if (p) {
+              const h = mapHeadingDegOf(lastReading.yawDeg, anchor);
+              const hr = (h * Math.PI) / 180;
+              const tip = meterToPixel(
+                mp.mapX + Math.cos(hr) * 5,
+                mp.mapY + Math.sin(hr) * 5,
+                frame,
+              );
+              if (tip) {
+                ctx.strokeStyle = '#eb6834';
+                ctx.lineWidth = 3 * S;
+                line(p.px, p.py, tip.px, tip.py);
+              }
+              dot(p.px, p.py, 5.5 * S, '#eb6834');
+            }
+          }
+        }
+
+        // 실측 대조
+        if (groundTruth) {
+          const a = meterToPixel(groundTruth.tapped.x, groundTruth.tapped.y, frame);
+          const b = meterToPixel(groundTruth.computed.x, groundTruth.computed.y, frame);
+          if (a) dot(a.px, a.py, 5.5 * S, '#1baf7a');
+          if (a && b) {
+            ctx.strokeStyle = '#1baf7a';
+            ctx.lineWidth = 2 * S;
+            ctx.setLineDash([6 * S, 5 * S]);
+            line(a.px, a.py, b.px, b.py);
+            ctx.setLineDash([]);
+            label(a.px, a.py - 10 * S, `Δ ${f3(groundTruth.errM)} m`, '#1baf7a');
+          }
+        }
+
+        // 대기 중인 앵커 1탭
+        if (pendingAnchorPoint) {
+          const p = meterToPixel(pendingAnchorPoint.x, pendingAnchorPoint.y, frame);
+          if (p) {
+            dot(p.px, p.py, 5 * S, '#d29922');
+            label(p.px, p.py - 10 * S, '① 여기 · 바라보는 쪽을 탭', '#d29922');
+          }
+        }
+      }
+      function line(x1, y1, x2, y2) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      function dot(x, y, r, color) {
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth = 2 * S;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      function label(x, y, text, color) {
+        ctx.font = `600 ${Math.round(12 * S)}px system-ui, sans-serif`;
+        ctx.fillStyle = '#0d1117';
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth = 4 * S;
+        ctx.strokeText(text, x + 8 * S, y);
+        ctx.fillStyle = color;
+        ctx.fillText(text, x + 8 * S, y);
+      }
+
+      // 탭 → 원본 픽셀 → 미터. 표시 배율을 나눠 원본 픽셀로 되돌린다.
+      canvas.addEventListener('pointerdown', (ev) => {
+        const rect = canvas.getBoundingClientRect();
+        const px = ((ev.clientX - rect.left) / rect.width) * frame.w;
+        const py = ((ev.clientY - rect.top) / rect.height) * frame.h;
+        const m = pixelToMeter(px, py, frame);
+        if (!m) return;
+        log('INFO', '지도 탭', {
+          pixel: [Number(px.toFixed(1)), Number(py.toFixed(1))],
+          meter: [Number(m.x.toFixed(3)), Number(m.y.toFixed(3))],
+          mode: tapMode,
+        });
+        if (tapMode === 'anchor1') {
+          pendingAnchorPoint = m;
+          tapMode = 'anchor2';
+          el('btnAnchorStep').textContent = '② 바라보는 쪽의 지점을 탭';
+          drawMap();
+          return;
+        }
+        if (tapMode === 'anchor2' && pendingAnchorPoint) {
+          const fwd = { x: m.x - pendingAnchorPoint.x, y: m.y - pendingAnchorPoint.y };
+          if (Math.hypot(fwd.x, fwd.y) < 1) {
+            log('WARN', '두 점이 너무 가깝다. 방향이 부정확해진다. 더 멀리 탭할 것.');
+            return;
+          }
+          createAnchor(
+            { mapX: pendingAnchorPoint.x, mapY: pendingAnchorPoint.y },
+            fwd,
+          );
+          pendingAnchorPoint = null;
+          tapMode = 'idle';
+          return;
+        }
+        if (tapMode === 'gt') {
+          if (!anchor || !lastReading) return;
+          const mp = xrToMapPoint(
+            { x: lastReading.x, z: lastReading.z },
+            anchor,
+            Number(el('inScale').value) || 1,
+          );
+          if (!mp) return;
+          const errM = Math.hypot(m.x - mp.mapX, m.y - mp.mapY);
+          groundTruth = { tapped: m, computed: { x: mp.mapX, y: mp.mapY }, errM };
+          const dAnchor = Math.hypot(
+            mp.mapX - anchor.map.mapX,
+            mp.mapY - anchor.map.mapY,
+          );
+          renderTable('gtInfo', [
+            ['탭한 실측 위치 (m)', `(${f3(m.x)}, ${f3(m.y)})`],
+            ['계산된 위치 (m)', `(${f3(mp.mapX)}, ${f3(mp.mapY)})`],
+            [
+              '오차',
+              `${f3(errM)} m`,
+              errM < 1 ? 'ok' : errM < 3 ? 'warn' : 'err',
+            ],
+            ['앵커 이후 이동거리', `${f3(dAnchor)} m`],
+            [
+              '이동거리 대비 오차율',
+              dAnchor > 0.5 ? `${f1((errM / dAnchor) * 100)} %` : '이동이 적어 무의미',
+            ],
+          ]);
+          log('OK', '실측 대조', {
+            tapped: [Number(m.x.toFixed(3)), Number(m.y.toFixed(3))],
+            computed: [Number(mp.mapX.toFixed(3)), Number(mp.mapY.toFixed(3))],
+            errM: Number(errM.toFixed(3)),
+            movedM: Number(dAnchor.toFixed(3)),
+          });
+          tapMode = 'idle';
+          el('btnGroundTruth').textContent = '실측 대조 — 지금 여기를 탭';
+          renderChain();
+          drawMap();
+        }
+      });
+
+      el('btnGroundTruth').addEventListener('click', () => {
+        tapMode = 'gt';
+        el('btnGroundTruth').textContent = '지금 서 있는 자리를 지도에서 탭';
+        log('INFO', '실측 대조 — 탭 대기');
+      });
+      el('inZoom').addEventListener('input', () => {
+        const z = Number(el('inZoom').value);
+        el('zoomLabel').textContent = `${z.toFixed(1)}×`;
+        // CSS 폭만 키운다. 캔버스 해상도는 그대로라 탭 좌표 계산식도 그대로 성립한다.
+        canvas.style.width = `${z * 100}%`;
+        drawMap();
+      });
+
+      el('btnClearTrack').addEventListener('click', () => {
+        track = [];
+        drawMap();
+        log('INFO', '궤적 지움');
+      });
+
+      // ── 기록 · 내보내기 ───────────────────────────────────────────────────
+      const CSV_COLS = [
+        'idx',
+        't_ms',
+        'floor',
+        'xr_x',
+        'xr_y',
+        'xr_z',
+        'yaw_deg',
+        'anchor_rev',
+        'anchor_map_x',
+        'anchor_map_y',
+        'anchor_cos_a',
+        'anchor_sin_a',
+        'map_x',
+        'map_y',
+        'map_z',
+        'heading_deg',
+        'pixel_px',
+        'pixel_py',
+        'roundtrip_err_m',
+        'moved_xr_m',
+        'moved_map_m',
+      ];
+      function mark(reason) {
+        if (!lastReading) {
+          log('WARN', '기록할 pose 가 없다');
+          return;
+        }
+        const r = lastReading;
+        const scale = Number(el('inScale').value) || 1;
+        const mp = anchor ? xrToMapPoint({ x: r.x, z: r.z }, anchor, scale) : null;
+        const px = mp ? meterToPixel(mp.mapX, mp.mapY, frame) : null;
+        const back = px ? pixelToMeter(px.px, px.py, frame) : null;
+        const row = {
+          idx: buffer.length + 1,
+          t_ms: Math.round(r.t),
+          floor,
+          xr_x: r.x,
+          xr_y: r.y,
+          xr_z: r.z,
+          yaw_deg: r.yawDeg,
+          anchor_rev: anchor ? anchor.revision : '',
+          anchor_map_x: anchor ? anchor.map.mapX : '',
+          anchor_map_y: anchor ? anchor.map.mapY : '',
+          anchor_cos_a: anchor ? anchor.rotation.cosA : '',
+          anchor_sin_a: anchor ? anchor.rotation.sinA : '',
+          map_x: mp ? mp.mapX : '',
+          map_y: mp ? mp.mapY : '',
+          map_z: frame.z,
+          heading_deg: anchor ? mapHeadingDegOf(r.yawDeg, anchor) : '',
+          pixel_px: px ? px.px : '',
+          pixel_py: px ? px.py : '',
+          roundtrip_err_m: back && mp ? Math.hypot(back.x - mp.mapX, back.y - mp.mapY) : '',
+          moved_xr_m: anchor ? Math.hypot(r.x - anchor.xr.x, r.z - anchor.xr.z) : '',
+          moved_map_m:
+            anchor && mp
+              ? Math.hypot(mp.mapX - anchor.map.mapX, mp.mapY - anchor.map.mapY)
+              : '',
+        };
+        buffer.push(row);
+        log('OK', `기록 #${row.idx}${reason ? ' — ' + reason : ''}`, {
+          map: mp ? [Number(mp.mapX.toFixed(3)), Number(mp.mapY.toFixed(3))] : null,
+          pixel: px ? [Number(px.px.toFixed(1)), Number(px.py.toFixed(1))] : null,
+        });
+        renderBuf();
+      }
+      function renderBuf() {
+        renderTable('bufInfo', [
+          ['기록 개수', String(buffer.length)],
+          ['궤적 점 개수', String(track.length)],
+          ['받은 pose 프레임', String(poseFrames)],
+        ]);
+      }
+      el('btnMark').addEventListener('click', () => mark());
+      el('btnOvMark').addEventListener('click', () => mark('오버레이'));
+      el('btnCsv').addEventListener('click', () => {
+        if (!buffer.length) {
+          log('WARN', '기록이 없다');
+          return;
+        }
+        const lines = [CSV_COLS.join(',')];
+        for (const row of buffer) {
+          lines.push(
+            CSV_COLS.map((c) => {
+              const v = row[c];
+              return typeof v === 'number' ? v.toFixed(6) : String(v ?? '');
+            }).join(','),
+          );
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `coord_probe_${floor}_${Date.now()}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        log('OK', 'CSV 내려받기', { rows: buffer.length });
+      });
+      el('btnCopy').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(logLines.join('\n'));
+          log('OK', '로그 복사됨');
+        } catch (e) {
+          log('WARN', '복사 실패', { error: String(e) });
+        }
+      });
+      el('btnClearLog').addEventListener('click', () => {
+        logLines.length = 0;
+        logEl.textContent = '';
+      });
+
+      // ── 초기화 ────────────────────────────────────────────────────────────
+      frameToInputs();
+      renderFrame();
+      renderAnchor();
+      renderChain();
+      renderBuf();
+      loadMapImage();
+      detect();
+      log('INFO', '페이지 로드됨. 세션 없이도 프레임·픽셀 변환과 지도 탭은 동작한다.');
+    </script>
+  </body>
+</html>
