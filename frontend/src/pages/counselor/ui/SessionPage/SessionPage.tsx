@@ -59,7 +59,7 @@ async function submitTranscriptWithRetry(
    * 자막이 상대에게 닿지 못한 것이다. 예전에는 이 사실이 어디에도 남지 않아, 상담이 끝나고
    * 이력을 열어 본 뒤에야 드러났고 그때는 원인을 짚을 근거가 이미 사라진 뒤였다.
    */
-  const speakerCounts = transcript.reduce<Record<string, number>>((counts, segment) => {
+  const speakerCounts = (transcript ?? []).reduce<Record<string, number>>((counts, segment) => {
     counts[segment.speaker] = (counts[segment.speaker] ?? 0) + 1;
     return counts;
   }, {});
