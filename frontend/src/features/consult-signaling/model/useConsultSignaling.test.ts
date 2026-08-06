@@ -1072,8 +1072,8 @@ describe('useConsultSignaling', () => {
   /**
    * 최대 길이에 닿은 연속 발화도 버리지 않는다.
    *
-   * 자연스러운 무음 종료와 달리 8초 강제 분할 시점에는 마지막 음량이 여전히 높다. 그때
-   * `END_DROP_RATIO` 를 적용하면 사용자가 쉬지 않고 말한 8초 전체가 사라진다.
+   * 자연스러운 무음 종료와 달리 4초 강제 분할 시점에는 마지막 음량이 여전히 높다. 이 조각을
+   * 그대로 보내야 사용자가 쉬지 않고 말해도 자막 지연이 계속 늘어나지 않는다.
    */
   it('uploads continuous speech when it reaches the maximum segment length', async () => {
     vi.useFakeTimers();
@@ -1099,7 +1099,7 @@ describe('useConsultSignaling', () => {
 
       await act(async () => {
         micLevel.value = 0.5;
-        vi.advanceTimersByTime(8100);
+        vi.advanceTimersByTime(4100);
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
@@ -1111,6 +1111,44 @@ describe('useConsultSignaling', () => {
         expect.objectContaining({ audio: expect.any(Blob) }),
       );
 
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uploads a short answer instead of diluting it with trailing silence', async () => {
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+      });
+      vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+      vi.stubGlobal('AudioContext', FakeAudioContext);
+
+      const view = renderHook(() =>
+        useConsultSignaling('room_cs_1', 'USER', 'token-1', undefined, 'ko', 'server'),
+      );
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        micLevel.value = 0.5;
+        vi.advanceTimersByTime(250);
+        micLevel.value = 0;
+        vi.advanceTimersByTime(900);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledTimes(1);
       view.unmount();
     } finally {
       vi.useRealTimers();

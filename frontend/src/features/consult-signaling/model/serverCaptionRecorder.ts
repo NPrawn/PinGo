@@ -22,7 +22,7 @@ const SILENCE_HOLD_MS = 700;
  * Whisper는 조각 전체를 받은 뒤 전사하므로 지나치게 길면 자막도 그만큼 늦어진다. 평소에는
  * 아래 무음 판정에서 먼저 끊고, 쉬지 않고 길게 말할 때만 이 상한을 사용한다.
  */
-const MAX_SEGMENT_MS = 8000;
+const MAX_SEGMENT_MS = 4000;
 
 /** 이보다 짧은 소리는 말이 아니라 잡음으로 본다. */
 const MIN_SEGMENT_MS = 400;
@@ -52,22 +52,8 @@ const ABSOLUTE_SPEECH_FLOOR = 0.02;
 const NOISE_FLOOR_FALL_ALPHA = 0.05;
 const NOISE_FLOOR_RISE_ALPHA = 0.002;
 
-/**
- * 조각에서 말소리가 이 비율은 돼야 올린다.
- *
- * 잡음만 담긴 조각은 올려 봐야 모델이 없는 말을 지어낸다. 빈 글이 오는 것보다 나쁘다.
- */
-const MIN_SPEECH_FRACTION = 0.35;
-
-/**
- * 조각이 끝날 때 소리가 이 배수 아래로 떨어져 있어야 진짜 말이 끝난 것으로 본다.
- *
- * **말과 잡음은 끝나는 모양이 다르다.** 사람이 말을 마치면 소리가 뚝 떨어진다. 반면 꾸준한
- * 잡음은 소리가 그대로인데 바닥 추적이 따라 올라와서 "조용해진" 것처럼 보일 뿐이다. 앞의
- * 조건들만으로는 이 둘이 구분되지 않아, 시끄러운 곳에서 첫 조각이 잡음 그대로 올라갔다.
- */
-const END_DROP_RATIO = 0.5;
-
+/** 짧은 충격음은 버리되 "네"처럼 짧은 대답은 살리는 최소 발화 감지 횟수(약 150ms). */
+const MIN_LOUD_TICKS = 3;
 /** 소리 크기를 재는 간격. */
 const ANALYSE_INTERVAL_MS = 50;
 
@@ -166,28 +152,16 @@ export function startServerCaptionRecorder(
   let speaking = false;
   let segmentStartedAt = 0;
   let lastLoudAt = 0;
-  /** 지금 조각에서 잰 횟수·말소리로 본 횟수·크기 합. 잡음뿐인 조각과 잘못된 기준을 가려낸다. */
-  let segmentTicks = 0;
+  /** 지금 조각에서 말소리로 본 횟수. 한 번 튄 충격음은 서버로 보내지 않는다. */
   let segmentLoudTicks = 0;
-  let segmentLevelSum = 0;
-  /** 가장 최근에 잰 소리 크기. 조각이 잦아들며 끝났는지 보는 데 쓴다. */
-  let lastLevel = 0;
 
   /**
    * 이 조각을 올릴 만한지.
    *
-   * 잡음만 담긴 조각을 올리면 모델이 없는 말을 지어낸다. 빈 글이 오는 것보다 나쁘다 — 지어낸
-   * 문장은 받아쓴 글과 구분되지 않아 그대로 전문에 남는다.
+   * 전체 조각 대비 비율을 사용하면 짧은 대답이 뒤의 무음에 희석되어 사라진다. 최소 150ms만
+   * 발화로 감지되면 조각을 보내고, 실제 전사 가능 여부는 Whisper와 서버 필터가 판단한다.
    */
-  const hasMinimumSpeech = () =>
-    segmentTicks > 0 && segmentLoudTicks / segmentTicks >= MIN_SPEECH_FRACTION;
-
-  /** 무음으로 끝난 조각이 실제로 잦아들었는지 확인한다. 최대 길이 강제 분할에는 적용하지 않는다. */
-  const hasNaturalEnding = () => {
-    if (segmentTicks === 0) return false;
-    const mean = segmentLevelSum / segmentTicks;
-    return lastLevel < mean * END_DROP_RATIO;
-  };
+  const hasMinimumSpeech = () => segmentLoudTicks >= MIN_LOUD_TICKS;
 
   const setSpeaking = (next: boolean) => {
     if (speaking === next) return;
@@ -233,9 +207,7 @@ export function startServerCaptionRecorder(
       instance.start();
       recorder = instance;
       segmentStartedAt = Date.now();
-      segmentTicks = 0;
       segmentLoudTicks = 0;
-      segmentLevelSum = 0;
     } catch {
       // 이 기기에서는 녹음을 시작할 수 없다. 다음 발화에서 다시 시도한다.
       recorder = null;
@@ -264,7 +236,6 @@ export function startServerCaptionRecorder(
     for (let index = 0; index < samples.length; index += 1) sum += samples[index] * samples[index];
     const level = Math.sqrt(sum / samples.length);
     const now = Date.now();
-    lastLevel = level;
 
     const threshold = Math.max(noiseFloor * SPEECH_RATIO, ABSOLUTE_SPEECH_FLOOR);
     const loud = level > threshold;
@@ -279,8 +250,6 @@ export function startServerCaptionRecorder(
     noiseFloor += (level - noiseFloor) * (loud ? NOISE_FLOOR_RISE_ALPHA : NOISE_FLOOR_FALL_ALPHA);
 
     if (recorder) {
-      segmentTicks += 1;
-      segmentLevelSum += level;
       if (loud) segmentLoudTicks += 1;
     }
 
@@ -296,13 +265,15 @@ export function startServerCaptionRecorder(
 
       // 말이 길어지면 중간에 한 번 끊는다. 서버가 받아 주는 크기에도 상한이 있다.
       if (elapsed >= MAX_SEGMENT_MS) {
-        // 여전히 말하는 중이라 마지막 음량은 높다. 자연 종료 조건을 적용하면 8초 발화가 사라진다.
+        // 여전히 말하는 중이어도 4초마다 보내 지연과 발화 유실을 제한한다.
         endSegment(hasMinimumSpeech());
         return;
       }
       if (silentFor >= SILENCE_HOLD_MS) {
         setSpeaking(false);
-        endSegment(elapsed >= MIN_SEGMENT_MS && hasMinimumSpeech() && hasNaturalEnding());
+        // 역처럼 소음 바닥이 높은 곳에서는 끝 음량이 평균보다 크게 떨어지지 않는다.
+        // 발화로 판단한 조각은 끝 모양으로 다시 버리지 않고 Whisper가 판별하게 한다.
+        endSegment(elapsed >= MIN_SEGMENT_MS && hasMinimumSpeech());
       }
     }
   };
