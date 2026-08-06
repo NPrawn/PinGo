@@ -76,7 +76,7 @@ const PERSONA_STAIRS_6 = {
  * B2-B3 계단 6을 올라가는 안내의 완료 버튼은 이 위치에서 경로를 다시 계산한다.
  */
 const TEMP_FLOOR_TRANSITION_LOCATION = {
-  nodeId: 353,
+  nodeId: 358,
   floorId: 1,
   mapX: -4.986,
   mapY: 27.654,
