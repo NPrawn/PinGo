@@ -20,3 +20,27 @@ export function floorIdOf(maps: readonly FloorMap[], floorCode: string): number 
 export function floorCodeOf(maps: readonly FloorMap[], floorId: number): string | undefined {
   return maps.find((map) => map.floorId === floorId)?.floorCode;
 }
+
+/** 현재 층과 이동 층수로 역의 실제 층 목록에서 도착 층 코드를 찾는다. */
+export function floorCodeAfterDelta(
+  maps: readonly FloorMap[],
+  currentFloorId: number,
+  floorDelta: number,
+): string | undefined {
+  const rankOf = (floorCode: string) => {
+    const basement = /^B(\d+)$/i.exec(floorCode);
+    if (basement) return -Number(basement[1]);
+
+    const ground = /^(\d+)F$/i.exec(floorCode);
+    return ground ? Number(ground[1]) : null;
+  };
+
+  const ordered = maps
+    .map((map) => ({ map, rank: rankOf(map.floorCode) }))
+    .filter((item): item is { map: FloorMap; rank: number } => item.rank !== null)
+    .sort((a, b) => a.rank - b.rank);
+  const currentIndex = ordered.findIndex((item) => item.map.floorId === currentFloorId);
+  if (currentIndex < 0) return undefined;
+
+  return ordered[currentIndex + floorDelta]?.map.floorCode;
+}

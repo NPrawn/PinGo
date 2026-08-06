@@ -1,5 +1,5 @@
 import type { FloorMap } from '../model/types';
-import { floorCodeOf, floorIdOf } from './floorLookup';
+import { floorCodeAfterDelta, floorCodeOf, floorIdOf } from './floorLookup';
 
 function map(floorId: number, floorCode: string): FloorMap {
   return {
@@ -43,5 +43,21 @@ describe('floorCodeOf', () => {
 
   it('없는 층은 undefined다', () => {
     expect(floorCodeOf(MAPS, 99)).toBeUndefined();
+  });
+});
+
+describe('floorCodeAfterDelta', () => {
+  const maps = [...MAPS, map(4, '1F')];
+
+  it('현재 위치와 이동 층수를 기준으로 위층을 찾는다', () => {
+    expect(floorCodeAfterDelta(maps, 2, 1)).toBe('B2');
+    expect(floorCodeAfterDelta(maps, 1, 1)).toBe('B1');
+    expect(floorCodeAfterDelta(maps, 3, 1)).toBe('1F');
+  });
+
+  it('현재 위치와 이동 층수를 기준으로 아래층을 찾는다', () => {
+    expect(floorCodeAfterDelta(maps, 4, -1)).toBe('B1');
+    expect(floorCodeAfterDelta(maps, 3, -1)).toBe('B2');
+    expect(floorCodeAfterDelta(maps, 1, -1)).toBe('B3');
   });
 });

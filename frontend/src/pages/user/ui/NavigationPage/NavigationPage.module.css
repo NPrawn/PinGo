@@ -11,10 +11,147 @@
 }
 
 .overlayRoot {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
+}
+
+.floorTransitionGuide {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-overlay) + 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 22px;
+  color: #fff;
+  text-align: center;
+  background: rgb(0 0 0 / 76%);
+  backdrop-filter: blur(2px);
+}
+
+.floorTransitionChevrons {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  filter: drop-shadow(0 9px 8px rgb(0 31 22 / 52%));
+}
+
+.floorTransitionChevrons svg {
+  width: 112px;
+  height: 64px;
+  margin-top: -12px;
+  overflow: visible;
+  opacity: 0.35;
+  animation: floorChevronFlow 1.35s ease-in-out infinite;
+}
+
+.floorTransitionChevrons polyline {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.floorTransitionChevronDepth {
+  stroke: #087253;
+  stroke-width: 27px;
+  filter: drop-shadow(0 8px 7px rgb(0 22 16 / 48%));
+}
+
+.floorTransitionChevronFace {
+  stroke-width: 26px;
+  filter: drop-shadow(0 0 10px rgb(82 234 176 / 22%));
+}
+
+.floorTransitionChevrons svg:nth-child(2) {
+  animation-delay: 180ms;
+}
+
+.floorTransitionChevronsUp {
+  filter: drop-shadow(0 -9px 8px rgb(0 31 22 / 52%));
+}
+
+.floorTransitionChevronsUp svg {
+  animation-name: floorChevronFlowUp;
+}
+
+.floorTransitionChevronsUp .floorTransitionChevronDepth {
+  filter: drop-shadow(0 -8px 7px rgb(0 22 16 / 48%));
+}
+
+@keyframes floorChevronFlow {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(-1px);
+  }
+
+  48% {
+    opacity: 1;
+    transform: translateY(3px);
+  }
+}
+
+@keyframes floorChevronFlowUp {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(1px);
+  }
+
+  48% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floorTransitionChevrons svg {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+.floorTransitionGuideButton {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 20px;
+  padding: 10px 16px;
+  font: 800 12px/1.35 var(--font-family-base);
+  letter-spacing: -0.03em;
+  color: #06251b;
+  cursor: pointer;
+  background: var(--color-mint-veil);
+  border: 1px solid var(--color-mint-highlight-soft);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+}
+
+.floorTransitionInstruction {
+  max-width: calc(100% - 32px);
+  margin: 36px 0 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 850;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+}
+
+.floorTransitionDescription {
+  max-width: 260px;
+  margin: 7px 0 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: rgb(223 246 230 / 68%);
 }
 
 .cam {
@@ -55,7 +192,6 @@
   height: 54px;
   padding: 8px 16px 0;
 }
-
 
 .journeyHeader {
   position: absolute;

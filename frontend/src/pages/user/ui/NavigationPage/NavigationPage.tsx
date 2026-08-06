@@ -12,7 +12,12 @@ import {
   useStationFacilities,
   type Facility,
 } from '@/entities/facility';
-import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
+import {
+  floorCodeAfterDelta,
+  floorCodeOf,
+  floorIdOf,
+  useStationFloorMaps,
+} from '@/entities/floor-map';
 import {
   carriesDistance,
   instructionAt,
@@ -60,6 +65,22 @@ import styles from './NavigationPage.module.css';
  * 처럼 아직 시드되지 않은 유형도 같은 규칙으로 자연히 사라진다.
  */
 const MAP_FILTERS = FACILITY_MAP_FILTERS;
+
+const PERSONA_STAIRS_6 = {
+  fromNodeId: 234,
+  toNodeId: 119,
+} as const;
+
+/**
+ * 층 이동 API가 연결되기 전 페르소나 테스트에서 사용하는 임시 도착 위치.
+ * B2-B3 계단 6을 올라가는 안내의 완료 버튼은 이 위치에서 경로를 다시 계산한다.
+ */
+const TEMP_FLOOR_TRANSITION_LOCATION = {
+  floorId: 1,
+  mapX: -4.986,
+  mapY: 27.654,
+  forwardMap: { x: 0.995, y: -0.099 },
+} as const;
 
 /**
  * 카메라 화면의 문구. 화살표가 가리키는 방향을 말로 한 번 더 적는다.
@@ -125,6 +146,7 @@ export function NavigationPage() {
   const currentMapY = useNavigationStore((state) => state.currentMapY);
   const currentForwardMap = useNavigationStore((state) => state.currentForwardMap);
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
+  const setCurrentLocation = useNavigationStore((state) => state.setCurrentLocation);
   const setRouteResult = useNavigationStore((state) => state.setRouteResult);
   const progressKey = useNavigationStore((state) => state.progressKey);
   const storedTravelledM = useNavigationStore((state) => state.travelledM);
@@ -400,6 +422,69 @@ export function NavigationPage() {
     progress.currentStepIndex === null
       ? undefined
       : routeResult?.steps?.[progress.currentStepIndex];
+  const floorTransitionPreview = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get('floor-transition')
+    : null;
+  const previewTransition =
+    floorTransitionPreview === 'up'
+      ? {
+          key: 'preview-up',
+          floorDelta: 1,
+          floorCode: 'B1',
+        }
+      : floorTransitionPreview === 'down'
+        ? {
+            key: 'preview-down',
+            floorDelta: -1,
+            floorCode: 'B3',
+          }
+        : null;
+  const activeStepMovesVertically =
+    activeStep?.moveType === 'elevator' ||
+    activeStep?.moveType === 'stair' ||
+    activeStep?.moveType === 'escalator';
+  const verticalStepKey =
+    previewTransition?.key ??
+    (activeStep &&
+    ((activeStep.floorDelta != null && activeStep.floorDelta !== 0) || activeStepMovesVertically)
+      ? `${progress.currentStepIndex}-${activeStep.fromNodeId}-${activeStep.toNodeId}`
+      : null);
+  const [completedVerticalStepKey, setCompletedVerticalStepKey] = useState<string | null>(null);
+  const [previousVerticalStepKey, setPreviousVerticalStepKey] = useState(verticalStepKey);
+
+  if (previousVerticalStepKey !== verticalStepKey) {
+    setPreviousVerticalStepKey(verticalStepKey);
+    if (verticalStepKey === null && completedVerticalStepKey !== null) {
+      setCompletedVerticalStepKey(null);
+    }
+  }
+
+  const verticalDestination =
+    verticalStepKey === null
+      ? null
+      : (pathNodes.find((node) => node.nodeId === activeStep?.toNodeId) ?? null);
+  const verticalDestinationFloorCode = verticalDestination
+    ? floorCodeOf(floorMaps, verticalDestination.floorId)
+    : null;
+  const transitionFloorDelta = previewTransition?.floorDelta ?? activeStep?.floorDelta ?? 0;
+  const transitionFloorCode =
+    previewTransition?.floorCode ??
+    verticalDestinationFloorCode ??
+    ((currentLocation?.floorId ?? currentFloorId) == null
+      ? undefined
+      : floorCodeAfterDelta(
+          floorMaps,
+          currentLocation?.floorId ?? currentFloorId ?? 0,
+          transitionFloorDelta,
+        ));
+  const transitionInstruction = transitionFloorCode
+    ? t(
+        transitionFloorDelta > 0
+          ? 'user.navigation.floorTransition.moveUp'
+          : 'user.navigation.floorTransition.moveDown',
+        { floor: transitionFloorCode },
+      )
+    : activeStep?.instruction;
 
   /**
    * 지금 걷고 있는 다리. **지나온 경유지 수가 곧 다리 번호다.**
@@ -439,10 +524,16 @@ export function NavigationPage() {
    * 층을 오르내리는 구간에서는 수평 방향을 그리지 않는다. 엘리베이터 앞에서 화살표가 통로를
    * 가리키면 그쪽으로 걷게 된다 — 가야 할 곳은 위층이다. 그 구간의 안내는 카드가 맡는다.
    */
-  const verticalMove =
-    activeStep?.moveType === 'elevator' ||
-    activeStep?.moveType === 'stair' ||
-    activeStep?.moveType === 'escalator';
+  const verticalMove = activeStepMovesVertically;
+  const isPersonaFloorTransition =
+    verticalMove &&
+    activeStep?.fromNodeId === PERSONA_STAIRS_6.fromNodeId &&
+    activeStep.toNodeId === PERSONA_STAIRS_6.toNodeId;
+  const showFloorTransition =
+    !isNoticeOpen &&
+    (previewTransition !== null || isPersonaFloorTransition) &&
+    verticalStepKey !== null &&
+    completedVerticalStepKey !== verticalStepKey;
   const camGuide =
     progress.offRoute || verticalMove || bearing === null
       ? null
@@ -486,8 +577,7 @@ export function NavigationPage() {
     destinationNameEn,
   );
   const storedDestinationFacility = pickedDestination ?? nodeDestinationFacility;
-  const destinationFacility =
-    storedDestinationFacility ?? matchedExitDestination ?? null;
+  const destinationFacility = storedDestinationFacility ?? matchedExitDestination ?? null;
 
   /**
    * 목적지 시설이 경로 응답의 도착 노드와 다를 때만 실제 경로 끝에 마커를 둔다.
@@ -1227,6 +1317,81 @@ export function NavigationPage() {
           세션 안내는 그대로 `overlay` 에 둔다. 그것이 뜨는 구간에는 세션이 떠 있지 않아 일반 DOM
           이 그대로 보이고, 안내가 시트보다 앞서야 한다는 순서도 아래 조건으로 유지된다.
         */}
+        {showFloorTransition && (
+          <section
+            className={styles.floorTransitionGuide}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="floor-transition-instruction"
+          >
+            <div
+              className={[
+                styles.floorTransitionChevrons,
+                transitionFloorDelta > 0 && styles.floorTransitionChevronsUp,
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              aria-hidden
+            >
+              {[0, 1].map((index) => (
+                <svg key={index} viewBox="0 0 112 64" focusable="false">
+                  <defs>
+                    <linearGradient
+                      id={`floor-chevron-gradient-${index}`}
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="0%" stopColor="var(--color-mint-highlight)" />
+                      <stop offset="52%" stopColor="var(--color-mint)" />
+                      <stop offset="100%" stopColor="#15936d" />
+                    </linearGradient>
+                  </defs>
+                  <polyline
+                    className={styles.floorTransitionChevronDepth}
+                    points={transitionFloorDelta > 0 ? '12,47 56,12 100,47' : '12,15 56,50 100,15'}
+                  />
+                  <polyline
+                    className={styles.floorTransitionChevronFace}
+                    points={transitionFloorDelta > 0 ? '12,50 56,15 100,50' : '12,12 56,47 100,12'}
+                    stroke={`url(#floor-chevron-gradient-${index})`}
+                  />
+                </svg>
+              ))}
+            </div>
+            <p id="floor-transition-instruction" className={styles.floorTransitionInstruction}>
+              {transitionInstruction}
+            </p>
+            <p className={styles.floorTransitionDescription}>
+              {t('user.navigation.floorTransition.description')}
+            </p>
+            <button
+              type="button"
+              className={styles.floorTransitionGuideButton}
+              onClick={() => {
+                setCompletedVerticalStepKey(verticalStepKey);
+                if (!previewTransition && verticalDestination) {
+                  const temporaryFloorCode = floorCodeOf(
+                    floorMaps,
+                    TEMP_FLOOR_TRANSITION_LOCATION.floorId,
+                  );
+                  if (temporaryFloorCode) {
+                    setPickedFloorCode(temporaryFloorCode);
+                    setFloor(temporaryFloorCode as FloorId);
+                  }
+                  setCurrentLocation({
+                    nodeId: verticalDestination.nodeId,
+                    ...TEMP_FLOOR_TRANSITION_LOCATION,
+                  });
+                }
+              }}
+            >
+              {t('user.navigation.floorTransition.confirm')}
+            </button>
+          </section>
+        )}
+
         {!isNoticeOpen && selectedFacility && (
           <Sheet
             label={t('user.navigation.facilityRoute', { name: selectedFacilityName })}
