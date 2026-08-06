@@ -1,6 +1,7 @@
 import { apiClient } from '../client';
 import { ENDPOINTS } from '../endpoints';
 import { unwrap } from '../request';
+import { ApiError } from '../types';
 import type { components } from '../schema';
 
 type Schemas = components['schemas'];
@@ -129,11 +130,26 @@ export function submitConsultationTranscript(
   );
 }
 
-/** 요약이 아직 없으면 404(`CONSULTATION_SUMMARY_NOT_FOUND`)다. */
-export function getConsultationSummary(consultationId: string) {
-  return unwrap<ConsultationSummary>(
-    apiClient.get(ENDPOINTS.consultations.summary(consultationId)),
-  );
+/**
+ * 요약이 아직 없는 404는 이력 조회의 정상적인 빈 결과다.
+ *
+ * 오류 상태로 캐시하면 화면을 다시 열거나 포커스할 때마다 같은 GET이 반복된다. null을
+ * 성공 결과로 돌려줘 화면이 요약 없음을 안정적으로 캐시하게 한다.
+ */
+export async function getConsultationSummary(consultationId: string) {
+  try {
+    return await unwrap<ConsultationSummary>(
+      apiClient.get(ENDPOINTS.consultations.summary(consultationId)),
+    );
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.code === 'CONSULTATION_SUMMARY_NOT_FOUND' || error.status === 404)
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export function getCounselorMe() {
