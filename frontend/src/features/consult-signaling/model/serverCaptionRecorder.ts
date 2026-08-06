@@ -74,15 +74,25 @@ function pickMimeType(): string | undefined {
   return candidates.find((type) => MediaRecorder.isTypeSupported?.(type));
 }
 
-function toBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  // 한 번에 넘기면 인자가 너무 많아 스택이 넘친다. 조금씩 끊어 잇는다.
-  const chunk = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
-  }
-  return btoa(binary);
+/**
+ * Blob 을 base64 로 옮긴다.
+ *
+ * 바이트를 직접 돌며 `String.fromCharCode` 로 잇는 대신 브라우저가 한 번에 하게 둔다. 손으로
+ * 하면 바이너리 문자열과 `btoa` 결과로 사본이 두 개 더 생기고, 인자를 한꺼번에 펼치지 않도록
+ * 끊어 주는 처리도 직접 해야 한다.
+ */
+function toBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('audio_read_failed'));
+    reader.onload = () => {
+      const result = String(reader.result);
+      // `data:audio/webm;base64,AAAA…` 로 온다. 쉼표 뒤가 본문이다.
+      const separator = result.indexOf(',');
+      resolve(separator < 0 ? '' : result.slice(separator + 1));
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 /**
@@ -98,7 +108,21 @@ export function startServerCaptionRecorder(
   const { consultationId, stream, language, onFinalText, onSpeakingChange, onError } = options;
 
   const mimeType = pickMimeType();
-  if (!mimeType || stream.getAudioTracks().length === 0) return null;
+  const audioTracks = stream.getAudioTracks();
+  if (!mimeType || audioTracks.length === 0) return null;
+
+  /**
+   * **소리만 담긴 스트림을 따로 만들어 녹음한다.**
+   *
+   * 사용자 쪽 스트림에는 카메라도 함께 들어 있다. 그것을 오디오 전용 형식과 함께 넘기면
+   * 브라우저에 따라 `NotSupportedError` 로 생성이 실패하거나, 영상까지 인코딩해 조각이 수 MB
+   * 로 부푼다. 뒤쪽이 더 고약하다 — 서버의 크기 제한에 전부 걸려 **자막이 하나도 남지 않는데
+   * 오류는 어디에도 뜨지 않는다.**
+   */
+  const audioOnlyStream = new MediaStream(audioTracks);
+
+  // 아래 콜백들이 이미 이 값을 읽는다. 오디오 그래프를 세우기 전에 정해 둔다.
+  let disposed = false;
 
   const AudioCtor =
     window.AudioContext ??
@@ -106,14 +130,31 @@ export function startServerCaptionRecorder(
   if (!AudioCtor) return null;
 
   const audioContext = new AudioCtor();
-  const source = audioContext.createMediaStreamSource(stream);
+
+  /**
+   * 멈춰 있는 오디오 그래프를 깨운다.
+   *
+   * `suspended` 상태에서는 그래프가 돌지 않아 `getFloatTimeDomainData` 가 계속 0을 채운다.
+   * 그러면 말소리를 영영 감지하지 못해 **녹음이 한 번도 시작되지 않는다** — 오류도 경고도
+   * 없이 자막만 나오지 않는다. 지금 고치려는 증상과 똑같은 모양이라 특히 위험하다.
+   *
+   * 만들 때 한 번으로는 부족하다. 상담 도중 앱을 전환하거나 화면이 꺼지면 브라우저가 다시
+   * 재우는데, 돌아와도 스스로 깨어나지는 않는다. 역에서 폰을 들고 안내받는 동안 흔한 일이다.
+   */
+  const resumeAudioContext = () => {
+    if (disposed || audioContext.state !== 'suspended') return;
+    void audioContext.resume().catch(() => undefined);
+  };
+  audioContext.addEventListener('statechange', resumeAudioContext);
+
+  const source = audioContext.createMediaStreamSource(audioOnlyStream);
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = 1024;
   source.connect(analyser);
+  resumeAudioContext();
 
   const samples = new Float32Array(analyser.fftSize);
   let noiseFloor = 0.01;
-  let disposed = false;
 
   let recorder: MediaRecorder | null = null;
   let chunks: Blob[] = [];
@@ -129,7 +170,7 @@ export function startServerCaptionRecorder(
 
   const upload = async (blob: Blob) => {
     try {
-      const audio = toBase64(await blob.arrayBuffer());
+      const audio = await toBase64(blob);
       const response = await transcribeConsultationAudio(consultationId, {
         audio,
         mimeType,
@@ -154,7 +195,7 @@ export function startServerCaptionRecorder(
   const startSegment = () => {
     if (disposed || recorder) return;
     try {
-      const instance = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 16000 });
+      const instance = new MediaRecorder(audioOnlyStream, { mimeType, audioBitsPerSecond: 16000 });
       chunks = [];
       instance.ondataavailable = (event) => {
         if (event.data.size > 0) chunks.push(event.data);
@@ -233,6 +274,7 @@ export function startServerCaptionRecorder(
       // 마지막 조각은 버린다. 화면을 떠난 뒤에 도착한 자막은 넣을 곳이 없다.
       endSegment(false);
       setSpeaking(false);
+      audioContext.removeEventListener('statechange', resumeAudioContext);
       try {
         source.disconnect();
         void audioContext.close();
