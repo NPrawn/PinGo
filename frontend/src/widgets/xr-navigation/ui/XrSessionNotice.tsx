@@ -15,6 +15,10 @@ interface XrSessionNoticeProps {
   onConfirm: () => void;
   /** 추적 없이 안내를 계속한다. */
   onContinueWithoutTracking: () => void;
+  /** 현장 테스트용 XR 보정 배율. 세션 시작 전에 선택한다. */
+  xrDebugMultiplier?: number;
+  /** 현장 테스트용 XR 보정 배율 변경 콜백. */
+  onXrDebugMultiplierChange?: (value: number) => void;
 }
 
 /**
@@ -48,6 +52,8 @@ export function XrSessionNotice({
   canRetry,
   onConfirm,
   onContinueWithoutTracking,
+  xrDebugMultiplier,
+  onXrDebugMultiplierChange,
 }: XrSessionNoticeProps) {
   const { t } = useTranslation();
   const failed = status === 'failed';
@@ -86,6 +92,21 @@ export function XrSessionNotice({
 
         <h2 className={styles.title}>{content.title}</h2>
         <p className={styles.description}>{content.description}</p>
+
+        {xrDebugMultiplier != null && onXrDebugMultiplierChange && (
+          <label className={styles.xrScaleControl}>
+            <span>XR {xrDebugMultiplier.toFixed(2)}배</span>
+            <input
+              type="range"
+              min="1.3"
+              max="1.7"
+              step="0.01"
+              value={xrDebugMultiplier}
+              onChange={(event) => onXrDebugMultiplierChange(Number(event.target.value))}
+              aria-label="XR 이동거리 보정 배율"
+            />
+          </label>
+        )}
 
         <div className={styles.actions}>
           {checking ? (
