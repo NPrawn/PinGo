@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../types';
 import {
+  getCounselorConsultationPage,
   getConsultationSummary,
-  normalizeCounselorConsultationPage,
   type CounselorConsultation,
   type CounselorConsultationPage,
 } from './counselorApi';
@@ -17,32 +17,10 @@ const consultation: CounselorConsultation = {
   requestedAt: '2026-08-06T00:00:00Z',
 };
 
-describe('normalizeCounselorConsultationPage', () => {
-  it('구형 배열 응답을 한 페이지로 변환한다', () => {
-    expect(normalizeCounselorConsultationPage([consultation])).toEqual({
-      content: [consultation],
-      page: 0,
-      size: 1,
-      totalElements: 1,
-      totalPages: 1,
-      first: true,
-      last: true,
-    });
-  });
+describe('getCounselorConsultationPage', () => {
+  beforeEach(() => vi.clearAllMocks());
 
-  it('구형 빈 배열 응답은 빈 페이지로 변환한다', () => {
-    expect(normalizeCounselorConsultationPage([])).toEqual({
-      content: [],
-      page: 0,
-      size: 0,
-      totalElements: 0,
-      totalPages: 0,
-      first: true,
-      last: true,
-    });
-  });
-
-  it('신형 페이지 응답의 메타데이터를 유지한다', () => {
+  it('복수 상태와 내 상담 범위를 신형 페이지 API로 전달한다', async () => {
     const page: CounselorConsultationPage = {
       content: [consultation],
       page: 1,
@@ -52,8 +30,26 @@ describe('normalizeCounselorConsultationPage', () => {
       first: false,
       last: false,
     };
+    mocks.get.mockResolvedValueOnce({ data: { success: true, data: page } });
 
-    expect(normalizeCounselorConsultationPage(page)).toBe(page);
+    await expect(
+      getCounselorConsultationPage({
+        statuses: ['ACCEPTED', 'IN_PROGRESS'],
+        scope: 'MINE',
+        page: 1,
+        size: 10,
+        sort: 'requestedAt,asc',
+      }),
+    ).resolves.toBe(page);
+    expect(mocks.get).toHaveBeenCalledWith('/api/counselors/consultations', {
+      params: {
+        statuses: 'ACCEPTED,IN_PROGRESS',
+        scope: 'MINE',
+        page: 1,
+        size: 10,
+        sort: 'requestedAt,asc',
+      },
+    });
   });
 });
 

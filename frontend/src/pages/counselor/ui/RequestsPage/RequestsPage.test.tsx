@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type {
@@ -8,20 +8,15 @@ import type {
   CounselorConsultationPage,
 } from '@/shared/api';
 import { RequestsPage } from './RequestsPage';
+import styles from './RequestsPage.module.css';
 
 const mocks = vi.hoisted(() => ({
   useCounselorConsultations: vi.fn(),
-  getCounselorMe: vi.fn().mockResolvedValue({ accountId: 7, name: '내 상담자' }),
 }));
 
 vi.mock('@/entities/consult', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/consult')>()),
   useCounselorConsultations: mocks.useCounselorConsultations,
-}));
-
-vi.mock('@/shared/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/shared/api')>()),
-  getCounselorMe: mocks.getCounselorMe,
 }));
 
 vi.mock('@/widgets/counselor-console', () => ({
@@ -75,13 +70,10 @@ describe('RequestsPage', () => {
     vi.clearAllMocks();
     mocks.useCounselorConsultations.mockImplementation(
       (params: CounselorConsultationListParams) => {
-        if (params.status === 'WAITING') {
+        if (params.scope === 'ALL') {
           return {
             data: page(
-              [
-                consultation('cs_waiting', 'WAITING', undefined, '대기 상담 위치'),
-                consultation('cs_assigned_waiting', 'WAITING', 8, '배정된 대기 위치'),
-              ],
+              [consultation('cs_waiting', 'WAITING', undefined, '대기 상담 위치')],
               params.page ?? 0,
               true,
             ),
@@ -96,8 +88,6 @@ describe('RequestsPage', () => {
             [
               consultation('cs_mine_accepted', 'ACCEPTED', 7, '내 수락 상담 위치'),
               consultation('cs_mine_progress', 'IN_PROGRESS', 7, '내 진행 상담 위치'),
-              consultation('cs_other', 'ACCEPTED', 8, '남의 상담 위치'),
-              consultation('cs_mine_ended', 'ENDED', 7, '내 종료 상담 위치'),
             ],
             params.page ?? 0,
             true,
@@ -114,33 +104,33 @@ describe('RequestsPage', () => {
     renderPage();
 
     expect(await screen.findAllByText('대기 상담 위치')).not.toHaveLength(0);
-    expect(screen.queryByText('배정된 대기 위치')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '전체 상담 대기' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
     expect(mocks.useCounselorConsultations).toHaveBeenLastCalledWith({
       status: 'WAITING',
+      scope: 'ALL',
       page: 0,
       size: 10,
       sort: 'requestedAt,asc',
     });
   });
 
-  it('내 상담에서 수락·진행 중인 본인 상담만 보여 준다', async () => {
+  it('내 상담에서 서버가 페이지 처리한 수락·진행 상담을 보여 준다', async () => {
     renderPage();
 
     const mineButton = await screen.findByRole('button', { name: '내 상담' });
-    await waitFor(() => expect(mineButton).toBeEnabled());
+    expect(mineButton).toBeEnabled();
     fireEvent.click(mineButton);
 
     expect(await screen.findAllByText('내 수락 상담 위치')).not.toHaveLength(0);
     expect(screen.getAllByText('내 진행 상담 위치')).not.toHaveLength(0);
-    expect(screen.queryByText('남의 상담 위치')).not.toBeInTheDocument();
-    expect(screen.queryByText('내 종료 상담 위치')).not.toBeInTheDocument();
     expect(mocks.useCounselorConsultations).toHaveBeenLastCalledWith({
+      statuses: ['ACCEPTED', 'IN_PROGRESS'],
+      scope: 'MINE',
       page: 0,
-      size: 2_000,
+      size: 10,
       sort: 'requestedAt,asc',
     });
   });
@@ -173,10 +163,23 @@ describe('RequestsPage', () => {
     expect(await screen.findAllByText('대기 상담 1페이지')).not.toHaveLength(0);
     expect(mocks.useCounselorConsultations).toHaveBeenLastCalledWith({
       status: 'WAITING',
+      scope: 'ALL',
       page: 1,
       size: 10,
       sort: 'requestedAt,asc',
     });
+  });
+
+  it('빈 상담 안내 문구에만 목록 안쪽 여백을 적용한다', () => {
+    mocks.useCounselorConsultations.mockReturnValue({
+      data: page([], 0, true),
+      isPending: false,
+      isError: false,
+      isFetching: false,
+    });
+    renderPage();
+
+    expect(screen.getByText('대기 중인 상담이 없습니다.')).toHaveClass(styles.stateMessage);
   });
 
   it('상담 요청을 불러오는 동안 페이지 내부 로더를 중복 표시하지 않는다', () => {

@@ -2,7 +2,11 @@ import type { ReactNode } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import type { CounselorConsultation, CounselorConsultationPage } from '@/shared/api';
+import type {
+  CounselorConsultation,
+  CounselorConsultationListParams,
+  CounselorConsultationPage,
+} from '@/shared/api';
 import { HistoryPage } from './HistoryPage';
 
 const mocks = vi.hoisted(() => ({
@@ -61,6 +65,19 @@ function historyPage(): CounselorConsultationPage {
   };
 }
 
+function mineHistoryPage(): CounselorConsultationPage {
+  const content = [consultation('cs_mine_ABC123', 7, 'B2 개찰구 앞')];
+  return {
+    content,
+    page: 0,
+    size: 2_000,
+    totalElements: content.length,
+    totalPages: 1,
+    first: true,
+    last: true,
+  };
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -77,12 +94,14 @@ describe('HistoryPage', () => {
     vi.clearAllMocks();
     mocks.getCounselorMe.mockResolvedValue({ accountId: 7, name: '내 상담자' });
     mocks.getConsultationSummary.mockResolvedValue(null);
-    mocks.useCounselorConsultations.mockReturnValue({
-      data: historyPage(),
-      isPending: false,
-      isError: false,
-      isFetching: false,
-    });
+    mocks.useCounselorConsultations.mockImplementation(
+      (params: CounselorConsultationListParams) => ({
+        data: params.scope === 'MINE' ? mineHistoryPage() : historyPage(),
+        isPending: false,
+        isError: false,
+        isFetching: false,
+      }),
+    );
   });
 
   it('전체 이력을 기본 표시하고 내 상담을 필터링한다', async () => {
@@ -99,15 +118,36 @@ describe('HistoryPage', () => {
     expect(screen.getAllByText('내 상담')).toHaveLength(1);
     expect(mocks.useCounselorConsultations).toHaveBeenCalledWith({
       status: 'ENDED',
+      scope: 'ALL',
       page: 0,
       size: 2_000,
       sort: 'requestedAt,desc',
     });
+    expect(mocks.useCounselorConsultations).toHaveBeenCalledWith(
+      {
+        status: 'ENDED',
+        scope: 'MINE',
+        page: 0,
+        size: 2_000,
+        sort: 'requestedAt,desc',
+      },
+      false,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: '내 상담 1' }));
 
     expect(screen.getByTitle('cs_mine_ABC123')).toBeInTheDocument();
     expect(screen.queryByTitle('cs_other_DEF456')).not.toBeInTheDocument();
+    expect(mocks.useCounselorConsultations).toHaveBeenLastCalledWith(
+      {
+        status: 'ENDED',
+        scope: 'MINE',
+        page: 0,
+        size: 2_000,
+        sort: 'requestedAt,desc',
+      },
+      true,
+    );
     expect(screen.getByRole('button', { name: '초기화' })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('일 필터'), { target: { value: '6' } });

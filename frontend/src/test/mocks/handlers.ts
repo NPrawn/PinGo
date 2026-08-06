@@ -272,25 +272,64 @@ export const handlers = [
       },
     }),
   ),
-  http.get('*/api/counselors/consultations', () =>
-    HttpResponse.json({
+  http.get('*/api/counselors/consultations', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? 0);
+    const size = Number(url.searchParams.get('size') ?? 20);
+    const scope = url.searchParams.get('scope') ?? 'ALL';
+    const status = url.searchParams.get('status');
+    const content =
+      status === 'ENDED'
+        ? []
+        : scope === 'MINE'
+          ? [
+              {
+                consultationId: 'cs_mine_test',
+                stationId: 1,
+                problemType: 'CANNOT_FIND_EXIT',
+                status: 'ACCEPTED',
+                counselorId: 1,
+                counselorName: '테스트 상담원',
+                currentNodeId: 101,
+                currentLocationLabel: 'B2 개찰구 앞',
+                destinationType: 'place',
+                destinationId: 3,
+                destinationLabel: '코엑스몰',
+                requestedAt: '2026-07-31T00:00:00Z',
+              },
+            ]
+          : [
+              {
+                consultationId: 'cs_test',
+                stationId: 1,
+                problemType: 'CANNOT_FIND_EXIT',
+                status: 'WAITING',
+                counselorId: null,
+                counselorName: null,
+                summaryStatus: null,
+                summaryPreview: null,
+                currentNodeId: 101,
+                currentLocationLabel: 'B2 개찰구 앞',
+                destinationType: 'place',
+                destinationId: 3,
+                destinationLabel: '코엑스몰',
+                requestedAt: '2026-07-31T00:00:00Z',
+              },
+            ];
+
+    return HttpResponse.json({
       success: true,
-      data: [
-        {
-          consultationId: 'cs_test',
-          stationId: 1,
-          problemType: 'CANNOT_FIND_EXIT',
-          status: 'WAITING',
-          currentNodeId: 101,
-          currentLocationLabel: 'B2 개찰구 앞',
-          destinationType: 'place',
-          destinationId: 3,
-          destinationLabel: '코엑스몰',
-          requestedAt: '2026-07-31T00:00:00Z',
-        },
-      ],
-    }),
-  ),
+      data: {
+        content,
+        page,
+        size,
+        totalElements: content.length,
+        totalPages: content.length > 0 ? 1 : 0,
+        first: page === 0,
+        last: true,
+      },
+    });
+  }),
   http.post('*/api/consultations/:consultationId/accept', ({ params }) =>
     HttpResponse.json({
       success: true,
