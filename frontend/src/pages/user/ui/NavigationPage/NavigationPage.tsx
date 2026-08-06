@@ -261,7 +261,7 @@ export function NavigationPage() {
     [currentFloorId, currentMapX, currentMapY],
   );
   const [confirmedForwardMap] = useState(() => currentForwardMap);
-  // TEMP XR debug control: remove this state and the range input below after field testing.
+  // TEMP XR debug control: remove this state and the XrSessionNotice props after field testing.
   const [xrDebugMultiplier, setXrDebugMultiplier] = useState(XR_DISTANCE_SCALE_MULTIPLIER);
   const xrDistanceScale = xrDistanceScaleOf(
     routeResult,
@@ -756,6 +756,8 @@ export function NavigationPage() {
             canRetry={canRetry}
             onConfirm={startXrSession}
             onContinueWithoutTracking={continueWithoutTracking}
+            xrDebugMultiplier={xrDebugMultiplier}
+            onXrDebugMultiplierChange={setXrDebugMultiplier}
           />
         ) : undefined
       }
@@ -932,18 +934,6 @@ export function NavigationPage() {
                     label="경로 위 위치 표시"
                     onCheckedChange={setSnapToRoute}
                   />
-                  <label className={styles.xrScaleControl}>
-                    <span>XR {xrDebugMultiplier.toFixed(2)}배</span>
-                    <input
-                      type="range"
-                      min="1.3"
-                      max="1.7"
-                      step="0.01"
-                      value={xrDebugMultiplier}
-                      onChange={(event) => setXrDebugMultiplier(Number(event.target.value))}
-                      aria-label="XR 이동거리 보정 배율"
-                    />
-                  </label>
                 </div>
                 <IndoorMapView
                   stationId={stationId ?? 0}
