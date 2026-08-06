@@ -7,10 +7,12 @@ import com.pingo.backend.consultation.dto.response.ConsultationListResponse;
 import com.pingo.backend.consultation.service.ConsultationSessionService;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.global.response.PageResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -45,27 +47,56 @@ class ConsultationCounselorQueryControllerTest {
                 CONSULTATION_ID, 1L, ProblemType.CANNOT_FIND_EXIT, ConsultationStatus.WAITING,
                 null, null, null, null, null, null, Instant.now()
         );
-        given(consultationSessionService.getConsultationsForCounselor(any(), isNull()))
-                .willReturn(List.of(response));
+        PageResponse<ConsultationListResponse> pageResponse = new PageResponse<>(
+                List.of(response), 0, 20, 1, 1, true, true
+        );
+        given(consultationSessionService.getConsultationsForCounselor(
+                any(),
+                isNull(),
+                any(Pageable.class)
+        )).willReturn(pageResponse);
 
-        mockMvc.perform(get("/api/counselors/consultations"))
+        mockMvc.perform(get("/api/counselors/consultations")
+                        .param("page", "0")
+                        .param("size", "20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].consultationId").value(CONSULTATION_ID));
+                .andExpect(jsonPath("$.data.content[0].consultationId").value(CONSULTATION_ID))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.totalPages").value(1))
+                .andExpect(jsonPath("$.data.first").value(true))
+                .andExpect(jsonPath("$.data.last").value(true));
     }
 
     @Test
     void getConsultations_상태_필터_성공() throws Exception {
-        given(consultationSessionService.getConsultationsForCounselor(any(), eq(ConsultationStatus.WAITING)))
-                .willReturn(List.of());
+        PageResponse<ConsultationListResponse> emptyPage = new PageResponse<>(
+                List.of(), 1, 10, 0, 0, false, true
+        );
+        given(consultationSessionService.getConsultationsForCounselor(
+                any(),
+                eq(ConsultationStatus.WAITING),
+                any(Pageable.class)
+        )).willReturn(emptyPage);
 
-        mockMvc.perform(get("/api/counselors/consultations").param("status", "WAITING"))
+        mockMvc.perform(get("/api/counselors/consultations")
+                        .param("status", "WAITING")
+                        .param("page", "1")
+                        .param("size", "10"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isArray());
+                .andExpect(jsonPath("$.data.content").isArray())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(10));
     }
 
     @Test
     void getConsultations_실패_비활성_계정() throws Exception {
-        given(consultationSessionService.getConsultationsForCounselor(any(), isNull()))
+        given(consultationSessionService.getConsultationsForCounselor(
+                any(),
+                isNull(),
+                any(Pageable.class)
+        ))
                 .willThrow(new BusinessException(ErrorCode.INACTIVE_ACCOUNT));
 
         mockMvc.perform(get("/api/counselors/consultations"))
