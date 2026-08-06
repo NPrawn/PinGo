@@ -67,8 +67,26 @@ export const queryKeys = {
     ] as const,
   consultationSummary: (consultationId: string) =>
     ['pingo', 'consultations', consultationId, 'summary'] as const,
-  /** 담당 역의 상담 목록(대기~종료 전 상태 모두 포함). Requests/History 화면이 공유한다. */
-  counselorConsultations: () => ['pingo', 'counselors', 'me', 'consultations'] as const,
+  /**
+   * 담당 역의 상담 목록. 조건이 없으면 모든 상담 목록 캐시를 무효화하는 공통 prefix다.
+   * 조회할 때는 상태·페이지·정렬을 모두 넣어 서로 다른 응답이 같은 캐시를 덮지 않게 한다.
+   */
+  counselorConsultations: (params?: {
+    status?: string;
+    page?: number;
+    size?: number;
+    sort?: string;
+  }) => {
+    const base = ['pingo', 'counselors', 'me', 'consultations'] as const;
+    if (!params) return base;
+    return [
+      ...base,
+      params.status ?? null,
+      params.page ?? 0,
+      params.size ?? null,
+      params.sort ?? null,
+    ] as const;
+  },
   /** 로그인한 상담자 본인 정보. */
   counselorMe: () => ['pingo', 'counselors', 'me'] as const,
 } as const;
