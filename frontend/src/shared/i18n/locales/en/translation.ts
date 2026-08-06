@@ -243,6 +243,7 @@ export const en = {
         channelOpen: 'open', channelClosed: 'closed',
         waypoint: 'Stop {{order}}', noDestination: 'No destination selected', captionLabel: 'Live captions · Agent',
         captionWaiting: 'The agent’s speech will appear here.', captionUnsupported: 'Speech captions are not supported in this browser.',
+        captionRetry: 'Retry',
         mapSync: 'The agent is guiding you using the same map',
       },
       navigation: {
