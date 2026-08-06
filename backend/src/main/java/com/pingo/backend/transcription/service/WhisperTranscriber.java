@@ -1,5 +1,7 @@
 package com.pingo.backend.transcription.service;
 
+import com.pingo.backend.global.exception.BusinessException;
+import com.pingo.backend.global.exception.ErrorCode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,6 +50,10 @@ public class WhisperTranscriber implements Transcriber {
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
+                // Spring 7은 기본적으로 요청 본문을 스트리밍한다. multipart 전체 길이를 모르면
+                // chunked로 전송하는데, GMS 앞단 Cloudflare가 이 요청을 400으로 거절한다.
+                // 오디오는 서비스에서 1MB로 제한하므로 메모리에 완성해 Content-Length를 붙인다.
+                .bufferContent((uri, method) -> true)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                 .build();
     }
@@ -86,7 +92,8 @@ public class WhisperTranscriber implements Transcriber {
                     mimeType,
                     audio.getSize(),
                     exception);
-            return null;
+            // 외부 API 장애를 무음과 같은 빈 200으로 숨기면 클라이언트가 재시도하거나 경고할 수 없다.
+            throw new BusinessException(ErrorCode.TRANSCRIPTION_SERVICE_FAILED);
         }
     }
 
