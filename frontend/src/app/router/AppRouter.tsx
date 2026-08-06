@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { HomePage } from '@/pages/home';
 import { NotFoundPage } from '@/pages/not-found';
 import { ADMIN_ROUTES, COUNSELOR_ROUTES, ROUTES, USER_ROUTES } from '@/shared/config';
+import { AppLoadingScreen } from './AppLoadingScreen';
 
 const UserPage = lazy(() =>
   import('@/pages/user').then((module) => ({ default: module.UserPage })),
@@ -23,13 +24,7 @@ const AdminPage = lazy(() =>
  */
 export function AppRouter() {
   return (
-    <Suspense
-      fallback={
-        <p role="status" aria-live="polite">
-          불러오는 중…
-        </p>
-      }
-    >
+    <Suspense fallback={<AppLoadingScreen />}>
       <Routes>
         <Route path={ROUTES.HOME} element={<HomePage />} />
 

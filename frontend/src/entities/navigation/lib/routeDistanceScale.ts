@@ -4,8 +4,8 @@ import { routePathNodesOf } from './routePathNodes';
 const MIN_DISTANCE_SCALE = 0.25;
 const MAX_DISTANCE_SCALE = 4;
 
-/** XR 이동량을 실측 이동량에 맞추기 위한 임시 보정 배율. */
-export const XR_DISTANCE_SCALE_MULTIPLIER = 1.6;
+/** 현장 테스트로 확정한 XR 이동거리 보정 배율. */
+export const XR_DISTANCE_SCALE_MULTIPLIER = 1.43;
 
 function edgeKey(fromNodeId: number, toNodeId: number): string {
   return `${fromNodeId}:${toNodeId}`;

@@ -12,6 +12,7 @@ import type {
 } from '@/shared/api';
 import { createConsultEvent, parseConsultEvent } from '@/shared/types';
 import type { ConsultDataEvent, ConsultEventBody } from '@/shared/types';
+import { isCaptionEchoWindow } from './captionEchoGuard';
 import { captureConsultMicrophone, peekConsultMedia, swapConsultVideoTrack } from './consultMedia';
 import { createConsultEventFallback } from './consultEventFallback';
 import type { ConsultEventFallback } from './consultEventFallback';
@@ -69,6 +70,7 @@ const CAPTION_RESTART_DELAY_MS = 500;
  * 상담을 시작하고 20초 넘게 양쪽 모두 한마디도 하지 않는 일은 드물다. 조용해서가 아니라
  * 소리가 들어오지 않는 것이라고 보는 편이 실제에 가깝다.
  */
+const CAPTION_SILENCE_MS = 20000;
 
 /**
  * 카메라·마이크를 얻는 데 기다려 주는 시간.
@@ -696,6 +698,9 @@ export function useConsultSignaling(
     /** 잇따라 실패한 횟수. 한 번 알아들으면 0으로 돌아간다. */
     let captionErrorStreak = 0;
     /** 한 번이라도 알아들었는지. 조용히 아무것도 못 듣는 상태를 가려낸다. */
+    let heardAnything = false;
+    /** 무음 감시 타이머. 인식을 시작할 때마다 다시 건다. */
+    let captionWatchdog: number | undefined;
     /** 상대에게 마지막으로 알린 자막 상태. 달라졌을 때만 다시 보낸다. */
     let captionStatus: CaptionTrouble | null = null;
     let lastInterimCaptionSentAt = 0;
@@ -737,7 +742,24 @@ export function useConsultSignaling(
      * 다른 앱이나 같은 페이지의 `getUserMedia` 가 마이크를 붙잡고 있을 때가 그렇다. 그때는
      * `onerror` 도 오지 않아 화면에는 "인식하고 있습니다"만 떠 있고, 상담자는 자기 말이
      * 기록되는 줄 알고 상담을 끝낸다. 전문은 비어 있고 요약도 만들어지지 않는다.
+     *
+     * **상대에게도 알린다.** 이 고장은 이쪽 화면만 보고는 알 수 없고, 손해를 보는 쪽은
+     * 상대다 — 한쪽 자막이 조용히 죽으면 그쪽 발화가 전문에서 통째로 빠지는데, 상대는
+     * 그것을 상담이 끝난 뒤 이력에서야 알게 된다.
      */
+    const armCaptionWatchdog = () => {
+      if (captionWatchdog !== undefined) window.clearTimeout(captionWatchdog);
+      captionWatchdog = window.setTimeout(() => {
+        captionWatchdog = undefined;
+        if (disposed || heardAnything) return;
+        reportCaptionStatus(
+          'stopped',
+          '마이크 소리가 음성 인식으로 들어오지 않습니다. 마이크가 다른 앱에 잡혀 있지 않은지 확인하고, 아래 버튼으로 다시 시도해 주세요.',
+        );
+      }, CAPTION_SILENCE_MS);
+    };
+
+    /** 스스로 끝난 인식을 잠시 뒤 다시 시작한다. 곧바로 부르면 브라우저가 거절한다. */
     const scheduleRecognitionRestart = (instance: SpeechRecognitionLike, generation: number) => {
       if (!shouldRecognize || disposed || captionRestartTimer !== undefined) return;
 
@@ -780,6 +802,20 @@ export function useConsultSignaling(
         role === 'COUNSELOR' ? 'ko-KR' : localSpeechLanguage || navigator.language || 'en-US';
       currentRecognition.onresult = (event) => {
         if (disposed || generation !== recognitionGeneration) return;
+        /**
+         * 우리가 스피커로 내보내는 번역 음성이 우리 마이크로 되돌아온 것은 버린다.
+         *
+         * 상담원 화면은 사용자 발화를 한국어로 옮겨 소리내어 읽는데(`useTranslatedSpeech`),
+         * 이쪽 인식기도 `ko-KR` 이다. 그대로 두면 **사용자가 한 말이 상담원 발화로 기록된다** —
+         * 전문이 통째로 `COUNSELOR` 로 남던 원인이다.
+         *
+         * Chrome 의 음성 인식은 페이지의 `getUserMedia` 와 별도로 기본 입력 장치를 열고 에코
+         * 제거를 적용하지 않는다. 그래서 통화 오디오에 걸린 AEC 는 여기를 지켜 주지 못한다.
+         *
+         * 읽는 도중뿐 아니라 끝난 직후 잠깐도 함께 막는다 — 인식기는 소리를 받은 뒤 조금
+         * 늦게 문장을 확정해서, 말하는 동안만 막으면 문장 끝자락이 샌다.
+         */
+        if (isCaptionEchoWindow()) return;
         // `results`에는 이전 확정 결과도 남아 있을 수 있다. 이번 이벤트에서 바뀐 구간만
         // 확정 결과와 중간 결과로 나눠 처리해야 이전 문장이 다음 문장에 다시 붙지 않는다.
         const finalTexts: string[] = [];
@@ -799,6 +835,11 @@ export function useConsultSignaling(
         if (finalTextValues.length === 0 && !interimTextValue) return;
         // 한 번이라도 알아들었으면 앞의 실패는 지나간 일이다.
         captionErrorStreak = 0;
+        heardAnything = true;
+        if (captionWatchdog !== undefined) {
+          window.clearTimeout(captionWatchdog);
+          captionWatchdog = undefined;
+        }
         reportCaptionStatus(null, null);
 
         // 한 이벤트에 확정 결과가 여러 개 들어오면 각각의 발화 ID를 유지한다. 하나로 합치면
@@ -901,6 +942,7 @@ export function useConsultSignaling(
       };
       try {
         currentRecognition.start();
+        armCaptionWatchdog();
       } catch {
         scheduleRecognitionRestart(currentRecognition, generation);
         reportCaptionStatus(
@@ -919,6 +961,8 @@ export function useConsultSignaling(
       if (disposed) return;
       shouldRecognize = true;
       captionErrorStreak = 0;
+      // 다시 시작하는 인식은 아직 아무것도 못 들었다. 감시기도 처음부터 다시 센다.
+      heardAnything = false;
       setCaptionsSupported(true);
       reportCaptionStatus(null, null);
       recognitionGeneration += 1;
@@ -958,6 +1002,16 @@ export function useConsultSignaling(
     };
 
     const sendCaption = (payload: CaptionPayload) => {
+      /**
+       * 밀린 확정 자막을 먼저 흘려보낸다.
+       *
+       * 예전에는 `connected` 로 **바뀌는 순간**에만 큐를 비웠다. 그런데 peer 가 이미
+       * `connected` 인 채로 소켓만 잠깐 흔들리면 상태 전이가 일어나지 않아, 그때 쌓인 확정
+       * 자막은 두 번 다시 나가지 못했다. 중간 결과는 조건 없이 나가므로 상대 화면의 실시간
+       * 자막은 멀쩡해 보이고, **전문에서만 그쪽 발화가 통째로 사라진다.**
+       */
+      flushPendingFinalCaptions();
+
       if (
         payload.final &&
         (socket.readyState !== WebSocket.OPEN || peer.connectionState !== 'connected')
@@ -1198,6 +1252,9 @@ export function useConsultSignaling(
        * 묻혔다. 방에 들어오자마자 한 번 알린다(상대가 아직이면 아래 연결 시점에 또 보낸다).
        */
       resendCaptionStatus();
+      // 소켓이 닫혀 있는 동안 쌓인 확정 자막을 여기서 내보낸다. peer 가 그사이 `connected`
+      // 를 유지했다면 상태 전이가 없어 이 자리 말고는 큐를 비울 기회가 없다.
+      flushPendingFinalCaptions();
       try {
         /**
          * 매달려 있는 장치 요청에 협상을 볼모로 잡히지 않는다.
@@ -1467,24 +1524,19 @@ export function useConsultSignaling(
      * 둘. `getUserMedia` 가 기본 마이크를 먼저 붙잡고 있으면, 그 뒤에 시작한 음성 인식이
      * 오류 없이 시작되고도 소리를 한 조각도 받지 못하는 일이 있다. 그러면 화면에는 아무
      * 경고도 없이 자막만 영영 비어 있다. 인식을 먼저 걸어 두면 이 순서 문제를 피한다.
+     *
+     * **예전 코드는 이 둘째 항을 실제로는 지키지 않았다.** 지원 브라우저에서만 `mediaReady`
+     * 를 기다렸는데, 그것이 바로 위에서 경고한 순서다. 즉시 시작하던 나머지 분기는 "이
+     * 브라우저는 지원하지 않는다"는 안내만 내고 끝나는 쪽이라 아무 소용이 없었다.
      */
-    const speechWindow = window as typeof window & {
-      SpeechRecognition?: SpeechRecognitionConstructor;
-      webkitSpeechRecognition?: SpeechRecognitionConstructor;
-    };
-    if (!speechWindow.SpeechRecognition && !speechWindow.webkitSpeechRecognition) {
-      startCaptions();
-    } else {
-      void mediaReady.then(() => {
-        if (!disposed) startCaptions();
-      });
-    }
+    startCaptions();
 
     return () => {
       disposed = true;
       if (offerTimer) window.clearInterval(offerTimer);
       if (recoverTimer) window.clearTimeout(recoverTimer);
       if (captionRestartTimer) window.clearTimeout(captionRestartTimer);
+      if (captionWatchdog !== undefined) window.clearTimeout(captionWatchdog);
       stopRtcStatsMonitor?.();
       /**
        * 다시 맺는 중이면 자리를 비운다고 알리지 않는다.

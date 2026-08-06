@@ -1,4 +1,9 @@
 import { act, renderHook } from '@testing-library/react';
+import {
+  markSpeechEnded,
+  markSpeechStarted,
+  resetCaptionEchoGuard,
+} from './captionEchoGuard';
 import { holdConsultMedia, releaseConsultMedia } from './consultMedia';
 import { useConsultSignaling } from './useConsultSignaling';
 
@@ -967,7 +972,245 @@ describe('useConsultSignaling', () => {
     view.unmount();
   });
 
-  it('starts speech recognition after media capture completes', async () => {
+  /**
+   * 인식이 오류 없이 시작되고도 아무것도 못 알아들으면 양쪽에 알린다.
+   *
+   * 이 감시기는 한때 있었다가 S15P11A206-328 에서 주석만 남기고 사라졌다. 그동안 한쪽
+   * 자막이 조용히 죽으면 그쪽 발화가 전문에서 통째로 빠지는데도 어느 화면에도 아무 경고가
+   * 뜨지 않았고, 상담이 끝난 뒤 이력을 열어 본 뒤에야 드러났다.
+   */
+  it('warns both sides when recognition starts but never hears anything', async () => {
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+      });
+      vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+      const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+      await flushSetup();
+
+      const socket = FakeSocket.instances[0];
+      await act(async () => {
+        socket?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(view.result.current.captionError).toBeNull();
+
+      // 한마디도 알아듣지 못한 채 감시 시간이 지난다.
+      await act(async () => {
+        vi.advanceTimersByTime(20000);
+        await Promise.resolve();
+      });
+
+      expect(view.result.current.captionError).toContain('음성 인식으로 들어오지 않습니다');
+
+      const statuses = (socket?.send.mock.calls ?? [])
+        .map(
+          ([raw]) =>
+            JSON.parse(String(raw)) as { type: string; payload?: { captionStatus?: string } },
+        )
+        .filter((message) => message.type === 'CAPTION')
+        .map((message) => message.payload?.captionStatus);
+
+      expect(statuses).toContain('stopped');
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * peer 가 계속 `connected` 인 채로 소켓만 흔들려도 밀린 확정 자막이 끝내 나간다.
+   *
+   * 예전에는 `connected` 로 **바뀌는 순간**에만 큐를 비웠다. 이미 붙어 있는 연결에서는 그
+   * 전이가 다시 오지 않아, 소켓이 잠깐 닫힌 사이에 쌓인 확정 자막이 영영 나가지 못했다.
+   * 중간 결과는 조건 없이 나가므로 상대 실시간 자막은 멀쩡해 보이고, **전문에서만 그쪽
+   * 발화가 통째로 사라진다.**
+   */
+  it('flushes captions queued while the socket was closed even if the peer stayed connected', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    const socket = FakeSocket.instances[0];
+    await act(async () => {
+      socket?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const peer = FakePeerConnection.instances[0];
+    await act(async () => {
+      if (peer) peer.connectionState = 'connected';
+      peer?.onconnectionstatechange?.();
+      await Promise.resolve();
+    });
+
+    const recognition = FakeRecognition.instances[0];
+    const captionTexts = () =>
+      (socket?.send.mock.calls ?? [])
+        .map(([raw]) => JSON.parse(String(raw)) as { type: string; payload?: { text?: string } })
+        .filter((message) => message.type === 'CAPTION')
+        .map((message) => message.payload?.text);
+
+    // 소켓만 잠깐 닫힌다. peer 는 계속 `connected` 라 상태 전이가 일어나지 않는다.
+    if (socket) socket.readyState = 0;
+    await act(async () => {
+      recognition?.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: '놓치면 안 되는 문장' } }],
+      });
+      await Promise.resolve();
+    });
+
+    expect(captionTexts()).not.toContain('놓치면 안 되는 문장');
+
+    // 소켓이 돌아왔다. 다음 발화가 밀린 문장까지 함께 밀어낸다.
+    if (socket) socket.readyState = 1;
+    await act(async () => {
+      recognition?.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: '다음 문장' } }],
+      });
+      await Promise.resolve();
+    });
+
+    expect(captionTexts()).toContain('놓치면 안 되는 문장');
+    expect(captionTexts()).toContain('다음 문장');
+
+    view.unmount();
+  });
+
+  /**
+   * 우리가 스피커로 내보내는 번역 음성이 마이크로 되돌아온 것을 전문에 남기지 않는다.
+   *
+   * 이것이 상담원 전문이 통째로 `COUNSELOR` 로 남던 경로다. 상담원 화면은 사용자 발화를
+   * 한국어로 옮겨 소리내어 읽는데 이쪽 인식기도 `ko-KR` 이라, 그 소리를 다시 알아들으면
+   * **사용자가 한 말이 상담원 발화로 기록된다.**
+   */
+  it('drops local recognition results captured while our own speech synthesis is speaking', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+    const speechSynthesis = { speaking: true, cancel: vi.fn(), speak: vi.fn() };
+    vi.stubGlobal('speechSynthesis', speechSynthesis);
+    resetCaptionEchoGuard();
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const recognition = FakeRecognition.instances[0];
+    const speak = (transcript: string) =>
+      recognition?.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript } }],
+      });
+
+    // 번역 음성이 나가는 중이다. 지금 들린 것은 우리 스피커 소리다.
+    await act(async () => {
+      speak('3번 출구로 가고 싶어요');
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([]);
+
+    // 음성이 끝나면 상담원 본인 발화는 그대로 기록한다.
+    speechSynthesis.speaking = false;
+    await act(async () => {
+      speak('네, 안내해 드릴게요');
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([
+      { seq: 1, speaker: 'COUNSELOR', content: '네, 안내해 드릴게요' },
+    ]);
+
+    view.unmount();
+  });
+
+  /**
+   * 읽기가 끝난 **직후**에 확정된 문장도 되먹임으로 본다.
+   *
+   * 인식기는 소리를 받은 뒤 조금 늦게 문장을 확정한다. 말하는 동안만 막으면 발화 끝자락에
+   * 걸친 소리가 `speaking` 이 내려간 뒤에 결과로 나와 그대로 전문에 남는다.
+   */
+  it('drops local recognition results that settle just after speech synthesis ends', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+    });
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+    vi.stubGlobal('speechSynthesis', { speaking: false, cancel: vi.fn(), speak: vi.fn() });
+    resetCaptionEchoGuard();
+
+    const view = renderHook(() => useConsultSignaling('room_1', 'COUNSELOR', 'token-1'));
+    await flushSetup();
+
+    await act(async () => {
+      FakeSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const recognition = FakeRecognition.instances[0];
+    const speak = (transcript: string) =>
+      recognition?.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript } }],
+      });
+
+    // 번역 음성이 방금 끝났다. 지금 확정되는 문장은 그 소리의 끝자락이다.
+    markSpeechStarted();
+    markSpeechEnded();
+
+    await act(async () => {
+      speak('3번 출구로 가고 싶어요');
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([]);
+
+    // 꼬리 시간이 지나면 다시 상담원 본인 발화로 받아들인다.
+    resetCaptionEchoGuard();
+    await act(async () => {
+      speak('네, 안내해 드릴게요');
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.transcript).toEqual([
+      { seq: 1, speaker: 'COUNSELOR', content: '네, 안내해 드릴게요' },
+    ]);
+
+    view.unmount();
+  });
+
+  /**
+   * 마이크를 잡기 **전에** 인식을 시작한다.
+   *
+   * 예전 테스트는 정확히 반대를 고정하고 있었다. `getUserMedia` 가 기본 마이크를 먼저
+   * 붙잡으면 그 뒤에 시작한 인식이 오류 없이 시작되고도 소리를 한 조각도 받지 못하는 일이
+   * 있고, 그러면 그쪽 발화가 전문에서 통째로 빠지는데 아무 경고도 뜨지 않는다.
+   */
+  it('starts speech recognition before capturing media', async () => {
     const getUserMedia = vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')]));
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
@@ -987,9 +1230,9 @@ describe('useConsultSignaling', () => {
 
     expect(getUserMedia).toHaveBeenCalled();
     expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled();
-    expect(getUserMedia.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(
       FakeRecognition.instances[0]?.start.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
-    );
+    ).toBeLessThan(getUserMedia.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER);
 
     view.unmount();
   });
