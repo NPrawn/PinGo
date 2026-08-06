@@ -16,14 +16,20 @@ type ConsultationListResponse = Schemas['ConsultationListResponse'];
  */
 export type CounselorConsultation = Omit<
   ConsultationListResponse,
-  'consultationId' | 'status' | 'requestedAt'
+  'consultationId' | 'status' | 'requestedAt' | 'counselorId'
 > & {
   consultationId: string;
   status: NonNullable<ConsultationListResponse['status']>;
   requestedAt: string;
+  counselorId?: number | null;
+  counselorName?: string | null;
+  summaryStatus?: 'PENDING' | 'COMPLETED' | 'FAILED' | null;
+  summaryPreview?: string | null;
 };
 export type CounselorConsultationListParams = {
   status?: CounselorConsultation['status'];
+  statuses?: readonly CounselorConsultation['status'][];
+  scope?: 'ALL' | 'MINE';
   page?: number;
   size?: number;
   sort?: string;
@@ -37,54 +43,36 @@ export type CounselorConsultationPage = {
   first: boolean;
   last: boolean;
 };
-type CounselorConsultationListPayload = CounselorConsultation[] | CounselorConsultationPage;
 export type CounselorConsultationDetail = Schemas['ConsultationDetailResponse'];
 export type ConsultationTranscriptRequest = Schemas['ConsultationTranscriptRequest'];
 export type ConsultationTranscriptSegment = Schemas['TranscriptSegmentRequest'];
 export type ConsultationSummary = Schemas['ConsultationSummaryResponse'];
 export type ConsultationSummaryStatus = Schemas['ConsultationSummaryStatusResponse'];
 
-/**
- * 구형 서버의 배열과 페이지네이션 서버의 객체 응답을 같은 형태로 맞춘다.
- *
- * FE가 먼저 배포되는 동안에는 서버가 배열을 주고, BE가 병합된 뒤부터는 페이지 객체를 준다.
- * 화면은 배포 순서와 무관하게 항상 이 함수가 만든 페이지 모델만 사용한다.
- */
-export function normalizeCounselorConsultationPage(
-  payload: CounselorConsultationListPayload,
-): CounselorConsultationPage {
-  if (!Array.isArray(payload)) return payload;
-
-  return {
-    content: payload,
-    page: 0,
-    size: payload.length,
-    totalElements: payload.length,
-    totalPages: payload.length > 0 ? 1 : 0,
-    first: true,
-    last: true,
-  };
-}
-
-/** 상태와 페이지 조건으로 상담 목록을 조회하고 구·신 응답을 페이지 모델로 정규화한다. */
+/** 범위·상태·페이지 조건으로 신형 상담 목록 페이지를 조회한다. */
 export async function getCounselorConsultationPage(params: CounselorConsultationListParams = {}) {
-  const payload = await unwrap<CounselorConsultationListPayload>(
-    apiClient.get(ENDPOINTS.counselors.consultations, { params }),
+  const { statuses, ...rest } = params;
+  return unwrap<CounselorConsultationPage>(
+    apiClient.get(ENDPOINTS.counselors.consultations, {
+      params: {
+        ...rest,
+        statuses: statuses?.join(','),
+      },
+    }),
   );
-  return normalizeCounselorConsultationPage(payload);
 }
 
 /**
  * 연결·상담 화면이 현재 상담을 찾을 때 쓰는 기존 전체 목록 인터페이스.
  *
- * 새 서버에서는 기본 20건만 내려오므로 이전과 같은 동작을 유지하도록 최대 페이지 크기로
- * 요청한다. 목록 화면은 이 함수 대신 `getCounselorConsultationPage`를 사용한다.
+ * 목록 화면은 범위별 서버 페이지를 직접 사용하고, 연결 화면의 상태 감시만 최근 목록을 사용한다.
  */
 export async function getCounselorConsultations(status?: CounselorConsultation['status']) {
   const page = await getCounselorConsultationPage({
     status,
+    scope: 'MINE',
     page: 0,
-    size: 2_000,
+    size: 100,
     sort: 'requestedAt,desc',
   });
   return page.content;
