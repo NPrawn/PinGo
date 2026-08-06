@@ -23,6 +23,14 @@ const signalingMocks = vi.hoisted(() => ({
   onEvent: null as ((event: unknown) => void) | null,
   /** 사용자에게 나간 이벤트. 렌더마다 새로 만들면 무엇이 나갔는지 검사할 수 없다. */
   sendConsultEvent: vi.fn(() => true),
+  translateCaption: vi.fn(),
+  localCaption: '',
+  localCaptionFinal: true,
+  localFinalCaptionId: null as string | null,
+  remoteCaption: '',
+  remoteFinalCaption: '',
+  remoteFinalCaptionId: null as string | null,
+  remoteCaptionFinal: true,
 }));
 
 const facilityMocks = vi.hoisted(() => ({
@@ -62,8 +70,7 @@ vi.mock('@/shared/api', async (importOriginal) => ({
 
 /** WebRTC·음성 인식은 이 화면의 관심사가 아니다. 쌓인 전문만 넘겨준다. */
 vi.mock('@/features/consult-signaling', async (importOriginal) => ({
-  // 번역은 이 화면의 관심사가 아니다. 옮기지 않은 것으로 둔다.
-  useCaptionTranslation: () => '',
+  useCaptionTranslation: signalingMocks.translateCaption,
   useTranslatedSpeech: vi.fn(),
   // 안내 문구를 만드는 것은 순수 함수다. 가짜로 바꾸면 실제로 무슨 말이 뜨는지 못 본다.
   describeRemoteCaptionTrouble: (
@@ -83,10 +90,13 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
       remoteVideoRef: { current: null },
       status: 'connected',
       error: null,
-      localCaption: '',
-      remoteCaption: '',
-      remoteFinalCaption: '',
-      remoteCaptionFinal: true,
+      localCaption: signalingMocks.localCaption,
+      localCaptionFinal: signalingMocks.localCaptionFinal,
+      localFinalCaptionId: signalingMocks.localFinalCaptionId,
+      remoteCaption: signalingMocks.remoteCaption,
+      remoteFinalCaption: signalingMocks.remoteFinalCaption,
+      remoteFinalCaptionId: signalingMocks.remoteFinalCaptionId,
+      remoteCaptionFinal: signalingMocks.remoteCaptionFinal,
       remoteCaptionError: null,
       captionsSupported: true,
       transcript: signalingMocks.transcript,
@@ -153,11 +163,42 @@ function renderPage() {
 describe('SessionPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    signalingMocks.localCaption = '';
+    signalingMocks.localCaptionFinal = true;
+    signalingMocks.localFinalCaptionId = null;
+    signalingMocks.remoteCaption = '';
+    signalingMocks.remoteFinalCaption = '';
+    signalingMocks.remoteFinalCaptionId = null;
+    signalingMocks.remoteCaptionFinal = true;
+    signalingMocks.translateCaption.mockImplementation(
+      (_consultationId: string, text: string, targetLanguage: string) => {
+        if (!text) return '';
+        return targetLanguage === 'ko' ? `한국어: ${text}` : `English: ${text}`;
+      },
+    );
     useConsultStore.setState({
       consultationId: 'cs_1',
       signalingRoomId: 'room_cs_1',
       signalingAccessToken: 'token-1',
     });
+  });
+
+  it('실시간 자막을 한국어와 영어로 함께 표시한다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
+    ]);
+    signalingMocks.remoteCaption = 'Where is exit three?';
+    signalingMocks.remoteFinalCaption = 'Where is exit three?';
+    signalingMocks.remoteFinalCaptionId = 'caption-user-1';
+    signalingMocks.localCaption = '3번 출구는 왼쪽입니다.';
+    signalingMocks.localFinalCaptionId = 'caption-counselor-1';
+
+    renderPage();
+
+    expect(await screen.findByText('한국어: Where is exit three?')).toBeInTheDocument();
+    expect(screen.getByText('English: Where is exit three?')).toBeInTheDocument();
+    expect(screen.getByText('3번 출구는 왼쪽입니다.')).toBeInTheDocument();
+    expect(screen.getByText('English: 3번 출구는 왼쪽입니다.')).toBeInTheDocument();
   });
 
   /**

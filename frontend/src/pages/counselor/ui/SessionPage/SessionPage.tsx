@@ -193,14 +193,20 @@ export function SessionPage() {
       updateTranscriptTranslation(captionId, translated),
     [updateTranscriptTranslation],
   );
-  const translatedUserCaption = useCaptionTranslation(
+  const translatedUserCaptionKo = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
     'ko',
     remoteFinalCaptionId,
     handleUserCaptionTranslation,
   );
-  useCaptionTranslation(
+  const translatedUserCaptionEn = useCaptionTranslation(
+    consultationId,
+    remoteFinalCaption,
+    'en',
+    remoteFinalCaptionId,
+  );
+  const translatedCounselorCaptionEn = useCaptionTranslation(
     consultationId,
     localCaptionFinal ? localCaption : '',
     'en',
@@ -220,18 +226,14 @@ export function SessionPage() {
    * 멈춰 서야 한다.
    */
   const [readUserCaptionAloud, setReadUserCaptionAloud] = useState(false);
-  useTranslatedSpeech(translatedUserCaption, 'ko-KR', remoteCaptionFinal && readUserCaptionAloud);
-  /**
-   * 옮긴 문장은 큰 줄에, 지금 들어오는 원문은 아래 줄에 흘려보낸다.
-   *
-   * 번역은 말이 끝난 문장에만 걸리므로, 옮긴 문장만 띄우면 사용자가 말하는 내내 화면이
-   * 지난 문장에서 멈춰 있다. 상담원은 사용자가 말하는 중인지 끝난 것인지 알 수 없다.
-   */
-  /** 확정 자막도 다음 발화가 시작될 때까지 실시간 영역에 유지해 언어별 표시 차이를 없앤다. */
-  const liveUserCaption = remoteCaption;
-  const userCaptionPrimary = translatedUserCaption || liveUserCaption;
-  const userCaptionSource =
-    translatedUserCaption && translatedUserCaption !== liveUserCaption ? liveUserCaption : '';
+  useTranslatedSpeech(translatedUserCaptionKo, 'ko-KR', remoteCaptionFinal && readUserCaptionAloud);
+  /** 한국어와 영어를 고정된 순서로 함께 보여 언어에 따라 자막 위치가 바뀌지 않게 한다. */
+  const userCaptionKorean = remoteCaptionFinal
+    ? translatedUserCaptionKo || remoteCaption
+    : remoteCaption;
+  const userCaptionEnglish = remoteCaptionFinal ? translatedUserCaptionEn : '';
+  const counselorCaptionKorean = localCaption;
+  const counselorCaptionEnglish = translatedCounselorCaptionEn;
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
   const userCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '사용자');
   const displayTranscript = (
@@ -1059,23 +1061,26 @@ export function SessionPage() {
                       {remoteCaptionFinal ? '확정' : '말하는 중'}
                     </span>
                   </div>
-                  <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
-                    {userCaptionPrimary ||
-                      (captionsSupported
-                        ? '사용자가 말하면 자막을 표시합니다.'
-                        : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
-                  </span>
-                  {userCaptionSource && (
-                    <span
-                      className={[styles.sourceLine, !remoteCaptionFinal && styles.sourceLineLive]
-                        .filter(Boolean)
-                        .join(' ')}
-                      aria-live="polite"
-                      aria-atomic="true"
-                    >
-                      {userCaptionSource}
-                    </span>
-                  )}
+                  <div className={styles.bilingualCaption} aria-live="polite" aria-atomic="true">
+                    <div className={styles.bilingualLine}>
+                      <span className={styles.bilingualLanguage}>한국어</span>
+                      <span className={styles.bilingualText}>
+                        {userCaptionKorean ||
+                          (captionsSupported
+                            ? '사용자가 말하면 자막을 표시합니다.'
+                            : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
+                      </span>
+                    </div>
+                    <div className={styles.bilingualLine}>
+                      <span className={styles.bilingualLanguage}>English</span>
+                      <span className={styles.bilingualTranslation}>
+                        {userCaptionEnglish ||
+                          (remoteCaptionFinal && remoteFinalCaption
+                            ? 'Translating…'
+                            : 'English translation appears after the sentence ends.')}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <div className={[styles.liveCaption, styles.liveCaptionCounselor].join(' ')}>
                   <div className={styles.liveCaptionHeader}>
@@ -1084,12 +1089,26 @@ export function SessionPage() {
                       {localCaptionFinal ? '확정' : '말하는 중'}
                     </span>
                   </div>
-                  <span className={styles.liveCaptionText} aria-live="polite" aria-atomic="true">
-                    {localCaption ||
-                      (captionsSupported
-                        ? '마이크를 켜고 말하면 자막을 표시합니다.'
-                        : '이 브라우저에서는 음성 자막을 지원하지 않습니다. Chrome에서 열어 주세요.')}
-                  </span>
+                  <div className={styles.bilingualCaption} aria-live="polite" aria-atomic="true">
+                    <div className={styles.bilingualLine}>
+                      <span className={styles.bilingualLanguage}>한국어</span>
+                      <span className={styles.bilingualText}>
+                        {counselorCaptionKorean ||
+                          (captionsSupported
+                            ? '마이크를 켜고 말하면 자막을 표시합니다.'
+                            : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
+                      </span>
+                    </div>
+                    <div className={styles.bilingualLine}>
+                      <span className={styles.bilingualLanguage}>English</span>
+                      <span className={styles.bilingualTranslation}>
+                        {counselorCaptionEnglish ||
+                          (localCaptionFinal && localCaption
+                            ? 'Translating…'
+                            : 'English translation appears after the sentence ends.')}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
