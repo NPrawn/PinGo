@@ -936,8 +936,8 @@ export function NavigationPage() {
                     <span>XR {xrDebugMultiplier.toFixed(2)}배</span>
                     <input
                       type="range"
-                      min="1.5"
-                      max="1.6"
+                      min="1.3"
+                      max="1.7"
                       step="0.01"
                       value={xrDebugMultiplier}
                       onChange={(event) => setXrDebugMultiplier(Number(event.target.value))}
