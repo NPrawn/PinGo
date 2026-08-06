@@ -7,7 +7,8 @@ import {
   consultationRef,
   consultationStatusLabel,
   destinationTypeLabel,
-  isCounselorConsultationVisible,
+  isActiveConsultationAssignedToCounselor,
+  isUnassignedWaitingConsultation,
   useConsultStore,
   useCounselorConsultations,
   waitedLabel,
@@ -18,10 +19,9 @@ import {
   getCounselorConsultation,
   getCounselorMe,
   queryKeys,
-  type CounselorConsultation,
 } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { Button, GhostButton, Icon, SelectField } from '@/shared/ui';
+import { Button, GhostButton, Icon, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import styles from './RequestsPage.module.css';
 
@@ -47,10 +47,8 @@ const CARD_CLASS: Record<string, string> = {
 };
 
 const PAGE_SIZE = 10;
-type RequestStatus = Extract<
-  CounselorConsultation['status'],
-  'WAITING' | 'ACCEPTED' | 'IN_PROGRESS'
->;
+const COMPATIBILITY_FETCH_SIZE = 2_000;
+type RequestScope = 'WAITING' | 'MINE';
 
 function errorMessage(error: unknown) {
   if (!(error instanceof ApiError)) return '요청 상태가 이미 변경됐거나 처리하지 못했습니다.';
@@ -69,29 +67,39 @@ export function RequestsPage() {
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
-  const [status, setStatus] = useState<RequestStatus>('WAITING');
+  const [scope, setScope] = useState<RequestScope>('WAITING');
   const [page, setPage] = useState(0);
 
-  const listParams = { status, page, size: PAGE_SIZE, sort: 'requestedAt,asc' } as const;
+  const listParams =
+    scope === 'WAITING'
+      ? { status: 'WAITING' as const, page, size: PAGE_SIZE, sort: 'requestedAt,asc' }
+      : { page: 0, size: COMPATIBILITY_FETCH_SIZE, sort: 'requestedAt,asc' };
   const queueQuery = useCounselorConsultations(listParams);
   const profileQuery = useQuery({
     queryKey: queryKeys.counselorMe(),
     queryFn: getCounselorMe,
     staleTime: 30_000,
   });
-  // WAITING은 미배정 건만, 수락·진행 중 상태는 로그인한 상담자 본인의 건만 남긴다.
-  const requests = useMemo(
-    () =>
-      (queueQuery.data?.content ?? []).filter((consultation) =>
-        isCounselorConsultationVisible(consultation, profileQuery.data?.accountId),
-      ),
-    [profileQuery.data?.accountId, queueQuery.data?.content],
-  );
+  const visibleRequests = useMemo(() => {
+    const consultations = queueQuery.data?.content ?? [];
+    if (scope === 'WAITING') return consultations.filter(isUnassignedWaitingConsultation);
+    return consultations.filter((consultation) =>
+      isActiveConsultationAssignedToCounselor(consultation, profileQuery.data?.accountId),
+    );
+  }, [profileQuery.data?.accountId, queueQuery.data?.content, scope]);
+  const mineTotalPages = Math.ceil(visibleRequests.length / PAGE_SIZE);
+  const requests =
+    scope === 'MINE'
+      ? visibleRequests.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+      : visibleRequests;
   const selected = requests.find((request) => request.consultationId === selectedId) ?? requests[0];
-  const identifyingCounselor = status !== 'WAITING' && profileQuery.isPending;
+  const identifyingCounselor = scope === 'MINE' && profileQuery.isPending;
+  const loading = queueQuery.isPending || identifyingCounselor;
+  const totalPages = scope === 'MINE' ? mineTotalPages : (queueQuery.data?.totalPages ?? 0);
+  const lastPage = scope === 'MINE' ? page + 1 >= totalPages : Boolean(queueQuery.data?.last);
 
-  const changeStatus = (nextStatus: RequestStatus) => {
-    setStatus(nextStatus);
+  const changeScope = (nextScope: RequestScope) => {
+    setScope(nextScope);
     setPage(0);
     setSelectedId(null);
     setActionError('');
@@ -131,57 +139,69 @@ export function RequestsPage() {
       <div className={styles.wrap}>
         <div className={styles.rail}>
           <div className={styles.railTools}>
-            <SelectField
-              className={styles.statusSelect}
-              value={status}
-              aria-label="상담 상태 필터"
-              onChange={(event) => changeStatus(event.target.value as RequestStatus)}
-            >
-              <option value="WAITING">대기 중</option>
-              <option value="ACCEPTED">수락됨</option>
-              <option value="IN_PROGRESS">진행 중</option>
-            </SelectField>
-          </div>
-          <div className={styles.railScroll}>
-            {(queueQuery.isPending || identifyingCounselor) && (
-              <p>상담 요청을 불러오는 중입니다.</p>
-            )}
-            {queueQuery.isError && <p role="alert">상담 요청을 불러오지 못했습니다.</p>}
-            {!queueQuery.isPending && !identifyingCounselor && requests.length === 0 && (
-              <p>해당 상태의 내 상담이 없습니다.</p>
-            )}
-            {requests.map((request) => (
-              <button
-                key={request.consultationId}
-                type="button"
-                aria-pressed={request.consultationId === selected?.consultationId}
-                className={[
-                  styles.request,
-                  CARD_CLASS[request.status] ?? styles.cardMuted,
-                  request.consultationId === selected?.consultationId && styles.requestOn,
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                onClick={() => setSelectedId(request.consultationId)}
+            <div className={styles.scopeFilters} aria-label="상담 현황 범위">
+              <PillButton
+                className={styles.scopeButton}
+                on={scope === 'WAITING'}
+                onClick={() => changeScope('WAITING')}
               >
-                <span className={styles.cardHead}>
-                  <span className={styles.tag}>
-                    {consultationProblemLabel(request.problemType)}
+                전체 상담 대기
+              </PillButton>
+              <PillButton
+                className={styles.scopeButton}
+                on={scope === 'MINE'}
+                disabled={profileQuery.isPending || profileQuery.isError}
+                onClick={() => changeScope('MINE')}
+              >
+                내 상담
+              </PillButton>
+            </div>
+          </div>
+          <div className={styles.railScroll} aria-label="상담 요청 목록" aria-busy={loading}>
+            {!loading && queueQuery.isError && <p role="alert">상담 요청을 불러오지 못했습니다.</p>}
+            {!loading && profileQuery.isError && (
+              <p role="alert">내 상담 여부를 확인하지 못했습니다.</p>
+            )}
+            {!loading && !queueQuery.isError && requests.length === 0 && (
+              <p>
+                {scope === 'WAITING'
+                  ? '대기 중인 상담이 없습니다.'
+                  : '진행 중인 내 상담이 없습니다.'}
+              </p>
+            )}
+            {!loading &&
+              requests.map((request) => (
+                <button
+                  key={request.consultationId}
+                  type="button"
+                  aria-pressed={request.consultationId === selected?.consultationId}
+                  className={[
+                    styles.request,
+                    CARD_CLASS[request.status] ?? styles.cardMuted,
+                    request.consultationId === selected?.consultationId && styles.requestOn,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={() => setSelectedId(request.consultationId)}
+                >
+                  <span className={styles.cardHead}>
+                    <span className={styles.tag}>
+                      {consultationProblemLabel(request.problemType)}
+                    </span>
+                    <span className={[styles.statusBadge, STATUS_CLASS[request.status]].join(' ')}>
+                      {consultationStatusLabel(request.status)}
+                    </span>
                   </span>
-                  <span className={[styles.statusBadge, STATUS_CLASS[request.status]].join(' ')}>
-                    {consultationStatusLabel(request.status)}
-                  </span>
-                </span>
-                <div className={styles.meta}>
-                  {request.status === 'WAITING'
-                    ? `${waitedLabel(request.requestedAt)} 기다리는 중`
-                    : consultationDateTimeLabel(request.requestedAt)}
-                </div>
-                <div className={styles.loc}>
-                  {request.currentLocationLabel ?? '위치를 아직 못 찾은 사용자'}
-                </div>
-              </button>
-            ))}
+                  <div className={styles.meta}>
+                    {request.status === 'WAITING'
+                      ? `${waitedLabel(request.requestedAt)} 기다리는 중`
+                      : consultationDateTimeLabel(request.requestedAt)}
+                  </div>
+                  <div className={styles.loc}>
+                    {request.currentLocationLabel ?? '위치를 아직 못 찾은 사용자'}
+                  </div>
+                </button>
+              ))}
           </div>
           <div className={styles.pagination} aria-label="상담 목록 페이지">
             <GhostButton
@@ -195,13 +215,11 @@ export function RequestsPage() {
               이전
             </GhostButton>
             <span className={styles.pageLabel}>
-              {queueQuery.data?.totalPages
-                ? `${queueQuery.data.page + 1} / ${queueQuery.data.totalPages}`
-                : '0 / 0'}
+              {totalPages > 0 ? `${page + 1} / ${totalPages}` : '0 / 0'}
             </span>
             <GhostButton
               className={styles.pageButton}
-              disabled={!queueQuery.data || queueQuery.data.last || queueQuery.isFetching}
+              disabled={!queueQuery.data || lastPage || queueQuery.isFetching}
               onClick={() => {
                 setPage((current) => current + 1);
                 setSelectedId(null);
@@ -212,8 +230,8 @@ export function RequestsPage() {
           </div>
         </div>
 
-        <div className={styles.detail}>
-          {selected ? (
+        <div className={styles.detail} aria-label="상담 요청 상세" aria-busy={loading}>
+          {loading ? null : selected ? (
             <>
               <div className={styles.detailHead}>
                 <div>
