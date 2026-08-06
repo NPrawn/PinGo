@@ -570,6 +570,47 @@
   color: #f0f0f5;
 }
 
+.bilingualCaption {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 5.8em;
+  margin-top: 8px;
+}
+
+.bilingualLine {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.bilingualLanguage {
+  padding: 2px 5px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.35;
+  color: #c8c8d2;
+  text-align: center;
+  background: rgb(255 255 255 / 8%);
+  border-radius: 4px;
+}
+
+.bilingualText,
+.bilingualTranslation {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.bilingualText {
+  color: #f0f0f5;
+}
+
+.bilingualTranslation {
+  color: #b8d8ff;
+}
+
 .notesBody {
   display: flex;
   flex-direction: column;
