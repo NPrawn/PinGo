@@ -384,6 +384,60 @@ describe('cameraStream', () => {
     });
 
     /**
+     * 권한이 생긴 시점과 라벨이 채워지는 시점이 갈리는 경우.
+     *
+     * `getUserMedia` 가 resolve 됐는데도 `enumerateDevices` 가 잠깐 빈 라벨을 준다. 그때 한 번만
+     * 훑고 포기하면 초광각인 채로 남는다.
+     */
+    it('권한 직후 라벨이 늦게 채워져도 메인 렌즈로 바로잡는다', async () => {
+      const wide = streamOn('rear-2');
+      const main = streamOn('rear-0');
+
+      // 권한 전. 라벨도 deviceId 도 없다.
+      withCameras([]);
+
+      mockedRequest.mockImplementationOnce(async () => {
+        // 권한은 생겼지만 라벨이 아직 비어 있다. 두 번째 조회부터 채워진다.
+        const empty = [
+          { deviceId: 'rear-2', label: '' },
+          { deviceId: 'rear-0', label: '' },
+        ];
+
+        withCameras(empty);
+        vi.mocked(navigator.mediaDevices.enumerateDevices)
+          .mockResolvedValueOnce(empty.map((c) => ({ kind: 'videoinput', ...c })) as never)
+          .mockResolvedValue(
+            [FRONT, REAR_WIDE, REAR_MAIN].map((c) => ({ kind: 'videoinput', ...c })) as never,
+          );
+
+        return granted(wide);
+      });
+      mockedRequest.mockResolvedValue(granted(main));
+
+      const pending = acquireCamera();
+
+      // 라벨이 빈 동안 기다린 뒤 다시 훑는다.
+      await vi.advanceTimersByTimeAsync(200);
+      await pending;
+
+      expect(mockedRequest).toHaveBeenNthCalledWith(2, { deviceId: { exact: 'rear-0' } });
+      expect(mockedStop).toHaveBeenCalledWith(wide);
+      expect(useCameraStore.getState()).toEqual({ stream: main, status: 'live' });
+    });
+
+    /** 라벨이 이미 보이는데 못 골랐으면 기다려도 같다. 바로 포기해야 미리보기가 늦지 않는다. */
+    it('라벨이 있는데 후면 규칙에 안 맞으면 기다리지 않는다', async () => {
+      withCameras([{ deviceId: 'webcam', label: 'Integrated Webcam (04f2:b6d9)' }]);
+      mockedRequest.mockResolvedValue(granted(streamOn('webcam')));
+
+      // 타이머를 진행시키지 않아도 끝나야 한다. 기다렸다면 여기서 멈춘다.
+      await acquireCamera();
+
+      expect(useCameraStore.getState().status).toBe('live');
+      expect(mockedRequest).toHaveBeenCalledTimes(1);
+    });
+
+    /**
      * 열린 렌즈를 확인할 수 없으면 멀쩡한 스트림을 끊지 않는다.
      *
      * 확인 없이 다시 열면 카메라를 열 때마다 그 도박을 되풀이해서 매번 검은 화면이 깜빡인다.

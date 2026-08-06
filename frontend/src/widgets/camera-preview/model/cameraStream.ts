@@ -80,13 +80,25 @@ const REAR_LABEL = /camera\s+(\d+),\s*facing\s+back/i;
  * 호출부가 `facingMode` 로 열어 권한을 받은 뒤 다시 부른다.
  */
 async function preferredRearDeviceId(): Promise<string | null> {
-  if (!navigator.mediaDevices?.enumerateDevices) return null;
+  return (await scanRearCameras()).deviceId;
+}
+
+/**
+ * 카메라 목록을 한 번 훑는다.
+ *
+ * `labelled` 는 **라벨을 하나라도 읽었는지**다. 고르지 못한 이유를 가른다 — 라벨이 아직 없는
+ * 것(기다리면 생긴다)과, 라벨은 있는데 후면 규칙에 맞는 것이 없는 것(기다려도 같다)은 다르다.
+ */
+async function scanRearCameras(): Promise<{ deviceId: string | null; labelled: boolean }> {
+  if (!navigator.mediaDevices?.enumerateDevices) return { deviceId: null, labelled: false };
 
   const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
   let best: { number: number; deviceId: string } | null = null;
+  let labelled = false;
 
   for (const device of devices) {
     if (device.kind !== 'videoinput' || !device.deviceId) continue;
+    if (device.label) labelled = true;
 
     const matched = REAR_LABEL.exec(device.label);
 
@@ -97,7 +109,37 @@ async function preferredRearDeviceId(): Promise<string | null> {
     if (!best || number < best.number) best = { number, deviceId: device.deviceId };
   }
 
-  return best?.deviceId ?? null;
+  return { deviceId: best?.deviceId ?? null, labelled };
+}
+
+/**
+ * 라벨이 채워지기를 기다리는 간격.
+ *
+ * **권한이 방금 생긴 직후에만 쓴다.** `getUserMedia` 가 resolve 된 시점과 `enumerateDevices` 가
+ * 라벨을 내주는 시점이 브라우저 안에서 갈릴 수 있다. 그 사이에 훑으면 라벨이 전부 비어 있어
+ * 렌즈를 고르지 못하고, 그 화면은 초광각인 채로 남는다.
+ *
+ * **고정 지연을 두지 않는다.** 얼마를 기다려야 하는지 알 수 없는데 값을 박으면, 라벨이 이미
+ * 있는 절대다수의 경우까지 그만큼 느려진다. 라벨이 실제로 비었을 때만 기다린다.
+ */
+const LABEL_SETTLE_DELAYS_MS: readonly number[] = [30, 90];
+
+/**
+ * 권한을 막 받은 직후에 메인 후면 렌즈를 고른다.
+ *
+ * 라벨이 아직 비어 있으면 짧게 기다렸다 다시 훑는다. 라벨이 보이는데도 고르지 못했다면
+ * 크롬 안드로이드가 아닌 것이므로 곧바로 포기한다 — 기다려도 결과가 같다.
+ */
+async function preferredRearDeviceIdAfterGrant(): Promise<string | null> {
+  if (!navigator.mediaDevices?.enumerateDevices) return null;
+
+  for (let attempt = 0; ; attempt += 1) {
+    const { deviceId, labelled } = await scanRearCameras();
+
+    if (deviceId || labelled || attempt >= LABEL_SETTLE_DELAYS_MS.length) return deviceId;
+
+    await wait(LABEL_SETTLE_DELAYS_MS[attempt]);
+  }
 }
 
 /**
@@ -192,7 +234,7 @@ async function openStream(): Promise<void> {
       if (!lensSettled) {
         lensSettled = true;
 
-        const better = await preferredRearDeviceId();
+        const better = await preferredRearDeviceIdAfterGrant();
         /**
          * **어느 렌즈가 열렸는지 읽지 못하면 그대로 둔다.** 확인할 수 없는데 다시 여는 것은
          * 멀쩡한 스트림을 끊고 도박하는 것이고, 그 도박을 카메라를 열 때마다 되풀이한다 —
