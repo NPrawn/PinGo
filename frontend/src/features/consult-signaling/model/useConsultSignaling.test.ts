@@ -1,9 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import {
-  markSpeechEnded,
-  markSpeechStarted,
-  resetCaptionEchoGuard,
-} from './captionEchoGuard';
+import { markSpeechEnded, markSpeechStarted, resetCaptionEchoGuard } from './captionEchoGuard';
 import { holdConsultMedia, releaseConsultMedia } from './consultMedia';
 import { useConsultSignaling } from './useConsultSignaling';
 
@@ -1074,6 +1070,54 @@ describe('useConsultSignaling', () => {
   });
 
   /**
+   * 최대 길이에 닿은 연속 발화도 버리지 않는다.
+   *
+   * 자연스러운 무음 종료와 달리 8초 강제 분할 시점에는 마지막 음량이 여전히 높다. 그때
+   * `END_DROP_RATIO` 를 적용하면 사용자가 쉬지 않고 말한 8초 전체가 사라진다.
+   */
+  it('uploads continuous speech when it reaches the maximum segment length', async () => {
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+      });
+      vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+      vi.stubGlobal('AudioContext', FakeAudioContext);
+
+      const view = renderHook(() =>
+        useConsultSignaling('room_cs_1', 'USER', 'token-1', undefined, 'en', 'server'),
+      );
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        micLevel.value = 0.5;
+        vi.advanceTimersByTime(8100);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledTimes(1);
+      expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledWith(
+        'cs_1',
+        expect.objectContaining({ audio: expect.any(Blob) }),
+      );
+
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
    * 카메라가 섞인 스트림을 그대로 녹음하지 않는다.
    *
    * 사용자 쪽 스트림에는 마이크와 카메라가 함께 들어 있다. 그것을 오디오 전용 형식과 함께
@@ -1240,7 +1284,10 @@ describe('useConsultSignaling', () => {
 
       expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledWith(
         'cs_1',
-        expect.objectContaining({ mimeType: 'audio/webm;codecs=opus', language: 'en' }),
+        expect.objectContaining({ audio: expect.any(Blob) }),
+      );
+      expect(apiMocks.transcribeConsultationAudio.mock.calls[0]?.[1]).not.toHaveProperty(
+        'language',
       );
 
       expect(view.result.current.transcript).toEqual([
@@ -1248,7 +1295,9 @@ describe('useConsultSignaling', () => {
       ]);
 
       const captions = (socket?.send.mock.calls ?? [])
-        .map(([raw]) => JSON.parse(String(raw)) as { type: string; payload?: Record<string, unknown> })
+        .map(
+          ([raw]) => JSON.parse(String(raw)) as { type: string; payload?: Record<string, unknown> },
+        )
         .filter((message) => message.type === 'CAPTION');
 
       // 말이 시작될 때 "말하는 중"을 알리고, 받아쓴 뒤 확정문을 보낸다.

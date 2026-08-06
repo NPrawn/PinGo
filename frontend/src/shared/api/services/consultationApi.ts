@@ -156,10 +156,22 @@ export type ConsultationTranscription = {
 
 export function transcribeConsultationAudio(
   consultationId: string,
-  request: { audio: string; mimeType: string; language?: string },
+  request: { audio: Blob; language?: string },
 ) {
+  const extension = request.audio.type.includes('ogg')
+    ? 'ogg'
+    : request.audio.type.includes('mp4')
+      ? 'mp4'
+      : 'webm';
+  const body = new FormData();
+  body.append('file', request.audio, `segment.${extension}`);
+  if (request.language) body.append('language', request.language);
+
   return unwrap<ConsultationTranscription>(
-    apiClient.post(ENDPOINTS.consultations.transcribe(consultationId), request),
+    apiClient.post(ENDPOINTS.consultations.transcribe(consultationId), body, {
+      // apiClient의 JSON 기본값을 지워야 브라우저가 multipart boundary를 직접 붙인다.
+      headers: { 'Content-Type': undefined },
+    }),
   );
 }
 
