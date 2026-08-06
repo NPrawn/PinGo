@@ -1,19 +1,20 @@
 package com.pingo.backend.transcription.controller;
 
 import com.pingo.backend.global.response.ApiResponse;
-import com.pingo.backend.transcription.dto.TranscriptionRequest;
 import com.pingo.backend.transcription.dto.TranscriptionResponse;
 import com.pingo.backend.transcription.service.ConsultationTranscriptionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/consultations")
@@ -33,11 +34,12 @@ public class ConsultationTranscriptionController {
             summary = "상담 발화 받아쓰기",
             description = "브라우저가 녹음한 발화 한 토막을 글로 옮긴다. 알아듣지 못하면 빈 글을 돌려준다."
     )
-    @PostMapping("/{consultationId}/transcribe")
+    @PostMapping(value = "/{consultationId}/transcribe", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<TranscriptionResponse> transcribe(
             @PathVariable String consultationId,
-            @Valid @RequestBody TranscriptionRequest request
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(required = false) String language
     ) {
-        return ApiResponse.success(transcriptionService.transcribe(consultationId, request));
+        return ApiResponse.success(transcriptionService.transcribe(consultationId, file, language));
     }
 }

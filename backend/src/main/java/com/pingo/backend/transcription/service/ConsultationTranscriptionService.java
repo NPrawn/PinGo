@@ -1,15 +1,17 @@
 package com.pingo.backend.transcription.service;
 
-import com.pingo.backend.transcription.dto.TranscriptionRequest;
 import com.pingo.backend.transcription.dto.TranscriptionResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConsultationTranscriptionService {
+
+    private static final long MAX_AUDIO_BYTES = 1_000_000;
 
     private final Transcriber transcriber;
 
@@ -19,8 +21,15 @@ public class ConsultationTranscriptionService {
      * 오류로 돌려주면 화면이 재시도를 하게 되는데, 말소리가 없어 비어 있는 조각은 몇 번을 다시
      * 보내도 결과가 같다. 헛된 왕복만 늘고 그동안 다음 발화가 밀린다.
      */
-    public TranscriptionResponse transcribe(String consultationId, TranscriptionRequest request) {
-        String text = transcriber.transcribe(request.audio(), request.mimeType(), request.language());
+    public TranscriptionResponse transcribe(String consultationId, MultipartFile audio, String language) {
+        if (audio == null || audio.isEmpty() || audio.getSize() > MAX_AUDIO_BYTES) {
+            log.warn("Rejected consultation audio. consultationId={}, size={}",
+                    consultationId,
+                    audio == null ? 0 : audio.getSize());
+            return TranscriptionResponse.empty();
+        }
+
+        String text = transcriber.transcribe(audio, language);
 
         /*
          * 무엇이 얼마나 들어왔는지 남긴다.
@@ -29,10 +38,10 @@ public class ConsultationTranscriptionService {
          * 결과 길이를 함께 남겨 두면, 소리가 아예 안 들어온 것인지 모델이 못 알아들은 것인지
          * 로그만으로 갈린다.
          */
-        log.info("Transcribed consultation audio. consultationId={}, mimeType={}, base64Length={}, textLength={}",
+        log.info("Transcribed consultation audio. consultationId={}, mimeType={}, audioBytes={}, textLength={}",
                 consultationId,
-                request.mimeType(),
-                request.audio().length(),
+                audio.getContentType(),
+                audio.getSize(),
                 text == null ? 0 : text.length());
 
         return text == null ? TranscriptionResponse.empty() : TranscriptionResponse.of(text);

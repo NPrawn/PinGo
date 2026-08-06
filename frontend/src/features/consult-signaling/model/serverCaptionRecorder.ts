@@ -19,23 +19,63 @@ const SILENCE_HOLD_MS = 700;
 /**
  * 한 조각의 최대 길이.
  *
- * 서버가 받아 주는 상한(약 30초)의 절반이다. 길이를 늘려도 비용은 거의 그대로지만 — 모델은
- * 오디오를 초당 32 토큰으로 세고 지시문은 열 토큰 남짓이다 — **왕복 시간이 조각 길이와
- * 무관하게 3초쯤 걸리므로 짧게 끊을수록 자막이 빨리 뜬다.**
+ * Whisper는 조각 전체를 받은 뒤 전사하므로 지나치게 길면 자막도 그만큼 늦어진다. 평소에는
+ * 아래 무음 판정에서 먼저 끊고, 쉬지 않고 길게 말할 때만 이 상한을 사용한다.
  */
-const MAX_SEGMENT_MS = 15000;
+const MAX_SEGMENT_MS = 8000;
 
 /** 이보다 짧은 소리는 말이 아니라 잡음으로 본다. */
 const MIN_SEGMENT_MS = 400;
 
 /**
- * 말소리로 칠 음량.
+ * 바닥 소음의 몇 배여야 말로 보는지.
  *
- * 마이크 이득이 기기마다 달라 절대값 하나로는 맞출 수 없다. 조용할 때의 바닥 소음을 재서
- * 그보다 뚜렷하게 큰 소리만 말로 본다.
+ * **더한 값이 아니라 곱한 값으로 본다.** 마이크 이득은 기기마다 열 배씩 차이 나서, 고정폭을
+ * 더하는 방식은 조용한 기기에서는 지나치게 민감하고 시끄러운 기기에서는 말을 놓친다.
  */
-const SPEECH_MARGIN = 0.012;
-const NOISE_FLOOR_ALPHA = 0.02;
+const SPEECH_RATIO = 2.5;
+
+/** 아무리 바닥이 낮아도 이보다 작으면 말이 아니다. */
+const ABSOLUTE_SPEECH_FLOOR = 0.02;
+
+/**
+ * 바닥 소음을 좇는 속도. **시끄러울 때도 아주 조금씩은 올라가야 한다.**
+ *
+ * 예전에는 조용할 때만 갱신했다. 그런데 `getUserMedia` 는 기본으로 자동 이득(AGC)을 걸어
+ * 조용한 소리를 끌어올리므로, 실내 암소음도 첫 문턱을 쉽게 넘는다. 그러면 시작부터 계속
+ * "말하는 중"이 되고 바닥은 영영 갱신되지 않는다. 침묵을 한 번도 감지하지 못해 **모든 조각이
+ * 최대 길이를 다 채우고, 그 안은 순수 암소음이라 모델이 가사 같은 헛소리를 지어냈다.**
+ *
+ * 올라가는 쪽을 느리게 두는 것은 말하는 도중에 기준이 따라 올라와 말을 잘라 먹지 않게 하기
+ * 위해서다. 느려도 방향이 있으면 시끄러운 곳에서도 결국 스스로 다시 맞춘다.
+ */
+const NOISE_FLOOR_FALL_ALPHA = 0.05;
+const NOISE_FLOOR_RISE_ALPHA = 0.002;
+
+/**
+ * 조각에서 말소리가 이 비율은 돼야 올린다.
+ *
+ * 잡음만 담긴 조각은 올려 봐야 모델이 없는 말을 지어낸다. 빈 글이 오는 것보다 나쁘다.
+ */
+const MIN_SPEECH_FRACTION = 0.35;
+
+/**
+ * 최대 길이를 다 채우면서 이 비율 넘게 계속 컸다면, 말이 아니라 **기준이 틀린 것**으로 본다.
+ *
+ * 사람이 8초를 쉬지 않고 꽉 채워 말하는 일은 드물다. 그보다는 주변이 시끄러워 문턱이 낮게
+ * 잡힌 경우가 훨씬 흔하다. 그때는 그 조각의 평균 크기를 새 바닥으로 삼아 즉시 다시 맞춘다 —
+ * 느린 상향 추적만으로는 몇 초 동안 잡음을 계속 올려 보내게 된다.
+ */
+const MISCALIBRATION_FRACTION = 0.9;
+
+/**
+ * 조각이 끝날 때 소리가 이 배수 아래로 떨어져 있어야 진짜 말이 끝난 것으로 본다.
+ *
+ * **말과 잡음은 끝나는 모양이 다르다.** 사람이 말을 마치면 소리가 뚝 떨어진다. 반면 꾸준한
+ * 잡음은 소리가 그대로인데 바닥 추적이 따라 올라와서 "조용해진" 것처럼 보일 뿐이다. 앞의
+ * 조건들만으로는 이 둘이 구분되지 않아, 시끄러운 곳에서 첫 조각이 잡음 그대로 올라갔다.
+ */
+const END_DROP_RATIO = 0.5;
 
 /** 소리 크기를 재는 간격. */
 const ANALYSE_INTERVAL_MS = 50;
@@ -65,34 +105,8 @@ export type ServerCaptionRecorder = {
 function pickMimeType(): string | undefined {
   if (typeof MediaRecorder === 'undefined') return undefined;
 
-  const candidates = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/mp4',
-  ];
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
   return candidates.find((type) => MediaRecorder.isTypeSupported?.(type));
-}
-
-/**
- * Blob 을 base64 로 옮긴다.
- *
- * 바이트를 직접 돌며 `String.fromCharCode` 로 잇는 대신 브라우저가 한 번에 하게 둔다. 손으로
- * 하면 바이너리 문자열과 `btoa` 결과로 사본이 두 개 더 생기고, 인자를 한꺼번에 펼치지 않도록
- * 끊어 주는 처리도 직접 해야 한다.
- */
-function toBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error('audio_read_failed'));
-    reader.onload = () => {
-      const result = String(reader.result);
-      // `data:audio/webm;base64,AAAA…` 로 온다. 쉼표 뒤가 본문이다.
-      const separator = result.indexOf(',');
-      resolve(separator < 0 ? '' : result.slice(separator + 1));
-    };
-    reader.readAsDataURL(blob);
-  });
 }
 
 /**
@@ -161,6 +175,27 @@ export function startServerCaptionRecorder(
   let speaking = false;
   let segmentStartedAt = 0;
   let lastLoudAt = 0;
+  /** 지금 조각에서 잰 횟수·말소리로 본 횟수·크기 합. 잡음뿐인 조각과 잘못된 기준을 가려낸다. */
+  let segmentTicks = 0;
+  let segmentLoudTicks = 0;
+  let segmentLevelSum = 0;
+  /** 가장 최근에 잰 소리 크기. 조각이 잦아들며 끝났는지 보는 데 쓴다. */
+  let lastLevel = 0;
+
+  /**
+   * 이 조각을 올릴 만한지.
+   *
+   * 잡음만 담긴 조각을 올리면 모델이 없는 말을 지어낸다. 빈 글이 오는 것보다 나쁘다 — 지어낸
+   * 문장은 받아쓴 글과 구분되지 않아 그대로 전문에 남는다.
+   */
+  const hasEnoughSpeech = () => {
+    if (segmentTicks === 0) return false;
+    if (segmentLoudTicks / segmentTicks < MIN_SPEECH_FRACTION) return false;
+
+    // 소리가 실제로 잦아들었는지. 그대로면 말이 끝난 게 아니라 바닥이 따라 올라온 것이다.
+    const mean = segmentLevelSum / segmentTicks;
+    return lastLevel < mean * END_DROP_RATIO;
+  };
 
   const setSpeaking = (next: boolean) => {
     if (speaking === next) return;
@@ -170,10 +205,8 @@ export function startServerCaptionRecorder(
 
   const upload = async (blob: Blob) => {
     try {
-      const audio = await toBase64(blob);
       const response = await transcribeConsultationAudio(consultationId, {
-        audio,
-        mimeType,
+        audio: blob,
         ...(language ? { language } : {}),
       });
       if (disposed) return;
@@ -208,6 +241,9 @@ export function startServerCaptionRecorder(
       instance.start();
       recorder = instance;
       segmentStartedAt = Date.now();
+      segmentTicks = 0;
+      segmentLoudTicks = 0;
+      segmentLevelSum = 0;
     } catch {
       // 이 기기에서는 녹음을 시작할 수 없다. 다음 발화에서 다시 시도한다.
       recorder = null;
@@ -235,12 +271,26 @@ export function startServerCaptionRecorder(
     let sum = 0;
     for (let index = 0; index < samples.length; index += 1) sum += samples[index] * samples[index];
     const level = Math.sqrt(sum / samples.length);
-
     const now = Date.now();
-    const loud = level > noiseFloor + SPEECH_MARGIN;
+    lastLevel = level;
 
-    // 조용한 동안에만 바닥 소음을 갱신한다. 말소리까지 섞으면 기준이 계속 올라가 말을 놓친다.
-    if (!loud) noiseFloor += (level - noiseFloor) * NOISE_FLOOR_ALPHA;
+    const threshold = Math.max(noiseFloor * SPEECH_RATIO, ABSOLUTE_SPEECH_FLOOR);
+    const loud = level > threshold;
+
+    /*
+     * 바닥은 **양쪽으로** 움직인다. 조용하면 빨리 내려가고, 시끄러우면 아주 천천히 올라간다.
+     *
+     * 올라가는 길이 없으면 시끄러운 곳에서 한 번 기준을 넘긴 뒤로는 영영 "말하는 중"이 되어,
+     * 침묵을 감지하지 못하고 모든 조각이 최대 길이를 다 채운다. 그 안은 순수 잡음이라 모델이
+     * 헛소리를 지어낸다.
+     */
+    noiseFloor += (level - noiseFloor) * (loud ? NOISE_FLOOR_RISE_ALPHA : NOISE_FLOOR_FALL_ALPHA);
+
+    if (recorder) {
+      segmentTicks += 1;
+      segmentLevelSum += level;
+      if (loud) segmentLoudTicks += 1;
+    }
 
     if (loud) {
       lastLoudAt = now;
@@ -254,12 +304,23 @@ export function startServerCaptionRecorder(
 
       // 말이 길어지면 중간에 한 번 끊는다. 서버가 받아 주는 크기에도 상한이 있다.
       if (elapsed >= MAX_SEGMENT_MS) {
-        endSegment(true);
+        /*
+         * 끝까지 한 번도 조용해지지 않았다면 말이 아니라 기준이 틀린 것이다. 그 조각의 평균
+         * 크기를 새 바닥으로 삼아 즉시 다시 맞추고, 담긴 것은 버린다.
+         */
+        const sustained = segmentLoudTicks / Math.max(1, segmentTicks) >= MISCALIBRATION_FRACTION;
+        if (sustained) {
+          noiseFloor = segmentLevelSum / Math.max(1, segmentTicks);
+          setSpeaking(false);
+          endSegment(false);
+          return;
+        }
+        endSegment(hasEnoughSpeech());
         return;
       }
       if (silentFor >= SILENCE_HOLD_MS) {
         setSpeaking(false);
-        endSegment(elapsed >= MIN_SEGMENT_MS);
+        endSegment(elapsed >= MIN_SEGMENT_MS && hasEnoughSpeech());
       }
     }
   };

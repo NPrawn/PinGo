@@ -1,9 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import {
-  markSpeechEnded,
-  markSpeechStarted,
-  resetCaptionEchoGuard,
-} from './captionEchoGuard';
+import { markSpeechEnded, markSpeechStarted, resetCaptionEchoGuard } from './captionEchoGuard';
 import { holdConsultMedia, releaseConsultMedia } from './consultMedia';
 import { useConsultSignaling } from './useConsultSignaling';
 
@@ -1074,6 +1070,55 @@ describe('useConsultSignaling', () => {
   });
 
   /**
+   * 시끄러운 곳에서도 침묵을 감지한다.
+   *
+   * 실기기에서 이게 깨졌다. `getUserMedia` 는 기본으로 자동 이득을 걸어 조용한 소리를
+   * 끌어올리므로 실내 암소음도 첫 문턱을 넘는다. 그런데 바닥 소음을 조용할 때만 갱신하던
+   * 탓에, 한 번 넘긴 뒤로는 **영영 "말하는 중"이 되어 모든 조각이 최대 길이를 다 채웠다.**
+   * 자막이 18초쯤 늦게 뜨고, 그 안은 순수 잡음이라 모델이 노랫말 같은 헛소리를 지어냈다.
+   */
+  it('recalibrates in a noisy room so silence is still detected', async () => {
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+      });
+      vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+      vi.stubGlobal('AudioContext', FakeAudioContext);
+
+      const view = renderHook(() =>
+        useConsultSignaling('room_cs_1', 'USER', 'token-1', undefined, 'en', 'server'),
+      );
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      /*
+       * 처음부터 끝까지 꾸준한 암소음만 있다. 사람은 한마디도 하지 않았다.
+       * 예전 코드는 여기서 8초를 다 채운 조각을 올렸다.
+       */
+      await act(async () => {
+        micLevel.value = 0.05;
+        vi.advanceTimersByTime(12000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(apiMocks.transcribeConsultationAudio).not.toHaveBeenCalled();
+
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
    * 카메라가 섞인 스트림을 그대로 녹음하지 않는다.
    *
    * 사용자 쪽 스트림에는 마이크와 카메라가 함께 들어 있다. 그것을 오디오 전용 형식과 함께
@@ -1240,7 +1285,10 @@ describe('useConsultSignaling', () => {
 
       expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledWith(
         'cs_1',
-        expect.objectContaining({ mimeType: 'audio/webm;codecs=opus', language: 'en' }),
+        expect.objectContaining({ audio: expect.any(Blob) }),
+      );
+      expect(apiMocks.transcribeConsultationAudio.mock.calls[0]?.[1]).not.toHaveProperty(
+        'language',
       );
 
       expect(view.result.current.transcript).toEqual([
@@ -1248,7 +1296,9 @@ describe('useConsultSignaling', () => {
       ]);
 
       const captions = (socket?.send.mock.calls ?? [])
-        .map(([raw]) => JSON.parse(String(raw)) as { type: string; payload?: Record<string, unknown> })
+        .map(
+          ([raw]) => JSON.parse(String(raw)) as { type: string; payload?: Record<string, unknown> },
+        )
         .filter((message) => message.type === 'CAPTION');
 
       // 말이 시작될 때 "말하는 중"을 알리고, 받아쓴 뒤 확정문을 보낸다.

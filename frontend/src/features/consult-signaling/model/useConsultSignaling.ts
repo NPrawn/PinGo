@@ -983,12 +983,13 @@ export function useConsultSignaling(
     const startServerCaptions = () => {
       if (disposed || !localStream) return;
 
-      const language = localSpeechLanguage || navigator.language;
+      // 현재 값은 실제 발화 언어가 아니라 화면 표시 언어다. Whisper에 강제하면 영어 화면에서
+      // 한국어로 말하는 경우 영어처럼 억지로 받아쓰므로, 전사는 자동 언어 감지에 맡긴다.
+      const captionLanguage = localSpeechLanguage || navigator.language;
 
       serverRecorder = startServerCaptionRecorder({
         consultationId,
         stream: localStream,
-        language,
         onFinalText: (text) => {
           if (disposed) return;
 
@@ -1006,7 +1007,7 @@ export function useConsultSignaling(
           setLocalCaption(text);
           setLocalCaptionFinal(true);
           setLocalFinalCaptionId(captionId);
-          sendCaption({ text, final: true, language, captionId, occurredAt });
+          sendCaption({ text, final: true, language: captionLanguage, captionId, occurredAt });
         },
         /**
          * 말이 시작된 것만 알린다. 서버 받아쓰기에는 중간 결과가 없어서, 이것이 없으면 상대
@@ -1016,7 +1017,7 @@ export function useConsultSignaling(
         onSpeakingChange: (speaking) => {
           if (disposed || !speaking) return;
           setLocalCaptionFinal(false);
-          sendCaption({ text: '…', final: false, language });
+          sendCaption({ text: '…', final: false, language: captionLanguage });
         },
         onError: () => {
           if (disposed) return;
