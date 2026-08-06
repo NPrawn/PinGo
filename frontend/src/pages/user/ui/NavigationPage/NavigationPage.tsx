@@ -66,6 +66,22 @@ import styles from './NavigationPage.module.css';
  */
 const MAP_FILTERS = FACILITY_MAP_FILTERS;
 
+const PERSONA_STAIRS_6 = {
+  fromNodeId: 234,
+  toNodeId: 119,
+} as const;
+
+/**
+ * 층 이동 API가 연결되기 전 페르소나 테스트에서 사용하는 임시 도착 위치.
+ * B2-B3 계단 6을 올라가는 안내의 완료 버튼은 이 위치에서 경로를 다시 계산한다.
+ */
+const TEMP_FLOOR_TRANSITION_LOCATION = {
+  floorId: 1,
+  mapX: -4.986,
+  mapY: 27.654,
+  forwardMap: { x: 0.995, y: -0.099 },
+} as const;
+
 /**
  * 카메라 화면의 문구. 화살표가 가리키는 방향을 말로 한 번 더 적는다.
  *
@@ -423,9 +439,14 @@ export function NavigationPage() {
             floorCode: 'B3',
           }
         : null;
+  const activeStepMovesVertically =
+    activeStep?.moveType === 'elevator' ||
+    activeStep?.moveType === 'stair' ||
+    activeStep?.moveType === 'escalator';
   const verticalStepKey =
     previewTransition?.key ??
-    (activeStep?.floorDelta != null && activeStep.floorDelta !== 0
+    (activeStep &&
+    ((activeStep.floorDelta != null && activeStep.floorDelta !== 0) || activeStepMovesVertically)
       ? `${progress.currentStepIndex}-${activeStep.fromNodeId}-${activeStep.toNodeId}`
       : null);
   const [completedVerticalStepKey, setCompletedVerticalStepKey] = useState<string | null>(null);
@@ -503,13 +524,14 @@ export function NavigationPage() {
    * 층을 오르내리는 구간에서는 수평 방향을 그리지 않는다. 엘리베이터 앞에서 화살표가 통로를
    * 가리키면 그쪽으로 걷게 된다 — 가야 할 곳은 위층이다. 그 구간의 안내는 카드가 맡는다.
    */
-  const verticalMove =
-    activeStep?.moveType === 'elevator' ||
-    activeStep?.moveType === 'stair' ||
-    activeStep?.moveType === 'escalator';
+  const verticalMove = activeStepMovesVertically;
+  const isPersonaFloorTransition =
+    verticalMove &&
+    activeStep?.fromNodeId === PERSONA_STAIRS_6.fromNodeId &&
+    activeStep.toNodeId === PERSONA_STAIRS_6.toNodeId;
   const showFloorTransition =
     !isNoticeOpen &&
-    (previewTransition !== null || verticalMove) &&
+    (previewTransition !== null || isPersonaFloorTransition) &&
     verticalStepKey !== null &&
     completedVerticalStepKey !== verticalStepKey;
   const camGuide =
@@ -1349,16 +1371,18 @@ export function NavigationPage() {
               className={styles.floorTransitionGuideButton}
               onClick={() => {
                 setCompletedVerticalStepKey(verticalStepKey);
-                if (!previewTransition && verticalDestinationFloorCode) {
-                  setPickedFloorCode(verticalDestinationFloorCode);
-                  setFloor(verticalDestinationFloorCode as FloorId);
-                }
                 if (!previewTransition && verticalDestination) {
+                  const temporaryFloorCode = floorCodeOf(
+                    floorMaps,
+                    TEMP_FLOOR_TRANSITION_LOCATION.floorId,
+                  );
+                  if (temporaryFloorCode) {
+                    setPickedFloorCode(temporaryFloorCode);
+                    setFloor(temporaryFloorCode as FloorId);
+                  }
                   setCurrentLocation({
                     nodeId: verticalDestination.nodeId,
-                    floorId: verticalDestination.floorId,
-                    mapX: verticalDestination.mapX,
-                    mapY: verticalDestination.mapY,
+                    ...TEMP_FLOOR_TRANSITION_LOCATION,
                   });
                 }
               }}
