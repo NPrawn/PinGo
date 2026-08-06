@@ -16,6 +16,7 @@ import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.global.response.PageResponse;
 import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import com.pingo.backend.station.repository.StationRepository;
 import com.pingo.backend.usersession.domain.UserSession;
@@ -23,6 +24,8 @@ import com.pingo.backend.usersession.repository.UserSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -158,14 +161,21 @@ public class ConsultationSessionService {
     }
 
     @Transactional(readOnly = true)
-    public List<ConsultationListResponse> getConsultationsForCounselor(Long counselorAccountId, ConsultationStatus status){
+    public PageResponse<ConsultationListResponse> getConsultationsForCounselor(
+            Long counselorAccountId,
+            ConsultationStatus status,
+            Pageable pageable
+    ) {
         Account counselor = findActiveCounselor(counselorAccountId);
-        // status를 지정하지 않으면 이력 화면이 쓸 수 있도록 담당 역의 모든 상담을 준다.
-        List<ConsultationStatus> statuses =
-                status != null ? List.of(status) : List.of(ConsultationStatus.values());
-        return consultationSessionRepository.findByStationIdAndStatusIn(counselor.getStationId(), statuses).stream()
-                .map(ConsultationListResponse::from)
-                .toList();
+        Page<ConsultationSession> consultations = status == null
+                ? consultationSessionRepository.findByStationId(counselor.getStationId(), pageable)
+                : consultationSessionRepository.findByStationIdAndStatus(
+                        counselor.getStationId(),
+                        status,
+                        pageable
+                );
+
+        return PageResponse.from(consultations, ConsultationListResponse::from);
     }
 
     @Transactional(readOnly = true)
