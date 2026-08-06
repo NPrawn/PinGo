@@ -171,6 +171,8 @@ export function transcribeConsultationAudio(
     apiClient.post(ENDPOINTS.consultations.transcribe(consultationId), body, {
       // apiClient의 JSON 기본값을 지워야 브라우저가 multipart boundary를 직접 붙인다.
       headers: { 'Content-Type': undefined },
+      // 백엔드는 GMS 응답을 최대 15초 기다린다. 공용 10초 제한이 먼저 요청을 끊지 않게 한다.
+      timeout: 20_000,
     }),
   );
 }

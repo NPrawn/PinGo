@@ -1,5 +1,7 @@
 package com.pingo.backend.transcription.service;
 
+import com.pingo.backend.global.exception.BusinessException;
+import com.pingo.backend.global.exception.ErrorCode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +18,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MultipartFile;
 
 /** GMS의 OpenAI 호환 음성 전사 API에 발화 파일을 보내 받아쓴다. */
@@ -25,6 +28,7 @@ public class WhisperTranscriber implements Transcriber {
 
     private static final String NO_SPEECH_MARKER = "<no-speech>";
     private static final int RUNAWAY_REPEAT_COUNT = 8;
+    private static final int MAX_ERROR_BODY_LOG_LENGTH = 1_000;
     private static final Pattern WORD_SEPARATOR = Pattern.compile("[^\\p{L}\\p{N}']+");
     private static final Set<String> SUPPORTED_MIME_TYPES = Set.of(
             "audio/webm", "audio/ogg", "audio/wav", "audio/mp4", "audio/mpeg", "audio/aac", "audio/flac"
@@ -48,6 +52,10 @@ public class WhisperTranscriber implements Transcriber {
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
+                // Spring 7은 기본적으로 요청 본문을 스트리밍한다. multipart 전체 길이를 모르면
+                // chunked로 전송하는데, GMS 앞단 Cloudflare가 이 요청을 400으로 거절한다.
+                // 오디오는 서비스에서 1MB로 제한하므로 메모리에 완성해 Content-Length를 붙인다.
+                .bufferContent((uri, method) -> true)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                 .build();
     }
@@ -81,12 +89,22 @@ public class WhisperTranscriber implements Transcriber {
                     .body(WhisperResponse.class);
 
             return sanitizeTranscription(response == null ? null : response.text());
+        } catch (RestClientResponseException exception) {
+            log.warn(
+                    "Whisper API returned an error. status={}, mimeType={}, audioBytes={}, responseBody={}",
+                    exception.getStatusCode().value(),
+                    mimeType,
+                    audio.getSize(),
+                    summarizeErrorBody(exception.getResponseBodyAsString())
+            );
+            throw new BusinessException(ErrorCode.TRANSCRIPTION_SERVICE_FAILED);
         } catch (RuntimeException exception) {
             log.warn("Failed to transcribe audio with Whisper. mimeType={}, audioBytes={}",
                     mimeType,
                     audio.getSize(),
                     exception);
-            return null;
+            // 외부 API 장애를 무음과 같은 빈 200으로 숨기면 클라이언트가 재시도하거나 경고할 수 없다.
+            throw new BusinessException(ErrorCode.TRANSCRIPTION_SERVICE_FAILED);
         }
     }
 
@@ -104,6 +122,18 @@ public class WhisperTranscriber implements Transcriber {
         return (separator < 0 ? mimeType : mimeType.substring(0, separator))
                 .trim()
                 .toLowerCase(Locale.ROOT);
+    }
+
+    /** 외부 응답의 줄바꿈과 과도한 HTML을 정리해 운영 로그 한 건이 지나치게 커지지 않게 한다. */
+    static String summarizeErrorBody(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return "<empty>";
+        }
+        String singleLine = responseBody.replaceAll("\\s+", " ").trim();
+        if (singleLine.length() <= MAX_ERROR_BODY_LOG_LENGTH) {
+            return singleLine;
+        }
+        return singleLine.substring(0, MAX_ERROR_BODY_LOG_LENGTH) + "...";
     }
 
     /** 화면 언어가 아니라 실제 발화 언어일 때만 ISO-639-1 두 글자를 전달한다. */
