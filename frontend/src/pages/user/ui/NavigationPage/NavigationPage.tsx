@@ -261,9 +261,8 @@ export function NavigationPage() {
     [currentFloorId, currentMapX, currentMapY],
   );
   const [confirmedForwardMap] = useState(() => currentForwardMap);
-  // TEMP XR debug control: remove this state and the select below after field testing.
+  // TEMP XR debug control: remove this state and the range input below after field testing.
   const [xrDebugMultiplier, setXrDebugMultiplier] = useState(XR_DISTANCE_SCALE_MULTIPLIER);
-  const xrDebugMultiplierOptions = [1.5, 1.6] as const;
   const xrDistanceScale = xrDistanceScaleOf(
     routeResult,
     confirmedLocation?.floorId,
@@ -934,18 +933,16 @@ export function NavigationPage() {
                     onCheckedChange={setSnapToRoute}
                   />
                   <label className={styles.xrScaleControl}>
-                    <span>XR 배율</span>
-                    <select
+                    <span>XR {xrDebugMultiplier.toFixed(2)}배</span>
+                    <input
+                      type="range"
+                      min="1.5"
+                      max="1.6"
+                      step="0.01"
                       value={xrDebugMultiplier}
                       onChange={(event) => setXrDebugMultiplier(Number(event.target.value))}
                       aria-label="XR 이동거리 보정 배율"
-                    >
-                      {xrDebugMultiplierOptions.map((multiplier) => (
-                        <option key={multiplier} value={multiplier}>
-                          {multiplier.toFixed(1)}배
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </label>
                 </div>
                 <IndoorMapView

@@ -422,15 +422,9 @@
   white-space: nowrap;
 }
 
-.xrScaleControl select {
-  min-width: 48px;
-  height: 23px;
-  padding: 0 2px;
-  font: inherit;
-  color: var(--color-ink);
-  background: #fff;
-  border: 1px solid rgb(15 44 34 / 20%);
-  border-radius: 5px;
+.xrScaleControl input {
+  width: 72px;
+  accent-color: var(--color-ink);
 }
 
 /* 오버레이 SVG만 시설 칩 위로 올린다. 현재 위치와 목적지 이름이 칩에 가리면 안 된다 —
