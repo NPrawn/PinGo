@@ -66,6 +66,7 @@ export function routeDistanceScaleOf(
 export function xrDistanceScaleOf(
   route: RouteResponse | null | undefined,
   floorId: number | null | undefined,
+  multiplier = XR_DISTANCE_SCALE_MULTIPLIER,
 ): number {
-  return routeDistanceScaleOf(route, floorId) * XR_DISTANCE_SCALE_MULTIPLIER;
+  return routeDistanceScaleOf(route, floorId) * multiplier;
 }

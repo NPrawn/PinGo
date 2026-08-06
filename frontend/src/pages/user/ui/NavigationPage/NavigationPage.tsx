@@ -17,6 +17,7 @@ import {
   carriesDistance,
   instructionAt,
   routeBearingOf,
+  XR_DISTANCE_SCALE_MULTIPLIER,
   xrDistanceScaleOf,
   routePathNodesOf,
   routeProgressOf,
@@ -260,7 +261,14 @@ export function NavigationPage() {
     [currentFloorId, currentMapX, currentMapY],
   );
   const [confirmedForwardMap] = useState(() => currentForwardMap);
-  const xrDistanceScale = xrDistanceScaleOf(routeResult, confirmedLocation?.floorId);
+  // TEMP XR debug control: remove this state and the select below after field testing.
+  const [xrDebugMultiplier, setXrDebugMultiplier] = useState(XR_DISTANCE_SCALE_MULTIPLIER);
+  const xrDebugMultiplierOptions = [1.5, 1.6] as const;
+  const xrDistanceScale = xrDistanceScaleOf(
+    routeResult,
+    confirmedLocation?.floorId,
+    xrDebugMultiplier,
+  );
 
   /**
    * XR 세션 게이트. 진입 시 안내를 띄우고 사용자가 확인하면 세션을 연다(11.7).
@@ -925,6 +933,20 @@ export function NavigationPage() {
                     label="경로 위 위치 표시"
                     onCheckedChange={setSnapToRoute}
                   />
+                  <label className={styles.xrScaleControl}>
+                    <span>XR 배율</span>
+                    <select
+                      value={xrDebugMultiplier}
+                      onChange={(event) => setXrDebugMultiplier(Number(event.target.value))}
+                      aria-label="XR 이동거리 보정 배율"
+                    >
+                      {xrDebugMultiplierOptions.map((multiplier) => (
+                        <option key={multiplier} value={multiplier}>
+                          {multiplier.toFixed(1)}배
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <IndoorMapView
                   stationId={stationId ?? 0}
