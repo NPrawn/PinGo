@@ -54,27 +54,8 @@
   font-size: 13px;
 }
 
-.filterActions {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-start;
-  min-height: 40px;
-}
-
-.count {
-  display: inline-flex;
-  align-items: center;
-  height: 40px;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--color-sub);
-  white-space: nowrap;
-}
-
-.filterButton {
-  gap: 6px;
+.resetButton {
+  justify-content: center;
   width: auto;
   height: 40px;
   padding: 0 16px;

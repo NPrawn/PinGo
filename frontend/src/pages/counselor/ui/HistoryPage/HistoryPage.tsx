@@ -220,6 +220,7 @@ export function HistoryPage() {
     queryFn: getCounselorMe,
     staleTime: 30_000,
   });
+  const loadingHistory = historyQuery.isPending || profileQuery.isPending;
 
   const closed = useMemo(
     () =>
@@ -238,16 +239,6 @@ export function HistoryPage() {
     [historyQuery.data?.content],
   );
 
-  const mineCount = closed.filter(
-    (item) =>
-      profileQuery.data?.accountId != null && item.counselorId === profileQuery.data.accountId,
-  ).length;
-  const scoped = closed.filter(
-    (item) =>
-      scope === 'ALL' ||
-      (profileQuery.data?.accountId != null && item.counselorId === profileQuery.data.accountId),
-  );
-
   const years = descendingOptions(closed.map((item) => item.year));
   const months = descendingOptions(
     closed.filter((item) => !year || String(item.year) === year).map((item) => item.month),
@@ -259,16 +250,22 @@ export function HistoryPage() {
       .map((item) => item.day),
   );
 
-  const filteredHistory = scoped
+  const datedHistory = closed
     .filter((item) => !year || String(item.year) === year)
     .filter((item) => !month || String(item.month) === month)
     .filter((item) => !day || String(item.day) === day);
+  const mineHistory = datedHistory.filter(
+    (item) =>
+      profileQuery.data?.accountId != null && item.counselorId === profileQuery.data.accountId,
+  );
+  const filteredHistory = scope === 'MINE' ? mineHistory : datedHistory;
+  const allCount = datedHistory.length;
+  const mineCount = mineHistory.length;
   const totalPages = Math.ceil(filteredHistory.length / PAGE_SIZE);
   const history = filteredHistory.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  const filtered = scope === 'MINE' || Boolean(year || month || day);
+  const dateFiltered = Boolean(year || month || day);
   const resetFilters = () => {
-    setScope('ALL');
     setYear('');
     setMonth('');
     setDay('');
@@ -289,32 +286,41 @@ export function HistoryPage() {
             <PillButton
               className={styles.scopeButton}
               on={scope === 'ALL'}
+              disabled={loadingHistory}
               onClick={() => {
                 setScope('ALL');
                 setPage(0);
                 setOpenId(null);
               }}
             >
-              전체 {closed.length}
+              전체 {loadingHistory ? '…' : allCount}
             </PillButton>
             <PillButton
               className={styles.scopeButton}
               on={scope === 'MINE'}
-              disabled={profileQuery.isPending || profileQuery.isError}
+              disabled={loadingHistory || profileQuery.isError}
               onClick={() => {
                 setScope('MINE');
                 setPage(0);
                 setOpenId(null);
               }}
             >
-              내 상담만 {mineCount}
+              내 상담 {loadingHistory ? '…' : mineCount}
             </PillButton>
+            <GhostButton
+              className={styles.resetButton}
+              disabled={loadingHistory || !dateFiltered}
+              onClick={resetFilters}
+            >
+              초기화
+            </GhostButton>
           </div>
           <div className={styles.dateFilters}>
             <SelectField
               className={styles.select}
               value={year}
               aria-label="연도 필터"
+              disabled={loadingHistory}
               onChange={(event) => {
                 setYear(event.target.value);
                 setMonth('');
@@ -334,6 +340,7 @@ export function HistoryPage() {
               className={styles.select}
               value={month}
               aria-label="월 필터"
+              disabled={loadingHistory}
               onChange={(event) => {
                 setMonth(event.target.value);
                 setDay('');
@@ -352,6 +359,7 @@ export function HistoryPage() {
               className={styles.select}
               value={day}
               aria-label="일 필터"
+              disabled={loadingHistory}
               onChange={(event) => {
                 setDay(event.target.value);
                 setPage(0);
@@ -365,67 +373,61 @@ export function HistoryPage() {
                 </option>
               ))}
             </SelectField>
-            <div className={styles.filterActions}>
-              <span className={styles.count}>{filteredHistory.length}건</span>
-              {filtered && (
-                <GhostButton className={styles.filterButton} onClick={resetFilters}>
-                  초기화
-                </GhostButton>
-              )}
-            </div>
           </div>
         </div>
 
-        {(historyQuery.isPending || profileQuery.isPending) && (
-          <p>상담 내역을 불러오는 중입니다.</p>
+        {!loadingHistory && historyQuery.isError && (
+          <p role="alert">상담 내역을 불러오지 못했습니다.</p>
         )}
-        {historyQuery.isError && <p role="alert">상담 내역을 불러오지 못했습니다.</p>}
-        {profileQuery.isError && (
+        {!loadingHistory && profileQuery.isError && (
           <p role="alert">내 상담 여부를 확인할 수 없어 전체 이력만 표시합니다.</p>
         )}
-        <div className={styles.list}>
-          {history.map((entry) => {
-            const open = openId === entry.consultationId;
-            const mine =
-              profileQuery.data?.accountId != null &&
-              entry.counselorId === profileQuery.data.accountId;
-            return (
-              <div key={entry.consultationId} className={styles.entry}>
-                {/* 내 상담 여부와 상태는 카드를 훑을 때 바로 보이도록 배지로 둔다. */}
-                <div className={styles.entryHead}>
-                  <div className={styles.tags}>
-                    {mine && <span className={styles.mine}>내 상담</span>}
-                    <span className={styles.agent}>{consultationStatusLabel(entry.status)}</span>
+        <div className={styles.list} aria-label="상담 이력 목록" aria-busy={loadingHistory}>
+          {!loadingHistory &&
+            history.map((entry) => {
+              const open = openId === entry.consultationId;
+              const mine =
+                profileQuery.data?.accountId != null &&
+                entry.counselorId === profileQuery.data.accountId;
+              return (
+                <div key={entry.consultationId} className={styles.entry}>
+                  {/* 내 상담 여부와 상태는 카드를 훑을 때 바로 보이도록 배지로 둔다. */}
+                  <div className={styles.entryHead}>
+                    <div className={styles.tags}>
+                      {mine && <span className={styles.mine}>내 상담</span>}
+                      <span className={styles.agent}>{consultationStatusLabel(entry.status)}</span>
+                    </div>
+                    <span className={styles.date}>{historyDateTimeLabel(entry.requestedAt)}</span>
                   </div>
-                  <span className={styles.date}>{historyDateTimeLabel(entry.requestedAt)}</span>
+                  <div className={styles.cardBody}>
+                    <h3 className={styles.problemTitle}>
+                      {consultationProblemLabel(entry.problemType)}
+                    </h3>
+                    <p className={styles.route}>
+                      {entry.currentLocationLabel ?? '현재 위치 확인 안 됨'}
+                      <span aria-hidden="true"> → </span>
+                      {entry.destinationLabel ?? '목적지 미정'}
+                    </p>
+                    <span className={styles.reference} title={entry.consultationId}>
+                      상담 번호 {consultationRef(entry.consultationId)}
+                    </span>
+                  </div>
+                  <PillButton
+                    className={styles.toggle}
+                    onClick={() => setOpenId(open ? null : entry.consultationId)}
+                  >
+                    {open ? '상세 닫기' : '상세 보기'}
+                  </PillButton>
+                  {/* 접힌 카드는 요약을 조회하지 않고, 상세를 열 때만 요청한다. */}
+                  {open && <ConsultationSummaryView consultationId={entry.consultationId} />}
                 </div>
-                <div className={styles.cardBody}>
-                  <h3 className={styles.problemTitle}>
-                    {consultationProblemLabel(entry.problemType)}
-                  </h3>
-                  <p className={styles.route}>
-                    {entry.currentLocationLabel ?? '현재 위치 확인 안 됨'}
-                    <span aria-hidden="true"> → </span>
-                    {entry.destinationLabel ?? '목적지 미정'}
-                  </p>
-                  <span className={styles.reference} title={entry.consultationId}>
-                    상담 번호 {consultationRef(entry.consultationId)}
-                  </span>
-                </div>
-                <PillButton
-                  className={styles.toggle}
-                  onClick={() => setOpenId(open ? null : entry.consultationId)}
-                >
-                  {open ? '상세 닫기' : '상세 보기'}
-                </PillButton>
-                {/* 접힌 카드는 요약을 조회하지 않고, 상세를 열 때만 요청한다. */}
-                {open && <ConsultationSummaryView consultationId={entry.consultationId} />}
-              </div>
-            );
-          })}
-          {!historyQuery.isPending && !profileQuery.isPending && history.length === 0 && (
+              );
+            })}
+          {!loadingHistory && history.length === 0 && (
             <p>
-              {filtered ? '선택한 조건의 상담 이력이 없습니다.' : '종료된 상담 이력이 없습니다.'}
+              {scope === 'MINE' || dateFiltered
+                ? '선택한 조건의 상담 이력이 없습니다.'
+                : '종료된 상담 이력이 없습니다.'}
             </p>
           )}
         </div>
