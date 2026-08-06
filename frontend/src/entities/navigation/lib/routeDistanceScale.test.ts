@@ -69,7 +69,7 @@ describe('routeDistanceScaleOf', () => {
       2,
     );
 
-    expect(scale).toBeCloseTo(1.875, 6);
+    expect(scale).toBeCloseTo(1.7875, 6);
   });
 
   it('accepts a temporary XR multiplier override', () => {

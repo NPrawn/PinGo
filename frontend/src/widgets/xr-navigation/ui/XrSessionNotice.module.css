@@ -51,24 +51,6 @@
   color: var(--color-sub);
 }
 
-/* TEMP XR field-test control. Remove with the matching JSX after calibration. */
-.xrScaleControl {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 16px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--color-ink);
-}
-
-.xrScaleControl input {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--color-ink);
-}
-
 .actions {
   display: flex;
   flex-direction: column;
