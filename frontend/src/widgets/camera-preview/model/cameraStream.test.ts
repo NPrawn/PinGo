@@ -265,4 +265,159 @@ describe('cameraStream', () => {
     expect(mockedStop).toHaveBeenCalledWith(stream);
     expect(useCameraStore.getState()).toEqual({ stream: null, status: 'idle' });
   });
+
+  /**
+   * 후면 렌즈가 여러 개인 기기에서 초광각이 열리던 문제.
+   *
+   * `facingMode: 'environment'` 만 주면 브라우저가 후면 중 아무거나 준다. 실측 기기는 후면이
+   * `camera 0`(정상)과 `camera 2`(초광각) 두 개인데 Chrome 150 이 `camera 2` 를 고르기
+   * 시작해, 코드 변경 없이 화면만 광각으로 바뀌었다.
+   */
+  describe('후면 렌즈 선택', () => {
+    /** `deviceId` 를 돌려주는 트랙을 가진 스트림. */
+    function streamOn(deviceId: string): MediaStream {
+      return {
+        getTracks: () => [{ stop: vi.fn() }],
+        getVideoTracks: () => [{ getSettings: () => ({ deviceId }) }],
+      } as unknown as MediaStream;
+    }
+
+    function withCameras(cameras: { deviceId: string; label: string }[]) {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          enumerateDevices: vi
+            .fn()
+            .mockResolvedValue(cameras.map((camera) => ({ kind: 'videoinput', ...camera }))),
+        },
+      });
+    }
+
+    const REAR_MAIN = { deviceId: 'rear-0', label: 'camera 0, facing back' };
+    const REAR_WIDE = { deviceId: 'rear-2', label: 'camera 2, facing back' };
+    const FRONT = { deviceId: 'front-1', label: 'camera 1, facing front' };
+
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, 'mediaDevices');
+    });
+
+    it('후면이 여러 개면 번호가 가장 작은 렌즈를 고른다', async () => {
+      withCameras([FRONT, REAR_WIDE, REAR_MAIN]);
+      mockedRequest.mockResolvedValue(granted(streamOn('rear-0')));
+
+      await acquireCamera();
+
+      expect(mockedRequest).toHaveBeenCalledWith({ deviceId: { exact: 'rear-0' } });
+      expect(useCameraStore.getState().status).toBe('live');
+    });
+
+    /**
+     * 권한을 받기 전에는 라벨이 빈 문자열이라 렌즈를 고를 수 없다. 그 첫 요청에서 초광각이
+     * 열릴 수 있으므로, 라벨이 보이기 시작한 직후 한 번 바로잡는다.
+     */
+    it('권한을 막 받아 초광각이 열렸으면 메인 렌즈로 다시 연다', async () => {
+      withCameras([
+        { deviceId: '', label: '' },
+        { deviceId: '', label: '' },
+      ]);
+
+      const wide = streamOn('rear-2');
+      const main = streamOn('rear-0');
+
+      mockedRequest.mockImplementationOnce(async () => {
+        // 권한이 생겼다. 이제 라벨이 보인다.
+        withCameras([FRONT, REAR_WIDE, REAR_MAIN]);
+        return granted(wide);
+      });
+      mockedRequest.mockResolvedValue(granted(main));
+
+      await acquireCamera();
+
+      expect(mockedRequest).toHaveBeenNthCalledWith(1, { facingMode: { ideal: 'environment' } });
+      expect(mockedRequest).toHaveBeenNthCalledWith(2, { deviceId: { exact: 'rear-0' } });
+      // 잘못 열린 스트림은 놓는다. 안드로이드는 같은 카메라를 두 번 열지 못한다.
+      expect(mockedStop).toHaveBeenCalledWith(wide);
+      expect(useCameraStore.getState()).toEqual({ stream: main, status: 'live' });
+    });
+
+    /** 이미 메인이 열렸으면 멀쩡한 스트림을 끊지 않는다. */
+    it('처음부터 메인 렌즈가 열렸으면 다시 열지 않는다', async () => {
+      withCameras([
+        { deviceId: '', label: '' },
+        { deviceId: '', label: '' },
+      ]);
+
+      const main = streamOn('rear-0');
+
+      mockedRequest.mockImplementationOnce(async () => {
+        withCameras([FRONT, REAR_WIDE, REAR_MAIN]);
+        return granted(main);
+      });
+
+      await acquireCamera();
+
+      expect(mockedRequest).toHaveBeenCalledTimes(1);
+      expect(useCameraStore.getState()).toEqual({ stream: main, status: 'live' });
+    });
+
+    /**
+     * 고른 `deviceId` 를 쓸 수 없는 기기가 있다. 그때도 미리보기는 열려야 한다 —
+     * 화각이 어긋나는 것보다 카메라가 아예 안 열리는 쪽이 나쁘다.
+     */
+    it('고른 렌즈를 쓸 수 없으면 facingMode로 폴백한다', async () => {
+      withCameras([REAR_MAIN, REAR_WIDE]);
+
+      const fallback = streamOn('rear-2');
+
+      mockedRequest.mockResolvedValueOnce({
+        kind: 'camera',
+        status: 'error',
+        error: { name: 'OverconstrainedError', message: 'deviceId' },
+      });
+      mockedRequest.mockResolvedValue(granted(fallback));
+
+      await acquireCamera();
+
+      expect(mockedRequest).toHaveBeenNthCalledWith(1, { deviceId: { exact: 'rear-0' } });
+      expect(mockedRequest).toHaveBeenNthCalledWith(2, { facingMode: { ideal: 'environment' } });
+      expect(useCameraStore.getState()).toEqual({ stream: fallback, status: 'live' });
+    });
+
+    /**
+     * 열린 렌즈를 확인할 수 없으면 멀쩡한 스트림을 끊지 않는다.
+     *
+     * 확인 없이 다시 열면 카메라를 열 때마다 그 도박을 되풀이해서 매번 검은 화면이 깜빡인다.
+     */
+    it('열린 렌즈의 deviceId를 읽을 수 없으면 다시 열지 않는다', async () => {
+      withCameras([
+        { deviceId: '', label: '' },
+        { deviceId: '', label: '' },
+      ]);
+
+      // `getVideoTracks` 가 없는 스트림. `getSettings().deviceId` 를 알 길이 없다.
+      const unknown = fakeStream();
+
+      mockedRequest.mockImplementationOnce(async () => {
+        withCameras([FRONT, REAR_WIDE, REAR_MAIN]);
+        return granted(unknown);
+      });
+
+      await acquireCamera();
+
+      expect(mockedRequest).toHaveBeenCalledTimes(1);
+      expect(mockedStop).not.toHaveBeenCalled();
+      expect(useCameraStore.getState()).toEqual({ stream: unknown, status: 'live' });
+    });
+
+    /** 크롬 안드로이드가 아니면 라벨 형식이 다르다. 그때는 지금까지 하던 대로 연다. */
+    it('라벨을 읽을 수 없으면 facingMode로 연다', async () => {
+      withCameras([{ deviceId: 'webcam', label: 'Integrated Webcam (04f2:b6d9)' }]);
+      mockedRequest.mockResolvedValue(granted(streamOn('webcam')));
+
+      await acquireCamera();
+
+      expect(mockedRequest).toHaveBeenCalledTimes(1);
+      expect(mockedRequest).toHaveBeenCalledWith({ facingMode: { ideal: 'environment' } });
+    });
+  });
 });
