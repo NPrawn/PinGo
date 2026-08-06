@@ -78,6 +78,8 @@ export interface UseXrNavigationSessionValue extends UseXrMapPositionValue {
    * 아직 컴포지터가 카메라를 그리지 않으므로, 투명하게 두면 검은 화면이 보인다.
    */
   isSessionOpen: boolean;
+  /** Replaces the active XR anchor and retries from the supplied inputs when tracking resumes. */
+  reanchor: (map: IndoorPoint, forwardMap: PlanarVector) => boolean;
 }
 
 /**
@@ -163,6 +165,18 @@ export function useXrNavigationSession({
   /** 이 세션에서 첫 위치 인식을 이미 발화했는지. 세션이 다시 열리면 되돌린다. */
   const anchorFiredRef = useRef(false);
 
+  const reanchor = useCallback(
+    (map: IndoorPoint, forwardMap: PlanarVector) => {
+      anchorFiredRef.current = false;
+      clearAnchor();
+
+      const anchored = setAnchor(map, forwardMap);
+      anchorFiredRef.current = anchored;
+      return anchored;
+    },
+    [clearAnchor, setAnchor],
+  );
+
   /**
    * 세션이 새로 열리면 옛 앵커를 버리고 발화를 다시 연다.
    *
@@ -244,5 +258,6 @@ export function useXrNavigationSession({
     confirm,
     continueWithoutTracking,
     isSessionOpen,
+    reanchor,
   };
 }

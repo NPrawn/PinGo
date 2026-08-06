@@ -76,6 +76,7 @@ const PERSONA_STAIRS_6 = {
  * B2-B3 계단 6을 올라가는 안내의 완료 버튼은 이 위치에서 경로를 다시 계산한다.
  */
 const TEMP_FLOOR_TRANSITION_LOCATION = {
+  nodeId: 353,
   floorId: 1,
   mapX: -4.986,
   mapY: 27.654,
@@ -281,7 +282,7 @@ export function NavigationPage() {
         : null,
     [currentFloorId, currentMapX, currentMapY],
   );
-  const [confirmedForwardMap] = useState(() => currentForwardMap);
+  const confirmedForwardMap = currentForwardMap;
   const xrDistanceScale = xrDistanceScaleOf(routeResult, confirmedLocation?.floorId);
 
   /**
@@ -305,6 +306,7 @@ export function NavigationPage() {
     headingDeg,
     source,
     anchorStatus,
+    reanchor,
   } = useXrNavigationSession({
     currentIndoorLocation: confirmedLocation,
     anchorForwardMap: confirmedForwardMap,
@@ -1372,18 +1374,32 @@ export function NavigationPage() {
               onClick={() => {
                 setCompletedVerticalStepKey(verticalStepKey);
                 if (!previewTransition && verticalDestination) {
+                  const { nodeId, forwardMap, ...indoorLocation } =
+                    TEMP_FLOOR_TRANSITION_LOCATION;
                   const temporaryFloorCode = floorCodeOf(
                     floorMaps,
-                    TEMP_FLOOR_TRANSITION_LOCATION.floorId,
+                    indoorLocation.floorId,
                   );
                   if (temporaryFloorCode) {
                     setPickedFloorCode(temporaryFloorCode);
                     setFloor(temporaryFloorCode as FloorId);
                   }
+
+                  const anchored = reanchor(indoorLocation, forwardMap);
                   setCurrentLocation({
-                    nodeId: verticalDestination.nodeId,
-                    ...TEMP_FLOOR_TRANSITION_LOCATION,
+                    nodeId,
+                    ...indoorLocation,
+                    forwardMap,
                   });
+
+                  if (import.meta.env.DEV) {
+                    console.info('[floor-transition] B2 WebXR anchor applied', {
+                      anchored,
+                      nodeId,
+                      ...indoorLocation,
+                      forwardMap,
+                    });
+                  }
                 }
               }}
             >
