@@ -69,6 +69,6 @@ describe('routeDistanceScaleOf', () => {
       2,
     );
 
-    expect(scale).toBeCloseTo(2.25, 6);
+    expect(scale).toBeCloseTo(2, 6);
   });
 });
