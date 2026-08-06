@@ -24,3 +24,8 @@ export {
   waitedLabel,
 } from './model/format';
 export { useCounselorConsultations } from './model/useCounselorConsultation';
+export {
+  isActiveConsultationAssignedToCounselor,
+  isConsultationAssignedToCounselor,
+  isUnassignedWaitingConsultation,
+} from './model/counselorConsultationVisibility';
