@@ -12,7 +12,12 @@ import {
   useStationFacilities,
   type Facility,
 } from '@/entities/facility';
-import { floorCodeOf, floorIdOf, useStationFloorMaps } from '@/entities/floor-map';
+import {
+  floorCodeAfterDelta,
+  floorCodeOf,
+  floorIdOf,
+  useStationFloorMaps,
+} from '@/entities/floor-map';
 import {
   carriesDistance,
   instructionAt,
@@ -125,6 +130,7 @@ export function NavigationPage() {
   const currentMapY = useNavigationStore((state) => state.currentMapY);
   const currentForwardMap = useNavigationStore((state) => state.currentForwardMap);
   const setTargetNode = useNavigationStore((state) => state.setTargetNode);
+  const setCurrentLocation = useNavigationStore((state) => state.setCurrentLocation);
   const setRouteResult = useNavigationStore((state) => state.setRouteResult);
   const progressKey = useNavigationStore((state) => state.progressKey);
   const storedTravelledM = useNavigationStore((state) => state.travelledM);
@@ -400,6 +406,55 @@ export function NavigationPage() {
     progress.currentStepIndex === null
       ? undefined
       : routeResult?.steps?.[progress.currentStepIndex];
+  const floorTransitionPreview = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get('floor-transition')
+    : null;
+  const previewTransition =
+    floorTransitionPreview === 'up'
+      ? {
+          key: 'preview-up',
+          floorDelta: 1,
+          floorCode: 'B1',
+        }
+      : floorTransitionPreview === 'down'
+        ? {
+            key: 'preview-down',
+            floorDelta: -1,
+            floorCode: 'B3',
+          }
+        : null;
+  const verticalStepKey =
+    previewTransition?.key ??
+    (activeStep?.floorDelta != null && activeStep.floorDelta !== 0
+      ? `${progress.currentStepIndex}-${activeStep.fromNodeId}-${activeStep.toNodeId}`
+      : null);
+  const [completedVerticalStepKey, setCompletedVerticalStepKey] = useState<string | null>(null);
+  const verticalDestination =
+    verticalStepKey === null
+      ? null
+      : (pathNodes.find((node) => node.nodeId === activeStep?.toNodeId) ?? null);
+  const verticalDestinationFloorCode = verticalDestination
+    ? floorCodeOf(floorMaps, verticalDestination.floorId)
+    : null;
+  const transitionFloorDelta = previewTransition?.floorDelta ?? activeStep?.floorDelta ?? 0;
+  const transitionFloorCode =
+    previewTransition?.floorCode ??
+    verticalDestinationFloorCode ??
+    ((currentLocation?.floorId ?? currentFloorId) == null
+      ? undefined
+      : floorCodeAfterDelta(
+          floorMaps,
+          currentLocation?.floorId ?? currentFloorId ?? 0,
+          transitionFloorDelta,
+        ));
+  const transitionInstruction = transitionFloorCode
+    ? t(
+        transitionFloorDelta > 0
+          ? 'user.navigation.floorTransition.moveUp'
+          : 'user.navigation.floorTransition.moveDown',
+        { floor: transitionFloorCode },
+      )
+    : activeStep?.instruction;
 
   /**
    * 지금 걷고 있는 다리. **지나온 경유지 수가 곧 다리 번호다.**
@@ -443,6 +498,11 @@ export function NavigationPage() {
     activeStep?.moveType === 'elevator' ||
     activeStep?.moveType === 'stair' ||
     activeStep?.moveType === 'escalator';
+  const showFloorTransition =
+    !isNoticeOpen &&
+    (previewTransition !== null || verticalMove) &&
+    verticalStepKey !== null &&
+    completedVerticalStepKey !== verticalStepKey;
   const camGuide =
     progress.offRoute || verticalMove || bearing === null
       ? null
@@ -486,8 +546,7 @@ export function NavigationPage() {
     destinationNameEn,
   );
   const storedDestinationFacility = pickedDestination ?? nodeDestinationFacility;
-  const destinationFacility =
-    storedDestinationFacility ?? matchedExitDestination ?? null;
+  const destinationFacility = storedDestinationFacility ?? matchedExitDestination ?? null;
 
   /**
    * 목적지 시설이 경로 응답의 도착 노드와 다를 때만 실제 경로 끝에 마커를 둔다.
@@ -1227,6 +1286,79 @@ export function NavigationPage() {
           세션 안내는 그대로 `overlay` 에 둔다. 그것이 뜨는 구간에는 세션이 떠 있지 않아 일반 DOM
           이 그대로 보이고, 안내가 시트보다 앞서야 한다는 순서도 아래 조건으로 유지된다.
         */}
+        {showFloorTransition && (
+          <section
+            className={styles.floorTransitionGuide}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="floor-transition-instruction"
+          >
+            <div
+              className={[
+                styles.floorTransitionChevrons,
+                transitionFloorDelta > 0 && styles.floorTransitionChevronsUp,
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              aria-hidden
+            >
+              {[0, 1].map((index) => (
+                <svg key={index} viewBox="0 0 112 64" focusable="false">
+                  <defs>
+                    <linearGradient
+                      id={`floor-chevron-gradient-${index}`}
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="0%" stopColor="var(--color-mint-highlight)" />
+                      <stop offset="52%" stopColor="var(--color-mint)" />
+                      <stop offset="100%" stopColor="#15936d" />
+                    </linearGradient>
+                  </defs>
+                  <polyline
+                    className={styles.floorTransitionChevronDepth}
+                    points={transitionFloorDelta > 0 ? '12,47 56,12 100,47' : '12,15 56,50 100,15'}
+                  />
+                  <polyline
+                    className={styles.floorTransitionChevronFace}
+                    points={transitionFloorDelta > 0 ? '12,50 56,15 100,50' : '12,12 56,47 100,12'}
+                    stroke={`url(#floor-chevron-gradient-${index})`}
+                  />
+                </svg>
+              ))}
+            </div>
+            <p id="floor-transition-instruction" className={styles.floorTransitionInstruction}>
+              {transitionInstruction}
+            </p>
+            <p className={styles.floorTransitionDescription}>
+              {t('user.navigation.floorTransition.description')}
+            </p>
+            <button
+              type="button"
+              className={styles.floorTransitionGuideButton}
+              onClick={() => {
+                setCompletedVerticalStepKey(verticalStepKey);
+                if (!previewTransition && verticalDestinationFloorCode) {
+                  setPickedFloorCode(verticalDestinationFloorCode);
+                  setFloor(verticalDestinationFloorCode as FloorId);
+                }
+                if (!previewTransition && verticalDestination) {
+                  setCurrentLocation({
+                    nodeId: verticalDestination.nodeId,
+                    floorId: verticalDestination.floorId,
+                    mapX: verticalDestination.mapX,
+                    mapY: verticalDestination.mapY,
+                  });
+                }
+              }}
+            >
+              {t('user.navigation.floorTransition.confirm')}
+            </button>
+          </section>
+        )}
+
         {!isNoticeOpen && selectedFacility && (
           <Sheet
             label={t('user.navigation.facilityRoute', { name: selectedFacilityName })}

@@ -258,6 +258,7 @@ export const ko = {
         relocalize: '위치 재촬영하기', relocalizeShort: '위치 재촬영', floorSelect: '층 선택', facilityFilter: '시설 필터',
         filterOff: '{{name}} 필터 해제', filterOn: '{{name}} 필터 적용', showFacilities: '시설 아이콘 다시 보기', hideFacilities: '시설 아이콘 모두 숨기기',
         mapHint: '지도 시설을 눌러 경유지 추가', move: '이동', stepMeta: '{{distance}}m · 약 {{minutes}}분', arriveExit: '{{exit}} 도착', toward: '{{destination}} 방면', details: '상세 경로', arrived: '도착',
+        floorTransition: { confirm: '이동 완료', moveUp: '{{floor}}층으로 올라가 주세요.', moveDown: '{{floor}}층으로 내려가 주세요.', description: '층 이동이 완료되면 버튼을 눌러주세요.' },
       },
       xr: {
         badge: {

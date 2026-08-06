@@ -264,6 +264,7 @@ export const en = {
         relocalize: 'Rescan location', relocalizeShort: 'Rescan', floorSelect: 'Select floor', facilityFilter: 'Facility filters',
         filterOff: 'Turn off {{name}} filter', filterOn: 'Apply {{name}} filter', showFacilities: 'Show facility icons', hideFacilities: 'Hide all facility icons',
         mapHint: 'Select a map facility to add a waypoint', move: 'Move', stepMeta: '{{distance}}m · about {{minutes}} min', arriveExit: 'Arrive at {{exit}}', toward: 'Toward {{destination}}', details: 'Route details', arrived: 'Arrived',
+        floorTransition: { confirm: 'Complete move', moveUp: 'Please go up to {{floor}}.', moveDown: 'Please go down to {{floor}}.', description: 'After changing floors, tap Complete move.' },
       },
       xr: {
         badge: {
