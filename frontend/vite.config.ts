@@ -75,6 +75,21 @@ function devProxy(mode: string) {
 export default defineConfig(({ mode }) => ({
   plugins: [react(), excludePrototypeFromBuild()],
   server: {
+    /**
+     * 실기기 확인용 Tailscale 주소를 허용한다.
+     *
+     * dev 서버는 DNS 리바인딩을 막으려고 `Host` 헤더가 낯설면 요청을 거절한다. 폰에서
+     * `https://<장치>.<tailnet>.ts.net` 으로 들어오면 그 방어에 걸려 `Blocked request` 만
+     * 보인다. LAN IP + Chrome 플래그 대신 이 경로를 쓰려면 여기를 열어야 한다
+     * (`docs/WebXR_검증_결과.md` 3.2).
+     *
+     * **점으로 시작하면 하위 도메인 전체를 뜻한다.** 개인 tailnet 이름을 박지 않으므로 팀원
+     * 누구의 주소로도 통한다. `ts.net` 은 Tailscale 이 가진 이름 공간이라, 공격자가 이 방어를
+     * 우회하려면 그 아래 이름을 `127.0.0.1` 로 가리키게 만들 수 있어야 한다.
+     *
+     * dev 서버에만 적용된다. 프로덕션 빌드에는 이 설정이 들어가지 않는다.
+     */
+    allowedHosts: ['.ts.net'],
     proxy: {
       '/api': devProxy(mode),
       // 지도 도면 등 백엔드가 서빙하는 정적 파일. (API 명세서 2.5)
