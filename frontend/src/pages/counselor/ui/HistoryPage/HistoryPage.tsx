@@ -5,13 +5,14 @@ import {
   consultationProblemLabel,
   consultationRef,
   consultationStatusLabel,
-  isClosedConsultation,
+  isCounselorConsultationVisible,
   speakerColor,
   useCounselorConsultations,
 } from '@/entities/consult';
 import {
   ApiError,
   getConsultationSummary,
+  getCounselorMe,
   queryKeys,
   submitConsultationTranscript,
 } from '@/shared/api';
@@ -21,6 +22,7 @@ import styles from './HistoryPage.module.css';
 
 /** 요약은 상담 종료 뒤 AI가 비동기로 만든다. 만드는 동안 다시 물어보는 간격. */
 const SUMMARY_POLL_MS = 3000;
+const PAGE_SIZE = 10;
 const SPEAKER_LABELS = { USER: '사용자', COUNSELOR: '상담원' } as const;
 
 /** 정렬해서 중복을 없앤 필터 후보. 실제 기록에 있는 날짜만 고를 수 있게 한다. */
@@ -199,12 +201,23 @@ export function HistoryPage() {
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
-  const historyQuery = useCounselorConsultations();
+  const [page, setPage] = useState(0);
+  const historyQuery = useCounselorConsultations({
+    status: 'ENDED',
+    page,
+    size: PAGE_SIZE,
+    sort: 'requestedAt,desc',
+  });
+  const profileQuery = useQuery({
+    queryKey: queryKeys.counselorMe(),
+    queryFn: getCounselorMe,
+    staleTime: 30_000,
+  });
 
   const closed = useMemo(
     () =>
-      (historyQuery.data ?? [])
-        .filter((item) => isClosedConsultation(item.status))
+      (historyQuery.data?.content ?? [])
+        .filter((item) => isCounselorConsultationVisible(item, profileQuery.data?.accountId))
         .map((item) => {
           const requestedAt = new Date(item.requestedAt);
           return {
@@ -216,7 +229,7 @@ export function HistoryPage() {
           };
         })
         .sort((a, b) => b.requestedAtTimestamp - a.requestedAtTimestamp),
-    [historyQuery.data],
+    [historyQuery.data?.content, profileQuery.data?.accountId],
   );
 
   const years = descendingOptions(closed.map((item) => item.year));
@@ -307,7 +320,9 @@ export function HistoryPage() {
           </div>
         </div>
 
-        {historyQuery.isPending && <p>상담 내역을 불러오는 중입니다.</p>}
+        {(historyQuery.isPending || profileQuery.isPending) && (
+          <p>상담 내역을 불러오는 중입니다.</p>
+        )}
         {historyQuery.isError && <p role="alert">상담 내역을 불러오지 못했습니다.</p>}
         <div className={styles.list}>
           {history.map((entry) => {
@@ -361,11 +376,38 @@ export function HistoryPage() {
               </div>
             );
           })}
-          {!historyQuery.isPending && history.length === 0 && (
+          {!historyQuery.isPending && !profileQuery.isPending && history.length === 0 && (
             <p>
               {filtered ? '선택한 날짜의 상담 내역이 없습니다.' : '종료된 상담 내역이 없습니다.'}
             </p>
           )}
+        </div>
+        <div className={styles.pagination} aria-label="상담 이력 페이지">
+          <GhostButton
+            className={styles.pageButton}
+            disabled={page === 0 || historyQuery.isFetching}
+            onClick={() => {
+              setPage((current) => Math.max(0, current - 1));
+              setOpenId(null);
+            }}
+          >
+            이전
+          </GhostButton>
+          <span className={styles.pageLabel}>
+            {historyQuery.data?.totalPages
+              ? `${historyQuery.data.page + 1} / ${historyQuery.data.totalPages}`
+              : '0 / 0'}
+          </span>
+          <GhostButton
+            className={styles.pageButton}
+            disabled={!historyQuery.data || historyQuery.data.last || historyQuery.isFetching}
+            onClick={() => {
+              setPage((current) => current + 1);
+              setOpenId(null);
+            }}
+          >
+            다음
+          </GhostButton>
         </div>
       </div>
     </CounselorConsoleShell>

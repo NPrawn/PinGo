@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   consultationDateTimeLabel,
@@ -7,6 +7,7 @@ import {
   consultationRef,
   consultationStatusLabel,
   destinationTypeLabel,
+  isCounselorConsultationVisible,
   useConsultStore,
   useCounselorConsultations,
   waitedLabel,
@@ -15,10 +16,12 @@ import {
   acceptConsultation,
   ApiError,
   getCounselorConsultation,
-  queryKeys
+  getCounselorMe,
+  queryKeys,
+  type CounselorConsultation,
 } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
-import { Button, Icon } from '@/shared/ui';
+import { Button, GhostButton, Icon, SelectField } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import styles from './RequestsPage.module.css';
 
@@ -43,16 +46,11 @@ const CARD_CLASS: Record<string, string> = {
   FAILED: styles.cardMuted,
 };
 
-/** 대기 중 → 상담 중 → 종료 → 취소·거절 순으로 목록을 정렬한다. */
-const STATUS_ORDER: Record<string, number> = {
-  WAITING: 0,
-  ACCEPTED: 1,
-  IN_PROGRESS: 1,
-  ENDED: 2,
-  CANCELED: 3,
-  REJECTED: 3,
-  FAILED: 3,
-};
+const PAGE_SIZE = 10;
+type RequestStatus = Extract<
+  CounselorConsultation['status'],
+  'WAITING' | 'ACCEPTED' | 'IN_PROGRESS'
+>;
 
 function errorMessage(error: unknown) {
   if (!(error instanceof ApiError)) return '요청 상태가 이미 변경됐거나 처리하지 못했습니다.';
@@ -71,18 +69,33 @@ export function RequestsPage() {
   const setSignalingRoom = useConsultStore((state) => state.setSignalingRoom);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const [status, setStatus] = useState<RequestStatus>('WAITING');
+  const [page, setPage] = useState(0);
 
-  const queueQuery = useCounselorConsultations();
-  // 서버는 요청 시각 순으로 주므로, 상태별로만 다시 묶는다. sort는 안정 정렬이라
-  // 같은 상태 안에서는 오래 기다린 요청이 위에 남는다.
+  const listParams = { status, page, size: PAGE_SIZE, sort: 'requestedAt,asc' } as const;
+  const queueQuery = useCounselorConsultations(listParams);
+  const profileQuery = useQuery({
+    queryKey: queryKeys.counselorMe(),
+    queryFn: getCounselorMe,
+    staleTime: 30_000,
+  });
+  // WAITING은 미배정 건만, 수락·진행 중 상태는 로그인한 상담자 본인의 건만 남긴다.
   const requests = useMemo(
     () =>
-      [...(queueQuery.data ?? [])].sort(
-        (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9),
+      (queueQuery.data?.content ?? []).filter((consultation) =>
+        isCounselorConsultationVisible(consultation, profileQuery.data?.accountId),
       ),
-    [queueQuery.data],
+    [profileQuery.data?.accountId, queueQuery.data?.content],
   );
   const selected = requests.find((request) => request.consultationId === selectedId) ?? requests[0];
+  const identifyingCounselor = status !== 'WAITING' && profileQuery.isPending;
+
+  const changeStatus = (nextStatus: RequestStatus) => {
+    setStatus(nextStatus);
+    setPage(0);
+    setSelectedId(null);
+    setActionError('');
+  };
 
   const acceptMutation = useMutation({
     mutationFn: acceptConsultation,
@@ -117,10 +130,26 @@ export function RequestsPage() {
     <CounselorConsoleShell>
       <div className={styles.wrap}>
         <div className={styles.rail}>
+          <div className={styles.railTools}>
+            <SelectField
+              className={styles.statusSelect}
+              value={status}
+              aria-label="상담 상태 필터"
+              onChange={(event) => changeStatus(event.target.value as RequestStatus)}
+            >
+              <option value="WAITING">대기 중</option>
+              <option value="ACCEPTED">수락됨</option>
+              <option value="IN_PROGRESS">진행 중</option>
+            </SelectField>
+          </div>
           <div className={styles.railScroll}>
-            {queueQuery.isPending && <p>상담 요청을 불러오는 중입니다.</p>}
+            {(queueQuery.isPending || identifyingCounselor) && (
+              <p>상담 요청을 불러오는 중입니다.</p>
+            )}
             {queueQuery.isError && <p role="alert">상담 요청을 불러오지 못했습니다.</p>}
-            {!queueQuery.isPending && requests.length === 0 && <p>대기 중인 상담이 없습니다.</p>}
+            {!queueQuery.isPending && !identifyingCounselor && requests.length === 0 && (
+              <p>해당 상태의 내 상담이 없습니다.</p>
+            )}
             {requests.map((request) => (
               <button
                 key={request.consultationId}
@@ -153,6 +182,33 @@ export function RequestsPage() {
                 </div>
               </button>
             ))}
+          </div>
+          <div className={styles.pagination} aria-label="상담 목록 페이지">
+            <GhostButton
+              className={styles.pageButton}
+              disabled={page === 0 || queueQuery.isFetching}
+              onClick={() => {
+                setPage((current) => Math.max(0, current - 1));
+                setSelectedId(null);
+              }}
+            >
+              이전
+            </GhostButton>
+            <span className={styles.pageLabel}>
+              {queueQuery.data?.totalPages
+                ? `${queueQuery.data.page + 1} / ${queueQuery.data.totalPages}`
+                : '0 / 0'}
+            </span>
+            <GhostButton
+              className={styles.pageButton}
+              disabled={!queueQuery.data || queueQuery.data.last || queueQuery.isFetching}
+              onClick={() => {
+                setPage((current) => current + 1);
+                setSelectedId(null);
+              }}
+            >
+              다음
+            </GhostButton>
           </div>
         </div>
 
@@ -188,7 +244,7 @@ export function RequestsPage() {
                     상담 수락
                   </Button>
                 )}
-                {selected.status === 'ACCEPTED' && (
+                {(selected.status === 'ACCEPTED' || selected.status === 'IN_PROGRESS') && (
                   <Button
                     size="sm"
                     className={styles.openSession}
