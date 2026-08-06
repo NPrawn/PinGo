@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../types';
 import {
+  getConsultationSummary,
   normalizeCounselorConsultationPage,
   type CounselorConsultation,
   type CounselorConsultationPage,
 } from './counselorApi';
+
+const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+
+vi.mock('../client', () => ({ apiClient: { get: mocks.get } }));
 
 const consultation: CounselorConsultation = {
   consultationId: 'cs_1',
@@ -48,5 +54,27 @@ describe('normalizeCounselorConsultationPage', () => {
     };
 
     expect(normalizeCounselorConsultationPage(page)).toBe(page);
+  });
+});
+
+describe('getConsultationSummary', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('요약 없음 404를 null 성공 결과로 정규화한다', async () => {
+    mocks.get.mockRejectedValueOnce(
+      new ApiError('요약을 찾을 수 없습니다.', {
+        code: 'CONSULTATION_SUMMARY_NOT_FOUND',
+        status: 404,
+      }),
+    );
+
+    await expect(getConsultationSummary('cs_without_summary')).resolves.toBeNull();
+  });
+
+  it('요약 없음이 아닌 오류는 그대로 전파한다', async () => {
+    const error = new ApiError('서버 오류', { code: 'INTERNAL_SERVER_ERROR', status: 500 });
+    mocks.get.mockRejectedValueOnce(error);
+
+    await expect(getConsultationSummary('cs_failed')).rejects.toBe(error);
   });
 });
