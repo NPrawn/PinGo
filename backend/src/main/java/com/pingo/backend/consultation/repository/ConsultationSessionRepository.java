@@ -27,9 +27,22 @@ public interface ConsultationSessionRepository extends JpaRepository<Consultatio
 
     Page<ConsultationSession> findByStationId(Long stationId, Pageable pageable);
 
-    Page<ConsultationSession> findByStationIdAndStatus(
+    Page<ConsultationSession> findByStationIdAndStatusIn(
             Long stationId,
-            ConsultationStatus status,
+            Collection<ConsultationStatus> statuses,
+            Pageable pageable
+    );
+
+    Page<ConsultationSession> findByStationIdAndCounselorId(
+            Long stationId,
+            Long counselorId,
+            Pageable pageable
+    );
+
+    Page<ConsultationSession> findByStationIdAndCounselorIdAndStatusIn(
+            Long stationId,
+            Long counselorId,
+            Collection<ConsultationStatus> statuses,
             Pageable pageable
     );
 }

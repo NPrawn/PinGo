@@ -4,8 +4,10 @@ import com.pingo.backend.auth.domain.Account;
 import com.pingo.backend.auth.domain.AccountType;
 import com.pingo.backend.auth.domain.CounselorStatus;
 import com.pingo.backend.auth.repository.AccountRepository;
+import com.pingo.backend.consultation.domain.ConsultationScope;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
+import com.pingo.backend.consultation.domain.ConsultationSummary;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
@@ -14,6 +16,7 @@ import com.pingo.backend.consultation.event.ConsultationCanceledEvent;
 import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
+import com.pingo.backend.consultation.repository.ConsultationSummaryRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
 import com.pingo.backend.global.response.PageResponse;
@@ -30,6 +33,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -37,6 +44,7 @@ import java.util.List;
 public class ConsultationSessionService {
 
     private final ConsultationSessionRepository consultationSessionRepository;
+    private final ConsultationSummaryRepository consultationSummaryRepository;
     private final UserSessionRepository userSessionRepository;
     private final StationRepository stationRepository;
     private final AccountRepository accountRepository;
@@ -163,19 +171,90 @@ public class ConsultationSessionService {
     @Transactional(readOnly = true)
     public PageResponse<ConsultationListResponse> getConsultationsForCounselor(
             Long counselorAccountId,
-            ConsultationStatus status,
+            List<ConsultationStatus> statuses,
+            ConsultationScope scope,
             Pageable pageable
     ) {
         Account counselor = findActiveCounselor(counselorAccountId);
-        Page<ConsultationSession> consultations = status == null
-                ? consultationSessionRepository.findByStationId(counselor.getStationId(), pageable)
-                : consultationSessionRepository.findByStationIdAndStatus(
-                        counselor.getStationId(),
-                        status,
-                        pageable
-                );
+        List<ConsultationStatus> requestedStatuses = statuses == null ? List.of() : statuses;
+        ConsultationScope requestedScope = scope == null ? ConsultationScope.ALL : scope;
+        Page<ConsultationSession> consultations = findConsultations(
+                counselor,
+                requestedStatuses,
+                requestedScope,
+                pageable
+        );
 
-        return PageResponse.from(consultations, ConsultationListResponse::from);
+        Map<Long, String> counselorNames = findCounselorNames(consultations.getContent());
+        Map<String, ConsultationSummary> summaries = findSummaries(consultations.getContent());
+
+        return PageResponse.from(
+                consultations,
+                session -> ConsultationListResponse.from(
+                        session,
+                        session.getCounselorId() == null
+                                ? null
+                                : counselorNames.get(session.getCounselorId()),
+                        summaries.get(session.getConsultationId())
+                )
+        );
+    }
+
+    private Page<ConsultationSession> findConsultations(
+            Account counselor,
+            List<ConsultationStatus> statuses,
+            ConsultationScope scope,
+            Pageable pageable
+    ) {
+        boolean hasStatusFilter = !statuses.isEmpty();
+        if (scope == ConsultationScope.MINE) {
+            return hasStatusFilter
+                    ? consultationSessionRepository.findByStationIdAndCounselorIdAndStatusIn(
+                            counselor.getStationId(),
+                            counselor.getAccountId(),
+                            statuses,
+                            pageable
+                    )
+                    : consultationSessionRepository.findByStationIdAndCounselorId(
+                            counselor.getStationId(),
+                            counselor.getAccountId(),
+                            pageable
+                    );
+        }
+
+        return hasStatusFilter
+                ? consultationSessionRepository.findByStationIdAndStatusIn(
+                        counselor.getStationId(),
+                        statuses,
+                        pageable
+                )
+                : consultationSessionRepository.findByStationId(counselor.getStationId(), pageable);
+    }
+
+    private Map<Long, String> findCounselorNames(List<ConsultationSession> consultations) {
+        Set<Long> counselorIds = consultations.stream()
+                .map(ConsultationSession::getCounselorId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        if (counselorIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return accountRepository.findAllById(counselorIds).stream()
+                .collect(Collectors.toMap(Account::getAccountId, Account::getName));
+    }
+
+    private Map<String, ConsultationSummary> findSummaries(List<ConsultationSession> consultations) {
+        if (consultations.isEmpty()) {
+            return Map.of();
+        }
+
+        List<String> consultationIds = consultations.stream()
+                .map(ConsultationSession::getConsultationId)
+                .toList();
+
+        return consultationSummaryRepository.findAllByConsultationIdIn(consultationIds).stream()
+                .collect(Collectors.toMap(ConsultationSummary::getConsultationId, Function.identity()));
     }
 
     @Transactional(readOnly = true)
