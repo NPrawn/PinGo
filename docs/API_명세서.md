@@ -2005,34 +2005,52 @@ Authorization: Bearer {accessToken}
 
 #### Query
 
-| 이름   | 타입   | 필수 | 설명                 |
-| ------ | ------ | ---- | -------------------- |
-| status | string | N    | WAITING, ACCEPTED 등 |
+| 이름   | 타입    | 필수 | 기본값                          | 설명                                      |
+| ------ | ------- | ---- | ------------------------------- | ----------------------------------------- |
+| status | string  | N    | 전체                            | `WAITING`, `ACCEPTED`, `IN_PROGRESS` 등   |
+| page   | integer | N    | `0`                             | 0부터 시작하는 페이지 번호               |
+| size   | integer | N    | `20`                            | 한 페이지에 포함할 상담 수                |
+| sort   | string  | N    | `requestedAt,asc`               | 정렬 필드와 방향. 여러 번 전달할 수 있음  |
+
+기본 정렬은 `requestedAt ASC`, `consultationId ASC`이다. 같은 시각에 요청된 상담도 페이지 사이에서 순서가 바뀌지 않도록 상담 ID를 보조 정렬 기준으로 사용한다.
 
 #### Response
 
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "consultationId": "cs_abc123",
-      "stationId": 1,
-      "problemType": "CANNOT_FIND_EXIT",
-      "status": "WAITING",
-      "currentNodeId": 101,
-      "currentLocationLabel": "B2 개찰구 앞",
-      "destinationType": "place",
-      "destinationId": 3,
-      "destinationLabel": "COEX Mall",
-      "requestedAt": "2026-07-16T03:00:00Z"
-    }
-  ],
+  "data": {
+    "content": [
+      {
+        "consultationId": "cs_abc123",
+        "stationId": 1,
+        "problemType": "CANNOT_FIND_EXIT",
+        "status": "WAITING",
+        "counselorId": null,
+        "currentNodeId": 101,
+        "currentLocationLabel": "B2 개찰구 앞",
+        "destinationType": "place",
+        "destinationId": 3,
+        "destinationLabel": "COEX Mall",
+        "requestedAt": "2026-07-16T03:00:00Z"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1,
+    "first": true,
+    "last": true
+  },
   "message": null
 }
 ```
 
 `status`를 지정하지 않으면 담당 역의 모든 상담을 반환한다. 상담자 콘솔의 요청 목록과 상담 이력이 같은 응답을 사용한다.
+
+`counselorId`는 상담을 수락한 상담자의 계정 ID다. 아직 배정되지 않은 `WAITING` 상담은 `null`이며, 배정된 상담은 담당 상담자 ID를 반환한다. 프론트엔드는 로그인한 상담자의 `accountId`와 이 값을 비교해 본인 상담과 다른 상담자의 상담을 구분한다.
+
+페이지 메타데이터의 `page`는 0부터 시작한다. 조회 결과가 없으면 `content`는 빈 배열이고 `totalElements`와 `totalPages`는 `0`이다.
 
 `currentLocationLabel`, `destinationLabel`은 route_node-facility 연결이 정리되기 전까지 식별자 기반 임시 문자열(`Node 101`, `place 3`)이며, 좌표·시설 연결 이후 실제 명칭으로 바뀐다.
 
