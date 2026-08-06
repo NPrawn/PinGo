@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { routeDistanceScaleOf } from './routeDistanceScale';
+import { routeDistanceScaleOf, xrDistanceScaleOf } from './routeDistanceScale';
 
 describe('routeDistanceScaleOf', () => {
   it('compares same-floor map distance with managed physical distance', () => {
@@ -55,5 +55,20 @@ describe('routeDistanceScaleOf', () => {
         2,
       ),
     ).toBe(1);
+  });
+
+  it('applies the XR movement correction to the route scale', () => {
+    const scale = xrDistanceScaleOf(
+      {
+        pathNodes: [
+          { nodeId: 1, floorId: 2, mapX: 0, mapY: 0 },
+          { nodeId: 2, floorId: 2, mapX: 6, mapY: 8 },
+        ],
+        steps: [{ fromNodeId: 1, toNodeId: 2, distanceM: 8 }],
+      },
+      2,
+    );
+
+    expect(scale).toBeCloseTo(2, 6);
   });
 });

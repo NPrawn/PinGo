@@ -4,6 +4,9 @@ import { routePathNodesOf } from './routePathNodes';
 const MIN_DISTANCE_SCALE = 0.25;
 const MAX_DISTANCE_SCALE = 4;
 
+/** XR 이동량을 실측 이동량에 맞추기 위한 임시 보정 배율. */
+export const XR_DISTANCE_SCALE_MULTIPLIER = 1.6;
+
 function edgeKey(fromNodeId: number, toNodeId: number): string {
   return `${fromNodeId}:${toNodeId}`;
 }
@@ -57,4 +60,12 @@ export function routeDistanceScaleOf(
   return Number.isFinite(scale) && scale >= MIN_DISTANCE_SCALE && scale <= MAX_DISTANCE_SCALE
     ? scale
     : 1;
+}
+
+/** 경로 축척에 XR 실측 보정 배율을 적용한다. */
+export function xrDistanceScaleOf(
+  route: RouteResponse | null | undefined,
+  floorId: number | null | undefined,
+): number {
+  return routeDistanceScaleOf(route, floorId) * XR_DISTANCE_SCALE_MULTIPLIER;
 }

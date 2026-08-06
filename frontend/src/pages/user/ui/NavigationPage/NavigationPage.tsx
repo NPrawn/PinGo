@@ -17,7 +17,7 @@ import {
   carriesDistance,
   instructionAt,
   routeBearingOf,
-  routeDistanceScaleOf,
+  xrDistanceScaleOf,
   routePathNodesOf,
   routeProgressOf,
   useNavigationStore,
@@ -260,7 +260,7 @@ export function NavigationPage() {
     [currentFloorId, currentMapX, currentMapY],
   );
   const [confirmedForwardMap] = useState(() => currentForwardMap);
-  const xrDistanceScale = routeDistanceScaleOf(routeResult, confirmedLocation?.floorId);
+  const xrDistanceScale = xrDistanceScaleOf(routeResult, confirmedLocation?.floorId);
 
   /**
    * XR 세션 게이트. 진입 시 안내를 띄우고 사용자가 확인하면 세션을 연다(11.7).
