@@ -414,6 +414,19 @@
   box-shadow: 0 5px 14px -8px rgb(15 44 34 / 42%);
 }
 
+/* TEMP XR field-test control. Remove with the matching JSX after calibration. */
+.xrScaleControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.xrScaleControl input {
+  width: 72px;
+  accent-color: var(--color-ink);
+}
+
 /* 오버레이 SVG만 시설 칩 위로 올린다. 현재 위치와 목적지 이름이 칩에 가리면 안 된다 —
    원본에도 목적지 라벨이 지도 위 요소들보다 나중에 그려져 있었다.
    IndoorMapView의 .viewport·.stage가 stacking context를 만들지 않으므로, 그 자손인 오버레이의
