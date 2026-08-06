@@ -429,6 +429,15 @@ export function NavigationPage() {
       ? `${progress.currentStepIndex}-${activeStep.fromNodeId}-${activeStep.toNodeId}`
       : null);
   const [completedVerticalStepKey, setCompletedVerticalStepKey] = useState<string | null>(null);
+  const [previousVerticalStepKey, setPreviousVerticalStepKey] = useState(verticalStepKey);
+
+  if (previousVerticalStepKey !== verticalStepKey) {
+    setPreviousVerticalStepKey(verticalStepKey);
+    if (verticalStepKey === null && completedVerticalStepKey !== null) {
+      setCompletedVerticalStepKey(null);
+    }
+  }
+
   const verticalDestination =
     verticalStepKey === null
       ? null
