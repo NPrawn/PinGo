@@ -26,8 +26,15 @@ class WhisperTranscriberTest {
 
     @Test
     void dropsRunawayWordRepetition() {
-        assertThat(WhisperTranscriber.sanitizeTranscription("I got a gun, ah ah ah ah ah ah ah"))
+        assertThat(WhisperTranscriber.sanitizeTranscription("I got a gun, ah ah ah ah ah ah ah ah ah ah"))
                 .isNull();
+    }
+
+    @Test
+    void dropsOnlyTheRunawayLineAndKeepsOtherSpeech() {
+        assertThat(WhisperTranscriber.sanitizeTranscription(
+                "3번 출구로 가려면요?\nah ah ah ah ah ah ah ah ah ah"))
+                .isEqualTo("3번 출구로 가려면요?");
     }
 
     @Test
@@ -38,8 +45,8 @@ class WhisperTranscriberTest {
 
     @Test
     void keepsShortNaturalRepetition() {
-        assertThat(WhisperTranscriber.sanitizeTranscription("네 네 알겠습니다"))
-                .isEqualTo("네 네 알겠습니다");
+        assertThat(WhisperTranscriber.sanitizeTranscription("네 네 네 네 네 알겠습니다"))
+                .isEqualTo("네 네 네 네 네 알겠습니다");
     }
 
     @Test

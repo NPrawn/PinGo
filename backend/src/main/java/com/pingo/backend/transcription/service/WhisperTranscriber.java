@@ -24,7 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class WhisperTranscriber implements Transcriber {
 
     private static final String NO_SPEECH_MARKER = "<no-speech>";
-    private static final int RUNAWAY_REPEAT_COUNT = 5;
+    private static final int RUNAWAY_REPEAT_COUNT = 8;
     private static final Pattern WORD_SEPARATOR = Pattern.compile("[^\\p{L}\\p{N}']+");
     private static final Set<String> SUPPORTED_MIME_TYPES = Set.of(
             "audio/webm", "audio/ogg", "audio/wav", "audio/mp4", "audio/mpeg", "audio/aac", "audio/flac"
@@ -129,7 +129,8 @@ public class WhisperTranscriber implements Transcriber {
                 continue;
             }
             if (hasRunawayWordRepetition(line)) {
-                return null;
+                // 한 줄의 반복 폭주 때문에 같은 응답에 담긴 다른 정상 문장까지 버리지 않는다.
+                continue;
             }
             if (!line.equals(previous)) {
                 kept.add(line);

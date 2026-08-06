@@ -1070,14 +1070,12 @@ describe('useConsultSignaling', () => {
   });
 
   /**
-   * 시끄러운 곳에서도 침묵을 감지한다.
+   * 최대 길이에 닿은 연속 발화도 버리지 않는다.
    *
-   * 실기기에서 이게 깨졌다. `getUserMedia` 는 기본으로 자동 이득을 걸어 조용한 소리를
-   * 끌어올리므로 실내 암소음도 첫 문턱을 넘는다. 그런데 바닥 소음을 조용할 때만 갱신하던
-   * 탓에, 한 번 넘긴 뒤로는 **영영 "말하는 중"이 되어 모든 조각이 최대 길이를 다 채웠다.**
-   * 자막이 18초쯤 늦게 뜨고, 그 안은 순수 잡음이라 모델이 노랫말 같은 헛소리를 지어냈다.
+   * 자연스러운 무음 종료와 달리 8초 강제 분할 시점에는 마지막 음량이 여전히 높다. 그때
+   * `END_DROP_RATIO` 를 적용하면 사용자가 쉬지 않고 말한 8초 전체가 사라진다.
    */
-  it('recalibrates in a noisy room so silence is still detected', async () => {
+  it('uploads continuous speech when it reaches the maximum segment length', async () => {
     vi.useFakeTimers();
     try {
       Object.defineProperty(navigator, 'mediaDevices', {
@@ -1099,18 +1097,19 @@ describe('useConsultSignaling', () => {
         await Promise.resolve();
       });
 
-      /*
-       * 처음부터 끝까지 꾸준한 암소음만 있다. 사람은 한마디도 하지 않았다.
-       * 예전 코드는 여기서 8초를 다 채운 조각을 올렸다.
-       */
       await act(async () => {
-        micLevel.value = 0.05;
-        vi.advanceTimersByTime(12000);
+        micLevel.value = 0.5;
+        vi.advanceTimersByTime(8100);
+        await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
       });
 
-      expect(apiMocks.transcribeConsultationAudio).not.toHaveBeenCalled();
+      expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledTimes(1);
+      expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledWith(
+        'cs_1',
+        expect.objectContaining({ audio: expect.any(Blob) }),
+      );
 
       view.unmount();
     } finally {

@@ -60,15 +60,6 @@ const NOISE_FLOOR_RISE_ALPHA = 0.002;
 const MIN_SPEECH_FRACTION = 0.35;
 
 /**
- * 최대 길이를 다 채우면서 이 비율 넘게 계속 컸다면, 말이 아니라 **기준이 틀린 것**으로 본다.
- *
- * 사람이 8초를 쉬지 않고 꽉 채워 말하는 일은 드물다. 그보다는 주변이 시끄러워 문턱이 낮게
- * 잡힌 경우가 훨씬 흔하다. 그때는 그 조각의 평균 크기를 새 바닥으로 삼아 즉시 다시 맞춘다 —
- * 느린 상향 추적만으로는 몇 초 동안 잡음을 계속 올려 보내게 된다.
- */
-const MISCALIBRATION_FRACTION = 0.9;
-
-/**
  * 조각이 끝날 때 소리가 이 배수 아래로 떨어져 있어야 진짜 말이 끝난 것으로 본다.
  *
  * **말과 잡음은 끝나는 모양이 다르다.** 사람이 말을 마치면 소리가 뚝 떨어진다. 반면 꾸준한
@@ -188,11 +179,12 @@ export function startServerCaptionRecorder(
    * 잡음만 담긴 조각을 올리면 모델이 없는 말을 지어낸다. 빈 글이 오는 것보다 나쁘다 — 지어낸
    * 문장은 받아쓴 글과 구분되지 않아 그대로 전문에 남는다.
    */
-  const hasEnoughSpeech = () => {
-    if (segmentTicks === 0) return false;
-    if (segmentLoudTicks / segmentTicks < MIN_SPEECH_FRACTION) return false;
+  const hasMinimumSpeech = () =>
+    segmentTicks > 0 && segmentLoudTicks / segmentTicks >= MIN_SPEECH_FRACTION;
 
-    // 소리가 실제로 잦아들었는지. 그대로면 말이 끝난 게 아니라 바닥이 따라 올라온 것이다.
+  /** 무음으로 끝난 조각이 실제로 잦아들었는지 확인한다. 최대 길이 강제 분할에는 적용하지 않는다. */
+  const hasNaturalEnding = () => {
+    if (segmentTicks === 0) return false;
     const mean = segmentLevelSum / segmentTicks;
     return lastLevel < mean * END_DROP_RATIO;
   };
@@ -304,23 +296,13 @@ export function startServerCaptionRecorder(
 
       // 말이 길어지면 중간에 한 번 끊는다. 서버가 받아 주는 크기에도 상한이 있다.
       if (elapsed >= MAX_SEGMENT_MS) {
-        /*
-         * 끝까지 한 번도 조용해지지 않았다면 말이 아니라 기준이 틀린 것이다. 그 조각의 평균
-         * 크기를 새 바닥으로 삼아 즉시 다시 맞추고, 담긴 것은 버린다.
-         */
-        const sustained = segmentLoudTicks / Math.max(1, segmentTicks) >= MISCALIBRATION_FRACTION;
-        if (sustained) {
-          noiseFloor = segmentLevelSum / Math.max(1, segmentTicks);
-          setSpeaking(false);
-          endSegment(false);
-          return;
-        }
-        endSegment(hasEnoughSpeech());
+        // 여전히 말하는 중이라 마지막 음량은 높다. 자연 종료 조건을 적용하면 8초 발화가 사라진다.
+        endSegment(hasMinimumSpeech());
         return;
       }
       if (silentFor >= SILENCE_HOLD_MS) {
         setSpeaking(false);
-        endSegment(elapsed >= MIN_SEGMENT_MS && hasEnoughSpeech());
+        endSegment(elapsed >= MIN_SEGMENT_MS && hasMinimumSpeech() && hasNaturalEnding());
       }
     }
   };
