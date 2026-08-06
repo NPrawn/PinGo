@@ -52,6 +52,22 @@ async function submitTranscriptWithRetry(
 ) {
   let lastError: unknown;
 
+  /**
+   * 무엇을 보내는지 화자별로 남긴다.
+   *
+   * 한쪽 화자가 0인 전문은 거의 언제나 고장이다 — 그쪽 음성 인식이 조용히 죽었거나, 확정
+   * 자막이 상대에게 닿지 못한 것이다. 예전에는 이 사실이 어디에도 남지 않아, 상담이 끝나고
+   * 이력을 열어 본 뒤에야 드러났고 그때는 원인을 짚을 근거가 이미 사라진 뒤였다.
+   */
+  const speakerCounts = (transcript ?? []).reduce<Record<string, number>>((counts, segment) => {
+    counts[segment.speaker] = (counts[segment.speaker] ?? 0) + 1;
+    return counts;
+  }, {});
+  const oneSided = Object.keys(speakerCounts).length < 2;
+  const report = `[transcript] consultationId=${consultationId} USER=${speakerCounts.USER ?? 0} COUNSELOR=${speakerCounts.COUNSELOR ?? 0}`;
+  if (oneSided) console.warn(`${report} — 한쪽 화자만 기록됐습니다.`);
+  else console.info(report);
+
   for (let attempt = 0; attempt < TRANSCRIPT_SAVE_ATTEMPTS; attempt += 1) {
     try {
       await submitConsultationTranscript(consultationId, { transcript });
@@ -191,7 +207,20 @@ export function SessionPage() {
     localFinalCaptionId,
     handleCounselorCaptionTranslation,
   );
-  useTranslatedSpeech(translatedUserCaption, 'ko-KR', remoteCaptionFinal);
+  /**
+   * 사용자 발화의 번역문을 소리내어 읽을지. **기본은 끔이다.**
+   *
+   * 이 소리는 상담원 노트북 스피커에서 나와 상담원 마이크로 돌아오고, 하필 읽는 언어(`ko-KR`)와
+   * 상담원 인식기의 언어가 같다. 그대로 두면 **사용자가 한 말이 상담원 발화로 기록된다** —
+   * 전문이 통째로 `COUNSELOR` 로 남던 원인이다. 되먹임 자체는 `captionEchoGuard` 가 막지만,
+   * 상담원은 자막·번역문·로그를 이미 눈으로 보고 있어 소리로 또 들을 이유가 크지 않다.
+   * 얻는 것이 적고 잃을 것이 큰 기능이라 켜는 쪽을 선택으로 둔다.
+   *
+   * 사용자 화면은 그대로 켜 둔다. 그쪽은 폰을 들고 걸으며 AR 안내를 보는 터라 자막을 읽으려면
+   * 멈춰 서야 한다.
+   */
+  const [readUserCaptionAloud, setReadUserCaptionAloud] = useState(false);
+  useTranslatedSpeech(translatedUserCaption, 'ko-KR', remoteCaptionFinal && readUserCaptionAloud);
   /**
    * 옮긴 문장은 큰 줄에, 지금 들어오는 원문은 아래 줄에 흘려보낸다.
    *
@@ -979,7 +1008,19 @@ export function SessionPage() {
                   <span className={styles.captionPanelKicker}>LIVE</span>
                   <h3 className={styles.captionPanelTitle}>실시간 자막</h3>
                 </div>
-                <span className={styles.captionPanelStatus}>실시간 반영</span>
+                {/*
+                  켜면 사용자 발화의 번역문을 소리내어 읽는다. 기본은 꺼 둔다 — 그 소리가
+                  이 노트북 마이크로 돌아오면 사용자가 한 말이 상담원 발화로 기록된다.
+                */}
+                <button
+                  type="button"
+                  className={styles.notesRetry}
+                  aria-pressed={readUserCaptionAloud}
+                  onClick={() => setReadUserCaptionAloud((on) => !on)}
+                  title="사용자 발화의 번역문을 소리내어 읽습니다. 마이크가 그 소리를 다시 잡을 수 있으니 헤드셋과 함께 쓰세요."
+                >
+                  번역 음성 {readUserCaptionAloud ? '끄기' : '켜기'}
+                </button>
               </div>
               {/*
               기록이 안 되고 있으면 그 사실을 상담 중에 알아야 한다. 끝난 뒤에 알면 이미
