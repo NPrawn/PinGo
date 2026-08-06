@@ -13,7 +13,7 @@ import {
 } from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
-  routeDistanceScaleOf,
+  xrDistanceScaleOf,
   routeProgressOf,
   useNavigationStore,
   type IndoorPoint,
@@ -378,7 +378,7 @@ export function ConsultSessionPage() {
      * 같은 방식이다.
      */
     anchorForwardMap: confirmedForwardMap,
-    distanceScale: routeDistanceScaleOf(routeResult, storedLocation?.floorId),
+    distanceScale: xrDistanceScaleOf(routeResult, storedLocation?.floorId),
     releaseCamera: handOverCameraToSession,
   });
 
