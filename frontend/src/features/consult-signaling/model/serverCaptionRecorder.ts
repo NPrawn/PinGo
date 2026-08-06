@@ -16,13 +16,17 @@ import { transcribeConsultationAudio } from '@/shared/api';
 /** 이만큼 조용하면 한 마디가 끝난 것으로 본다. */
 const SILENCE_HOLD_MS = 700;
 
+/** 권장 길이를 넘긴 뒤에는 단어 사이의 짧은 쉼에서도 분할한다. */
+const TARGET_SEGMENT_SILENCE_MS = 200;
+
 /**
- * 한 조각의 최대 길이.
+ * 한 조각의 권장 길이와 강제 상한.
  *
  * Whisper는 조각 전체를 받은 뒤 전사하므로 지나치게 길면 자막도 그만큼 늦어진다. 평소에는
  * 아래 무음 판정에서 먼저 끊고, 쉬지 않고 길게 말할 때만 이 상한을 사용한다.
  */
-const MAX_SEGMENT_MS = 4000;
+const TARGET_SEGMENT_MS = 4000;
+const MAX_SEGMENT_MS = 6000;
 
 /** 이보다 짧은 소리는 말이 아니라 잡음으로 본다. */
 const MIN_SEGMENT_MS = 400;
@@ -54,6 +58,7 @@ const NOISE_FLOOR_RISE_ALPHA = 0.002;
 
 /** 짧은 충격음은 버리되 "네"처럼 짧은 대답은 살리는 최소 발화 감지 횟수(약 150ms). */
 const MIN_LOUD_TICKS = 3;
+
 /** 소리 크기를 재는 간격. */
 const ANALYSE_INTERVAL_MS = 50;
 
@@ -207,7 +212,8 @@ export function startServerCaptionRecorder(
       instance.start();
       recorder = instance;
       segmentStartedAt = Date.now();
-      segmentLoudTicks = 0;
+      // 이 함수를 부른 현재 tick도 이미 loud 판정을 통과했다.
+      segmentLoudTicks = 1;
     } catch {
       // 이 기기에서는 녹음을 시작할 수 없다. 다음 발화에서 다시 시도한다.
       recorder = null;
@@ -263,13 +269,15 @@ export function startServerCaptionRecorder(
       const elapsed = now - segmentStartedAt;
       const silentFor = now - lastLoudAt;
 
-      // 말이 길어지면 중간에 한 번 끊는다. 서버가 받아 주는 크기에도 상한이 있다.
+      // 4초에는 바로 자르지 않고 단어 사이의 짧은 쉼을 기다린다. 쉼이 전혀 없으면 6초에 자른다.
       if (elapsed >= MAX_SEGMENT_MS) {
-        // 여전히 말하는 중이어도 4초마다 보내 지연과 발화 유실을 제한한다.
+        // 여전히 말하는 중이어도 강제 상한에서는 보내 지연과 요청 크기를 제한한다.
         endSegment(hasMinimumSpeech());
         return;
       }
-      if (silentFor >= SILENCE_HOLD_MS) {
+      const silenceRequired =
+        elapsed >= TARGET_SEGMENT_MS ? TARGET_SEGMENT_SILENCE_MS : SILENCE_HOLD_MS;
+      if (silentFor >= silenceRequired) {
         setSpeaking(false);
         // 역처럼 소음 바닥이 높은 곳에서는 끝 음량이 평균보다 크게 떨어지지 않는다.
         // 발화로 판단한 조각은 끝 모양으로 다시 버리지 않고 Whisper가 판별하게 한다.

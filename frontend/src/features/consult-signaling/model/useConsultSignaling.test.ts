@@ -1070,10 +1070,10 @@ describe('useConsultSignaling', () => {
   });
 
   /**
-   * 최대 길이에 닿은 연속 발화도 버리지 않는다.
+   * 연속 발화는 4초에 자르지 않고 6초 강제 상한에서 전송한다.
    *
-   * 자연스러운 무음 종료와 달리 4초 강제 분할 시점에는 마지막 음량이 여전히 높다. 이 조각을
-   * 그대로 보내야 사용자가 쉬지 않고 말해도 자막 지연이 계속 늘어나지 않는다.
+   * 4초 경계에서 바로 자르면 단어 중간이 잘릴 수 있다. 무음이 전혀 없을 때만 6초 상한을
+   * 사용해 지연과 요청 크기가 끝없이 늘어나는 것을 막는다.
    */
   it('uploads continuous speech when it reaches the maximum segment length', async () => {
     vi.useFakeTimers();
@@ -1101,6 +1101,12 @@ describe('useConsultSignaling', () => {
         micLevel.value = 0.5;
         vi.advanceTimersByTime(4100);
         await Promise.resolve();
+      });
+
+      expect(apiMocks.transcribeConsultationAudio).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(2000);
         await Promise.resolve();
         await Promise.resolve();
       });
@@ -1111,6 +1117,49 @@ describe('useConsultSignaling', () => {
         expect.objectContaining({ audio: expect.any(Blob) }),
       );
 
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for a short pause after four seconds before splitting', async () => {
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+      });
+      vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+      vi.stubGlobal('AudioContext', FakeAudioContext);
+
+      const view = renderHook(() =>
+        useConsultSignaling('room_cs_1', 'USER', 'token-1', undefined, 'ko', 'server'),
+      );
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        micLevel.value = 0.5;
+        vi.advanceTimersByTime(4100);
+        await Promise.resolve();
+      });
+      expect(apiMocks.transcribeConsultationAudio).not.toHaveBeenCalled();
+
+      await act(async () => {
+        micLevel.value = 0;
+        vi.advanceTimersByTime(250);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledTimes(1);
       view.unmount();
     } finally {
       vi.useRealTimers();
@@ -1141,7 +1190,7 @@ describe('useConsultSignaling', () => {
 
       await act(async () => {
         micLevel.value = 0.5;
-        vi.advanceTimersByTime(250);
+        vi.advanceTimersByTime(150);
         micLevel.value = 0;
         vi.advanceTimersByTime(900);
         await Promise.resolve();
