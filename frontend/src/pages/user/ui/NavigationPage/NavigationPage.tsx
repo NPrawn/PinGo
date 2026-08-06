@@ -17,7 +17,6 @@ import {
   carriesDistance,
   instructionAt,
   routeBearingOf,
-  XR_DISTANCE_SCALE_MULTIPLIER,
   xrDistanceScaleOf,
   routePathNodesOf,
   routeProgressOf,
@@ -261,13 +260,7 @@ export function NavigationPage() {
     [currentFloorId, currentMapX, currentMapY],
   );
   const [confirmedForwardMap] = useState(() => currentForwardMap);
-  // TEMP XR debug control: remove this state and the XrSessionNotice props after field testing.
-  const [xrDebugMultiplier, setXrDebugMultiplier] = useState(XR_DISTANCE_SCALE_MULTIPLIER);
-  const xrDistanceScale = xrDistanceScaleOf(
-    routeResult,
-    confirmedLocation?.floorId,
-    xrDebugMultiplier,
-  );
+  const xrDistanceScale = xrDistanceScaleOf(routeResult, confirmedLocation?.floorId);
 
   /**
    * XR 세션 게이트. 진입 시 안내를 띄우고 사용자가 확인하면 세션을 연다(11.7).
@@ -756,8 +749,6 @@ export function NavigationPage() {
             canRetry={canRetry}
             onConfirm={startXrSession}
             onContinueWithoutTracking={continueWithoutTracking}
-            xrDebugMultiplier={xrDebugMultiplier}
-            onXrDebugMultiplierChange={setXrDebugMultiplier}
           />
         ) : undefined
       }

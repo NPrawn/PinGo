@@ -69,22 +69,6 @@ describe('routeDistanceScaleOf', () => {
       2,
     );
 
-    expect(scale).toBeCloseTo(1.875, 6);
-  });
-
-  it('accepts a temporary XR multiplier override', () => {
-    const scale = xrDistanceScaleOf(
-      {
-        pathNodes: [
-          { nodeId: 1, floorId: 2, mapX: 0, mapY: 0 },
-          { nodeId: 2, floorId: 2, mapX: 6, mapY: 8 },
-        ],
-        steps: [{ fromNodeId: 1, toNodeId: 2, distanceM: 8 }],
-      },
-      2,
-      1.6,
-    );
-
-    expect(scale).toBeCloseTo(2, 6);
+    expect(scale).toBeCloseTo(1.7875, 6);
   });
 });
