@@ -44,6 +44,14 @@
   overflow: auto;
 }
 
+.stateMessage {
+  padding: 16px 18px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-sub);
+  line-height: 1.5;
+}
+
 .pagination {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

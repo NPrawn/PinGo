@@ -73,6 +73,8 @@ export const queryKeys = {
    */
   counselorConsultations: (params?: {
     status?: string;
+    statuses?: readonly string[];
+    scope?: string;
     page?: number;
     size?: number;
     sort?: string;
@@ -82,6 +84,8 @@ export const queryKeys = {
     return [
       ...base,
       params.status ?? null,
+      params.statuses?.join(',') ?? null,
+      params.scope ?? null,
       params.page ?? 0,
       params.size ?? null,
       params.sort ?? null,

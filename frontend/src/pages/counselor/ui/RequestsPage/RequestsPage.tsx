@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   consultationDateTimeLabel,
@@ -7,19 +7,11 @@ import {
   consultationRef,
   consultationStatusLabel,
   destinationTypeLabel,
-  isActiveConsultationAssignedToCounselor,
-  isUnassignedWaitingConsultation,
   useConsultStore,
   useCounselorConsultations,
   waitedLabel,
 } from '@/entities/consult';
-import {
-  acceptConsultation,
-  ApiError,
-  getCounselorConsultation,
-  getCounselorMe,
-  queryKeys,
-} from '@/shared/api';
+import { acceptConsultation, ApiError, getCounselorConsultation, queryKeys } from '@/shared/api';
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { Button, GhostButton, Icon, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
@@ -47,7 +39,6 @@ const CARD_CLASS: Record<string, string> = {
 };
 
 const PAGE_SIZE = 10;
-const COMPATIBILITY_FETCH_SIZE = 2_000;
 type RequestScope = 'WAITING' | 'MINE';
 
 function errorMessage(error: unknown) {
@@ -72,31 +63,26 @@ export function RequestsPage() {
 
   const listParams =
     scope === 'WAITING'
-      ? { status: 'WAITING' as const, page, size: PAGE_SIZE, sort: 'requestedAt,asc' }
-      : { page: 0, size: COMPATIBILITY_FETCH_SIZE, sort: 'requestedAt,asc' };
+      ? {
+          status: 'WAITING' as const,
+          scope: 'ALL' as const,
+          page,
+          size: PAGE_SIZE,
+          sort: 'requestedAt,asc',
+        }
+      : {
+          statuses: ['ACCEPTED', 'IN_PROGRESS'] as const,
+          scope: 'MINE' as const,
+          page,
+          size: PAGE_SIZE,
+          sort: 'requestedAt,asc',
+        };
   const queueQuery = useCounselorConsultations(listParams);
-  const profileQuery = useQuery({
-    queryKey: queryKeys.counselorMe(),
-    queryFn: getCounselorMe,
-    staleTime: 30_000,
-  });
-  const visibleRequests = useMemo(() => {
-    const consultations = queueQuery.data?.content ?? [];
-    if (scope === 'WAITING') return consultations.filter(isUnassignedWaitingConsultation);
-    return consultations.filter((consultation) =>
-      isActiveConsultationAssignedToCounselor(consultation, profileQuery.data?.accountId),
-    );
-  }, [profileQuery.data?.accountId, queueQuery.data?.content, scope]);
-  const mineTotalPages = Math.ceil(visibleRequests.length / PAGE_SIZE);
-  const requests =
-    scope === 'MINE'
-      ? visibleRequests.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-      : visibleRequests;
+  const requests = queueQuery.data?.content ?? [];
   const selected = requests.find((request) => request.consultationId === selectedId) ?? requests[0];
-  const identifyingCounselor = scope === 'MINE' && profileQuery.isPending;
-  const loading = queueQuery.isPending || identifyingCounselor;
-  const totalPages = scope === 'MINE' ? mineTotalPages : (queueQuery.data?.totalPages ?? 0);
-  const lastPage = scope === 'MINE' ? page + 1 >= totalPages : Boolean(queueQuery.data?.last);
+  const loading = queueQuery.isPending;
+  const totalPages = queueQuery.data?.totalPages ?? 0;
+  const lastPage = Boolean(queueQuery.data?.last);
 
   const changeScope = (nextScope: RequestScope) => {
     setScope(nextScope);
@@ -150,7 +136,6 @@ export function RequestsPage() {
               <PillButton
                 className={styles.scopeButton}
                 on={scope === 'MINE'}
-                disabled={profileQuery.isPending || profileQuery.isError}
                 onClick={() => changeScope('MINE')}
               >
                 내 상담
@@ -158,12 +143,13 @@ export function RequestsPage() {
             </div>
           </div>
           <div className={styles.railScroll} aria-label="상담 요청 목록" aria-busy={loading}>
-            {!loading && queueQuery.isError && <p role="alert">상담 요청을 불러오지 못했습니다.</p>}
-            {!loading && profileQuery.isError && (
-              <p role="alert">내 상담 여부를 확인하지 못했습니다.</p>
+            {!loading && queueQuery.isError && (
+              <p className={styles.stateMessage} role="alert">
+                상담 요청을 불러오지 못했습니다.
+              </p>
             )}
             {!loading && !queueQuery.isError && requests.length === 0 && (
-              <p>
+              <p className={styles.stateMessage}>
                 {scope === 'WAITING'
                   ? '대기 중인 상담이 없습니다.'
                   : '진행 중인 내 상담이 없습니다.'}

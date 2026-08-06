@@ -4,6 +4,7 @@ import {
   consultationProblemLabel,
   consultationRef,
   consultationStatusLabel,
+  isConsultationAssignedToCounselor,
   speakerColor,
   useCounselorConsultations,
 } from '@/entities/consult';
@@ -20,7 +21,8 @@ import styles from './HistoryPage.module.css';
 /** 요약은 상담 종료 뒤 AI가 비동기로 만든다. 만드는 동안 다시 물어보는 간격. */
 const SUMMARY_POLL_MS = 3000;
 const PAGE_SIZE = 10;
-const COMPATIBILITY_FETCH_SIZE = 2_000;
+/** 날짜 필터 API가 추가되기 전까지 선택 가능한 날짜와 건수를 계산할 이력 데이터셋 크기. */
+const HISTORY_FILTER_DATASET_SIZE = 2_000;
 const SPEAKER_LABELS = { USER: '사용자', COUNSELOR: '상담원' } as const;
 type HistoryScope = 'ALL' | 'MINE';
 
@@ -209,22 +211,37 @@ export function HistoryPage() {
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
   const [page, setPage] = useState(0);
-  const historyQuery = useCounselorConsultations({
+  const allHistoryQuery = useCounselorConsultations({
     status: 'ENDED',
+    scope: 'ALL',
     page: 0,
-    size: COMPATIBILITY_FETCH_SIZE,
+    size: HISTORY_FILTER_DATASET_SIZE,
     sort: 'requestedAt,desc',
   });
+  const mineHistoryQuery = useCounselorConsultations(
+    {
+      status: 'ENDED',
+      scope: 'MINE',
+      page: 0,
+      size: HISTORY_FILTER_DATASET_SIZE,
+      sort: 'requestedAt,desc',
+    },
+    scope === 'MINE',
+  );
   const profileQuery = useQuery({
     queryKey: queryKeys.counselorMe(),
     queryFn: getCounselorMe,
     staleTime: 30_000,
   });
-  const loadingHistory = historyQuery.isPending || profileQuery.isPending;
+  const activeHistoryQuery = scope === 'MINE' ? mineHistoryQuery : allHistoryQuery;
+  const loadingHistory =
+    allHistoryQuery.isPending ||
+    profileQuery.isPending ||
+    (scope === 'MINE' && mineHistoryQuery.isPending);
 
-  const closed = useMemo(
+  const allClosed = useMemo(
     () =>
-      (historyQuery.data?.content ?? [])
+      (allHistoryQuery.data?.content ?? [])
         .map((item) => {
           const requestedAt = new Date(item.requestedAt);
           return {
@@ -236,31 +253,49 @@ export function HistoryPage() {
           };
         })
         .sort((a, b) => b.requestedAtTimestamp - a.requestedAtTimestamp),
-    [historyQuery.data?.content],
+    [allHistoryQuery.data?.content],
+  );
+  const mineClosed = useMemo(
+    () =>
+      (mineHistoryQuery.data?.content ?? [])
+        .map((item) => {
+          const requestedAt = new Date(item.requestedAt);
+          return {
+            ...item,
+            requestedAtTimestamp: consultationTimestamp(item.requestedAt),
+            year: requestedAt.getFullYear(),
+            month: requestedAt.getMonth() + 1,
+            day: requestedAt.getDate(),
+          };
+        })
+        .sort((a, b) => b.requestedAtTimestamp - a.requestedAtTimestamp),
+    [mineHistoryQuery.data?.content],
   );
 
-  const years = descendingOptions(closed.map((item) => item.year));
+  const years = descendingOptions(allClosed.map((item) => item.year));
   const months = descendingOptions(
-    closed.filter((item) => !year || String(item.year) === year).map((item) => item.month),
+    allClosed.filter((item) => !year || String(item.year) === year).map((item) => item.month),
   );
   const days = descendingOptions(
-    closed
+    allClosed
       .filter((item) => !year || String(item.year) === year)
       .filter((item) => !month || String(item.month) === month)
       .map((item) => item.day),
   );
 
-  const datedHistory = closed
+  const datedAllHistory = allClosed
     .filter((item) => !year || String(item.year) === year)
     .filter((item) => !month || String(item.month) === month)
     .filter((item) => !day || String(item.day) === day);
-  const mineHistory = datedHistory.filter(
-    (item) =>
-      profileQuery.data?.accountId != null && item.counselorId === profileQuery.data.accountId,
-  );
-  const filteredHistory = scope === 'MINE' ? mineHistory : datedHistory;
-  const allCount = datedHistory.length;
-  const mineCount = mineHistory.length;
+  const datedMineHistory = mineClosed
+    .filter((item) => !year || String(item.year) === year)
+    .filter((item) => !month || String(item.month) === month)
+    .filter((item) => !day || String(item.day) === day);
+  const mineCount = datedAllHistory.filter((item) =>
+    isConsultationAssignedToCounselor(item, profileQuery.data?.accountId),
+  ).length;
+  const filteredHistory = scope === 'MINE' ? datedMineHistory : datedAllHistory;
+  const allCount = datedAllHistory.length;
   const totalPages = Math.ceil(filteredHistory.length / PAGE_SIZE);
   const history = filteredHistory.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -376,11 +411,15 @@ export function HistoryPage() {
           </div>
         </div>
 
-        {!loadingHistory && historyQuery.isError && (
-          <p role="alert">상담 내역을 불러오지 못했습니다.</p>
+        {!loadingHistory && (allHistoryQuery.isError || activeHistoryQuery.isError) && (
+          <p className={styles.stateMessage} role="alert">
+            상담 내역을 불러오지 못했습니다.
+          </p>
         )}
         {!loadingHistory && profileQuery.isError && (
-          <p role="alert">내 상담 여부를 확인할 수 없어 전체 이력만 표시합니다.</p>
+          <p className={styles.stateMessage} role="alert">
+            내 상담 여부를 확인할 수 없어 전체 이력만 표시합니다.
+          </p>
         )}
         <div className={styles.list} aria-label="상담 이력 목록" aria-busy={loadingHistory}>
           {!loadingHistory &&
@@ -423,18 +462,21 @@ export function HistoryPage() {
                 </div>
               );
             })}
-          {!loadingHistory && history.length === 0 && (
-            <p>
-              {scope === 'MINE' || dateFiltered
-                ? '선택한 조건의 상담 이력이 없습니다.'
-                : '종료된 상담 이력이 없습니다.'}
-            </p>
-          )}
+          {!loadingHistory &&
+            !allHistoryQuery.isError &&
+            !activeHistoryQuery.isError &&
+            history.length === 0 && (
+              <p className={styles.stateMessage}>
+                {scope === 'MINE' || dateFiltered
+                  ? '선택한 조건의 상담 이력이 없습니다.'
+                  : '종료된 상담 이력이 없습니다.'}
+              </p>
+            )}
         </div>
         <div className={styles.pagination} aria-label="상담 이력 페이지">
           <GhostButton
             className={styles.pageButton}
-            disabled={page === 0 || historyQuery.isFetching}
+            disabled={page === 0 || activeHistoryQuery.isFetching}
             onClick={() => {
               setPage((current) => Math.max(0, current - 1));
               setOpenId(null);
@@ -447,7 +489,7 @@ export function HistoryPage() {
           </span>
           <GhostButton
             className={styles.pageButton}
-            disabled={page + 1 >= totalPages || historyQuery.isFetching}
+            disabled={page + 1 >= totalPages || activeHistoryQuery.isFetching}
             onClick={() => {
               setPage((current) => current + 1);
               setOpenId(null);
