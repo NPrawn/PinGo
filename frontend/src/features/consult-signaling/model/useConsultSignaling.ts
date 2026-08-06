@@ -714,6 +714,8 @@ export function useConsultSignaling(
     let captionErrorStreak = 0;
     /** 한 번이라도 알아들었는지. 조용히 아무것도 못 듣는 상태를 가려낸다. */
     let heardAnything = false;
+    /** 서버 받아쓰기에서 마이크 음량 기준으로 발화가 감지된 적이 있는지. */
+    let detectedSpeechActivity = false;
     /** 무음 감시 타이머. 인식을 시작할 때마다 다시 건다. */
     let captionWatchdog: number | undefined;
     /** 서버 받아쓰기를 쓸 때의 녹음기. 브라우저 인식과 둘 중 하나만 돈다. */
@@ -773,7 +775,9 @@ export function useConsultSignaling(
         if (disposed || heardAnything) return;
         reportCaptionStatus(
           'stopped',
-          '마이크 소리가 음성 인식으로 들어오지 않습니다. 마이크가 다른 앱에 잡혀 있지 않은지 확인하고, 아래 버튼으로 다시 시도해 주세요.',
+          captionSource === 'server' && detectedSpeechActivity
+            ? '음성은 감지됐지만 받아쓰기 결과를 받지 못했습니다. 주변 소음을 줄이고 마이크 가까이에서 다시 말해 주세요.'
+            : '마이크 소리가 음성 인식으로 들어오지 않습니다. 마이크가 다른 앱에 잡혀 있지 않은지 확인하고, 아래 버튼으로 다시 시도해 주세요.',
         );
       }, CAPTION_SILENCE_MS);
     };
@@ -1016,6 +1020,7 @@ export function useConsultSignaling(
          */
         onSpeakingChange: (speaking) => {
           if (disposed || !speaking) return;
+          detectedSpeechActivity = true;
           setLocalCaptionFinal(false);
           sendCaption({ text: '…', final: false, language: captionLanguage });
         },
@@ -1054,6 +1059,7 @@ export function useConsultSignaling(
       captionErrorStreak = 0;
       // 다시 시작하는 인식은 아직 아무것도 못 들었다. 감시기도 처음부터 다시 센다.
       heardAnything = false;
+      detectedSpeechActivity = false;
       setCaptionsSupported(true);
       reportCaptionStatus(null, null);
 
