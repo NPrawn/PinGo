@@ -75,6 +75,16 @@ class WhisperTranscriberTest {
         assertThat(WhisperTranscriber.normalizeLanguage("auto")).isNull();
     }
 
+    @Test
+    void summarizesExternalErrorBodyForLogs() {
+        assertThat(WhisperTranscriber.summarizeErrorBody("<html>\n  bad request\r\n</html>"))
+                .isEqualTo("<html> bad request </html>");
+        assertThat(WhisperTranscriber.summarizeErrorBody(" ")).isEqualTo("<empty>");
+        assertThat(WhisperTranscriber.summarizeErrorBody("x".repeat(1_100)))
+                .hasSize(1_003)
+                .endsWith("...");
+    }
+
     /** GMS 앞단 Cloudflare가 거절하는 chunked multipart 대신 전체 길이가 있는 요청을 보낸다. */
     @Test
     void buffersMultipartRequestAndSendsContentLength() throws IOException {
