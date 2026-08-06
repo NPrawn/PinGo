@@ -61,6 +61,8 @@ export const ENDPOINTS = {
       `/api/consultations/${consultationId}/data-channel-events`,
     // 실시간 자막 한 줄을 상대 언어로 옮긴다.
     translate: (consultationId: string) => `/api/consultations/${consultationId}/translate`,
+    // 녹음한 발화 한 토막을 글로 옮긴다. 브라우저 음성 인식을 쓸 수 없는 기기가 지나는 길이다.
+    transcribe: (consultationId: string) => `/api/consultations/${consultationId}/transcribe`,
     transcript: (consultationId: string) => `/api/consultations/${consultationId}/transcript`,
     summary: (consultationId: string) => `/api/consultations/${consultationId}/summary`,
     rating: (consultationId: string) => `/api/consultations/${consultationId}/rating`,

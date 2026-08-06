@@ -141,6 +141,28 @@ export function translateConsultationCaption(
   );
 }
 
+/**
+ * 녹음한 발화 한 토막을 글로 옮긴다.
+ *
+ * 브라우저 음성 인식은 `getUserMedia` 와 마이크를 다툰다. 안드로이드에서는 통화 캡처가
+ * 이기고 인식기가 죽는데, 목소리는 멀쩡히 오가니 그쪽 발화만 조용히 전문에서 빠진다.
+ * 이 길은 이미 열려 있는 트랙을 녹음해 보내므로 그 다툼이 없다.
+ *
+ * 알아듣지 못하면 빈 글이 온다. 오류가 아니다 — 숨소리나 지나가는 소음만 담긴 조각은 흔하다.
+ */
+export type ConsultationTranscription = {
+  text: string;
+};
+
+export function transcribeConsultationAudio(
+  consultationId: string,
+  request: { audio: string; mimeType: string; language?: string },
+) {
+  return unwrap<ConsultationTranscription>(
+    apiClient.post(ENDPOINTS.consultations.transcribe(consultationId), request),
+  );
+}
+
 export function subscribeToConsultationWaitingEvents(consultationRequestId: string) {
   const baseUrl = env.VITE_API_BASE_URL.replace(/\/$/, '');
   return new EventSource(

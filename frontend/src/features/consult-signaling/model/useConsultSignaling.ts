@@ -14,6 +14,8 @@ import { createConsultEvent, parseConsultEvent } from '@/shared/types';
 import type { ConsultDataEvent, ConsultEventBody } from '@/shared/types';
 import { isCaptionEchoWindow } from './captionEchoGuard';
 import { captureConsultMicrophone, peekConsultMedia, swapConsultVideoTrack } from './consultMedia';
+import { startServerCaptionRecorder } from './serverCaptionRecorder';
+import type { ServerCaptionRecorder } from './serverCaptionRecorder';
 import { createConsultEventFallback } from './consultEventFallback';
 import type { ConsultEventFallback } from './consultEventFallback';
 import { signalingBaseUrl } from './signalingBaseUrl';
@@ -93,6 +95,18 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 }
 
 type SignalingRole = 'USER' | 'COUNSELOR';
+
+/**
+ * 자막 글자를 어디서 만드는지.
+ *
+ * `browser` 는 `SpeechRecognition` 이다. 빠르고 중간 결과가 있지만 `getUserMedia` 와 마이크를
+ * 다투어 안드로이드에서는 잡히지 않는다. `server` 는 마이크 소리를 녹음해 서버에 맡긴다.
+ * 중간 결과가 없고 3초쯤 늦는 대신 기기를 가리지 않는다.
+ */
+type CaptionSource = 'browser' | 'server';
+
+/** 서버 받아쓰기가 잇따라 실패해도 상대에게 알리기까지 견디는 횟수. */
+const MAX_TRANSCRIBE_ERROR_STREAK = 3;
 type SignalingType =
   'JOIN' | 'LEAVE' | 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'CAPTION' | 'RENEGOTIATE' | 'ERROR';
 
@@ -202,6 +216,7 @@ export function useConsultSignaling(
   accessToken?: string | null,
   onDataEvent?: (event: ConsultDataEvent) => void,
   localSpeechLanguage?: string,
+  captionSource: CaptionSource = 'browser',
 ) {
   /**
    * 매 렌더마다 바뀌는 콜백을 effect 의존성에 넣으면 연결이 끊었다 붙기를 반복한다.
@@ -701,6 +716,10 @@ export function useConsultSignaling(
     let heardAnything = false;
     /** 무음 감시 타이머. 인식을 시작할 때마다 다시 건다. */
     let captionWatchdog: number | undefined;
+    /** 서버 받아쓰기를 쓸 때의 녹음기. 브라우저 인식과 둘 중 하나만 돈다. */
+    let serverRecorder: ServerCaptionRecorder | null = null;
+    /** 받아쓰기 요청이 잇따라 실패한 횟수. 한 번 성공하면 0으로 돌아간다. */
+    let transcribeErrorStreak = 0;
     /** 상대에게 마지막으로 알린 자막 상태. 달라졌을 때만 다시 보낸다. */
     let captionStatus: CaptionTrouble | null = null;
     let lastInterimCaptionSentAt = 0;
@@ -953,6 +972,77 @@ export function useConsultSignaling(
     };
 
     /**
+     * 마이크 소리를 녹음해 서버에 받아쓰기를 맡긴다.
+     *
+     * `startCaptions` 와 **둘 중 하나만** 돈다. 함께 돌리면 같은 발화가 두 번 기록된다.
+     *
+     * 받아쓴 글이 지나는 길은 브라우저 인식과 똑같다 — 같은 규칙으로 발화 ID를 만들어
+     * `appendFinalCaption` 과 `sendCaption` 에 넣는다. 그래서 상대 화면, 전문 조립, 저장,
+     * 요약까지 아무것도 바뀌지 않는다.
+     */
+    const startServerCaptions = () => {
+      if (disposed || !localStream) return;
+
+      const language = localSpeechLanguage || navigator.language;
+
+      serverRecorder = startServerCaptionRecorder({
+        consultationId,
+        stream: localStream,
+        language,
+        onFinalText: (text) => {
+          if (disposed) return;
+
+          transcribeErrorStreak = 0;
+          heardAnything = true;
+          if (captionWatchdog !== undefined) {
+            window.clearTimeout(captionWatchdog);
+            captionWatchdog = undefined;
+          }
+          reportCaptionStatus(null, null);
+
+          const occurredAt = new Date().toISOString();
+          const captionId = `${roomId}:${role}:${occurredAt}:${captionSequenceRef.current++}`;
+          appendFinalCaption(role, text, { captionId, occurredAt });
+          setLocalCaption(text);
+          setLocalCaptionFinal(true);
+          setLocalFinalCaptionId(captionId);
+          sendCaption({ text, final: true, language, captionId, occurredAt });
+        },
+        /**
+         * 말이 시작된 것만 알린다. 서버 받아쓰기에는 중간 결과가 없어서, 이것이 없으면 상대
+         * 화면은 발화가 끝나고 3초가 지나도록 아무 변화가 없다. 상담원은 사용자가 말하는
+         * 중인지 조용한 것인지 구분하지 못해 자꾸 말을 겹쳐 하게 된다.
+         */
+        onSpeakingChange: (speaking) => {
+          if (disposed || !speaking) return;
+          setLocalCaptionFinal(false);
+          sendCaption({ text: '…', final: false, language });
+        },
+        onError: () => {
+          if (disposed) return;
+          transcribeErrorStreak += 1;
+          if (transcribeErrorStreak < MAX_TRANSCRIBE_ERROR_STREAK) return;
+          reportCaptionStatus(
+            'network',
+            '음성 인식 서버에 연결하지 못해 대화가 기록되지 않습니다. 네트워크를 확인해 주세요.',
+          );
+        },
+      });
+
+      if (!serverRecorder) {
+        setCaptionsSupported(false);
+        reportCaptionStatus(
+          'unsupported',
+          '이 브라우저에서는 음성을 녹음할 수 없어 대화가 기록되지 않습니다.',
+        );
+        return;
+      }
+
+      // 브라우저 인식과 같은 안전망이다. 한마디도 못 잡으면 양쪽에 알린다.
+      armCaptionWatchdog();
+    };
+
+    /**
      * 자막을 처음부터 다시 시작한다. 화면의 '다시 시도' 버튼이 부른다.
      *
      * 마이크를 다른 앱에서 놓아 준 뒤, 상담을 끊지 않고 자막만 되살릴 수 있어야 한다.
@@ -965,6 +1055,15 @@ export function useConsultSignaling(
       heardAnything = false;
       setCaptionsSupported(true);
       reportCaptionStatus(null, null);
+
+      if (captionSource === 'server') {
+        transcribeErrorStreak = 0;
+        serverRecorder?.stop();
+        serverRecorder = null;
+        startServerCaptions();
+        return;
+      }
+
       recognitionGeneration += 1;
       const previousRecognition = recognition;
       recognition = null;
@@ -1528,8 +1627,17 @@ export function useConsultSignaling(
      * **예전 코드는 이 둘째 항을 실제로는 지키지 않았다.** 지원 브라우저에서만 `mediaReady`
      * 를 기다렸는데, 그것이 바로 위에서 경고한 순서다. 즉시 시작하던 나머지 분기는 "이
      * 브라우저는 지원하지 않는다"는 안내만 내고 끝나는 쪽이라 아무 소용이 없었다.
+     *
+     * **서버 받아쓰기는 반대로 마이크를 잡은 뒤에 시작한다.** 녹음할 트랙이 있어야 하기
+     * 때문인데, 그쪽은 마이크를 새로 열지 않으므로 위의 순서 문제가 애초에 없다.
      */
-    startCaptions();
+    if (captionSource === 'server') {
+      void mediaReady.then(() => {
+        if (!disposed) startServerCaptions();
+      });
+    } else {
+      startCaptions();
+    }
 
     return () => {
       disposed = true;
@@ -1548,6 +1656,8 @@ export function useConsultSignaling(
       shouldRecognize = false;
       recognitionGeneration += 1;
       recognition?.stop();
+      serverRecorder?.stop();
+      serverRecorder = null;
       dataChannelRef.current = null;
       setEventChannelOpen(false);
       fallbackEvents?.close();
@@ -1565,6 +1675,7 @@ export function useConsultSignaling(
   }, [
     accessToken,
     attachRemoteStream,
+    captionSource,
     connectionEpoch,
     localSpeechLanguage,
     role,

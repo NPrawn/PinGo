@@ -105,3 +105,13 @@ translation:
   api:
     model : ${TRANSLATION_API_MODEL:${SUMMARY_API_MODEL:gemini-2.5-flash-lite}}
     read-timeout-ms : ${TRANSLATION_API_READ_TIMEOUT_MS:6000}
+
+# 발화 받아쓰기. 브라우저 음성 인식이 `getUserMedia` 와 마이크를 다투다 죽는 문제(안드로이드)
+# 때문에, 화면이 자기 마이크를 녹음해 보내면 여기서 모델에 맡긴다.
+#
+# 대기 시간이 번역보다 길다. 오디오는 글보다 무거워 왕복이 3초쯤 걸리고, 조금만 길어져도
+# 6초로는 끊긴다. 측정값은 30초 조각에 3.1초였다.
+transcription:
+  api:
+    model : ${TRANSCRIPTION_API_MODEL:${SUMMARY_API_MODEL:gemini-2.5-flash-lite}}
+    read-timeout-ms : ${TRANSCRIPTION_API_READ_TIMEOUT_MS:15000}

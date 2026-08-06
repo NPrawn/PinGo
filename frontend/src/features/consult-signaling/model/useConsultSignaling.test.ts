@@ -39,7 +39,10 @@ const { FakeEventSource, apiMocks } = vi.hoisted(() => {
 
   return {
     FakeEventSource,
-    apiMocks: { publishConsultationDataChannelEvent: vi.fn().mockResolvedValue(undefined) },
+    apiMocks: {
+      publishConsultationDataChannelEvent: vi.fn().mockResolvedValue(undefined),
+      transcribeConsultationAudio: vi.fn().mockResolvedValue({ text: '' }),
+    },
   };
 });
 
@@ -51,6 +54,7 @@ vi.mock('@/shared/api', () => ({
   ),
   // 서버 ICE 설정이 도착해야 연결이 시작된다. 테스트에서는 빈 목록으로 바로 넘긴다.
   getIceServers: vi.fn().mockResolvedValue({ iceServers: [] }),
+  transcribeConsultationAudio: apiMocks.transcribeConsultationAudio,
 }));
 
 vi.mock('@/shared/config', () => ({
@@ -108,6 +112,97 @@ function fakeStream(tracks: MediaStreamTrack[]) {
     getVideoTracks: () => tracks.filter((track) => track.kind === 'video'),
     getAudioTracks: () => tracks.filter((track) => track.kind === 'audio'),
   } as unknown as MediaStream;
+}
+
+/**
+ * jsdom 에는 `MediaRecorder` 가 없다. 멈출 때 조각 하나를 내놓는 최소 구현으로 대신한다.
+ *
+ * **`ondataavailable` 을 비운 뒤의 `stop()` 은 조각을 내놓지 않는다.** 실제 동작이 그렇고,
+ * 녹음기가 너무 짧은 소리를 버릴 때 이 성질에 기댄다. 가짜가 이것을 흉내 내지 않으면 잡음까지
+ * 서버로 올리는 결함을 테스트가 못 본다.
+ */
+class FakeMediaRecorder {
+  static instances: FakeMediaRecorder[] = [];
+  static isTypeSupported = (type: string) => type === 'audio/webm;codecs=opus';
+
+  ondataavailable: ((event: { data: Blob }) => void) | null = null;
+  onstop: (() => void) | null = null;
+  started = false;
+  stream: MediaStream;
+  options?: { mimeType?: string };
+
+  constructor(stream: MediaStream, options?: { mimeType?: string }) {
+    this.stream = stream;
+    this.options = options;
+    FakeMediaRecorder.instances.push(this);
+  }
+
+  start() {
+    this.started = true;
+  }
+
+  stop() {
+    this.started = false;
+    this.ondataavailable?.({ data: new Blob(['fake-audio']) });
+    this.onstop?.();
+  }
+}
+
+/** 테스트가 마이크 음량을 직접 정한다. 말소리와 침묵을 오갈 수 있어야 한다. */
+const micLevel = { value: 0 };
+
+/**
+ * 오디오 그래프를 흉내 낸다. **처음 상태를 테스트가 정할 수 있어야 한다.**
+ *
+ * `suspended` 로 시작하면 실제 브라우저에서는 그래프가 돌지 않아 음량이 늘 0으로 읽힌다.
+ * 그러면 말소리를 영영 감지하지 못해 녹음이 시작조차 안 되는데, 오류는 어디에도 뜨지 않는다.
+ */
+class FakeAudioContext {
+  static initialState: AudioContextState = 'running';
+  static instances: FakeAudioContext[] = [];
+
+  state: AudioContextState;
+  resumed = 0;
+  private readonly listeners: (() => void)[] = [];
+
+  constructor() {
+    this.state = FakeAudioContext.initialState;
+    FakeAudioContext.instances.push(this);
+  }
+
+  addEventListener(name: string, listener: () => void) {
+    if (name === 'statechange') this.listeners.push(listener);
+  }
+
+  removeEventListener() {}
+
+  resume() {
+    this.resumed += 1;
+    this.state = 'running';
+    return Promise.resolve();
+  }
+
+  /** 앱 전환처럼 브라우저가 그래프를 다시 재우는 상황. */
+  suspendExternally() {
+    this.state = 'suspended';
+    this.listeners.forEach((listener) => listener());
+  }
+
+  createMediaStreamSource(stream: MediaStream) {
+    return { connect: vi.fn(), disconnect: vi.fn(), stream };
+  }
+
+  createAnalyser() {
+    return {
+      fftSize: 1024,
+      getFloatTimeDomainData: (target: Float32Array) =>
+        target.fill(this.state === 'running' ? micLevel.value : 0),
+    };
+  }
+
+  close() {
+    return Promise.resolve();
+  }
 }
 
 /** jsdom 에는 MediaStream 이 없다. 트랙을 모아 두기만 하는 최소 구현으로 대신한다. */
@@ -274,9 +369,15 @@ describe('useConsultSignaling', () => {
   beforeEach(() => {
     FakeSocket.instances = [];
     FakeRecognition.instances = [];
+    FakeMediaRecorder.instances = [];
+    FakeAudioContext.instances = [];
+    FakeAudioContext.initialState = 'running';
     FakePeerConnection.instances = [];
     FakeEventSource.instances = [];
+    micLevel.value = 0;
     apiMocks.publishConsultationDataChannelEvent.mockClear();
+    apiMocks.transcribeConsultationAudio.mockClear();
+    apiMocks.transcribeConsultationAudio.mockResolvedValue({ text: '' });
     // jsdom 의 전역은 읽기 전용 프로퍼티라 대입 대신 정의로 바꾼다.
     vi.stubGlobal('WebSocket', FakeSocket);
     vi.stubGlobal('RTCPeerConnection', FakePeerConnection);
@@ -970,6 +1071,199 @@ describe('useConsultSignaling', () => {
 
     expect(hasFinalCaption()).toBe(true);
     view.unmount();
+  });
+
+  /**
+   * 카메라가 섞인 스트림을 그대로 녹음하지 않는다.
+   *
+   * 사용자 쪽 스트림에는 마이크와 카메라가 함께 들어 있다. 그것을 오디오 전용 형식과 함께
+   * `MediaRecorder` 에 넘기면 브라우저에 따라 생성이 실패하거나, **영상까지 인코딩해 조각이
+   * 수 MB 로 부푼다.** 뒤쪽이 더 고약하다 — 서버의 크기 제한에 전부 걸려 자막이 하나도 남지
+   * 않는데 오류는 어디에도 뜨지 않는다.
+   */
+  it('records only the audio track even when the stream also carries camera video', async () => {
+    vi.useFakeTimers();
+    try {
+      const audio = fakeTrack('audio');
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('video'), audio])),
+        },
+      });
+      vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+      vi.stubGlobal('AudioContext', FakeAudioContext);
+
+      const view = renderHook(() =>
+        useConsultSignaling('room_cs_1', 'USER', 'token-1', undefined, 'en', 'server'),
+      );
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        micLevel.value = 0.5;
+        vi.advanceTimersByTime(600);
+        await Promise.resolve();
+      });
+
+      const recorded = FakeMediaRecorder.instances[0]?.stream;
+      expect(recorded?.getAudioTracks()).toEqual([audio]);
+      expect(recorded?.getVideoTracks()).toEqual([]);
+
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * 멈춰 있는 오디오 그래프를 깨운다.
+   *
+   * `suspended` 상태에서는 그래프가 돌지 않아 음량이 늘 0으로 읽힌다. 그러면 말소리를 영영
+   * 감지하지 못해 **녹음이 시작조차 되지 않는데 오류도 경고도 뜨지 않는다.** 지금 고치려는
+   * 증상과 똑같은 모양이다. 상담 도중 앱을 전환하면 브라우저가 다시 재우므로 만들 때 한 번으로는
+   * 부족하다.
+   */
+  it('resumes a suspended audio context, including when the browser suspends it mid-call', async () => {
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+      });
+      vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+      vi.stubGlobal('AudioContext', FakeAudioContext);
+      FakeAudioContext.initialState = 'suspended';
+
+      const view = renderHook(() =>
+        useConsultSignaling('room_cs_1', 'USER', 'token-1', undefined, 'en', 'server'),
+      );
+      await flushSetup();
+
+      await act(async () => {
+        FakeSocket.instances[0]?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const context = FakeAudioContext.instances[0];
+      expect(context?.resumed).toBeGreaterThan(0);
+
+      // 깨어났으니 말소리를 잡아 녹음이 시작된다.
+      await act(async () => {
+        micLevel.value = 0.5;
+        vi.advanceTimersByTime(600);
+        await Promise.resolve();
+      });
+      expect(FakeMediaRecorder.instances).toHaveLength(1);
+
+      // 앱을 전환해 브라우저가 다시 재운다. 돌아오면 스스로 깨어나야 한다.
+      const resumedBefore = context?.resumed ?? 0;
+      await act(async () => {
+        context?.suspendExternally();
+        await Promise.resolve();
+      });
+      expect(context?.resumed).toBeGreaterThan(resumedBefore);
+
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * 서버 받아쓰기로 얻은 글도 브라우저 인식과 똑같은 길을 지난다.
+   *
+   * 이 경로를 만든 이유는 브라우저 음성 인식이 `getUserMedia` 와 마이크를 다투다 안드로이드에서
+   * 죽기 때문이다. 목소리는 멀쩡히 오가니 아무도 눈치채지 못한 채 사용자 발화만 전문에서
+   * 통째로 빠졌다. 글을 어디서 만들든 **화자·발화 ID·전송은 달라지지 않아야** 상대 화면과
+   * 전문 조립이 그대로 돈다.
+   */
+  it('feeds server transcription into the transcript and the peer just like browser captions', async () => {
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: vi.fn().mockResolvedValue(fakeStream([fakeTrack('audio')])) },
+      });
+      vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+      vi.stubGlobal('AudioContext', FakeAudioContext);
+      apiMocks.transcribeConsultationAudio.mockResolvedValue({ text: '3번 출구로 가려면요?' });
+
+      const view = renderHook(() =>
+        useConsultSignaling('room_cs_1', 'USER', 'token-1', undefined, 'en', 'server'),
+      );
+      await flushSetup();
+
+      const socket = FakeSocket.instances[0];
+      await act(async () => {
+        socket?.onopen?.();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const peer = FakePeerConnection.instances[0];
+      await act(async () => {
+        if (peer) peer.connectionState = 'connected';
+        peer?.onconnectionstatechange?.();
+        await Promise.resolve();
+      });
+
+      // 브라우저 인식기는 건드리지 않는다. 둘이 함께 돌면 같은 발화가 두 번 기록된다.
+      expect(FakeRecognition.instances).toHaveLength(0);
+
+      // 말을 시작한다.
+      await act(async () => {
+        micLevel.value = 0.5;
+        vi.advanceTimersByTime(600);
+        await Promise.resolve();
+      });
+
+      expect(FakeMediaRecorder.instances).toHaveLength(1);
+
+      // 말을 마치고 잠시 조용해지면 그 토막이 서버로 올라간다.
+      await act(async () => {
+        micLevel.value = 0;
+        vi.advanceTimersByTime(900);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(apiMocks.transcribeConsultationAudio).toHaveBeenCalledWith(
+        'cs_1',
+        expect.objectContaining({ mimeType: 'audio/webm;codecs=opus', language: 'en' }),
+      );
+
+      expect(view.result.current.transcript).toEqual([
+        { seq: 1, speaker: 'USER', content: '3번 출구로 가려면요?' },
+      ]);
+
+      const captions = (socket?.send.mock.calls ?? [])
+        .map(([raw]) => JSON.parse(String(raw)) as { type: string; payload?: Record<string, unknown> })
+        .filter((message) => message.type === 'CAPTION');
+
+      // 말이 시작될 때 "말하는 중"을 알리고, 받아쓴 뒤 확정문을 보낸다.
+      expect(captions.some((message) => message.payload?.final === false)).toBe(true);
+      expect(
+        captions.some(
+          (message) =>
+            message.payload?.final === true && message.payload?.text === '3번 출구로 가려면요?',
+        ),
+      ).toBe(true);
+
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   /**
