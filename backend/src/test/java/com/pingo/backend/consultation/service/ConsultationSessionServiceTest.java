@@ -4,9 +4,12 @@ import com.pingo.backend.auth.domain.Account;
 import com.pingo.backend.auth.domain.AccountType;
 import com.pingo.backend.auth.domain.CounselorStatus;
 import com.pingo.backend.auth.repository.AccountRepository;
+import com.pingo.backend.consultation.domain.ConsultationScope;
 import com.pingo.backend.consultation.domain.ConsultationSession;
 import com.pingo.backend.consultation.domain.ConsultationStatus;
+import com.pingo.backend.consultation.domain.ConsultationSummary;
 import com.pingo.backend.consultation.domain.ProblemType;
+import com.pingo.backend.consultation.domain.SummaryStatus;
 import com.pingo.backend.consultation.dto.request.ConsultationCreateRequest;
 import com.pingo.backend.consultation.dto.request.ConsultationEndRequest;
 import com.pingo.backend.consultation.dto.response.*;
@@ -14,8 +17,10 @@ import com.pingo.backend.consultation.event.ConsultationAcceptedEvent;
 import com.pingo.backend.consultation.event.ConsultationEndedEvent;
 import com.pingo.backend.consultation.realtime.ConsultationWaitingEventPublisher;
 import com.pingo.backend.consultation.repository.ConsultationSessionRepository;
+import com.pingo.backend.consultation.repository.ConsultationSummaryRepository;
 import com.pingo.backend.global.exception.BusinessException;
 import com.pingo.backend.global.exception.ErrorCode;
+import com.pingo.backend.global.response.PageResponse;
 import com.pingo.backend.signaling.auth.SignalingAccessTokenProvider;
 import com.pingo.backend.station.domain.Station;
 import com.pingo.backend.station.repository.StationRepository;
@@ -28,6 +33,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
@@ -50,6 +59,8 @@ class ConsultationSessionServiceTest {
 
     @Mock
     private ConsultationSessionRepository consultationSessionRepository;
+    @Mock
+    private ConsultationSummaryRepository consultationSummaryRepository;
     @Mock
     private UserSessionRepository userSessionRepository;
     @Mock
@@ -478,42 +489,158 @@ class ConsultationSessionServiceTest {
     @Test
     void getConsultationsForCounselor_성공() {
         ConsultationSession session = newSession();
+        Pageable pageable = PageRequest.of(0, 20);
         Account counselor = mock(Account.class);
         given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
-        // status를 지정하지 않으면 전체 상태를 조회한다. 요청 목록과 상담 이력이 같은
-        // 엔드포인트를 쓰고, 화면에서 필요한 상태만 걸러 보여준다.
-        given(consultationSessionRepository
-                .findByStationIdAndStatusIn(STATION_ID, List.of(ConsultationStatus.values())))
-                .willReturn(List.of(session));
+        given(consultationSessionRepository.findByStationId(STATION_ID, pageable))
+                .willReturn(new PageImpl<>(List.of(session), pageable, 21));
+        given(consultationSummaryRepository.findAllByConsultationIdIn(
+                List.of(session.getConsultationId())
+        )).willReturn(List.of());
 
-        List<ConsultationListResponse> responses =
-                consultationSessionService.getConsultationsForCounselor(COUNSELOR_ACCOUNT_ID, null);
+        PageResponse<ConsultationListResponse> response =
+                consultationSessionService.getConsultationsForCounselor(
+                        COUNSELOR_ACCOUNT_ID,
+                        List.of(),
+                        ConsultationScope.ALL,
+                        pageable
+                );
 
-        assertThat(responses).hasSize(1);
-        assertThat(responses.get(0).consultationId()).isEqualTo(session.getConsultationId());
+        assertThat(response.content()).hasSize(1);
+        assertThat(response.content().get(0).consultationId()).isEqualTo(session.getConsultationId());
+        assertThat(response.content().get(0).counselorId()).isNull();
+        assertThat(response.page()).isZero();
+        assertThat(response.size()).isEqualTo(20);
+        assertThat(response.totalElements()).isEqualTo(21);
+        assertThat(response.totalPages()).isEqualTo(2);
+        assertThat(response.first()).isTrue();
+        assertThat(response.last()).isFalse();
     }
 
     @Test
     void getConsultationsForCounselor_상태_필터_적용() {
+        Pageable pageable = PageRequest.of(1, 10);
         Account counselor = mock(Account.class);
         given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(true);
         given(counselor.getStationId()).willReturn(STATION_ID);
-        given(consultationSessionRepository.findByStationIdAndStatusIn(STATION_ID, List.of(ConsultationStatus.WAITING)))
-                .willReturn(List.of());
+        given(consultationSessionRepository.findByStationIdAndStatusIn(
+                STATION_ID,
+                List.of(ConsultationStatus.WAITING),
+                pageable
+        )).willReturn(new PageImpl<>(List.of(), pageable, 10));
 
-        consultationSessionService.getConsultationsForCounselor(COUNSELOR_ACCOUNT_ID, ConsultationStatus.WAITING);
+        consultationSessionService.getConsultationsForCounselor(
+                COUNSELOR_ACCOUNT_ID,
+                List.of(ConsultationStatus.WAITING),
+                ConsultationScope.ALL,
+                pageable
+        );
 
-        verify(consultationSessionRepository).findByStationIdAndStatusIn(STATION_ID, List.of(ConsultationStatus.WAITING));
+        verify(consultationSessionRepository).findByStationIdAndStatusIn(
+                STATION_ID,
+                List.of(ConsultationStatus.WAITING),
+                pageable
+        );
+    }
+
+    @Test
+    void getConsultationsForCounselor_내_상담_필터를_페이지네이션_전에_적용한다() {
+        Pageable pageable = PageRequest.of(0, 10);
+        List<ConsultationStatus> statuses = List.of(
+                ConsultationStatus.ACCEPTED,
+                ConsultationStatus.IN_PROGRESS
+        );
+        Account counselor = mock(Account.class);
+        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(counselor));
+        given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(counselor.isActive()).willReturn(true);
+        given(counselor.getStationId()).willReturn(STATION_ID);
+        given(counselor.getAccountId()).willReturn(COUNSELOR_ACCOUNT_ID);
+        given(consultationSessionRepository.findByStationIdAndCounselorIdAndStatusIn(
+                STATION_ID,
+                COUNSELOR_ACCOUNT_ID,
+                statuses,
+                pageable
+        )).willReturn(Page.empty(pageable));
+
+        consultationSessionService.getConsultationsForCounselor(
+                COUNSELOR_ACCOUNT_ID,
+                statuses,
+                ConsultationScope.MINE,
+                pageable
+        );
+
+        verify(consultationSessionRepository).findByStationIdAndCounselorIdAndStatusIn(
+                STATION_ID,
+                COUNSELOR_ACCOUNT_ID,
+                statuses,
+                pageable
+        );
+    }
+
+    @Test
+    void getConsultationsForCounselor_담당자명과_요약_미리보기를_반환한다() {
+        ConsultationSession session = newSession();
+        session.accept(OTHER_COUNSELOR_ACCOUNT_ID);
+        session.end();
+        Pageable pageable = PageRequest.of(0, 10);
+
+        Account requester = mock(Account.class);
+        given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.of(requester));
+        given(requester.getAccountType()).willReturn(AccountType.COUNSELOR);
+        given(requester.isActive()).willReturn(true);
+        given(requester.getStationId()).willReturn(STATION_ID);
+
+        Account assignedCounselor = mock(Account.class);
+        given(assignedCounselor.getAccountId()).willReturn(OTHER_COUNSELOR_ACCOUNT_ID);
+        given(assignedCounselor.getName()).willReturn("김상담");
+        given(accountRepository.findAllById(any())).willReturn(List.of(assignedCounselor));
+
+        ConsultationSummary summary = ConsultationSummary.pending(
+                session.getConsultationId(),
+                "B2 개찰구 앞",
+                null,
+                "3번 출구",
+                "FASTEST"
+        );
+        summary.complete("사용자를 3번 출구까지 안내함");
+        given(consultationSummaryRepository.findAllByConsultationIdIn(
+                List.of(session.getConsultationId())
+        )).willReturn(List.of(summary));
+        given(consultationSessionRepository.findByStationIdAndStatusIn(
+                STATION_ID,
+                List.of(ConsultationStatus.ENDED),
+                pageable
+        )).willReturn(new PageImpl<>(List.of(session), pageable, 1));
+
+        PageResponse<ConsultationListResponse> response =
+                consultationSessionService.getConsultationsForCounselor(
+                        COUNSELOR_ACCOUNT_ID,
+                        List.of(ConsultationStatus.ENDED),
+                        ConsultationScope.ALL,
+                        pageable
+                );
+
+        ConsultationListResponse item = response.content().get(0);
+        assertThat(item.counselorId()).isEqualTo(OTHER_COUNSELOR_ACCOUNT_ID);
+        assertThat(item.counselorName()).isEqualTo("김상담");
+        assertThat(item.summaryStatus()).isEqualTo(SummaryStatus.COMPLETED);
+        assertThat(item.summaryPreview()).isEqualTo("사용자를 3번 출구까지 안내함");
     }
 
     @Test
     void getConsultationsForCounselor_실패_인증되지_않음() {
-        assertThatThrownBy(() -> consultationSessionService.getConsultationsForCounselor(null, null))
+        assertThatThrownBy(() -> consultationSessionService.getConsultationsForCounselor(
+                null,
+                List.of(),
+                ConsultationScope.ALL,
+                PageRequest.of(0, 20)
+        ))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.UNAUTHENTICATED);
     }
@@ -522,7 +649,12 @@ class ConsultationSessionServiceTest {
     void getConsultationsForCounselor_실패_존재하지_않는_계정() {
         given(accountRepository.findById(COUNSELOR_ACCOUNT_ID)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> consultationSessionService.getConsultationsForCounselor(COUNSELOR_ACCOUNT_ID, null))
+        assertThatThrownBy(() -> consultationSessionService.getConsultationsForCounselor(
+                COUNSELOR_ACCOUNT_ID,
+                List.of(),
+                ConsultationScope.ALL,
+                PageRequest.of(0, 20)
+        ))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.ACCOUNT_NOT_FOUND);
     }
@@ -534,7 +666,12 @@ class ConsultationSessionServiceTest {
         given(counselor.getAccountType()).willReturn(AccountType.COUNSELOR);
         given(counselor.isActive()).willReturn(false);
 
-        assertThatThrownBy(() -> consultationSessionService.getConsultationsForCounselor(COUNSELOR_ACCOUNT_ID, null))
+        assertThatThrownBy(() -> consultationSessionService.getConsultationsForCounselor(
+                COUNSELOR_ACCOUNT_ID,
+                List.of(),
+                ConsultationScope.ALL,
+                PageRequest.of(0, 20)
+        ))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.INACTIVE_ACCOUNT);
     }

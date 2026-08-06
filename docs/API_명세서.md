@@ -2005,34 +2005,77 @@ Authorization: Bearer {accessToken}
 
 #### Query
 
-| 이름   | 타입   | 필수 | 설명                 |
-| ------ | ------ | ---- | -------------------- |
-| status | string | N    | WAITING, ACCEPTED 등 |
+| 이름   | 타입    | 필수 | 기본값                          | 설명                                      |
+| ------ | ------- | ---- | ------------------------------- | ----------------------------------------- |
+| status | string  | N    | 전체                            | 단일 상태 필터. `WAITING`, `ENDED` 등     |
+| statuses | string | N   | 전체                            | 복수 상태 필터. 예: `ACCEPTED,IN_PROGRESS` |
+| scope  | string  | N    | `ALL`                           | `ALL`: 담당 역 전체, `MINE`: 내 상담만    |
+| page   | integer | N    | `0`                             | 0부터 시작하는 페이지 번호               |
+| size   | integer | N    | `20`                            | 한 페이지에 포함할 상담 수                |
+| sort   | string  | N    | `requestedAt,asc`               | 정렬 필드와 방향. 여러 번 전달할 수 있음  |
+
+기본 정렬은 `requestedAt ASC`, `consultationId ASC`이다. 같은 시각에 요청된 상담도 페이지 사이에서 순서가 바뀌지 않도록 상담 ID를 보조 정렬 기준으로 사용한다.
 
 #### Response
 
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "consultationId": "cs_abc123",
-      "stationId": 1,
-      "problemType": "CANNOT_FIND_EXIT",
-      "status": "WAITING",
-      "currentNodeId": 101,
-      "currentLocationLabel": "B2 개찰구 앞",
-      "destinationType": "place",
-      "destinationId": 3,
-      "destinationLabel": "COEX Mall",
-      "requestedAt": "2026-07-16T03:00:00Z"
-    }
-  ],
+  "data": {
+    "content": [
+      {
+        "consultationId": "cs_abc123",
+        "stationId": 1,
+        "problemType": "CANNOT_FIND_EXIT",
+        "status": "WAITING",
+        "counselorId": null,
+        "counselorName": null,
+        "summaryStatus": null,
+        "summaryPreview": null,
+        "currentNodeId": 101,
+        "currentLocationLabel": "B2 개찰구 앞",
+        "destinationType": "place",
+        "destinationId": 3,
+        "destinationLabel": "COEX Mall",
+        "requestedAt": "2026-07-16T03:00:00Z"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1,
+    "first": true,
+    "last": true
+  },
   "message": null
 }
 ```
 
-`status`를 지정하지 않으면 담당 역의 모든 상담을 반환한다. 상담자 콘솔의 요청 목록과 상담 이력이 같은 응답을 사용한다.
+`status`와 `statuses`를 모두 지정하지 않으면 담당 역의 모든 상담을 반환한다. 두 파라미터를 함께 전달하면 중복을 제거한 합집합으로 조회한다. 상담자 콘솔의 요청 목록과 상담 이력이 같은 응답을 사용한다.
+
+`scope=MINE`은 인증된 상담자의 계정 ID를 서버에서 사용한다. 클라이언트가 임의의 `counselorId`를 전달하지 않으며, 담당 상담자 조건은 데이터베이스 페이지네이션 전에 적용된다.
+
+대표 조회 형태는 다음과 같다.
+
+```http
+# 담당 역 전체 대기 상담
+GET /api/counselors/consultations?status=WAITING&scope=ALL&page=0&size=10
+
+# 내 수락·진행 상담
+GET /api/counselors/consultations?statuses=ACCEPTED,IN_PROGRESS&scope=MINE&page=0&size=10
+
+# 담당 역 전체 상담 이력
+GET /api/counselors/consultations?status=ENDED&scope=ALL&page=0&size=10
+
+# 내 상담 이력
+GET /api/counselors/consultations?status=ENDED&scope=MINE&page=0&size=10
+```
+
+`counselorId`는 상담을 수락한 상담자의 계정 ID다. 아직 배정되지 않은 `WAITING` 상담은 `null`이며, 배정된 상담은 담당 상담자 ID를 반환한다. 프론트엔드는 로그인한 상담자의 `accountId`와 이 값을 비교해 본인 상담과 다른 상담자의 상담을 구분한다.
+
+`counselorName`은 배정된 상담자의 이름이며 미배정 상담은 `null`이다. `summaryStatus`는 요약 데이터가 없으면 `null`, 생성 중이면 `PENDING`, 생성 완료면 `COMPLETED`, 생성 실패면 `FAILED`다. `summaryPreview`는 완료된 요약의 최대 160자 미리보기이며 그 밖의 경우 `null`이다. 전체 요약과 상담 전문은 상세 화면을 열 때 별도 API로 조회한다.
+
+페이지 메타데이터의 `page`는 0부터 시작한다. 조회 결과가 없으면 `content`는 빈 배열이고 `totalElements`와 `totalPages`는 `0`이다.
 
 `currentLocationLabel`, `destinationLabel`은 route_node-facility 연결이 정리되기 전까지 식별자 기반 임시 문자열(`Node 101`, `place 3`)이며, 좌표·시설 연결 이후 실제 명칭으로 바뀐다.
 
