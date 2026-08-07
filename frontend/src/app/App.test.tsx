@@ -762,6 +762,36 @@ describe('user routes', () => {
   });
 
   /**
+   * 계단 6을 올라온 직후의 현재 노드는 VPS 호환 때문에 353으로 둔다. 하지만 표시 좌표는
+   * 새 경로 노드 358의 좌표이므로 상세 경로도 358에서 시작해야 한다. 353으로 요청하거나
+   * 좌표를 함께 보내 진입점을 재선택하면 `경로 위 표시`가 마커를 353 쪽으로 당겨 첫
+   * 358→357 구간을 이미 건너간 것처럼 보인다.
+   */
+  it('계단 6 완료 위치에서는 VPS 노드 353을 유지하고 경로만 358에서 시작한다', async () => {
+    const routeRequests: Record<string, unknown>[] = [];
+    server.use(
+      http.post('*/api/routes/indoor', async ({ request }) => {
+        routeRequests.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ success: true, data: {}, message: null });
+      }),
+    );
+
+    useNavigationStore.setState({
+      currentNodeId: 353,
+      currentFloorId: 1,
+      currentMapX: -4.986,
+      currentMapY: 27.654,
+    });
+    await renderSection('/user/navigation');
+
+    await waitFor(() => expect(routeRequests).not.toHaveLength(0));
+    expect(routeRequests[0]).toMatchObject({ startNodeId: 358 });
+    expect(routeRequests[0]).not.toHaveProperty('currentMapX');
+    expect(routeRequests[0]).not.toHaveProperty('currentMapY');
+    expect(useNavigationStore.getState().currentNodeId).toBe(353);
+  });
+
+  /**
    * 시설 필터. (S15P11A206-83)
    *
    * 진입하면 그 층 시설을 모두 보여 주고, 칩은 그 층에 실제로 있는 유형만 둔다. 눌러서 아무것도
