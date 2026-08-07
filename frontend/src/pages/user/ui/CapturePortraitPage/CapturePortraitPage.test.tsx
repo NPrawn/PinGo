@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useNavigationStore } from '@/entities/navigation';
 import { useStationStore } from '@/entities/station';
@@ -72,51 +72,20 @@ describe('CapturePortraitPage', () => {
     }
   });
 
-  it('restarts the direction guide after manual selection and stops it on timeout', () => {
-    vi.useFakeTimers();
+  it('shows one fixed capture target instead of directional controls', () => {
+    render(
+      <MemoryRouter>
+        <CapturePortraitPage />
+      </MemoryRouter>,
+    );
 
-    try {
-      render(
-        <MemoryRouter>
-          <CapturePortraitPage />
-        </MemoryRouter>,
-      );
-
-      act(() => {
-        vi.advanceTimersByTime(2400);
-      });
-      fireEvent.click(screen.getByRole('button', { name: /왼쪽/ }));
-
-      act(() => {
-        vi.advanceTimersByTime(200);
-      });
-      expect(screen.getByRole('button', { name: /왼쪽/ })).toHaveAttribute('aria-pressed', 'true');
-
-      act(() => {
-        vi.advanceTimersByTime(2300);
-      });
-      expect(screen.getByRole('button', { name: /정면/ })).toHaveAttribute('aria-pressed', 'true');
-
-      act(() => {
-        vi.advanceTimersByTime(10_100);
-      });
-      expect(screen.getByRole('dialog', { name: '현재 위치를 찾지 못했어요' })).toBeInTheDocument();
-
-      const directionAtTimeout = screen
-        .getAllByRole('button')
-        .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent;
-
-      act(() => {
-        vi.advanceTimersByTime(5000);
-      });
-      const directionAfterTimeout = screen
-        .getAllByRole('button')
-        .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent;
-
-      expect(directionAfterTimeout).toBe(directionAtTimeout);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(screen.getByRole('group', { name: '한 지점 촬영 가이드' })).toHaveTextContent(
+      '정면 한 장면',
+    );
+    expect(screen.getByRole('group', { name: '한 지점 촬영 가이드' })).toHaveTextContent(
+      '현재 장면으로 위치를 찾고 있어요',
+    );
+    expect(screen.queryByRole('button', { name: /왼쪽|정면|오른쪽/ })).toBeNull();
   });
 
   it('keeps capturing after an early no-match response and opens the modal at 15 seconds', async () => {

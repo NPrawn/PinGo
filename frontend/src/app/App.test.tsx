@@ -550,8 +550,8 @@ describe('user routes', () => {
   it('redirects the legacy analyzing route to the combined capture screen', async () => {
     await renderSection('/user/analyzing');
 
-    expect(await screen.findByText('세 방향을 자유롭게 비춰주세요')).toBeInTheDocument();
-    expect(screen.getByText('촬영과 동시에 현재 위치를 찾고 있어요')).toBeInTheDocument();
+    expect(await screen.findByText('특징이 있는 한 곳에 맞춰주세요')).toBeInTheDocument();
+    expect(screen.getByText('현재 장면으로 위치를 찾고 있어요')).toBeInTheDocument();
   });
 
   it('keeps the camera visible while confirming the matched location', async () => {
@@ -1062,7 +1062,7 @@ describe('user routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: /지도만 보고 이동하기/ }));
 
     fireEvent.click(screen.getByRole('button', { name: '위치 재촬영하기' }));
-    expect(await screen.findByText('세 방향을 자유롭게 비춰주세요')).toBeInTheDocument();
+    expect(await screen.findByText('특징이 있는 한 곳에 맞춰주세요')).toBeInTheDocument();
     expect(useNavigationStore.getState().relocalizing).toBe(true);
 
     // 촬영·매칭 화면에서 위치 확인 화면으로 넘어가는 것은 FR-U-004의 범위다.
@@ -1087,7 +1087,7 @@ describe('user routes', () => {
 
     fireEvent.click(await screen.findByRole('link', { name: /위치 재인식/ }));
 
-    expect(await screen.findByText('세 방향을 자유롭게 비춰주세요')).toBeInTheDocument();
+    expect(await screen.findByText('특징이 있는 한 곳에 맞춰주세요')).toBeInTheDocument();
   });
 
   it('renders the offline fallback as a reusable modal', async () => {

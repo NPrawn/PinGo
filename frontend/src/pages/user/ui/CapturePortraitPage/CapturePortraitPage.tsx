@@ -26,21 +26,6 @@ import styles from './CapturePortraitPage.module.css';
 const CAPTURE_SECONDS = 15;
 const CAPTURE_RETRY_DELAY_MS = 1200;
 
-const DIRECTION_KEYS = [
-  {
-    key: 'left',
-    arrow: '←',
-  },
-  {
-    key: 'front',
-    arrow: '↑',
-  },
-  {
-    key: 'right',
-    arrow: '→',
-  },
-] as const;
-
 /**
  * Camera capture and VPS matching happen together on this screen.
  *
@@ -50,12 +35,6 @@ const DIRECTION_KEYS = [
  */
 export function CapturePortraitPage() {
   const { t } = useTranslation();
-  const directions = DIRECTION_KEYS.map((item) => ({
-    ...item,
-    label: t(`user.capture.${item.key}.label`),
-    instruction: t(`user.capture.${item.key}.instruction`),
-    cameraHint: t(`user.capture.${item.key}.hint`),
-  }));
   const navigate = useNavigate();
   const stationId = useStationStore((state) => state.stationId);
   const setFloor = useStationStore((state) => state.setFloor);
@@ -74,8 +53,6 @@ export function CapturePortraitPage() {
   const [elapsed, setElapsed] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
-  const [currentDirection, setCurrentDirection] = useState(1);
-  const direction = directions[currentDirection];
   const remaining = Math.max(CAPTURE_SECONDS - elapsed, 0);
   /**
    * 카메라를 켤 수 없는 상태. 거부·미지원·실패를 함께 다룬다.
@@ -257,25 +234,13 @@ export function CapturePortraitPage() {
     return () => window.clearInterval(timer);
   }, [attempt]);
 
-  /** 안내 시트가 떠 있으면 촬영 방향 안내를 돌리지 않는다. */
   const noticeOpen = timeoutOpen || cameraBlocked;
-
-  useEffect(() => {
-    if (noticeOpen) return;
-
-    const guideTimer = window.setTimeout(() => {
-      setCurrentDirection((value) => (value + 1) % DIRECTION_KEYS.length);
-    }, 2500);
-
-    return () => window.clearTimeout(guideTimer);
-  }, [currentDirection, noticeOpen]);
 
   const retryCapture = () => {
     timedOutRef.current = false;
     candidateVotes.current = [];
     setTimeoutOpen(false);
     setElapsed(0);
-    setCurrentDirection(1);
     setAttempt((value) => value + 1);
   };
 
@@ -365,76 +330,66 @@ export function CapturePortraitPage() {
 
           <CameraFallbackNotice status={camera.status} />
 
-          <div className={styles.band} aria-hidden />
-          <div className={styles.horizon} aria-hidden />
-          <div className={styles.cornerLeft} aria-hidden />
-          <div className={styles.cornerRight} aria-hidden />
+          {camera.isLive && (
+            <div className={styles.scanLayer} aria-hidden>
+              <span className={styles.scanGlow} />
+              <span className={styles.scanLine} />
+            </div>
+          )}
 
-          <div className={styles.directionOverlay}>
-            <span className={styles.directionArrow} aria-hidden>
-              {direction.arrow}
-            </span>
-            <strong>{direction.cameraHint}</strong>
-          </div>
-
-          <div className={styles.matchingBadge}>
-            <span className={styles.matchingSpinner} aria-hidden />
-            {t('user.capture.matching')}
+          <div className={styles.focusOverlay} aria-hidden>
+            <div className={styles.focusFrame}>
+              <span className={`${styles.focusCorner} ${styles.focusCornerTl}`} />
+              <span className={`${styles.focusCorner} ${styles.focusCornerTr}`} />
+              <span className={`${styles.focusCorner} ${styles.focusCornerBl}`} />
+              <span className={`${styles.focusCorner} ${styles.focusCornerBr}`} />
+              <span className={styles.focusPoint} />
+            </div>
+            <strong>{t('user.capture.focusHint')}</strong>
           </div>
         </div>
 
         <div className={styles.dock}>
           <div className={styles.guideHead}>
-            <span className={styles.guideIcon}>
+            <span className={styles.guideIcon} aria-hidden>
               <Icon name="camera" size={18} />
             </span>
-            <div>
+            <div className={styles.guideHeading}>
+              <span className={styles.guideEyebrow}>{t('user.capture.targetGuide')}</span>
               <strong className={styles.guideTitle}>{t('user.capture.guideTitle')}</strong>
-              <p className={styles.guideText}>{t('user.capture.guideDescription')}</p>
             </div>
+            <span className={styles.guidePulse} aria-hidden />
           </div>
 
-          <div className={styles.motionGuide} aria-label={t('user.capture.directionGuide')}>
-            {directions.map((item, index) => {
-              return (
-                <button
-                  key={item.label}
-                  type="button"
-                  className={styles.motionStep}
-                  aria-pressed={index === currentDirection}
-                  onClick={() => setCurrentDirection(index)}
-                >
-                  <span
-                    className={[
-                      styles.motionPoint,
-                      index === currentDirection && styles.motionPointCurrent,
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
-                    {item.arrow}
-                  </span>
-                  <span className={styles.motionLabel}>{item.label}</span>
-                </button>
-              );
-            })}
-            <p className={styles.motionHint}>{direction.instruction}</p>
-          </div>
-
-          <div className={styles.timerRow}>
-            <div className={styles.timerText}>
-              <span>{t('user.capture.progress')}</span>
-              <strong>{t('user.capture.seconds', { seconds: remaining })}</strong>
+          <div
+            className={styles.singleTargetGuide}
+            role="group"
+            aria-label={t('user.capture.targetGuide')}
+          >
+            <div className={styles.targetCopy}>
+              <strong>{t('user.capture.singleTarget')}</strong>
+              <div className={styles.cardMatching}>{t('user.capture.matching')}</div>
+              <p className={styles.targetDescription}>{t('user.capture.matchingDescription')}</p>
             </div>
-            <div
-              className={styles.timerTrack}
-              role="progressbar"
-              aria-label={t('user.capture.progressLabel')}
-              aria-valuemin={0}
-              aria-valuemax={CAPTURE_SECONDS}
-              aria-valuenow={elapsed}
-            >
-              <span style={{ width: `${(elapsed / CAPTURE_SECONDS) * 100}%` }} />
+
+            <div className={styles.timerRow}>
+              <div className={styles.timerText}>
+                <span className={styles.timerLabel}>
+                  <Icon name="clock" size={14} />
+                  {t('user.capture.progress')}
+                </span>
+                <strong>{t('user.capture.seconds', { seconds: remaining })}</strong>
+              </div>
+              <div
+                className={styles.timerTrack}
+                role="progressbar"
+                aria-label={t('user.capture.progressLabel')}
+                aria-valuemin={0}
+                aria-valuemax={CAPTURE_SECONDS}
+                aria-valuenow={elapsed}
+              >
+                <span style={{ width: `${(elapsed / CAPTURE_SECONDS) * 100}%` }} />
+              </div>
             </div>
           </div>
 
