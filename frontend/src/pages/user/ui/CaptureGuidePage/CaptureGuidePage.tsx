@@ -25,35 +25,21 @@ export function CaptureGuidePage() {
         <Title className={styles.title} style={{ whiteSpace: 'pre-line' }}>
           {t('user.captureGuide.title')}
         </Title>
-        <Sub style={{ whiteSpace: 'pre-line' }}>
-          {t('user.captureGuide.description')}
-        </Sub>
+        <Sub style={{ whiteSpace: 'pre-line' }}>{t('user.captureGuide.description')}</Sub>
       </div>
 
-      <div className={styles.radar} aria-hidden>
-        <div className={styles.ringOuter} />
-        <div className={styles.ringInner} />
-        <div className={styles.sweep} />
-        <div className={styles.mask} />
-        <div className={styles.deviceWrap}>
-          <svg width="26" height="42" viewBox="0 0 26 42" className={styles.device}>
-            <rect
-              x="1"
-              y="1"
-              width="24"
-              height="40"
-              rx="5"
-              fill="rgba(127,239,195,.16)"
-              stroke="#7FEFC3"
-              strokeWidth="1.6"
-            />
-            <circle cx="13" cy="10" r="3" fill="#7FEFC3" />
-          </svg>
+      <div className={styles.focusPreview} aria-hidden>
+        <div className={styles.focusGlow} />
+        <div className={styles.focusFrame}>
+          <span className={`${styles.focusCorner} ${styles.focusCornerTl}`} />
+          <span className={`${styles.focusCorner} ${styles.focusCornerTr}`} />
+          <span className={`${styles.focusCorner} ${styles.focusCornerBl}`} />
+          <span className={`${styles.focusCorner} ${styles.focusCornerBr}`} />
+          <span className={styles.focusTarget}>
+            <span />
+          </span>
         </div>
-        <span className={`${styles.compass} ${styles.compassTop}`}>{t('user.captureGuide.front')}</span>
-        <span className={`${styles.compass} ${styles.compassBottom}`}>{t('user.captureGuide.stay')}</span>
-        <span className={`${styles.compass} ${styles.compassLeft}`}>{t('user.captureGuide.left')}</span>
-        <span className={`${styles.compass} ${styles.compassRight}`}>{t('user.captureGuide.right')}</span>
+        <strong className={styles.focusLabel}>{t('user.captureGuide.focusLabel')}</strong>
       </div>
 
       <Card className={styles.tips}>
