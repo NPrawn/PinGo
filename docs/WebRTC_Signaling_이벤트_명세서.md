@@ -1,6 +1,6 @@
 # WebRTC Signaling 이벤트 명세서
 
-> 최신화: 2026-07-30
+> 최신화: 2026-08-07 (S15P11A206-89 프록시 경로 반영)
 > 구현 상태: Backend WebSocket relay, envelope 검증, 상담 상태 기반 JOIN 검증은 구현됨. Frontend PeerConnection 연동과 WebSocket 참여자 본인 검증은 진행 중이다.
 
 ## 1. 목적
@@ -26,6 +26,31 @@ wss://{service-domain}/ws/signaling?token={signalingAccessToken}
 ```
 
 운영 환경에서는 HTTPS reverse proxy를 통해 `/ws/` 요청이 backend로 전달된다.
+
+### 프론트가 실제로 쓰는 주소 (S15P11A206-89)
+
+**프론트는 위 절대 주소를 쓰지 않는다.** `VITE_API_BASE_URL`이 비어 있으면 API와 같은 길로
+보낸다 — 페이지 오리진으로 붙고, vite 개발 서버가 backend로 넘긴다
+([`signalingBaseUrl.ts`](../frontend/src/features/consult-signaling/model/signalingBaseUrl.ts)).
+
+```js
+// VITE_API_BASE_URL 이 비어 있으면
+`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`
+```
+
+**실기기 확인 때문이다.** `signaling.websocket.allowed-origin-patterns`에는 `localhost:5173`
+계열과 배포 주소만 있어서, 폰이 LAN 주소로 접속하면 handshake가 거절되고 upgrade가 끝나지
+않은 채 **close code 1006**으로 끊긴다. 서버가 close frame을 보낼 기회조차 없어 원인 코드도
+남지 않는다. 데스크톱은 허용 목록에 있는 `localhost`라 같은 코드가 그대로 붙어, **실기기에서만
+재현됐다.** 같은 오리진으로 보내면 개발 서버가 `Origin`을 바꿔 전달하므로 허용 목록을 건드리지
+않아도 된다. LAN IP를 목록에 넣는 방법은 IP가 바뀔 때마다 백엔드를 다시 배포해야 해서
+유지되지 않는다.
+
+> **vite 프록시에 `ws: true`가 있어야 한다.** 없으면 upgrade 요청이 전달되지 않는다.
+> 경로도 `/ws`가 아니라 `/ws/signaling`으로 좁혀 vite 자신의 HMR 소켓과 겹치지 않게 한다.
+> (`frontend/vite.config.ts`)
+
+`VITE_API_BASE_URL`에 절대 주소를 지정한 경우에만 `VITE_WS_BASE_URL` 값을 그대로 쓴다.
 
 ### ICE 서버 설정
 
