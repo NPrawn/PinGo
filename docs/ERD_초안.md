@@ -1,6 +1,6 @@
 # 외국인 관광객 대상 지하철 실내 내비게이션 ERD 초안
 
-> 최신화: 2026-07-30
+> 최신화: 2026-08-07 (마이그레이션 V29 기준)
 
 ## 1. 문서 목적
 
@@ -191,7 +191,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 
 - **층마다 값이 다르다.** 원점 픽셀은 층별 평면도 이미지가 서로 다른 크기·여백을 갖기 때문에 층마다 다르고(역삼역 B1 1626×967 / B2 1624×969 / B3 1659×948), `frame_angle_deg`·`scale_m_per_px`는 현재 전 층 공통이지만 평면도 교체 시 달라질 수 있어 층별로 둔다.
 - **nullable인 이유**: 프레임이 확정되지 않은 역의 지도도 등록할 수 있어야 한다. 값이 없으면 지도 표시는 되지만 좌표 오버레이는 불가하다.
-- 실제 마이그레이션(V6)과 엔티티 반영은 별도 작업이다.
+- 컬럼 추가는 [`V9__add_floor_map_coordinate_frame.sql`](../backend/src/main/resources/db/migration/V9__add_floor_map_coordinate_frame.sql)에서 했다.
 
 **역삼역 확정값** (원본 평면도 픽셀 기준):
 
@@ -202,6 +202,13 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | B3 | (597, 497) | −21.28 | 0.19 |
 
 > B1에는 원점 기준 엘리베이터가 없어 추정으로 얹은 값이다. 상세는 [`기술_의사결정_정리.md`](기술_의사결정_정리.md) §6.3 참고.
+
+> **`scale_m_per_px`는 한 번 바뀌었다가 되돌아왔다.** `V23`이 B3 승강장 실측 43m(지도상 63.833m)를
+> 근거로 `k = 0.67363`을 곱해 0.128로 내렸고, `V24`가 이를 원복했다. **현재 값은 다시 0.19다.**
+> V23이 이미 운영 DB에 적용된 뒤였으므로 V23 파일과 `flyway_schema_history`를 고치지 않고
+> 역연산 마이그레이션을 새로 얹는 방식을 썼다. 다만 V23이 좌표를 소수 3자리로 반올림해서
+> 원복이 비트 단위로 완전하지는 않다 — 밀리미터 수준의 잔차가 남아 있다.
+> 축척을 다시 바꾼다면 **바꾸기 전에 mysqldump를 남길 것.**
 
 ---
 
@@ -221,11 +228,21 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | name_en | varchar | 시설명 영어 | nullable |
 | map_x | decimal | 지도 X 좌표 | not null |
 | map_y | decimal | 지도 Y 좌표 | not null |
-| linked_node_id | bigint | 연결 경로 노드 | FK route_node.node_id, nullable |
+| linked_node_id | bigint | 연결 경로 노드 (그 시설 자신의 그래프 노드) | FK route_node.node_id, nullable |
+| accessible_node_id | bigint | `elevator_only` 경로가 안내할 도착 노드 | FK route_node.node_id, nullable |
 | is_accessible | boolean | 접근성 이용 가능 여부. 출구는 계단·에스컬레이터 없이 도달 가능한지를 뜻하며 `elevator_only` 도달 여부와 일치시킨다 | default false |
 | is_active | boolean | 사용 여부 | default true |
 | created_at | datetime | 생성 시각 | not null |
 | updated_at | datetime | 수정 시각 | not null |
+
+**`linked_node_id`와 `accessible_node_id`는 다른 것을 가리킨다.** 앞은 그 시설 자신의 그래프
+노드이고, 뒤는 계단·에스컬레이터를 피해 갈 때의 **도착 노드**다. 역삼역 3·4번 출구가 이 컬럼이
+생긴 이유다 — 출구 노드에 닿는 길이 에스컬레이터 쪽 하나뿐이라, `elevator_only`가 출구 노드를
+목표로 삼으면 엘리베이터가 있는데도 "접근 가능한 경로 없음"이 된다. 엘리베이터를 타면 곧
+지상으로 나가므로 엘리베이터 노드가 종점인 것이 맞다. (Flyway `V22__add_facility_accessible_node.sql`, S15P11A206-345)
+
+> 지금 값이 채워진 시설은 3·4번 출구 2곳뿐이다. 나머지 71곳은 NULL이고, 그 경우
+> `elevator_only`도 `linked_node_id`를 목표로 삼는다.
 
 #### facility_type 예시
 
@@ -477,6 +494,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | destination_id | bigint | 목적지 ID | nullable |
 | video_consent | boolean | 영상 공유 동의 | default false |
 | audio_consent | boolean | 음성 공유 동의 | default false |
+| location_consent | boolean | 위치 공유 동의. 상담자 지도에 사용자 현재 위치를 띄울지 | not null, default false |
 | requested_at | datetime | 요청 시각 | not null |
 | accepted_at | datetime | 수락 시각 | nullable |
 | ended_at | datetime | 종료 시각 | nullable |
@@ -589,7 +607,12 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | consultation_id | varchar(64) | 상담 세션 ID | FK consultation_session.consultation_id |
 | seq | int | 발화 순서 | not null |
 | speaker | varchar(20) | 발화자 | USER, COUNSELOR |
-| content | text | 발화 내용 | not null |
+| content | text | 발화 내용(원문) | not null |
+| translated_content | text | 번역된 발화 내용 | nullable |
+
+`translated_content`는 자막 번역 결과를 원문과 나란히 보관한다. 상담자와 사용자의 언어가 다를 때
+화면에는 번역문을 띄우되, 요약과 기록은 원문을 근거로 삼아야 하므로 둘을 한 행에 같이 둔다.
+번역이 붙지 않은 발화는 NULL이다. (Flyway `V20__add_translated_consultation_transcript.sql`)
 
 `(consultation_id, seq)`에 UNIQUE 제약을 두어 순서 중복을 막는다. 화면에 발화별 시각을 표시하지 않으므로 발화 시각은 저장하지 않고, 클라이언트가 정렬해 보낸 `seq` 순서를 그대로 사용한다.
 
