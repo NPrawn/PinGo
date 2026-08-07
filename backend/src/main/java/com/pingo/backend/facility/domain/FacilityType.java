@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * 역 내부 시설 유형. ERD_초안.md 의 facility_type 정의를 기준으로 한다.
+ * 역 내부 시설 유형. erd_최종.md 의 facility_type 정의를 기준으로 한다.
  * DB 에는 code(소문자 문자열)로 저장한다.
  */
 public enum FacilityType {
