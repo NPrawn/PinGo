@@ -191,7 +191,7 @@ MVP 필수 API는 다음 영역으로 나뉩니다.
 | [화면 정의서](docs/화면_정의서.md) | 사용자, 상담자, 관리자 화면별 구성 요소와 액션 |
 | [화면 흐름도](docs/화면_흐름도.md) | 사용자 웹앱, 상담, 상담자, 관리자 화면 흐름 |
 | [API 명세서](docs/API_명세서.md) | REST API, WebSocket signaling, 공통 응답, 인증 정책 |
-| [ERD 초안](docs/ERD_초안.md) | 주요 엔티티, 관계, MVP 필수 테이블, 인덱스 제안 |
+| [ERD 최종](docs/erd_최종.md) | 주요 엔티티, 관계, MVP 필수 테이블, 인덱스 제안 |
 | [기술 의사결정 정리](docs/기술_의사결정_정리.md) | 확정 기술 스택, 구현 기준, 미정 항목 |
 | [HLOC-COLMAP-Spring 파이프라인 설계서](docs/HLOC_COLMAP_SPRING_파이프라인_설계서.md) | HLOC/COLMAP 맵 구축, FastAPI 위치추정 및 Spring 연동 절차 |
 | [WebXR 검증 결과](docs/WebXR_검증_결과.md) | WebXR 지원 환경·pose 추적 검증 기록, 실기기 체크리스트 |

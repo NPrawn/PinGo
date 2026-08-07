@@ -1,6 +1,6 @@
 # 외국인 관광객 대상 지하철 실내 내비게이션 API 명세서
 
-> 최신화: 2026-08-02
+> 최신화: 2026-08-07 (컨트롤러 대조 기준)
 
 ## 1. 문서 목적
 
@@ -12,8 +12,11 @@
 
 | 상태 | API 영역 |
 | --- | --- |
-| 구현 | 인증·회원가입, 익명 사용자 세션, 역·층·지도·시설, 목적지 검색, 주변 장소·출구 추천, 실내 경로 2종, Kakao 외부 길찾기, 상담 생성·조회·취소·대기 SSE, 상담자 본인/관리자 계정 관리, VPS 위치추정, health, WebSocket signaling |
-| 계획 | 랜드마크 후보·수동 위치 지정, 역 주변 장소 목록, 상담자용 상담 큐/수락/거절/종료, 위치 공유, 교통카드 추천, 관리자 상담자 생성 |
+| 구현 | 인증·회원가입·중복확인, 익명 사용자 세션, 역·층·지도·시설, 목적지 검색·**최근접 출구**, 추천 출구, 실내 경로 2종, Kakao 외부 길찾기, 상담 생성·조회·취소·대기 SSE·평가·**자막 번역**·**받아쓰기**, **상담자용 상담 큐/상세/수락/거절/종료/전문·요약**, 상담자 본인 계정, 관리자 역·층·지도·시설·노드·간선·주변장소·출구추천·**상담자 계정 등록**, VPS 위치추정, health, WebSocket signaling |
+| 미구현 | 랜드마크 후보 조회(7.2), 수동 위치 확정(7.3), 역 주변 장소 목록(6.2), 위치 공유, 교통카드 추천 |
+
+**"미구현" 항목도 이 문서에 계약이 적혀 있다.** 대응하는 컨트롤러가 아직 없다는 뜻이며, 호출하면
+404다. 2026-08-07 컨트롤러 대조 기준이다.
 
 구현 여부와 최신 요청·응답 schema는 실행 중인 Swagger를 최종 확인 수단으로 사용한다.
 
@@ -107,7 +110,7 @@ WebRTC signaling 참여자 검증은 일반 HTTP 인증과 별도로 상담별 `
 | 인증 방식          | JWT Access Token                                                    |
 | JWT 만료 시간      | 6시간                                                               |
 | Refresh Token      | MVP에서는 생략                                                      |
-| 사용자 세션 만료   | 마지막 활동 기준 1시간                                              |
+| 사용자 세션 만료   | 생성 기준 6시간 (활동으로 연장되지 않음)                            |
 | 상담 세션 ID       | UUID 또는 ULID 기반 문자열                                          |
 | WebRTC signaling   | WebSocket                                                           |
 | STUN/TURN          | 무료 STUN 우선, 연결 불안정 시 TURN 추가                            |
@@ -259,7 +262,7 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 
 ### GET `/api/auth/check-login-id`
 
-회원가입 폼에서 아이디를 입력하는 시점에 실시간으로 중복 여부를 확인하기 위한 API다. 이 API를 호출하지 않고 바로 `/auth/signup`을 호출해도 되며, 최종 중복 검증은 signup API 쪽에서 다시 수행한다(위 참고).
+회원가입 폼에서 아이디를 입력하는 시점에 실시간으로 중복 여부를 확인하기 위한 API다. 이 API를 호출하지 않고 바로 `/api/auth/signup`을 호출해도 되며, 최종 중복 검증은 signup API 쪽에서 다시 수행한다(위 참고).
 
 #### Query
 
@@ -280,6 +283,18 @@ VPS 위치 인식 API에서 이정우는 AI 서버 호출, 응답 검증, timeou
 `data`는 사용 가능하면 `true`, 이미 사용 중이면 `false`다.
 
 ---
+
+## 2.11 헬스 체크
+
+### GET `/api/health`
+
+애플리케이션이 떠 있는지 확인한다. 인증이 필요 없고 응답 본문은 공통 형식(`2.2`)을 따르지 않는다 — 문자열 `OK`를 그대로 돌려준다.
+
+```text
+OK
+```
+
+Jenkins CD가 배포 후 이 엔드포인트로 기동을 확인한다. DB·AI 서버 상태까지 보지는 않으므로 **의존 서비스가 죽어 있어도 `OK`가 나온다.**
 
 ## 3. 사용자 세션 API
 
@@ -876,6 +891,8 @@ B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
 
 ### GET `/api/stations/{stationId}/places`
 
+> **미구현 (2026-08-07 기준).** 대응하는 컨트롤러가 없어 호출하면 404다. 계약만 확정된 상태다.
+
 역 주변 장소 목록을 조회한다.
 
 #### Query
@@ -939,6 +956,50 @@ B1 프레임이 확정되고 sim3 정합이 끝나면 5~6m로 조일 수 있다.
   "message": null
 }
 ```
+
+---
+
+## 6.4 목적지 최근접 출구 조회
+
+### POST `/api/destinations/nearest-exit`
+
+지상 목적지 좌표를 받아 그 목적지에 가장 가까운 출구를 고른다. 실내 경로의 도착지를 정할 때 쓴다.
+
+#### Request
+
+```json
+{
+  "stationId": 1,
+  "destinationLatitude": 37.500622,
+  "destinationLongitude": 127.036456,
+  "accessibleOnly": false
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| stationId | number | Y | 역 ID |
+| destinationLatitude | number | Y | 목적지 위도 (-90 ~ 90) |
+| destinationLongitude | number | Y | 목적지 경도 (-180 ~ 180) |
+| accessibleOnly | boolean | N | `true`면 엘리베이터로 갈 수 있는 출구만 후보로 둔다. 비우면 전체 출구 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "exitFacilityId": 1071,
+    "exitNumber": "3"
+  },
+  "message": null
+}
+```
+
+#### 비고
+
+- **`accessibleOnly`는 경로 유형이 `elevator_only`일 때 반드시 `true`로 보낸다.** 계단·에스컬레이터 없이는 닿지 않는 출구를 도착지로 잡으면, 경로 조회가 그제서야 `NO_ACCESSIBLE_ROUTE`를 돌려준다. 갈 수 있는 출구가 있는데도 없다고 안내하게 된다.
+- 판정은 `facility.is_accessible`을 그대로 믿는다. 역삼역은 B1↔B2에 엘리베이터가 없어 출구 9개 중 **3·4번 2개만** 해당한다.
 
 ---
 
@@ -1202,6 +1263,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 
 ### GET `/api/stations/{stationId}/landmarks`
 
+> **미구현 (2026-08-07 기준).** 대응하는 컨트롤러가 없어 호출하면 404다. 계약만 확정된 상태다.
+
 위치 인식 실패 시 사용자가 선택할 수 있는 랜드마크 후보를 조회한다.
 
 #### Query
@@ -1233,6 +1296,8 @@ AI 서버는 내부 API에서 대문자 `status`와 `failureReason`을 반환한
 ## 7.3 수동 위치 확정
 
 ### POST `/api/localization/manual`
+
+> **미구현 (2026-08-07 기준).** 대응하는 컨트롤러가 없어 호출하면 404다. 계약만 확정된 상태다.
 
 사용자가 지도에서 직접 선택한 위치를 현재 위치로 확정한다.
 
@@ -1983,6 +2048,36 @@ STT는 각 클라이언트가 브라우저에서 수행하고, 확정된 문장�
 
 ---
 
+## 10.9 상담 발화 받아쓰기
+
+### POST `/api/consultations/{consultationId}/transcribe`
+
+브라우저가 녹음한 발화 한 토막을 글로 옮긴다. `multipart/form-data`로 보낸다.
+
+| 파트 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| file | file | Y | 녹음된 오디오 한 토막 |
+| language | string(query) | N | 발화 언어 힌트 |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "text": "3번 출구가 어디예요"
+  },
+  "message": null
+}
+```
+
+#### 비고
+
+- **인증이 필요 없다.** 사용자는 로그인하지 않으므로 자막 번역 API(10.8)와 같은 규약이다. 상담 식별자를 경로에 두는 것은 어느 상담에서 나온 요청인지 로그로 따라갈 수 있게 하기 위해서다.
+- **알아듣지 못하면 오류가 아니라 빈 글을 돌려준다.** 자막이 잠깐 비는 것과 화면이 깨지는 것은 다르다.
+
+---
+
 ## 11. 상담자 API
 
 ## 11.1 상담자 로그인
@@ -2627,11 +2722,11 @@ WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 
 
 | Method | Endpoint                      | 설명              |
 | ------ | ----------------------------- | ----------------- |
-| POST   | `/admin/stations`             | 역 등록           |
-| GET    | `/admin/stations`             | 활성 역 목록 조회 |
-| GET    | `/admin/stations/{stationId}` | 역과 층 상세 조회 |
-| PATCH  | `/admin/stations/{stationId}` | 역 정보 수정      |
-| DELETE | `/admin/stations/{stationId}` | 역 비활성화       |
+| POST   | `/api/admin/stations`             | 역 등록           |
+| GET    | `/api/admin/stations`             | 활성 역 목록 조회 |
+| GET    | `/api/admin/stations/{stationId}` | 역과 층 상세 조회 |
+| PATCH  | `/api/admin/stations/{stationId}` | 역 정보 수정      |
+| DELETE | `/api/admin/stations/{stationId}` | 역 비활성화       |
 
 ### 역 등록·수정 Request
 
@@ -2665,10 +2760,10 @@ WebRTC 연결 후 상담자 조작 정보를 DataChannel로 전달하는 것이 
 
 | Method | Endpoint                             | 설명                   |
 | ------ | ------------------------------------ | ---------------------- |
-| POST   | `/admin/stations/{stationId}/floors` | 해당 역에 층 등록      |
-| GET    | `/admin/stations/{stationId}/floors` | 해당 역의 층 목록 조회 |
-| PATCH  | `/admin/floors/{floorId}`            | 층 정보 수정           |
-| DELETE | `/admin/floors/{floorId}`            | 층 삭제                |
+| POST   | `/api/admin/stations/{stationId}/floors` | 해당 역에 층 등록      |
+| GET    | `/api/admin/stations/{stationId}/floors` | 해당 역의 층 목록 조회 |
+| PATCH  | `/api/admin/floors/{floorId}`            | 층 정보 수정           |
+| DELETE | `/api/admin/floors/{floorId}`            | 층 삭제                |
 
 ### 층 등록·수정 Request
 
@@ -2810,11 +2905,11 @@ multipart/form-data
 
 | Method | Endpoint                         | 설명                                                                  |
 | ------ | -------------------------------- | --------------------------------------------------------------------- |
-| POST   | `/admin/facilities`              | 시설 등록                                                             |
-| GET    | `/admin/facilities`              | 시설 목록 조회 (`stationId` 필수, `floorId`·`facilityType` 선택 필터) |
-| GET    | `/admin/facilities/{facilityId}` | 시설 상세 조회 (출구면 `exitDetail` 포함)                             |
-| PATCH  | `/admin/facilities/{facilityId}` | 시설 수정                                                             |
-| DELETE | `/admin/facilities/{facilityId}` | 시설 비활성화                                                         |
+| POST   | `/api/admin/facilities`              | 시설 등록                                                             |
+| GET    | `/api/admin/facilities`              | 시설 목록 조회 (`stationId` 필수, `floorId`·`facilityType` 선택 필터) |
+| GET    | `/api/admin/facilities/{facilityId}` | 시설 상세 조회 (출구면 `exitDetail` 포함)                             |
+| PATCH  | `/api/admin/facilities/{facilityId}` | 시설 수정                                                             |
+| DELETE | `/api/admin/facilities/{facilityId}` | 시설 비활성화                                                         |
 
 ### POST `/api/admin/facilities`
 
@@ -2945,11 +3040,11 @@ multipart/form-data
 
 | Method | Endpoint                      | 설명                                                   |
 | ------ | ----------------------------- | ------------------------------------------------------ |
-| POST   | `/admin/route-nodes`          | 노드 등록                                              |
-| GET    | `/admin/route-nodes`          | 노드 목록 조회 (`stationId` 필수, `floorId` 선택 필터) |
-| GET    | `/admin/route-nodes/{nodeId}` | 노드 상세 조회                                         |
-| PATCH  | `/admin/route-nodes/{nodeId}` | 노드 수정                                              |
-| DELETE | `/admin/route-nodes/{nodeId}` | 노드 삭제                                              |
+| POST   | `/api/admin/route-nodes`          | 노드 등록                                              |
+| GET    | `/api/admin/route-nodes`          | 노드 목록 조회 (`stationId` 필수, `floorId` 선택 필터) |
+| GET    | `/api/admin/route-nodes/{nodeId}` | 노드 상세 조회                                         |
+| PATCH  | `/api/admin/route-nodes/{nodeId}` | 노드 수정                                              |
+| DELETE | `/api/admin/route-nodes/{nodeId}` | 노드 삭제                                              |
 
 ### POST `/api/admin/route-nodes`
 
@@ -3014,11 +3109,11 @@ multipart/form-data
 
 | Method | Endpoint                      | 설명                              |
 | ------ | ----------------------------- | --------------------------------- |
-| POST   | `/admin/route-edges`          | 간선 등록                         |
-| GET    | `/admin/route-edges`          | 간선 목록 조회 (`stationId` 필수) |
-| GET    | `/admin/route-edges/{edgeId}` | 간선 상세 조회                    |
-| PATCH  | `/admin/route-edges/{edgeId}` | 간선 수정                         |
-| DELETE | `/admin/route-edges/{edgeId}` | 간선 비활성화                     |
+| POST   | `/api/admin/route-edges`          | 간선 등록                         |
+| GET    | `/api/admin/route-edges`          | 간선 목록 조회 (`stationId` 필수) |
+| GET    | `/api/admin/route-edges/{edgeId}` | 간선 상세 조회                    |
+| PATCH  | `/api/admin/route-edges/{edgeId}` | 간선 수정                         |
+| DELETE | `/api/admin/route-edges/{edgeId}` | 간선 비활성화                     |
 
 ### POST `/api/admin/route-edges`
 
@@ -3192,6 +3287,8 @@ multipart/form-data
 
 ### POST `/api/location-shares`
 
+> **미구현 (2026-08-07 기준).** 대응하는 컨트롤러가 없어 호출하면 404다. 계약만 확정된 상태다.
+
 #### Request
 
 ```json
@@ -3253,6 +3350,8 @@ multipart/form-data
 ## 15.1 교통카드 추천
 
 ### POST `/api/transport-cards/recommend`
+
+> **미구현 (2026-08-07 기준).** 대응하는 컨트롤러가 없어 호출하면 404다. 계약만 확정된 상태다.
 
 #### Request
 
@@ -3420,7 +3519,7 @@ multipart/form-data
 | 인증 방식              | JWT Access Token                                                 |
 | JWT 만료 시간          | 6시간                                                            |
 | Refresh Token          | MVP에서는 생략                                                   |
-| 사용자 세션 만료       | 마지막 활동 기준 1시간                                          |
+| 사용자 세션 만료       | 생성 기준 6시간 (활동으로 연장되지 않음)                        |
 | 사용자 세션 종료 | 경로 안내 정상 종료 시 즉시 만료 처리. 진행 중 상담(WAITING·ACCEPTED·CONNECTING·IN_PROGRESS)이 있으면 만료하지 않는다 | 
 | 상담 세션 ID           | UUID 또는 ULID 기반 문자열                                       |
 | WebRTC signaling       | WebSocket                                                        |

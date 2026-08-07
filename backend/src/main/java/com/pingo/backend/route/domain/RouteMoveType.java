@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * 경로 간선 이동 유형. ERD_초안.md 의 move_type 정의를 기준으로 한다.
+ * 경로 간선 이동 유형. erd_최종.md 의 move_type 정의를 기준으로 한다.
  * 경로 옵션(계단 없는 경로, 엘리베이터 중심 경로) 필터가 이 값을 기준으로 동작한다.
  */
 public enum RouteMoveType {

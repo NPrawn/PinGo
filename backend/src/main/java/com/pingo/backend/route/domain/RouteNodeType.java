@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * 경로 노드 유형. ERD_초안.md 의 node_type 정의를 기준으로 한다.
+ * 경로 노드 유형. erd_최종.md 의 node_type 정의를 기준으로 한다.
  *
  * <p>{@code GATE} 는 개찰구 노드다. 시설 노드는 {@code EXIT}·{@code FLOOR_TRANSITION} 처럼
  * 역할별로 유형을 나누고 있어 개찰구도 같은 방식으로 둔다.

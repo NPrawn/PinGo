@@ -4,7 +4,7 @@
 | --- | --- |
 | 문서 상태 | 핵심 위치추정 파이프라인 구현, 좌표 앵커링·운영 검증 진행 중 |
 | 작성일 | 2026-07-23 |
-| 최신화 | 2026-07-30 — Python 엔진·Spring adapter·다중 맵 구현 현황 반영 |
+| 최신화 | 2026-08-07 — 내부 파라미터(6장)·관측성(14장)의 설계와 실제 구현 차이 반영 |
 | 대상 서비스 | PinGo 실내 위치 인식(VPS) |
 | 적용 범위 | 기존 COLMAP sparse map을 이용한 단일 이미지 6-DoF 위치추정, Spring API 연동, 운영·배포 |
 
@@ -337,6 +337,41 @@ FastAPI lifespan 준비 순서:
 - NetVLAD 등 resize가 필요한 단계에서만 focal length와 principal point를 동일
   비율로 조정한다. ALIKED local feature는 원본 해상도를 유지한다.
 - EXIF/화면 rotation 적용 후 width/height 및 principal point를 일관되게 변환한다.
+
+#### 6.x.1 현재 구현은 위 설계와 다르다 (2026-08-07 확인)
+
+**아직 초점거리를 아무도 보내지 않는다.** 위 설계의 `params`는 계약에만 있고 실제로는 비어 있다.
+
+| 단계 | 설계 | 현재 구현 |
+|---|---|---|
+| FE → BE | `params: [fx, fy, cx, cy]` | **보내지 않는다.** `{model, width, height, intrinsicsSource:'browser'}`뿐 |
+| BE → AI | 기기군별 calibration 조회 | **없다.** `AiLocalizationRequestMapper`가 FE 값을 그대로 복사만 한다 |
+| AI 기본값 | `SIMPLE_PINHOLE` 근삿값 | `focal = max(width, height) × 1.2` (`_focal_length_px`) |
+| `intrinsicsSource` | 추정 시 `ESTIMATED` | **클라이언트가 보낸 문자열을 그대로 되돌려준다.** params가 없어도 `browser`로 찍힌다 |
+| 신뢰도 | 추정 시 한 단계 낮춤 | 낮추지 않는다 |
+
+**영향.** 긴 변 768 기준 가정 초점거리는 921.6px이고 이는 수평화각 약 45.6°, 곧 1x 렌즈다.
+초광각(0.5x)으로 찍히면 실제 초점거리가 270px 언저리라 **가정값이 3배 이상 크다.** PnP가
+일관된 pose를 못 찾아 inlier가 무너진다. `intrinsicsSource`가 `browser`로 찍히는 탓에 이 실패가
+품질 지표만 봐서는 드러나지 않는 것이 더 큰 문제다.
+
+**메울 수 있는 갈래 셋.**
+
+1. **XR 경로는 정확한 값을 이미 갖고 있다.** `XRView.projectionMatrix`에서
+   `fx = P[0] × width / 2`로 바로 나온다. 기기·렌즈와 무관하다.
+2. **`getUserMedia` 경로는 표준 API에 초점거리가 없다.** `getSettings()`/`getCapabilities()`에
+   해당 항목이 없고, `focusDistance`는 피사체 거리, `zoom`은 상대 배율이라 쓸 수 없다.
+3. **서버가 같이 푼다.** 지금 쓰는 `pycolmap 3.13.0`의
+   `AbsolutePoseRefinementOptions.refine_focal_length`가 있지만 기본값이 `False`다.
+   **켜는 것만으로는 부족하다** — `estimate_and_refine_absolute_pose`는 RANSAC이 먼저라,
+   초점거리가 크게 틀리면 refine할 inlier 자체가 남지 않는다. 매칭은 초점거리와 무관하므로
+   한 번만 돌리고 **PnP만 후보 초점거리 여러 개로 반복해 inlier가 최대인 것을 고른 뒤**
+   refine을 켜는 순서가 맞다. 후보는 긴 변 대비 `{0.35, 0.5, 0.7, 1.0, 1.2, 1.8}` 정도면
+   0.5x부터 2x까지 덮는다.
+
+> 비용은 문제가 아니다. 로컬 GPU에서 잰 값으로 **PnP RANSAC+refine 1회가 1.8ms**
+> (대응점 600개·아웃라이어 40%)다. 후보 6개를 쓸어도 약 11ms이고, 전체 요청이 1,520ms이므로
+> 0.7%다. 비싼 쪽은 매칭이다.
 
 ## 7. API 설계
 
@@ -711,6 +746,30 @@ ai/
 - 내부 오류 응답에 filesystem path, stack trace, reference image name 전체를 노출하지 않는다.
 
 ## 14. 관측성
+
+> **14장은 전부 설계이고, 현재 구현된 것은 없다 (2026-08-07 확인).**
+>
+> | 항목 | 현재 |
+> |---|---|
+> | 공통 로그 필드(14.1) | **백엔드 `localization` 패키지에 로그 문장이 0건**이다 |
+> | `localization_log` 테이블 | `V1`에 만들어져 있으나 **INSERT하는 코드가 없다.** 마이그레이션의 FK 정리 문장에서만 이름이 나온다 |
+> | Metrics(14.2)·Alert(14.3) | 미구현 |
+> | AI 쪽 로그 | `logger.exception` 하나뿐이고 **엔진이 예외로 터졌을 때만** 찍힌다 |
+>
+> **그래서 지금은 배포 서버 로그로 인식 성공·실패를 구분할 수 없다.** 인식 실패(inlier 부족)는
+> 에러가 아니라 정상 흐름이라 `_from_result()`로 가서 **HTTP 200**으로 나가기 때문이다. nginx·
+> uvicorn 액세스 로그에는 성공과 실패가 똑같이 `200`으로 남는다. 로그에서 구분되는 것은
+> `429`(과부하)·`500`(엔진 크래시)·`503`(엔진 미준비)·`400`계(`INVALID_IMAGE`,
+> `INVALID_INTRINSICS`)뿐이다.
+>
+> 확인이 필요하면 폰을 PC에 연결해 `chrome://inspect`로 Network 탭에서
+> `POST /api/vps/localize` 응답의 `resultStatus`·`confidenceScore`를 보는 것이 지금 유일한 방법이다.
+> 다만 `numInliers`·`inlierRatio`·`intrinsicsSource`는 `LocalizationResponse`가 버려서 클라이언트까지
+> 오지 않는다.
+>
+> **가장 싸게 메우는 방법**은 `LocalizationService`가 AI 응답을 받는 자리에서 `resultStatus`·
+> `confidenceScore`·`numInliers`·`intrinsicsSource`를 한 줄 남기는 것이다. `localization_log`가
+> 이미 그 모양(`result_status`, `confidence_score`, `error_message`)으로 비어 있다.
 
 ### 14.1 공통 로그 필드
 
