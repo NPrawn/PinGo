@@ -1,10 +1,10 @@
-# 외국인 관광객 대상 지하철 실내 내비게이션 ERD 초안
+# 외국인 관광객 대상 지하철 실내 내비게이션 ERD
 
 > 최신화: 2026-08-07 (마이그레이션 V29 기준)
 
 ## 1. 문서 목적
 
-본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 데이터 구조 초안을 정의한다.
+본 문서는 외국인 관광객 대상 지하철 실내 내비게이션 서비스의 데이터 구조를 정의한다.
 
 MVP는 1개 역을 대상으로 하지만, 추후 여러 역으로 확장할 수 있도록 역, 층, 지도, 시설, 경로, 주변 장소, 상담, VPS 데이터를 분리해서 설계한다.
 
@@ -422,7 +422,7 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 | last_gps_longitude | decimal | 마지막 GPS 경도 | nullable |
 | created_at | datetime | 생성 시각 | not null |
 | last_active_at | datetime | 마지막 활동 시각 | not null |
-| expires_at | datetime | 세션 만료 시각 | 마지막 활동 기준 1시간, nullable |
+| expires_at | datetime | 세션 만료 시각 | **생성 기준 6시간**, nullable |
 
 #### 설계 이유
 
@@ -432,10 +432,18 @@ MVP에서는 지도 파일을 서버 정적 파일로 저장하고, DB에는 접
 
 | 구분 | 정책 |
 | --- | --- |
-| 일반 만료 | `last_active_at` 기준 1시간이 지나면 만료한다 |
+| 일반 만료 | **세션 생성 시각 기준 6시간**이 지나면 만료한다 (`UserSession.SESSION_TTL = Duration.ofHours(6)`) |
 | 정상 종료 | 경로 안내가 정상적으로 끝나면 `DELETE /user-sessions/{userSessionId}`로 즉시 만료 처리한다 |
-| 만료 예외 | 진행 중인 상담(`WAITING`, `ACCEPTED`, `CONNECTING`, `IN_PROGRESS`)이 연결된 세션은 만료시키지 않는다 |
 | 만료 처리 방식 | 행을 삭제하지 않고 `expires_at`을 현재 시각으로 설정한다 |
+
+> **활동해도 연장되지 않는다.** `expires_at`은 `@PrePersist`에서 한 번만 찍히고,
+> `recordActivity()`는 `last_active_at`만 갱신한다. `last_active_at`은 기록용이며 만료 판정에
+>쓰이지 않는다 — `isExpired()`는 `expires_at`과 현재 시각만 비교한다.
+>
+> **"진행 중 상담이 있으면 만료 안 함" 예외는 없다.** 이전 판에 그렇게 적혀 있었지만 그런 분기가
+> 코드에 없고, 함께 적혀 있던 `CONNECTING`은 `ConsultationStatus`에 존재하지 않는 값이다
+> (실제 값: `WAITING`·`ACCEPTED`·`IN_PROGRESS`·`ENDED`·`CANCELED`·`REJECTED`·`FAILED`).
+> 만료를 미루는 배치나 스케줄러도 없다.
 
 만료를 행 삭제가 아니라 상태 처리로 정의한 이유는 `consultation_session.user_session_id`, `location_share.owner_session_id`, `localization_log.user_session_id`가 모두 `user_session`을 참조하는 not null 외래키이기 때문이다. 만료된 세션을 삭제하면 상담·위치 인식 이력이 함께 사라지거나 외래키 제약을 위반한다.
 
@@ -930,7 +938,7 @@ AI 모델·VPS 구축 데이터는 강민수가 책임지고, AI 서버 호출·
 | 경로 거리 계산 | 3D 유클리드 (x, y, z) — 같은 층 안에서도 높이가 다른 노드가 있다 |
 | 지도 이미지 저장 | 서버 정적 파일 저장 + DB URL 관리 |
 | 경로 거리 | `route_edge.distance_m` 우선 |
-| 사용자 세션 만료 | 마지막 활동 기준 1시간 (정상 종료 시 즉시 만료, 진행 중 상담이 있으면 만료 안 함) |
+| 사용자 세션 만료 | 생성 기준 6시간, 활동으로 연장되지 않음 (정상 종료 시 즉시 만료) |
 | 상담 세션 ID | UUID 또는 ULID 기반 문자열 |
 | VPS 이미지 저장 | 기본 저장하지 않음, 처리 후 즉시 폐기 |
 | Audit log | 후순위 |

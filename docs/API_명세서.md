@@ -110,7 +110,7 @@ WebRTC signaling 참여자 검증은 일반 HTTP 인증과 별도로 상담별 `
 | 인증 방식          | JWT Access Token                                                    |
 | JWT 만료 시간      | 6시간                                                               |
 | Refresh Token      | MVP에서는 생략                                                      |
-| 사용자 세션 만료   | 마지막 활동 기준 1시간                                              |
+| 사용자 세션 만료   | 생성 기준 6시간 (활동으로 연장되지 않음)                            |
 | 상담 세션 ID       | UUID 또는 ULID 기반 문자열                                          |
 | WebRTC signaling   | WebSocket                                                           |
 | STUN/TURN          | 무료 STUN 우선, 연결 불안정 시 TURN 추가                            |
@@ -3519,7 +3519,7 @@ multipart/form-data
 | 인증 방식              | JWT Access Token                                                 |
 | JWT 만료 시간          | 6시간                                                            |
 | Refresh Token          | MVP에서는 생략                                                   |
-| 사용자 세션 만료       | 마지막 활동 기준 1시간                                          |
+| 사용자 세션 만료       | 생성 기준 6시간 (활동으로 연장되지 않음)                        |
 | 사용자 세션 종료 | 경로 안내 정상 종료 시 즉시 만료 처리. 진행 중 상담(WAITING·ACCEPTED·CONNECTING·IN_PROGRESS)이 있으면 만료하지 않는다 | 
 | 상담 세션 ID           | UUID 또는 ULID 기반 문자열                                       |
 | WebRTC signaling       | WebSocket                                                        |
