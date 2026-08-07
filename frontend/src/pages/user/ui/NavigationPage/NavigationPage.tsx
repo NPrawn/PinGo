@@ -84,6 +84,12 @@ const TEMP_FLOOR_TRANSITION_LOCATION = {
 } as const;
 
 /**
+ * VPS/세션에는 기존 노드 353을 유지하지만, 경로는 하드코딩 좌표에 추가한 실제 노드에서 시작한다.
+ * 둘을 다시 하나로 합치면 VPS가 참조하지 못하는 358이 현재 위치 노드로 저장된다.
+ */
+const TEMP_FLOOR_TRANSITION_ROUTE_NODE_ID = 358;
+
+/**
  * 카메라 화면의 문구. 화살표가 가리키는 방향을 말로 한 번 더 적는다.
  *
  * 아래 안내 카드의 문구(`25m 직진하세요`)와 겹치지 않게 **방향만** 말한다. 거리는 카드가, 방향은
@@ -163,6 +169,25 @@ export function NavigationPage() {
   const navigate = useNavigate();
 
   /**
+   * 계단 6 완료 직후에는 현재 위치의 역할을 둘로 나눈다.
+   *
+   * - `currentNodeId` 353: VPS와 세션이 사용하는 기존 위치 노드
+   * - `routeStartNodeId` 358: 하드코딩 좌표에 정확히 놓인 경로 시작 노드
+   *
+   * 서버의 좌표 기반 진입점 재선택에만 맡기면 응답이나 캐시 상태에 따라 353부터 시작할 수 있다.
+   * 그러면 `경로 위 표시`가 실제 별 좌표를 353 쪽으로 즉시 당겨, 첫 358→357 구간을 건너뛴
+   * 것처럼 보인다. 이 위치에서만 358을 명시해 첫 구간을 항상 경로에 포함한다.
+   */
+  const atTemporaryFloorTransition =
+    currentNodeId === TEMP_FLOOR_TRANSITION_LOCATION.nodeId &&
+    currentFloorId === TEMP_FLOOR_TRANSITION_LOCATION.floorId &&
+    currentMapX === TEMP_FLOOR_TRANSITION_LOCATION.mapX &&
+    currentMapY === TEMP_FLOOR_TRANSITION_LOCATION.mapY;
+  const routeStartNodeId = atTemporaryFloorTransition
+    ? TEMP_FLOOR_TRANSITION_ROUTE_NODE_ID
+    : currentNodeId;
+
+  /**
    * 안내 화면에 도착했으면 재인식이 끝난 것이다.
    *
    * U-05의 CTA에 걸지 않고 여기서 지운다. 어떤 경로로 돌아와도(브라우저 뒤로가기, 다른 링크)
@@ -221,7 +246,15 @@ export function NavigationPage() {
    * 에서는 위치 인식이 좌표를 주지 못하는데, 조건에 넣으면 그 층에서 안내 자체를 받지 못한다.
    */
   const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
-  const origin = SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null;
+  /**
+   * 층 이동 완료 위치는 이미 정확한 경로 노드 358을 골랐으므로 좌표를 다시 보내지 않는다.
+   * 좌표가 있으면 백엔드가 목적지까지의 총거리를 기준으로 진입 노드를 재선택해, 명시한 358을
+   * 353이나 104로 바꿀 수 있다. 그 밖의 위치에서는 기존 좌표 기반 진입점 보정을 유지한다.
+   */
+  const origin =
+    SEND_CURRENT_POSITION && !atTemporaryFloorTransition
+      ? routeOriginOf(currentMapX, currentMapY)
+      : null;
   /**
    * 세부 안내 문장을 쓸 언어.
    *
@@ -233,7 +266,7 @@ export function NavigationPage() {
     queryKey: [
       'indoor-route',
       stationId,
-      currentNodeId,
+      routeStartNodeId,
       targetNodeId,
       route,
       waypointNodeIds,
@@ -246,14 +279,14 @@ export function NavigationPage() {
     queryFn: () =>
       createIndoorRoute({
         stationId: stationId!,
-        startNodeId: currentNodeId!,
+        startNodeId: routeStartNodeId!,
         targetNodeId: targetNodeId!,
         waypointNodeIds,
         routeType: route,
         language,
         ...(origin ?? {}),
       }),
-    enabled: stationId != null && currentNodeId != null && targetNodeId != null,
+    enabled: stationId != null && routeStartNodeId != null && targetNodeId != null,
     retry: false,
   });
   const routeResult = routeQuery.data;
@@ -362,7 +395,7 @@ export function NavigationPage() {
    * 따로 지우지 않아도 지난 진행도가 새 경로에 섞이지 않는다.
    */
   const routeKey = [
-    currentNodeId,
+    routeStartNodeId,
     targetNodeId,
     route,
     waypointNodeIds.join(','),
@@ -1374,12 +1407,8 @@ export function NavigationPage() {
               onClick={() => {
                 setCompletedVerticalStepKey(verticalStepKey);
                 if (!previewTransition && verticalDestination) {
-                  const { nodeId, forwardMap, ...indoorLocation } =
-                    TEMP_FLOOR_TRANSITION_LOCATION;
-                  const temporaryFloorCode = floorCodeOf(
-                    floorMaps,
-                    indoorLocation.floorId,
-                  );
+                  const { nodeId, forwardMap, ...indoorLocation } = TEMP_FLOOR_TRANSITION_LOCATION;
+                  const temporaryFloorCode = floorCodeOf(floorMaps, indoorLocation.floorId);
                   if (temporaryFloorCode) {
                     setPickedFloorCode(temporaryFloorCode);
                     setFloor(temporaryFloorCode as FloorId);
