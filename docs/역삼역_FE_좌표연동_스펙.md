@@ -1,6 +1,6 @@
 # 역삼역 FE 좌표 연동 스펙 (S15P11A206-276)
 
-> 최신화: 2026-08-01
+> 최신화: 2026-08-07 (마이그레이션 V29 / S15P11A206-359 기준)
 > 구현 상태: 미터→픽셀 렌더링과 Spring 위치 anchor/node 매핑은 구현됨(S15P11A206-128). 역변환·실제 평면도 자산 연동은 미완료다.
 > 8장 WebXR 정렬은 2026-07-31 AI·BE 협의로 `forwardMap` 출처가 확정됐고, 남겨뒀던 필드명·정규화 주체·`null` 허용 여부는 2026-08-01 구현과 함께 확정됐다(8.5).
 
@@ -98,8 +98,14 @@ function pixelToMeter(px, py, floor) {
 - **표시 스케일**: 프레임 픽셀은 원본 크기(§1) 기준. 렌더 크기가 다르면 배율 보정.
 - **z(높이)**: DB `route_node.map_z`는 존재하지만 현재 경로 API 응답에는 노출되지 않는다. 우선 프레임의 층별 `z`를 사용한다.
 - **방위(동서남북)**: +X는 진북이 아니라 승강장 축. 나침반·북쪽정렬·AR heading이 필요하면 `northBearing`(프레임↔진북 오프셋) 확정 후 표시 레이어에서 회전. **좌표는 안 바뀜.**
-- **커버 구간만 라우팅**: V5에서 B2 화장실·안내센터 접근 간선은 추가됐지만 EV4·ESC4·NURS·EVA 등 일부 시설은 여전히 그래프와 분리돼 있다.
+- ~~**커버 구간만 라우팅**~~ — **해소됐다.** V8이 B1·B2·B3 전 구간을 재시드했고 V21이 노드를
+  통로 중앙으로 재배치했다. V29 기준 노드 145개가 **연결 요소 1개**로 전부 이어져 있고 고립
+  노드는 없다(DB에서 확인). 다만 `elevator_only`는 B1↔B2에 엘리베이터가 없어 B1 출구에 닿지
+  못하는데, 이건 그래프 결함이 아니라 역삼역의 실제 시설 상태다.
+  → [`역삼역_route_node_naming.md`](역삼역_route_node_naming.md) §5
 - **provisional**: mpp(0.19)·z는 잠정. 277(COLMAP sim3) + 실측 층고 후 프레임 값만 갱신하면 FE 로직 변경 없이 반영됨.
+  실측 축척으로 갈아타는 시도가 한 번 있었지만(`V23` → `V24`로 원복) **지금 값은 여전히 0.19**이고,
+  어긋난 만큼은 XR 쪽 배율로 메우고 있다(§8.3.1).
 
 ## 7. 좌표 단위 — 확정
 
@@ -164,9 +170,9 @@ const f2 = anchor.forwardMap; // 지도 미터 평면 단위벡터
 const cosA = f1.x * f2.x + f1.y * f2.y; // 내적
 const sinA = f1.x * f2.y - f1.y * f2.x; // 2D 외적
 
-function xrToMeter(pose, anchor) {
-  const dX = pose.x - anchor.xr.X;
-  const dZ = pose.z - anchor.xr.Z; // 부호 반전 없음
+function xrToMeter(pose, anchor, distanceScale = 1) {
+  const dX = (pose.x - anchor.xr.X) * distanceScale;
+  const dZ = (pose.z - anchor.xr.Z) * distanceScale; // 부호 반전 없음
   return {
     x: anchor.x + (cosA * dX - sinA * dZ),
     y: anchor.y + (sinA * dX + cosA * dZ),
@@ -174,6 +180,35 @@ function xrToMeter(pose, anchor) {
   };
 }
 ```
+
+**`distanceScale`은 회전 전에 곱한다.** 등방 배율이라 회전과 순서를 바꿔도 결과는 같지만,
+구현([`mapAlignment.ts`](../frontend/src/features/xr-tracking/lib/mapAlignment.ts))이 먼저 곱하므로
+문서도 같은 순서로 적는다. 이 값의 의미는 §8.3.1이다.
+
+#### 8.3.1 이동거리 보정 배율 (S15P11A206-359)
+
+**XR은 실제 미터를 주는데 지도 좌표는 실제보다 크다.** 그래서 XR 변위를 그대로 더하면 내 점이
+실제보다 느리게 움직인다. 보정 배율은 두 조각의 곱이다.
+
+```
+distanceScale = routeDistanceScaleOf(route, floorId) × XR_DISTANCE_SCALE_MULTIPLIER
+```
+
+| 조각 | 값 | 출처 |
+|---|---|---|
+| `routeDistanceScaleOf` | 경로의 `지도 좌표 거리 합 ÷ step.distanceM 합` | 그 경로에서 그때그때 계산 |
+| `XR_DISTANCE_SCALE_MULTIPLIER` | **1.43** (상수) | 현장 테스트로 확정 |
+
+앞은 지도 좌표 한 칸이 실제 몇 미터인지를 **그 경로 위에서** 역산한 값이고, 뒤는 그것만으로
+메우지 못한 나머지를 현장에서 맞춘 상수다. 계산이 불가능하거나(경로 없음, `distanceM` 누락)
+`[0.25, 4]` 밖으로 튀면 앞 조각은 `1`로 떨어진다 — 틀린 배율로 점을 날려 보내는 것보다 안 곱하는
+쪽이 낫다.
+
+> **왜 데이터를 안 고치고 배율로 메우나.** 원래는 좌표계 자체를 줄이려 했다. `V23`이 B3 승강장
+> 실측 43m를 근거로 `k = 0.67363`을 적용해 mpp를 0.128로 내렸지만 `V24`로 원복했다.
+> 좌표계를 건드리면 COLMAP 앵커링 계수·시설 좌표·간선 거리가 전부 따라가야 하고 되돌리기도
+> 어렵다(→ [`ERD_초안.md`](ERD_초안.md) §5.1 `floor_map`). 지금은 **데이터는 0.19로 두고 XR 쪽에서만
+> 배율로 메우는** 방식이다. §6의 provisional 항목은 그대로 열려 있다.
 
 **이전 판(각도 뺄셈) 폐기 이유**: `yawOffset = mapYaw - xrYaw`를 그대로 회전 행렬에 넣었는데, 두 각도의 0도 기준과 증가 방향이 정의돼 있지 않았다. `yawDegOf`가 반환하는 값은 `+Y` 축 기준 우수 회전각 ψ이고 이때 전방은 `(-sin ψ, -cos ψ)`다. 지도 방위를 같은 방식으로 정의해 회전각을 풀면 필요한 회전은 `ψ - θ`인데 문서에는 `θ - ψ`가 들어가 있었다. 부호가 반대였다. 전방 벡터 방식은 이 규약 문제 자체를 없앤다.
 
