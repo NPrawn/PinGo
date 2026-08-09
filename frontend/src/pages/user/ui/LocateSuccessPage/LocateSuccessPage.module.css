@@ -1,0 +1,286 @@
+.body {
+  position: relative;
+  overflow: visible;
+  background: #071712;
+}
+
+.camera {
+  position: relative;
+  flex: 0 0 var(--camera-region-ratio);
+  min-height: 0;
+  overflow: visible;
+  background: radial-gradient(120% 90% at 50% 20%, #2b3833, #08120e);
+  border-bottom: 1px solid rgb(127 239 195 / 16%);
+}
+
+.topBar {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 54px;
+  padding: 8px 16px 0;
+}
+
+.scene {
+  position: absolute;
+  top: -46px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: 100%;
+  height: calc(100% + 46px);
+  opacity: 0.58;
+}
+
+/**
+ * 카메라 영상. 대체 그림과 같은 자리를 차지한다.
+ *
+ * `object-fit: cover`로 채운다. 영상 비율과 이 영역의 비율이 다른데(카메라는 보통 4:3 또는
+ * 16:9, 이 영역은 화면 절반) `contain`으로 두면 위아래에 검은 띠가 생긴다.
+ */
+.feed {
+  position: absolute;
+  top: -46px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: 100%;
+  height: calc(100% + 46px);
+  object-fit: cover;
+}
+
+.horizon {
+  position: absolute;
+  top: 53%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(127 239 195 / 42%), transparent);
+}
+
+.cornerLeft,
+.cornerRight {
+  position: absolute;
+  top: 70px;
+  width: 22px;
+  height: 22px;
+}
+
+.cornerLeft {
+  left: 16px;
+  border-top: 2px solid rgb(127 239 195 / 58%);
+  border-left: 2px solid rgb(127 239 195 / 58%);
+  border-radius: 8px 0 0;
+}
+
+.cornerRight {
+  right: 16px;
+  border-top: 2px solid rgb(127 239 195 / 58%);
+  border-right: 2px solid rgb(127 239 195 / 58%);
+  border-radius: 0 8px 0 0;
+}
+
+.cameraResult {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 60%);
+  transform: translate(-50%, -50%);
+}
+
+.cameraCheck {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 10px;
+  color: #052f21;
+  background: linear-gradient(135deg, var(--color-mint-highlight), var(--color-mint));
+  border: 2px solid rgb(255 255 255 / 55%);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 22px -8px rgb(60 216 160 / 70%),
+    inset 0 1px 0 rgb(255 255 255 / 50%);
+}
+
+.cameraResult strong {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.cameraResult > span:last-child {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: rgb(223 246 230 / 72%);
+}
+
+.cameraMeta {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 11px;
+  font-size: 9.5px;
+  color: rgb(223 246 230 / 72%);
+  background: rgb(6 19 16 / 72%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(127 239 195 / 18%);
+  border-radius: 11px;
+}
+
+.cameraMeta span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.cameraMeta strong {
+  color: var(--color-mint-highlight);
+}
+
+.confidenceDot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-mint);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(60 216 160 / 18%);
+}
+
+.panel {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex: 0 0 var(--content-region-ratio);
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  padding: 24px 18px 26px;
+  color: var(--color-ink);
+  background:
+    radial-gradient(220px 170px at 100% 0%, rgb(196 181 253 / 16%), transparent 68%),
+    var(--color-paper);
+  border-radius: 0;
+}
+
+.panelHead {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.panelIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border-radius: 12px;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  color: var(--color-mint-dark);
+}
+
+.panelHead h1 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.03em;
+}
+
+.locationCard {
+  padding: 14px;
+  margin-top: 0;
+}
+
+.locationRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.locationBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.locationBody b {
+  overflow: hidden;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.locationBody span {
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-sub);
+}
+
+.confirmedBadge {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+  align-items: center;
+  padding: 5px 7px;
+  font-size: 8.5px;
+  font-weight: 800;
+  color: var(--color-mint-dark);
+  background: var(--color-mint-tint);
+  border-radius: var(--radius-pill);
+}
+
+.locationMeta {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 10px;
+  margin-top: 10px;
+  font-size: 9.5px;
+  color: var(--color-sub);
+  border-top: 1px dashed rgb(15 44 34 / 10%);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 0;
+}
+
+.actions > a:first-child {
+  min-height: 48px;
+}
+
+.retake {
+  font-size: 11px;
+  text-align: center;
+}

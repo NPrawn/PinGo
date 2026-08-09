@@ -1,0 +1,31 @@
+/* Ported from prototype `.tag2` (admin tables) and `.conf` (confidence chip). */
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-mint-forest);
+  background: var(--color-mint-tint);
+  border-radius: 6px;
+}
+
+.pill {
+  padding: 3px 8px;
+  font-weight: 800;
+  border-radius: var(--radius-pill);
+}
+
+.warning {
+  color: #7a4a06;
+  background: #fdf0da;
+}
+
+.danger {
+  color: #8c2733;
+  background: #ffe4e7;
+}
+
+.neutral {
+  color: var(--color-sub);
+  background: var(--color-line-soft);
+}

@@ -1,0 +1,342 @@
+/* flex: none — 카드가 좁아질 때 검색창은 줄어들지 않고 결과 목록만 줄어든다. */
+.searchWrap {
+  position: relative;
+  flex: none;
+  margin-top: 28px;
+}
+
+.compact .searchWrap {
+  margin-top: 10px;
+}
+
+.compact .quickHead {
+  margin-top: 12px;
+  margin-bottom: 7px;
+}
+
+.compact .tiles {
+  gap: 6px;
+}
+
+/* 단계 카드 안에서는 남은 높이만 사용하고 결과 목록에 스크롤을 넘긴다. */
+.compact {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.compact .results {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.compact .tile {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  align-content: center;
+  height: 66px;
+  min-height: 66px;
+  padding: 9px 10px;
+  border-radius: 14px;
+}
+
+.compact .tileIcon {
+  flex: none;
+  place-self: center;
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border-radius: 9px;
+}
+
+.compact .tileMeta {
+  display: none;
+}
+
+.compact .tileBody {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  align-self: center;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+}
+
+.compact .tileBody > div {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+}
+
+.compact .tileTitle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: visible;
+  font-size: 11.5px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.compact .tileArrow {
+  display: none;
+}
+
+.searchField {
+  padding-right: 78px;
+  text-overflow: ellipsis;
+}
+
+.searchIcon {
+  position: absolute;
+  top: 18px;
+  left: 16px;
+  display: flex;
+  color: var(--color-sub);
+}
+
+.searchSubmit {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #3cd8a0, #065e42);
+  border: 0;
+  border-radius: 12px;
+}
+
+.resultsKicker {
+  flex: none;
+  margin: 0;
+}
+
+.resultsHead {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  margin: 28px 0 8px;
+}
+
+.quickReturn {
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 750;
+  color: var(--color-mint-darker);
+  cursor: pointer;
+  background: var(--color-mint-light);
+  border: 0;
+  border-radius: var(--radius-pill);
+}
+
+/* 부모(단계 카드)가 세로 flex 일 때 결과 목록이 남은 높이만 쓰도록 잇는 고리. */
+.root {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/*
+ * 결과가 많아도 검색창과 단계 헤더가 화면에 남도록 목록 안에서만 스크롤한다.
+ * 남은 공간에 맞춰 줄어들고, 두 행도 못 넣을 만큼 좁아지면 화면 전체 스크롤에 맡긴다.
+ */
+.results {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 148px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.result {
+  gap: 12px;
+  padding: 12px 14px;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.resultIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.resultBody {
+  flex: 1;
+}
+
+.resultName {
+  font-size: 14px;
+}
+
+.resultMeta {
+  font-size: 11.5px;
+  color: var(--color-sub);
+}
+
+.chevron {
+  color: var(--color-sub);
+}
+
+/* 목적지 하나를 처리하는 동안 그 줄에서 도는 표시. 화살표와 같은 자리를 차지한다. */
+.chooseSpinner {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 2px solid color-mix(in srgb, var(--color-mint-dark) 22%, transparent);
+  border-top-color: var(--color-mint-dark);
+  border-radius: 50%;
+  animation: destination-choose-spin 0.9s linear infinite;
+}
+
+@keyframes destination-choose-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chooseSpinner {
+    animation-duration: 2.4s;
+  }
+}
+
+.empty {
+  padding: 8px 2px;
+  font-size: 12.5px;
+  color: var(--color-sub);
+}
+
+/* Quick-destination grid — prototype `.qtiles` / `.qtile`. */
+.quickHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 28px 0 10px;
+}
+
+.quickKicker {
+  margin: 0;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  font: inherit;
+  color: var(--color-ink);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  background: rgb(255 255 255 / 85%);
+  backdrop-filter: blur(18px) saturate(1.2);
+  border: 1.5px solid rgb(255 255 255 / 90%);
+  border-radius: 20px;
+  box-shadow:
+    0 8px 18px -10px color-mix(in srgb, var(--color-ink) 12%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 95%);
+  transition:
+    transform 180ms ease,
+    box-shadow var(--duration-base) ease;
+}
+
+.tile:hover {
+  color: var(--color-ink);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 26px -12px color-mix(in srgb, var(--color-ink) 18%, transparent);
+}
+
+.tileIcon {
+  align-self: flex-start;
+}
+
+/* Title and meta sit left, the go-arrow right, on the same baseline. */
+.tileBody {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.tileTitle {
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.tileTitleLine {
+  display: block;
+}
+
+.tileMeta {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-sub);
+}
+
+.tileArrow {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  color: var(--color-mint-dark);
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+  border-radius: 50%;
+}
+
+:global(html[lang='en']) .searchSubmit {
+  right: 10px;
+  padding-inline: 9px;
+  font-size: 9.5px;
+}
+
+:global(html[lang='en']) .compact .tile {
+  gap: 6px;
+  padding-inline: 8px;
+}
+
+:global(html[lang='en']) .compact .tileTitle {
+  font-size: 9.5px;
+  line-height: 1.18;
+  overflow-wrap: normal;
+}
+
+:global(html[lang='en']) .tileTitleLine {
+  white-space: normal;
+}
+
+:global(html[lang='en']) .quickKicker {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+:global(html[lang='en']) .resultName {
+  font-size: 12.5px;
+}

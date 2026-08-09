@@ -1,0 +1,156 @@
+/* Ported from the prototype `.scr` stage plus the `pingo-runtime` overrides
+   that centred a single screen in the viewport. */
+.stage {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+
+  /* 모바일 브라우저의 100vh는 주소창을 포함한 높이다. 실제 보이는 만큼만 쓴다. */
+  min-height: 100dvh;
+}
+
+/* Ambient blobs the prototype drew with `.scr::before` / `.scr::after`. */
+.stage::before,
+.stage::after {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  content: '';
+  border-radius: 50%;
+}
+
+.stage::before {
+  top: 20px;
+  left: calc(50% - var(--phone-width) / 2 - 42px);
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(
+    circle at 30% 30%,
+    var(--color-mint-highlight),
+    var(--color-mint-dark)
+  );
+  filter: blur(38px);
+  opacity: 0.45;
+}
+
+.stage::after {
+  right: calc(50% - var(--phone-width) / 2 - 28px);
+  bottom: 20px;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle at 30% 30%, #ffc6bc, #ff8b7a);
+  filter: blur(42px);
+  opacity: 0.38;
+}
+
+/* Prototype `.phone` — base rules merged with the refine-layer override. */
+.phone {
+  --camera-region-ratio: 52%;
+  --content-region-ratio: 48%;
+
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: min(342px, 100% - 48px);
+  height: max(726px, calc(100vh - 24px));
+  height: max(726px, calc(100dvh - 24px));
+  margin: 24px 24px 0;
+  overflow: hidden;
+  background:
+    radial-gradient(220px 220px at 82% 10%, rgb(255 139 122 / 28%) 0%, transparent 60%),
+    radial-gradient(260px 260px at 12% 22%, rgb(165 216 255 / 30%) 0%, transparent 60%),
+    radial-gradient(300px 300px at 92% 92%, rgb(196 181 253 / 28%) 0%, transparent 62%),
+    radial-gradient(
+      340px 340px at 10% 90%,
+      color-mix(in srgb, var(--color-mint) 32%, transparent) 0%,
+      transparent 62%
+    ),
+    linear-gradient(180deg, #f6fbf8 0%, #e4efe7 100%);
+  border: 1.5px solid rgb(255 255 255 / 95%);
+  border-radius: 40px;
+  box-shadow:
+    0 40px 80px -24px color-mix(in srgb, var(--color-ink) 28%, transparent),
+    0 16px 32px -12px color-mix(in srgb, var(--color-ink) 14%, transparent),
+    inset 0 1.5px 0 rgb(255 255 255 / 100%),
+    inset 0 -1px 0 color-mix(in srgb, var(--color-ink) 5%, transparent);
+}
+
+/* Prototype `.phone.dark` — camera, navigation and call screens.
+   Retints the shared typography, as `.phone.dark .title` / `.sub` did. */
+.dark {
+  --screen-title-color: var(--color-paper);
+  --screen-sub-color: var(--color-mute);
+
+  color: #fff;
+  background:
+    radial-gradient(
+      260px 260px at 82% 10%,
+      color-mix(in srgb, var(--color-mint) 22%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(300px 300px at 12% 88%, rgb(196 181 253 / 18%) 0%, transparent 60%),
+    radial-gradient(240px 240px at 88% 88%, rgb(255 139 122 / 14%) 0%, transparent 60%),
+    linear-gradient(175deg, #12241c 0%, #08160f 100%);
+  border: 1.5px solid rgb(255 255 255 / 7%);
+  box-shadow:
+    0 40px 80px -24px rgb(0 0 0 / 60%),
+    0 16px 32px -12px rgb(0 0 0 / 40%),
+    inset 0 1.5px 0 rgb(255 255 255 / 8%);
+}
+
+/* Preserve the former status-bar height without rendering mock device indicators. */
+.statusBarSpace {
+  flex: none;
+  height: 46px;
+}
+
+/* Prototype `.body` — the phone shell's scroll area. */
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 6px 20px 22px;
+
+  /* 노치 기기의 홈 인디케이터를 피한다. 목업으로 볼 때는 0이라 변화가 없다. */
+  padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  overflow: hidden auto;
+}
+
+/* Prototype `.body.p0` — full-bleed screens (camera, map, call). */
+.flush {
+  padding: 0;
+}
+
+/* Prototype `.body-hero` — the roomier intro/success layout. */
+.hero {
+  padding: 44px 24px 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+/*
+  실제 기기에서는 목업을 벗고 화면을 꽉 채운다. 데스크톱·태블릿에서는 위의
+  고정 폭 폰 프레임을 그대로 둔다.
+
+  `width`를 함께 덮지 않으면 342px에 묶여, 390px 기기에서는 좌우가 뜨고
+  320px 기기에서는 가로 스크롤이 생긴다.
+*/
+@media (width <= 600px) {
+  .phone {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .stage::before,
+  .stage::after {
+    display: none;
+  }
+}

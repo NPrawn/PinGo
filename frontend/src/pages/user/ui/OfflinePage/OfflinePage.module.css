@@ -1,0 +1,29 @@
+.body {
+  position: relative;
+  background: #0a1511;
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  filter: brightness(0.55);
+}
+
+.previewHeader {
+  flex: 0 0 54px;
+  background: #07130f;
+}
+
+.previewCamera {
+  flex: 0 0 46%;
+  background:
+    linear-gradient(135deg, transparent 49.7%, rgb(127 239 195 / 16%) 50%, transparent 50.3%),
+    radial-gradient(120% 90% at 50% 20%, #33423c, #0d1814);
+}
+
+.previewMap {
+  flex: 1;
+  background:
+    linear-gradient(90deg, transparent 20%, rgb(86 145 111 / 8%) 20% 34%, transparent 34%), #f4f8f4;
+}

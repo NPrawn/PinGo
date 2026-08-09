@@ -1,0 +1,94 @@
+import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { ConsultCta } from '@/features/consult-request';
+import { USER_ROUTES } from '@/shared/config';
+import { Blob, BlobHero, ButtonLink, HeadingMarker, Icon, MapPreview } from '@/shared/ui';
+import { PhoneFrame } from '@/widgets/phone-frame';
+import styles from './ReroutePage.module.css';
+
+const FLOORS = ['1F', 'B1', 'B2'];
+
+/**
+ * Screen 16 — the user has drifted off the route.
+ *
+ * The prototype layered this dialog over a dimmed copy of the navigation
+ * screen; that framing is kept so the context stays visible.
+ */
+export function ReroutePage() {
+  const { t } = useTranslation();
+  return (
+    <PhoneFrame
+      dark
+      layout="flush"
+      bodyClassName={styles.body}
+    >
+      <>
+        <div className={styles.backdrop} aria-hidden>
+          <div className={styles.cam}>
+            <div className={styles.arrow}>↑</div>
+          </div>
+          <div className={styles.mapWrap}>
+            <MapPreview className={styles.map} dest={{ left: '74%', top: '22%' }}>
+              <div className={styles.floorButtons}>
+                {FLOORS.map((floor, index) => (
+                  <span
+                    key={floor}
+                    className={[styles.floorButton, index === 0 && styles.floorButtonOn]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    {floor}
+                  </span>
+                ))}
+              </div>
+              <HeadingMarker style={{ left: '40%', top: '70%' }} />
+            </MapPreview>
+          </div>
+        </div>
+
+        <div className={styles.scrim}>
+          <div className={styles.dialog} role="alertdialog" aria-label={t('user.reroute.label')}>
+            <Link to={USER_ROUTES.NAVIGATION} className={styles.dismiss}>
+              <span className={styles.dismissLabel}>{t('user.reroute.ignore')}</span>
+              <span className={styles.dismissIcon} aria-hidden>
+                ✕
+              </span>
+            </Link>
+
+            <BlobHero className={styles.hero}>
+              <Blob tone="coral" slot="main" style={{ width: 76, height: 76 }} />
+              <Blob
+                tone="lilac"
+                slot="a"
+                style={{ top: '6%', right: '26%', width: 26, height: 26 }}
+              />
+              <Blob
+                tone="sky"
+                slot="c"
+                style={{ bottom: '10%', left: '26%', width: 20, height: 20 }}
+              />
+              <div className={styles.heroIcon}>
+                <Icon name="warning" size={30} />
+              </div>
+            </BlobHero>
+
+            <h2 className={styles.heading}>{t('user.reroute.title')}</h2>
+            <p className={styles.lede}>{t('user.reroute.description')}</p>
+
+            <div className={styles.actions}>
+              <ButtonLink
+                to={USER_ROUTES.CAPTURE_PORTRAIT}
+                variant="secondary"
+                className={styles.action}
+              >
+                <Icon name="refresh" size={15} />
+                {t('user.reroute.relocalize')}
+              </ButtonLink>
+              <ConsultCta className={styles.action} />
+            </div>
+          </div>
+        </div>
+      </>
+    </PhoneFrame>
+  );
+}

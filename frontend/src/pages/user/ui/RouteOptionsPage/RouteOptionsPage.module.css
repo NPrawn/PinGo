@@ -1,0 +1,520 @@
+.body {
+  position: relative;
+  overflow: visible;
+  background: #071712;
+}
+
+.camera {
+  position: relative;
+  flex: 0 0 var(--camera-region-ratio);
+  min-height: 0;
+  overflow: visible;
+  background: radial-gradient(120% 100% at 50% 20%, #2b3833, #08120e);
+}
+
+.topBar {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 54px;
+  padding: 8px 16px 0;
+}
+
+.routeHeader {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr);
+  gap: 6px;
+  align-items: stretch;
+  margin: 6px 10px 0;
+}
+
+.routePoint {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  min-width: 0;
+  min-height: 78px;
+  padding: 10px 12px;
+  background: rgb(6 19 16 / 82%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 15px;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 16%);
+}
+
+.routeLabel {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.routePoint small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routePoint small {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgb(223 246 230 / 72%);
+}
+
+.routePoint strong {
+  margin-top: 4px;
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: #fff;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.pointDot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: var(--color-mint);
+  border: 2px solid #dff6e6;
+  border-radius: 50%;
+}
+
+.pointDotDestination {
+  background: var(--color-coral);
+}
+
+.routeArrow {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--color-mint-highlight);
+  background: rgb(6 19 16 / 82%);
+  border: 1px solid rgb(127 239 195 / 22%);
+  border-radius: 50%;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 16%);
+}
+
+.scene {
+  position: absolute;
+  top: -46px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: 100%;
+  height: calc(100% + 46px);
+  opacity: 0.62;
+}
+
+/* 카메라 영상. 대체 그림과 같은 자리를 채운다. 비율이 달라 cover로 자른다. */
+.feed {
+  position: absolute;
+  top: -46px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: 100%;
+  height: calc(100% + 46px);
+  object-fit: cover;
+}
+
+.cameraHint {
+  position: absolute;
+  right: 0;
+  bottom: 18px;
+  left: 0;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: #dff6e6;
+  text-shadow: 0 2px 8px #000;
+}
+
+.panel {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex: 0 0 var(--content-region-ratio);
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  padding: 13px 0 24px;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border-radius: 0;
+}
+
+.panelHead {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px 9px;
+}
+
+.eyebrow {
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  color: var(--color-mint-dark);
+}
+
+.panelHead h1 {
+  margin: 3px 0 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+/*
+  이 경로로 나가면 어디로 나오는지. `7번 출입구 → 강남파이낸스센터` 한 줄이다.
+
+  유형을 고르는 실제 판단 근거라 카드에서 가장 눈에 띄어야 한다. 목적지 이름이 길면
+  그쪽만 줄인다 — 출구 이름이 잘리면 무엇을 고르는지 알 수 없다.
+*/
+.optionRoute {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-top: 7px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.optionExit {
+  flex: none;
+  font-weight: 750;
+  color: var(--color-mint-dark);
+}
+
+.optionArrow {
+  flex: none;
+  color: var(--color-sub);
+}
+
+.optionDestination {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  color: var(--color-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionList {
+  display: flex;
+  /*
+    남는 공간을 목록이 흡수한다.
+
+    패널이 space-between 이라, 목록이 자기 내용만큼만 차지하면 CTA 와의 사이가 아니라
+    목록 자체가 아래로 밀린다. 카드가 한 장이거나 없을 때 목록이 패널 바닥에 붙어 보이던
+    원인이다. flex-start 로 카드를 위에 고정한다.
+  */
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+  padding: 0 20px;
+}
+
+/*
+  경로를 못 그리는 상태. 카드가 채우던 자리를 그대로 채운다.
+
+  문구만 남기면 패널에 빈 칸이 생기고, space-between 때문에 그 문구가 바닥에 붙는다.
+  아이콘·제목·설명·행동을 세로 가운데에 두어 의도한 화면으로 읽히게 한다.
+*/
+.emptyState {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 16px 28px;
+  text-align: center;
+}
+
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 4px;
+  color: var(--color-mint-dark);
+  background: var(--color-line-soft);
+  border-radius: 50%;
+}
+
+.emptyTitle {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--color-ink);
+}
+
+.emptyBody {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-sub);
+  overflow-wrap: break-word;
+}
+
+.emptyAction {
+  margin-top: 12px;
+}
+
+/* 로딩 중 카드 자리 표시자. 실제 카드(min-height 88px)와 같은 크기라 배치가 튀지 않는다. */
+.optionSkeleton {
+  min-height: 88px;
+  background: var(--color-line-soft);
+  border-radius: 16px;
+  opacity: 0.55;
+  animation: optionSkeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes optionSkeletonPulse {
+  50% {
+    opacity: 0.28;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .optionSkeleton {
+    animation: none;
+  }
+}
+
+/* 로딩 상태를 보조기술에만 알린다. 화면에는 자리 표시자가 그 역할을 한다. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.option {
+  gap: 11px;
+  min-height: 82px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1.5px solid var(--color-line-soft);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.option:hover {
+  background: #fff;
+  transform: none;
+}
+
+.option[aria-pressed='true'] {
+  border: 1.5px solid color-mix(in srgb, var(--color-mint) 72%, white);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-mint) 10%, transparent),
+    0 8px 20px rgb(36 102 77 / 8%);
+}
+
+.optionIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--color-mint-dark);
+  background: var(--color-mint-tint);
+  border-radius: 11px;
+}
+
+.optionBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.optionHead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.optionName {
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.optionMetrics {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border: 1px solid color-mix(in srgb, var(--color-mint) 28%, transparent);
+  border-radius: var(--radius-pill);
+}
+
+.optionMetrics strong {
+  font-weight: 650;
+}
+
+.optionMetrics span {
+  color: var(--color-mint-mid);
+}
+
+/* 계단 포함 여부. FR-U-009가 요구하는 표시라 아이콘과 함께 한 줄을 준다. */
+.optionMeta {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-top: 6px;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-sub);
+}
+
+/**
+ * 이용할 수 없는 경로.
+ *
+ * 목록에서 지우지 않고 흐리게 남긴다. 지워 버리면 사용자는 그런 경로를 검토했다는 사실도,
+ * 왜 계단으로 안내받는지도 알 수 없다.
+ */
+.optionUnavailable {
+  background: var(--color-bg-soft, #f7f8f8);
+  border-style: dashed;
+  opacity: 0.72;
+}
+
+.optionUnavailable:hover {
+  background: var(--color-bg-soft, #f7f8f8);
+  border-color: var(--color-line-soft);
+  transform: none;
+}
+
+.optionUnavailable .optionIcon {
+  color: var(--color-sub);
+  background: color-mix(in srgb, var(--color-sub) 10%, transparent);
+}
+
+.optionReason {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--color-sub);
+  overflow-wrap: break-word;
+}
+
+.selectionToast {
+  position: absolute;
+  top: 54%;
+  left: 50%;
+  z-index: 10;
+  width: max-content;
+  max-width: calc(100% - 40px);
+  padding: 8px 13px;
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(223 246 230 / 92%);
+  pointer-events: none;
+  background: rgb(6 19 16 / 82%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(127 239 195 / 30%);
+  border-radius: 11px;
+  box-shadow:
+    0 7px 18px rgb(0 0 0 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 7%);
+  animation: selectionToast 1.4s ease forwards;
+}
+
+@keyframes selectionToast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.98);
+  }
+
+  14%,
+  76% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -5px) scale(0.99);
+  }
+}
+
+.cta {
+  margin-top: 0;
+  padding: 16px 20px 0;
+}
+
+/* English labels are longer, so compact only the English route-selection layout. */
+:global(html[lang='en']) .routePoint {
+  min-height: 68px;
+  padding: 8px 10px;
+}
+
+:global(html[lang='en']) .routePoint small { font-size: 9px; }
+:global(html[lang='en']) .routePoint strong { font-size: 11.5px; }
+:global(html[lang='en']) .panelHead { padding-bottom: 7px; }
+:global(html[lang='en']) .panelHead h1 { font-size: 16px; }
+:global(html[lang='en']) .optionList { gap: 6px; }
+
+:global(html[lang='en']) .option {
+  min-height: 76px;
+  padding: 7px 10px;
+  gap: 9px;
+}
+
+:global(html[lang='en']) .optionIcon { width: 34px; height: 34px; }
+:global(html[lang='en']) .optionName { font-size: 13px; }
+:global(html[lang='en']) .optionMetrics { padding: 4px 7px; font-size: 10px; }
+
+:global(html[lang='en']) .optionMeta,
+:global(html[lang='en']) .optionRoute {
+  margin-top: 4px;
+  font-size: 10.5px;
+}
+
+:global(html[lang='en']) .cta { padding-top: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .selectionToast {
+    animation: none;
+    transform: translateX(-50%);
+  }
+}

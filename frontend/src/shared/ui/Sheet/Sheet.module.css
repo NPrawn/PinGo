@@ -1,0 +1,47 @@
+/* Ported from prototype `.ov` (scrim) and `.sheet` (bottom sheet).
+   Both are absolutely positioned inside the phone frame, not the viewport. */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: flex-end;
+  background: rgb(10 10 12 / 55%);
+}
+
+.centered {
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.sheet {
+  width: 100%;
+  padding: 22px 20px 26px;
+  background: var(--color-paper);
+  border-radius: 22px 22px 0 0;
+}
+
+.dialog {
+  width: 100%;
+  padding: 22px 20px;
+  background: var(--color-paper);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+/*
+  열릴 때 옮겨 받은 포커스에 테두리를 그리지 않는다.
+
+  이 요소는 `tabIndex=-1` 컨테이너라 사용자가 조작하는 대상이 아니다. 스크린리더가 시트
+  안에서 읽기 시작하도록 포커스만 옮겨 두는 자리이므로, 포커스 표시는 안에 있는 버튼들이
+  각자 한다.
+
+  지우지 않으면 시트가 뜨는 방식에 따라 테두리가 생겼다 말았다 한다 — 크롬은 직전에
+  포인터 입력이 있었으면 링을 숨기고 없으면 그린다. 클릭으로 여는 모달(권한 안내)에는
+  안 보이고 화면 진입과 동시에 뜨는 모달(XR 안내)에는 보였다.
+*/
+.sheet:focus,
+.dialog:focus {
+  outline: none;
+}

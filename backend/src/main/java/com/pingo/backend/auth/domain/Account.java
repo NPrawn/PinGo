@@ -1,0 +1,107 @@
+package com.pingo.backend.auth.domain;
+
+import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Account {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long accountId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private AccountType accountType;
+
+    private Long stationId;
+
+    @Column(nullable = false, unique = true)
+    private String loginId;
+
+    @Column(nullable = false)
+    private String passwordHash;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length =  20)
+    private CounselorStatus status;
+
+    @Column(nullable = false)
+    private boolean isActive;
+
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate(){
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate(){
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public static Account signUpCounselor(String loginId, String passwordHash, String name, Long stationId){
+        Account account = new Account();
+        account.accountType = AccountType.COUNSELOR;
+        account.loginId = loginId;
+        account.passwordHash = passwordHash;
+        account.name = name;
+        account.stationId = stationId;
+        // 승인 전에도 상담 가능이 기본값이다. 승인 후 상담자가 직접 바꿀 수 있다.
+        account.status = CounselorStatus.AVAILABLE;
+        account.isActive = false;
+        return account;
+    }
+
+    public static Account signUpAdmin(String loginId, String passwordHash, String name) {
+        Account account = new Account();
+        account.accountType = AccountType.ADMIN;
+        account.loginId = loginId;
+        account.passwordHash = passwordHash;
+        account.name = name;
+        account.stationId = null;
+        account.status = null;
+        account.isActive = true;
+        return account;
+    }
+
+    public void approve(){
+        this.isActive = true;
+        if (this.accountType == AccountType.COUNSELOR && this.status == null) {
+            this.status = CounselorStatus.AVAILABLE;
+        }
+    }
+
+    public void deactivate(){
+        this.isActive = false;
+    }
+
+    public void changeStation(Long stationId){
+        this.stationId = stationId;
+    }
+
+    public void changeName(String name){ this.name = name; }
+
+    public void changePassword(String passwordHash){
+        this.passwordHash = passwordHash;
+    }
+
+    public void changeStatus(CounselorStatus status){
+        this.status = status;
+    }
+}

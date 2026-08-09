@@ -1,0 +1,20 @@
+/* Ported from prototype `.pager-dots`. */
+.dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin: 14px 0 0;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  background: color-mix(in srgb, var(--color-ink) 15%, transparent);
+  border-radius: 50%;
+}
+
+.on {
+  width: 22px;
+  background: linear-gradient(90deg, var(--color-mint), var(--color-mint-darker));
+  border-radius: 4px;
+}

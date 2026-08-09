@@ -1,0 +1,13 @@
+/* Ported from prototype `.card` (base + refine-layer glass elevation). */
+.card {
+  padding: 14px;
+  background: rgb(255 255 255 / 72%);
+  backdrop-filter: blur(22px) saturate(1.3);
+  border: 1.5px solid rgb(255 255 255 / 95%);
+  border-radius: 20px;
+  box-shadow:
+    0 10px 26px -10px color-mix(in srgb, var(--color-ink) 14%, transparent),
+    0 3px 8px -3px color-mix(in srgb, var(--color-ink) 6%, transparent),
+    inset 0 1.5px 0 rgb(255 255 255 / 95%),
+    inset 0 -1px 0 color-mix(in srgb, var(--color-ink) 3%, transparent);
+}

@@ -1,0 +1,156 @@
+/* flex: none — 카드가 좁아질 때 검색창과 라벨은 줄어들지 않고 목록만 줄어든다. */
+.searchWrap {
+  position: relative;
+  flex: none;
+  margin-top: 16px;
+}
+
+.searchIcon {
+  position: absolute;
+  top: 18px;
+  left: 16px;
+  display: flex;
+  color: var(--color-sub);
+}
+
+.searchSubmit {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #3cd8a0, #065e42);
+  border: 0;
+  border-radius: 12px;
+}
+
+.sectionLabel {
+  flex: none;
+  margin: 14px 0 7px;
+}
+
+/* 목적지 검색과 같은 규칙. 남은 높이에 맞춰 줄어들고 목록 안에서만 스크롤한다. */
+.list {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 148px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.row {
+  padding: 10px 12px;
+}
+
+.stationBlob {
+  width: 28px;
+  height: 28px;
+}
+
+.rowBody {
+  flex: 1;
+}
+
+.name {
+  font-size: 14.5px;
+}
+
+.line {
+  font-size: 11px;
+  color: var(--color-sub);
+}
+
+.dist {
+  font-size: 11.5px;
+  color: var(--color-sub);
+}
+
+.hereBadge {
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #0ea36f;
+  background: linear-gradient(135deg, #d1f5e4, #b8ecd4);
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 60%);
+}
+
+/* 외부 검색으로만 찾았거나 데이터가 아직 없는 역. 보이되 고를 수 없다는 걸 드러낸다. */
+.rowUnavailable {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.row:disabled {
+  opacity: 0.55;
+}
+
+/* 준비 중 배지. 현위치 배지와 같은 모양에 색만 죽인다. */
+.soonBadge {
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--color-sub);
+  background: rgb(0 0 0 / 5%);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 8px 2px;
+  font-size: 12.5px;
+  color: var(--color-sub);
+}
+
+:global(html[lang='en']) .searchSubmit {
+  right: 10px;
+  padding-inline: 9px;
+  font-size: 9.5px;
+}
+
+:global(html[lang='en']) .sectionLabel {
+  font-size: 8.8px;
+  letter-spacing: 0.075em;
+  white-space: nowrap;
+}
+
+:global(html[lang='en']) .name {
+  font-size: 11.5px;
+}
+
+:global(html[lang='en']) .line,
+:global(html[lang='en']) .dist {
+  font-size: 8.8px;
+}
+
+:global(html[lang='en']) .row {
+  flex: 0 0 68px;
+  gap: 8px;
+  height: 68px;
+  min-height: 0;
+  padding: 6px 9px;
+  box-sizing: border-box;
+}
+
+:global(html[lang='en']) .list {
+  gap: 4px;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+:global(html[lang='en']) .stationBlob {
+  width: 24px;
+  height: 24px;
+}
+
+:global(html[lang='en']) .hereBadge,
+:global(html[lang='en']) .soonBadge {
+  padding-inline: 7px;
+  font-size: 8.5px;
+}

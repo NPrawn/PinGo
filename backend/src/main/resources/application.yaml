@@ -1,0 +1,119 @@
+spring:
+  application:
+    name: backend
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 15MB
+
+app:
+  file:
+    upload-dir: uploads
+    url-prefix: /uploads
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://jenkins.example.invalid}
+
+exit:
+  arrival:
+    # 출구 도착으로 판정하는 평면 거리(m). FR-U-011.
+    # 위치 오차(역삼역 B1 프레임 미검증 최대 4.4m + provisional 축척 1~1.6m)보다 커야 하고,
+    # 가장 가까운 출구 쌍(7번·8번, 18.3m)의 절반보다는 작아야 한다.
+    # B1 프레임 확정(S15P11A206-314)과 sim3 정합 후 5~6m 로 조일 수 있다.
+    threshold-m: ${EXIT_ARRIVAL_THRESHOLD_M:10.0}
+
+# COLMAP 좌표 -> 캐노니컬 평면도 좌표(미터) 층별 변환 (S15P11A206-128)
+#
+#   canonicalX = m[0]*cx + m[1]*cy + m[2]*cz + offset[0]
+#   canonicalY = m[3]*cx + m[4]*cy + m[5]*cz + offset[1]
+#
+# 층마다 별개의 COLMAP 재구성이라 축척·좌표계가 서로 다르다. 통합 변환은 없다.
+# 출처: colmap_aliked_lightglue_v3 의 B2/sparse/0 · B3/sparse/1 에 대해 재정합한 값.
+# B1 은 COLMAP 커버가 없어 항목 자체가 없다. 없는 층은 앵커링을 건너뛴다.
+# accuracy-m 은 leave-one-out 평균이다. 기준점 위에서 잰 in-sample 잔차(B2 0.423 · B3 0.594)는
+# 그 기준점으로 맞춘 값이라 낙관적이라서, 클라이언트가 정확도 원으로 쓸 값은 일반화 오차를 싣는다.
+vps:
+  anchoring:
+    floors:
+      B2:
+        station-id: 1
+        m: [0.157222117, -0.906216753, 5.731709510, 5.568476835, -1.589723009, -0.404089100]
+        offset: [-40.354147323, 22.557001580]
+        nominal-z: 0.0
+        accuracy-m: 0.497
+      B3:
+        station-id: 1
+        m: [-2.468273427, -1.090468751, 3.101513306, 3.148597120, 0.331852178, 2.622420809]
+        offset: [-27.907908218, 24.804151243]
+        nominal-z: -5.0
+        accuracy-m: 1.095
+
+ai:
+  localization:
+    base-url: ${AI_LOCALIZATION_BASE_URL:http://localhost:8000}
+    internal-token: ${AI_LOCALIZATION_INTERNAL_TOKEN:}
+    connect-timeout-ms: ${AI_LOCALIZATION_CONNECT_TIMEOUT_MS:300}
+    read-timeout-ms: ${AI_LOCALIZATION_READ_TIMEOUT_MS:6000}
+    # 과도기 설정: vps_map의 활성 버전 정책과 운영 API가 정해지면 DB 조회로 이관한다.
+    station-map-sets:
+      1: ${AI_LOCALIZATION_STATION_1_MAP_SET_VERSION:YS-MULTI-2026-07-24.1}
+
+kakao:
+  local:
+    base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
+    rest-api-key: ${KAKAO_REST_API_KEY:}
+    connect-timeout-ms: ${KAKAO_LOCAL_CONNECT_TIMEOUT_MS:1000}
+    read-timeout-ms: ${KAKAO_LOCAL_READ_TIMEOUT_MS:3000}
+
+signaling:
+  websocket:
+    allowed-origin-patterns: ${SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://jenkins.example.invalid}
+    # SDP 한 통이 들어갈 크기. 기본값 8KB 로는 offer 가 잘려 연결이 1009 로 끊긴다.
+    # WebRTC SDP can grow well beyond the container default as codecs and ICE candidates accumulate.
+    max-text-message-buffer-size: ${SIGNALING_WEBSOCKET_MAX_TEXT_MESSAGE_BUFFER_SIZE:1048576}
+  access-token:
+    expiration-ms: ${SIGNALING_ACCESS_TOKEN_EXPIRATION_MS:600000}
+  room:
+    cleanup:
+      expiration-minutes: ${SIGNALING_ROOM_EXPIRATION_MINUTES:30}
+      fixed-delay-ms: ${SIGNALING_ROOM_CLEANUP_FIXED_DELAY_MS:60000}
+
+webrtc:
+  ice:
+    stun-urls: ${WEBRTC_STUN_URLS:stun:stun.l.google.com:19302}
+    turn-urls: ${WEBRTC_TURN_URLS:}
+    turn-username: ${WEBRTC_TURN_USERNAME:}
+    turn-credential: ${WEBRTC_TURN_CREDENTIAL:}
+
+summary:
+  api:
+    # SSAFY GMS 프록시를 통해 Gemini 를 부른다. 발급받는 키가 구글 키 형식(`AIza...`)이
+    # 아니라서 구글 엔드포인트로 직접 보내면 거절된다.
+    base-url : ${SUMMARY_API_BASE_URL:https://gms.ssafy.io/gmsapi/generativelanguage.googleapis.com/v1beta}
+    key : ${GMS_KEY:dummy-key}
+    # GMS 가 열어 둔 모델명. `thinkingConfig.thinkingBudget` 은 2.5 전용 필드라 모델을
+    # 3.x 로 올릴 때 호출 본문도 함께 손봐야 한다.
+    model : ${SUMMARY_API_MODEL:gemini-2.5-flash-lite}
+
+# 실시간 자막 번역. 요약과 같은 키·엔드포인트를 쓰되 모델과 대기 시간은 따로 잡는다.
+# 자막은 훨씬 자주·짧게 부르고, 늦게 온 번역은 이미 지나간 말이라 쓸모가 없다.
+translation:
+  api:
+    model : ${TRANSLATION_API_MODEL:${SUMMARY_API_MODEL:gemini-2.5-flash-lite}}
+    read-timeout-ms : ${TRANSLATION_API_READ_TIMEOUT_MS:6000}
+
+# 발화 받아쓰기. 브라우저 음성 인식이 `getUserMedia` 와 마이크를 다투다 죽는 문제(안드로이드)
+# 때문에, 화면이 자기 마이크를 녹음해 보내면 여기서 모델에 맡긴다.
+#
+# 파일 업로드와 음성 분석이 필요하므로 번역보다 긴 제한 시간을 둔다.
+transcription:
+  api:
+    # GMS의 OpenAI 호환 파일 전사 API. 요약용 Gemini 엔드포인트와 경로가 다르다.
+    base-url : ${TRANSCRIPTION_API_BASE_URL:https://gms.ssafy.io/gmsapi/api.openai.com/v1}
+    key : ${TRANSCRIPTION_API_KEY:${GMS_KEY:dummy-key}}
+    model : ${TRANSCRIPTION_API_MODEL:whisper-1}
+    read-timeout-ms : ${TRANSCRIPTION_API_READ_TIMEOUT_MS:15000}

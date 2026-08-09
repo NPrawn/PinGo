@@ -1,0 +1,21 @@
+#!/bin/sh
+
+COMMIT_MSG_FILE="$1"
+BRANCH_NAME="$(git branch --show-current)"
+JIRA_KEY="$(printf "%s" "$BRANCH_NAME" | grep -oE 'S15P11A206-[0-9]+' | head -n 1)"
+
+if [ -z "$JIRA_KEY" ]; then
+  exit 0
+fi
+
+if grep -qE 'S15P11A206-[0-9]+' "$COMMIT_MSG_FILE"; then
+  exit 0
+fi
+
+FIRST_LINE="$(sed -n '1p' "$COMMIT_MSG_FILE")"
+
+if [ -z "$FIRST_LINE" ]; then
+  exit 0
+fi
+
+sed -i "1s/$/ $JIRA_KEY/" "$COMMIT_MSG_FILE"

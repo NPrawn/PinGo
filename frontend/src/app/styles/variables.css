@@ -1,0 +1,113 @@
+/**
+ * PinGo design tokens.
+ *
+ * Ported from the prototype `:root` block. The prototype declared a base
+ * palette and then overrode most of it in a later "palette refresh" block;
+ * only the final effective values are kept here.
+ */
+:root {
+  /* Brand — mint */
+  --color-mint: #3cd8a0;
+  --color-mint-dark: #0ea36f;
+  --color-mint-darker: #065e42;
+  --color-mint-deep: #0b7f58;
+  --color-mint-light: #c7f0dd;
+  --color-mint-tint: #e8f6ee;
+  --color-mint-highlight: #7fefc3;
+  --color-mint-highlight-soft: #b8f5da;
+
+  /* Legacy brand ramp — the palette refresh left these three in place */
+  --color-mint-mid: #3eb489; /* prototype --vio */
+  --color-mint-forest: #0f5a3e; /* prototype --viod */
+  --color-mint-veil: #dff6e6; /* prototype --viol */
+
+  /* Accents */
+  --color-coral: #ff8b7a;
+  --color-lilac: #c4b5fd;
+  --color-sky: #a5d8ff;
+  --color-gold: #f0b36a;
+  --color-red: #ff7a85;
+
+  /* 안내 표시 — 지도에서 시설(민트)과 갈라놓는 파스텔 레드 계열.
+     시설·현재위치·경로가 모두 민트여서 무엇이 내 위치이고 무엇이 갈 길인지 구분되지 않았다.
+     세 단계를 두는 이유는 겹쳐 그리기 때문이다: 바깥 테두리(veil) → 선(route) → 도착점(deep). */
+  --color-route: #ff7f92;
+  --color-route-veil: #ffd0d8;
+  --color-route-deep: #c9455e;
+
+  /* 경유지가 있을 때 다리마다 쓰는 명도 단계.
+     **지금 걷는 구간이 가장 진하다.** 남은 길은 맥락이고 지금 갈 길이 지시다 — 목적지로 갈수록
+     진해지게 두면 강조가 거꾸로 걸린다.
+     한 색의 명도로만 나누는 이유는 지도에 이미 민트(시설)와 레드(경로)가 있어서다 —
+     여기에 다른 색을 더하면 무엇이 무엇인지 다시 구분되지 않는다. */
+  --color-route-near: #d94e6a;
+  --color-route-far: #ffb8c2;
+
+  /* Surfaces */
+  --color-background: #e6f0e9;
+  --color-cream: #eff6f0;
+  --color-paper: #f4fbf5;
+  --color-surface: #f6fbf8;
+  --color-dark: #0a1f17;
+  --color-dark-soft: #14201a;
+
+  /* Text */
+  --color-ink: #0a2e22;
+  --color-sub: #5b6e64;
+  --color-mute: #8fa398;
+
+  /* Lines */
+  --color-line: #cfe2d5;
+  --color-line-soft: #e4ede6;
+
+  /* Semantic aliases — prefer these in components */
+  --color-primary: var(--color-mint-dark);
+  --color-primary-strong: var(--color-mint-darker);
+  --color-text: var(--color-ink);
+  --color-text-sub: var(--color-sub);
+  --color-danger: var(--color-red);
+  --color-warning: var(--color-gold);
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  /* Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.375rem;
+  --radius-pill: 999px;
+
+  /* Typography */
+  --font-family-base: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-size-xs: 0.6875rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.9375rem;
+  --font-size-lg: 1.125rem;
+  --font-size-title: 1.5rem;
+
+  /* Elevation */
+  --shadow-sm: 0 4px 10px -4px rgb(15 44 34 / 15%);
+  --shadow-md: 0 10px 24px -12px rgb(10 46 34 / 28%);
+  --shadow-lg: 0 18px 44px -18px rgb(10 46 34 / 38%);
+  --shadow-glow: 0 10px 26px -10px rgb(14 163 111 / 55%);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 140ms;
+  --duration-base: 240ms;
+
+  /* Device frame — the prototype phone canvas */
+  --phone-width: 338px;
+  --phone-height: 722px;
+
+  /* Layers */
+  --z-sticky: 100;
+  --z-overlay: 1000;
+  --z-toast: 1100;
+}

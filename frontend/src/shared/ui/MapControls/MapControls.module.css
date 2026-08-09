@@ -1,0 +1,173 @@
+/* Ported from prototype `.frail` / `.frb` / `.factog` / `.facpin` / `.heading` —
+   the controls layered over an indoor map. */
+
+.rail {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.railButton {
+  width: 66px;
+  padding: 9px 0;
+  font: 700 11px/1.3 var(--font-family-base);
+  color: var(--color-sub);
+  text-align: center;
+  background: #fff;
+  border: 1.5px solid var(--color-line-soft);
+  border-radius: 10px;
+}
+
+.railButtonOn {
+  color: #fff;
+  background: var(--color-mint-mid);
+  border-color: var(--color-mint-mid);
+}
+
+/* Pill toggle used for facility filters and the drawing tools. */
+.toggle {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 7px 11px;
+  font: 600 11.5px var(--font-family-base);
+  color: var(--color-ink);
+  background: rgb(255 255 255 / 94%);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+}
+
+.toggleOn {
+  color: #fff;
+  background: var(--color-mint-mid);
+  border-color: var(--color-mint-mid);
+}
+
+/* Facility marker on the map. */
+.pin {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  transform: translate(-50%, -50%);
+}
+
+.pinIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  background: #fff;
+  border: 2px solid var(--color-mint-mid);
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgb(0 0 0 / 22%);
+}
+
+.pinLabel {
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #fff;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 15%);
+}
+
+.pinBlink .pinIcon {
+  background: var(--color-gold);
+  border-color: var(--color-gold);
+  animation: pin-blink 1s ease-in-out infinite;
+}
+
+@keyframes pin-blink {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(231 197 90 / 75%);
+  }
+
+  50% {
+    box-shadow: 0 0 0 11px rgb(231 197 90 / 0%);
+  }
+}
+
+/* The user's position with a sweeping heading beam. */
+.heading {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+}
+
+.beam {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 54px;
+  height: 54px;
+  background: conic-gradient(
+    from -30deg at 50% 50%,
+    color-mix(in srgb, var(--color-mint-mid) 42%, transparent),
+    color-mix(in srgb, var(--color-mint-mid) 0%, transparent) 60deg
+  );
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: 50% 50%;
+  animation: heading-sweep 2.6s ease-in-out infinite;
+}
+
+.ping {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  background: color-mix(in srgb, var(--color-mint-mid) 40%, transparent);
+  border-radius: 50%;
+  animation: heading-pulse 2s ease-out infinite;
+}
+
+.headingDot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  background: var(--color-mint-mid);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+  transform: translate(-50%, -50%);
+}
+
+@keyframes heading-sweep {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) rotate(-22deg);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) rotate(22deg);
+  }
+}
+
+@keyframes heading-pulse {
+  0% {
+    opacity: 0.55;
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+
+  70% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.9);
+  }
+
+  100% {
+    opacity: 0;
+  }
+}

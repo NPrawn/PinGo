@@ -1,0 +1,642 @@
+/* Screen 20 (FR-U-015 / FR-W-002) — the user's side of the live consultation.
+   Ported from prototype `#s-consult-rtc`. */
+
+.reconnecting {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e7e6ef;
+  background: rgb(14 14 17 / 78%);
+}
+
+.reconnectingSpinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgb(255 255 255 / 20%);
+  border-top-color: var(--color-mint-mid, #3cd8a0);
+  border-radius: 50%;
+  animation: reconnecting-spin 1s linear infinite;
+}
+
+@keyframes reconnecting-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+  상단 줄. **안내 화면의 `.topBar` 와 같은 자리·같은 크기다.**
+
+  `top: 46px` 이 기기 배너를 피하는 여백이다. PhoneFrame 의 `statusBarSpace` 는 오버레이 루트
+  **밖**에 있어서, 세션이 열리면 컴포지터가 루트만 화면 전체에 그리며 그 여백을 버린다. 그러면
+  세션 전후로 헤더 위치가 달라지므로 여백을 루트 안에서 만든다 — PhoneFrame 쪽은
+  `reserveTopSpace={false}` 로 끈다.
+
+  배경을 두지 않는다. 얹혀 있는 칩과 버튼이 각자 배경을 가지고 있어 글자는 읽히고, 띠를 깔면
+  그만큼 카메라가 가린다.
+*/
+.bar {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  left: 0;
+  z-index: 8;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  height: 54px;
+  padding: 8px 16px 0;
+  font-size: 11px;
+  color: #c9c8d4;
+}
+
+.liveChip {
+  position: relative;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 4px 11px 4px 9px;
+  overflow: hidden;
+  font-weight: 700;
+  color: #9bf0cd;
+  background: linear-gradient(100deg, rgb(60 216 160 / 16%), rgb(60 216 160 / 5%));
+  border: 1px solid rgb(60 216 160 / 32%);
+  border-radius: var(--radius-pill);
+}
+
+/*
+  아직 붙지 않은 상담. 초록을 걷어 낸다.
+
+  문구만 바꾸고 색을 그대로 두면 초록 라이브 칩이 여전히 "연결됨"이라고 말한다. 글자보다 색이
+  먼저 읽히므로 둘이 어긋나면 색을 믿는다.
+*/
+.liveChipOff {
+  color: #b9b8c4;
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 18%);
+}
+
+.liveChipOff .liveDot {
+  background: #8d8c99;
+  box-shadow: none;
+}
+
+.liveDotWrap {
+  position: relative;
+  display: flex;
+  flex: none;
+  width: 7px;
+  height: 7px;
+}
+
+.liveDot {
+  position: absolute;
+  inset: 0;
+  background: #3cd8a0;
+  border-radius: 50%;
+  box-shadow: 0 0 8px 1px rgb(60 216 160 / 90%);
+}
+
+.liveRing {
+  position: absolute;
+  inset: -3px;
+  border: 1.5px solid rgb(60 216 160 / 55%);
+  border-radius: 50%;
+  animation: consult-ring 1.9s ease-out infinite;
+}
+
+.liveShine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgb(190 255 225 / 42%) 50%, transparent 62%);
+  animation: consult-shine 2.8s ease-in-out infinite;
+}
+
+/* 상담원 목소리만 나오는 요소. display:none 이면 브라우저가 재생을 멈출 수 있어 숨기기만 한다. */
+.remoteAudio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* 상담원이 그린 선. 화면을 덮되 조작은 그대로 통과시킨다. */
+.annotation {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.endCall {
+  padding: 4px 10px;
+  font: inherit;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  background: var(--color-red);
+  border: none;
+  border-radius: 7px;
+}
+
+/*
+  dom-overlay 로 카메라 위에 얹히는 뿌리. 세션을 열기 전에 DOM 에 있어야 한다.
+
+  **배경을 두지 않는다.** 세션이 열리면 카메라가 이 뒤에 합성되므로, 배경을 깔면 `.camLive` 로
+  비운 카메라 영역을 다시 덮는다. 각 영역이 자기 배경을 가진다(`.bar`·`.cam`·`.lower`).
+*/
+.overlayRoot {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* XR 카메라 합성 화면이 비치도록 셸 배경을 투명하게 둔다. 안내 화면과 같은 처리다. */
+.phone {
+  background: transparent;
+}
+
+/*
+  카메라 영역. **안내 화면(NavigationPage)과 같은 52:48 비율로 지도와 나눈다.**
+
+  예전에는 `height: 250px` 고정이었다. 화면 높이가 다른 기기에서 카메라와 지도의 비율이 안내
+  화면과 어긋나, 두 화면을 오갈 때 지도 크기가 눈에 띄게 달라졌다. 같은 역·같은 도면을 보여
+  주는 화면이므로 같은 비율이어야 한다.
+
+  `+22.08px` 은 `reserveTopSpace={false}` 로 없앤 46px 상단 공간을 되돌리는 보정이다 — 안내
+  화면과 같은 값이며 근거는 그 화면의 주석에 있다. 상단 줄이 흐름 밖(absolute)이라 이 영역의
+  높이를 먹지 않으므로, 두 화면의 카메라 높이가 픽셀까지 같아진다.
+*/
+.cam {
+  position: relative;
+  display: flex;
+  flex: 0 0 calc(var(--camera-region-ratio) + 22.08px);
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 20%, #2b2b30, #0e0e11);
+}
+
+/*
+  세션이 열린 동안만 카메라 영상이 보이게 비운다.
+
+  이 영역에는 `<video>` 가 없다 — XR 컴포지터가 카메라를 뒤에 합성하므로 배경을 지우는 것이
+  곧 카메라를 보이게 하는 방법이다(11.8). `starting` 구간은 제외한다. 아직 카메라가 그려지지
+  않아 검은 화면이 보인다.
+*/
+.camLive {
+  background: transparent;
+}
+
+.remoteVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.localVideo {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2;
+  width: 82px;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: #10211c;
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 10px;
+}
+
+.connectionStatus {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 3;
+  padding: 5px 8px;
+  font-size: 10px;
+  color: #fff;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 8px;
+}
+
+/* 안내 화면의 `.journeyHeader` 와 같은 자리다. 위 상단 줄(46~100px)을 피해 그 아래에서 시작한다. */
+.routeHeader {
+  position: absolute;
+  top: 100px;
+  right: 10px;
+  left: 10px;
+  z-index: 7;
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.routePoint {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 78px;
+  padding: 10px 12px;
+  color: #fff;
+  background: rgb(6 19 16 / 82%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 15px;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 16%);
+}
+
+.routeLabel {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.routeLabel small {
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(223 246 230 / 72%);
+}
+
+.routePoint strong {
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pointDot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: var(--color-mint);
+  border: 2px solid #dff6e6;
+  border-radius: 50%;
+}
+
+.pointDotDestination {
+  background: var(--color-coral);
+}
+
+.pointDotWaypoint {
+  background: #f1b968;
+}
+
+.waypointPoint {
+  position: relative;
+  background: rgb(18 39 31 / 88%);
+  border-color: rgb(241 185 104 / 28%);
+}
+
+.waypointPoint .routeLabel {
+  padding-right: 13px;
+}
+
+.removeWaypoint {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font: 900 12px/1 var(--font-family-base);
+  color: #ffdca8;
+  cursor: pointer;
+  background: rgb(241 185 104 / 12%);
+  border: 1px solid rgb(241 185 104 / 26%);
+  border-radius: 50%;
+}
+
+.removeWaypoint:hover {
+  background: rgb(241 185 104 / 22%);
+}
+
+.routeArrow {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--color-mint-highlight);
+  background: rgb(6 19 16 / 82%);
+  border: 1px solid rgb(127 239 195 / 22%);
+  border-radius: 50%;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 16%);
+}
+
+.routeHeaderCompact {
+  gap: 3px;
+}
+
+.routeHeaderCompact .routePoint {
+  min-height: 70px;
+  padding: 7px 6px;
+  border-radius: 12px;
+}
+
+.routeHeaderCompact .routeLabel {
+  gap: 4px;
+}
+
+.routeHeaderCompact .pointDot {
+  width: 8px;
+  height: 8px;
+  border-width: 1.5px;
+}
+
+.routeHeaderCompact .routeLabel small {
+  font-size: 8px;
+}
+
+.routeHeaderCompact .routePoint strong {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 10.5px;
+  line-height: 1.2;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.routeHeaderCompact .routeArrow {
+  width: 18px;
+  height: 18px;
+}
+
+.routeHeaderCompact .routeArrow svg {
+  width: 12px;
+  height: 12px;
+}
+
+.translation {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: rgb(20 20 22 / 90%);
+  border-radius: 14px;
+}
+
+.translationLabel {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffe36b;
+}
+
+.translationPrimary {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #fff;
+}
+
+/* 옮기기 전 원문. 출구 번호나 역 이름을 눈으로 맞춰 보는 데 쓴다. */
+.translationSource {
+  margin-top: 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgb(255 255 255 / 55%);
+}
+
+/*
+  상담원이 지금 말하고 있는 원문. 아직 옮기기 전이라는 것이 한눈에 보여야 한다.
+  55% 회색으로 두면 확정된 원문과 구분되지 않아, 글자가 바뀌고 있다는 것을 알아채기 어렵다.
+*/
+.captionLive {
+  color: rgb(255 255 255 / 88%);
+}
+
+/* 상대 쪽 자막이 죽었다는 경고. 조용한 것과 고장난 것은 화면에서 똑같아 보인다. */
+.translationAlert {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #ffd9d9;
+  background: rgb(220 70 70 / 22%);
+  border-radius: 8px;
+}
+
+/* 경고 옆에 붙는 되살리기 버튼. 손가락으로 누르는 화면이라 여유를 둔다. */
+.captionRetry {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  background: rgb(255 255 255 / 20%);
+  border: 0;
+  border-radius: 6px;
+}
+
+.captionRetry:active {
+  background: rgb(255 255 255 / 32%);
+}
+
+/* 카메라 영역과 짝을 이루는 비율. 안내 화면과 같은 식이다. */
+.lower {
+  display: flex;
+  flex: 0 0 calc(var(--content-region-ratio) - 22.08px);
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px 16px;
+  overflow: hidden;
+  background: var(--color-cream);
+}
+
+.map {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #eef1f5;
+  border: 1px solid #dfe3e8;
+}
+
+/*
+  실내 지도 위젯이 채우는 자리. 안내 화면(NavigationPage)과 같은 배치다.
+*/
+.mapCanvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* 오버레이 SVG를 지도 위 요소보다 앞에 둔다. 현재 위치와 목적지 이름이 가리면 안 된다. */
+.mapCanvas svg {
+  z-index: 4;
+}
+
+/*
+  층 버튼과 시설 필터. 안내 화면(NavigationPage)과 같은 자리·같은 모양이다.
+
+  상담 중에도 사용자가 다른 층을 확인하고 시설을 짚을 수 있어야 한다. 이것이 없으면 상담자가
+  "한 층 위 엘리베이터"라고 말해도 사용자는 그 층을 볼 방법이 없다.
+*/
+.floorButtons {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  background: rgb(255 255 255 / 82%);
+  border-radius: 11px;
+}
+
+.floorButton {
+  width: 28px;
+  height: 25px;
+  padding: 0;
+  font: 800 10px/1 var(--font-family-base);
+  color: #7c8c85;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.floorButtonOn {
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
+}
+
+.facilityFilters {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgb(255 255 255 / 86%);
+  border: 1px solid rgb(255 255 255 / 92%);
+  border-radius: 11px;
+  box-shadow: 0 5px 14px -8px rgb(15 44 34 / 42%);
+  transform: translateX(-50%);
+}
+
+.facilityFilter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 27px;
+  padding: 0;
+  color: #70847c;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.facilityFilterOn {
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
+  box-shadow: 0 4px 9px -5px rgb(14 163 111 / 72%);
+}
+
+.syncNote {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  margin: 10px 0 4px;
+}
+
+.syncDot {
+  width: 6px;
+  height: 6px;
+  background: #0ea36f;
+  border-radius: 50%;
+  animation: consult-pulse 1.4s infinite;
+}
+
+.syncText {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--color-sub);
+}
+
+.syncText b {
+  color: var(--color-ink);
+}
+
+@keyframes consult-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.7);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes consult-shine {
+  0%,
+  100% {
+    transform: translateX(-120%);
+  }
+
+  50% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes consult-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}

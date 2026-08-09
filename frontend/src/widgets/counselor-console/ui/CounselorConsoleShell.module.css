@@ -1,0 +1,74 @@
+/* Ported from the prototype's `.wtabs` strip on the counselor screens. */
+
+/* 가짜 브라우저 창을 걷어내고 화면 전체를 쓴다. 탭 바는 위에 붙고 본문이 남은 높이를 받는다. */
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* DesktopWindow가 갖고 있던 종이-크림 그라디언트를 본문으로 옮긴다. */
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--color-paper) 0%, var(--color-cream) 100%);
+}
+
+/* Counselor name in the tab strip. Truncates instead of pushing the status
+   select and logout link out of the window. */
+.name {
+  max-width: 120px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-sub);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-ink);
+  background: #fff;
+  border: 1px solid var(--color-line-soft);
+  border-radius: 8px;
+}
+
+.statusError {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b42318;
+  white-space: nowrap;
+}
+
+.logout {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-sub);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* 통화 중임을 알리는 표시. 창 제목줄이 사라져 탭 바 우측으로 옮겨왔고, 밝은 배경 위에
+   놓이므로 어두운 창에서 쓰던 연한 초록 대신 대비가 나오는 색을 쓴다. */
+.connected {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 9px;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--color-mint-forest);
+  background: #d9f0df;
+  border-radius: 7px;
+}

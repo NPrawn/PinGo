@@ -1,0 +1,30 @@
+/* Ported from prototype `.sw` / `.sw .knob`. */
+.toggle {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  background: #d8e2dc;
+  border-radius: var(--radius-pill);
+  transition: background 180ms;
+}
+
+.knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--color-ink) 28%, transparent);
+  transition: transform 180ms;
+}
+
+.on {
+  background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
+}
+
+.on .knob {
+  transform: translateX(18px);
+}

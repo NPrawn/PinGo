@@ -1,0 +1,101 @@
+@import './reset.css';
+@import './variables.css';
+
+/* Atmospheric page backdrop — ported from the prototype's `body` gradients. */
+/*
+  `min-width`를 두지 않는다. Vite 기본 템플릿의 320px이 남아 있었는데, 그보다 좁은 기기
+  (폴더블 커버 화면 등)에서 화면마다 가로 스크롤을 만들었다. 사용자 화면은 프레임부터
+  내용까지 280px에서도 넘치지 않는다.
+*/
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  background:
+    radial-gradient(1200px 900px at 8% 4%, #d1f0e0 0%, transparent 50%),
+    radial-gradient(1000px 800px at 92% 12%, #e4d8fa 0%, transparent 52%),
+    radial-gradient(1100px 900px at 96% 96%, #cfe7f5 0%, transparent 50%),
+    radial-gradient(900px 700px at 4% 82%, #ffded4 0%, transparent 50%),
+    linear-gradient(180deg, #eef7f1 0%, #e4f0e8 55%, #deeae1 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Drifting colour blobs behind everything. */
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  content: '';
+  background:
+    radial-gradient(
+      600px 500px at 20% 30%,
+      color-mix(in srgb, var(--color-mint) 25%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(500px 500px at 85% 60%, rgb(196 181 253 / 18%), transparent 60%),
+    radial-gradient(400px 400px at 60% 90%, rgb(255 139 122 / 14%), transparent 60%);
+  filter: blur(20px);
+}
+
+/* Fine dot grain over the backdrop. */
+body::after {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  content: '';
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--color-ink) 2%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 3px 3px;
+  opacity: 0.5;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-primary-strong);
+}
+
+/* Visible to assistive tech only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/**
+ * The prototype animated blobs, scan lines and pulses unconditionally.
+ * Honour the OS-level reduced-motion preference instead.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

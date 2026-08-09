@@ -1,0 +1,244 @@
+/* Landing page. Uses the same tokens, blob language and glass surfaces as the
+   in-app screens so the entry point reads as part of PinGo. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  align-items: center;
+  width: 100%;
+  max-width: 1040px;
+  min-height: 100vh;
+  padding: 28px 24px 64px;
+  margin: 0 auto;
+}
+
+/* Top bar — wordmark and language switch. */
+.bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.brandMark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: radial-gradient(circle at 30% 25%, #b8f5da, #3cd8a0 55%, #065e42);
+  border-radius: 11px;
+  box-shadow:
+    0 8px 18px -6px rgb(6 94 66 / 45%),
+    inset 0 1.5px 0 rgb(255 255 255 / 45%);
+}
+
+.brandName {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--color-ink);
+}
+
+/* Hero. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* The container has to be noticeably wider than the main sphere, otherwise the
+   satellites resolve their percentage offsets on top of it instead of around it. */
+.heroBlobs {
+  width: min(360px, 100%);
+  height: 264px;
+  margin: 0 0 44px;
+}
+
+.heroPinIcon {
+  color: var(--color-mint-dark);
+}
+
+.eyebrow {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 14px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color-mint-forest);
+  background: rgb(255 255 255 / 82%);
+  backdrop-filter: blur(14px);
+  border: 1.5px solid rgb(255 255 255 / 95%);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+/* No width cap: the Korean headline is authored as one line and only wraps when
+   the viewport is genuinely too narrow. */
+.headline {
+  margin: 18px 0 0;
+  font-size: clamp(26px, 4.4vw, 44px);
+  font-weight: 800;
+  line-height: 1.22;
+  letter-spacing: -0.035em;
+  color: var(--color-ink);
+  white-space: pre-line;
+}
+
+/* `pre-line` honours the authored line break in the Korean copy; the English
+   string has none and wraps on its own. */
+.lede {
+  max-width: 62ch;
+  margin: 14px 0 0;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--color-sub);
+  white-space: pre-line;
+}
+
+/* Role entry cards. */
+.section {
+  width: 100%;
+}
+
+.sectionTitle {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color-sub);
+  text-align: center;
+}
+
+.roles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+/* Rendered as a link for the user flow and as a button for the two consoles,
+   which open the sign-in dialog first. */
+.role {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 22px 20px 18px;
+  font: inherit;
+  color: var(--color-ink);
+  text-align: left;
+  text-decoration: none;
+  background: rgb(255 255 255 / 78%);
+  backdrop-filter: blur(20px) saturate(1.2);
+  border: 1.5px solid rgb(255 255 255 / 92%);
+  border-radius: 22px;
+  box-shadow:
+    0 10px 26px -14px color-mix(in srgb, var(--color-ink) 20%, transparent),
+    inset 0 1.5px 0 rgb(255 255 255 / 95%);
+  transition:
+    transform 180ms var(--ease-out),
+    box-shadow var(--duration-base) ease,
+    border-color var(--duration-fast) ease;
+}
+
+.role:hover {
+  color: var(--color-ink);
+  border-color: color-mix(in srgb, var(--color-mint) 55%, transparent);
+  transform: translateY(-3px);
+  box-shadow:
+    0 20px 38px -18px color-mix(in srgb, var(--color-mint-darker) 34%, transparent),
+    inset 0 1.5px 0 rgb(255 255 255 / 95%);
+}
+
+.roleName {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.roleDesc {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--color-sub);
+}
+
+.roleGo {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: auto;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-mint-dark);
+}
+
+.role:hover .roleGo {
+  gap: 9px;
+}
+
+/* Feature strip. */
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: 100%;
+}
+
+.feature {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  background: rgb(255 255 255 / 55%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgb(255 255 255 / 80%);
+  border-radius: 16px;
+}
+
+.featureIcon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--color-mint-forest);
+  background: var(--color-mint-tint);
+  border-radius: 10px;
+}
+
+.featureTitle {
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.featureDesc {
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--color-sub);
+}
+
+@media (width <= 860px) {
+  .roles,
+  .features {
+    grid-template-columns: 1fr;
+  }
+
+  .heroBlobs {
+    height: 168px;
+  }
+}

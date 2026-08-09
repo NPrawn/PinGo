@@ -1,0 +1,164 @@
+/* Screen 16 — off-route modal over the navigation screen.
+   Ported from prototype `#s-reroute`. */
+
+.body {
+  position: relative;
+}
+
+/* Dimmed copy of the navigation screen behind the dialog. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  filter: brightness(0.5);
+}
+
+.cam {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 288px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 20%, #2b2b30, #0e0e11);
+}
+
+.arrow {
+  font-size: 60px;
+  color: #fff;
+  text-shadow: 0 3px 12px rgb(0 0 0 / 50%);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-mint-mid) 70%, transparent));
+}
+
+.mapWrap {
+  flex: 1;
+  padding: 12px 14px;
+  background: var(--color-cream);
+}
+
+.map {
+  height: 100%;
+}
+
+.floorButtons {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  background: rgb(255 255 255 / 78%);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 12px;
+}
+
+.floorButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 27px;
+  font: 800 10.5px/1 var(--font-family-base);
+  color: #7c8c85;
+  border-radius: 9px;
+}
+
+.floorButtonOn {
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
+}
+
+/* Dialog. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: rgb(6 6 8 / 72%);
+}
+
+/* Top padding clears the dismiss link that floats in the corner. */
+.dialog {
+  position: relative;
+  width: 100%;
+  padding: 52px 22px 24px;
+  text-align: center;
+  background: var(--color-paper);
+  border-radius: 22px;
+}
+
+.dismiss {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  text-decoration: none;
+}
+
+.dismissLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-sub);
+}
+
+.dismissIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+  color: var(--color-sub);
+  background: #f0eee6;
+  border-radius: 50%;
+}
+
+.hero {
+  height: 96px;
+  margin: 2px 0 0;
+}
+
+.heroIcon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  color: #fff;
+  filter: drop-shadow(0 2px 5px rgb(120 30 20 / 45%));
+  transform: translate(-50%, -50%);
+}
+
+.heading {
+  margin: 16px 0 6px;
+  font-size: 19px;
+  font-weight: 800;
+  color: #000;
+}
+
+.lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-sub);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.action {
+  flex: 1;
+  gap: 6px;
+}

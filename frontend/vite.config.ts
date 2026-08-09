@@ -1,0 +1,133 @@
+import { defineConfig } from 'vitest/config';
+import { loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
+import { rm } from 'node:fs/promises';
+import { fileURLToPath, URL } from 'node:url';
+import { join } from 'node:path';
+import type { Plugin } from 'vite';
+
+/**
+ * The Claude design prototype lives in `public/` so the team can still open it
+ * at `/pingo-user.html` during development. Vite copies `public/` verbatim into
+ * the build, which would ship ~4.7 MB of Babel and React UMD bundles that the
+ * app itself does not use, so drop those files from the production output.
+ *
+ * Remove this plugin once the prototype files leave `public/`.
+ */
+function excludePrototypeFromBuild(): Plugin {
+  const PREFIX = 'pingo-';
+  return {
+    name: 'pingo-exclude-prototype-from-build',
+    apply: 'build',
+    async closeBundle() {
+      const outDir = fileURLToPath(new URL('./dist', import.meta.url));
+      const { readdir } = await import('node:fs/promises');
+      const entries = await readdir(outDir).catch(() => []);
+      await Promise.all(
+        entries
+          .filter((name) => name.startsWith(PREFIX))
+          .map((name) => rm(join(outDir, name), { force: true })),
+      );
+    },
+  };
+}
+
+/**
+ * 개발 서버가 대신 호출해 줄 백엔드.
+ *
+ * 실기기 확인 때 필요하다. 폰에서 배포 백엔드를 직접 부르면 CORS 허용 목록에 LAN 주소가 없어
+ * 막히는데, 개발 서버가 대신 부르면 브라우저에는 같은 오리진 요청이라 CORS 검사가 없다.
+ *
+ * 프록시를 타려면 `VITE_API_BASE_URL`을 빈 값으로 두어야 한다. 그러면 앱이 상대 경로로
+ * 호출하고, 그 요청이 아래 target으로 전달된다.
+ *
+ * **`.env` 파일도 읽는다.** Vite는 `.env`를 `import.meta.env`에만 넣고 `process.env`에는
+ * 넣지 않으므로, `process.env`만 보면 `.env.local`에 적어 둔 값이 조용히 무시된다.
+ * 실제로 그렇게 502가 났다. 셸 환경변수가 파일보다 우선한다.
+ */
+function devApiTarget(mode: string): string {
+  const fileEnv = loadEnv(mode, process.cwd(), 'VITE_');
+  return (
+    process.env.VITE_DEV_API_TARGET ??
+    fileEnv.VITE_DEV_API_TARGET ??
+    'https://jenkins.example.invalid'
+  );
+}
+
+/**
+ * 프록시 한 벌.
+ *
+ * **`Origin`을 target으로 바꿔 보낸다.** `changeOrigin`은 이름과 달리 `Host` 헤더만 고치고
+ * `Origin`은 브라우저가 보낸 값을 그대로 넘긴다. 그래서 폰에서 LAN 주소로 접속하면 백엔드가
+ * `Origin: http://192.168.x.x:5173`을 받아 `403 Invalid CORS request`를 돌려준다. 브라우저는
+ * 같은 오리진이라 막지 않는데 서버가 막으므로, 프록시를 둔 것만으로는 해결되지 않는다.
+ *
+ * 허용 목록은 배포 백엔드에 `http://localhost:5173`과 배포 주소 두 개뿐이다. LAN IP를 거기
+ * 추가하는 방법은 IP가 바뀔 때마다 백엔드를 다시 배포해야 해서 유지되지 않는다. 실제로 호출하는
+ * 주체가 개발 서버이므로 `Origin`도 그렇게 적는 편이 사실에 맞다.
+ */
+function devProxy(mode: string) {
+  const target = devApiTarget(mode);
+  return { target, changeOrigin: true, headers: { origin: target } };
+}
+
+// https://vite.dev/config/
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), excludePrototypeFromBuild()],
+  server: {
+    /**
+     * 실기기 확인용 Tailscale 주소를 허용한다.
+     *
+     * dev 서버는 DNS 리바인딩을 막으려고 `Host` 헤더가 낯설면 요청을 거절한다. 폰에서
+     * `https://<장치>.<tailnet>.ts.net` 으로 들어오면 그 방어에 걸려 `Blocked request` 만
+     * 보인다. LAN IP + Chrome 플래그 대신 이 경로를 쓰려면 여기를 열어야 한다
+     * (`docs/WebXR_검증_결과.md` 3.2).
+     *
+     * **점으로 시작하면 하위 도메인 전체를 뜻한다.** 개인 tailnet 이름을 박지 않으므로 팀원
+     * 누구의 주소로도 통한다. `ts.net` 은 Tailscale 이 가진 이름 공간이라, 공격자가 이 방어를
+     * 우회하려면 그 아래 이름을 `127.0.0.1` 로 가리키게 만들 수 있어야 한다.
+     *
+     * dev 서버에만 적용된다. 프로덕션 빌드에는 이 설정이 들어가지 않는다.
+     */
+    allowedHosts: ['.ts.net'],
+    proxy: {
+      '/api': devProxy(mode),
+      // 지도 도면 등 백엔드가 서빙하는 정적 파일. (API 명세서 2.5)
+      '/uploads': devProxy(mode),
+      /**
+       * signaling WebSocket. **`ws: true` 가 있어야 upgrade 요청을 전달한다.** (S15P11A206-89)
+       *
+       * 소켓만 프록시 밖으로 나가고 있었다. 백엔드의
+       * `signaling.websocket.allowed-origin-patterns` 에는 `localhost:5173` 계열과 배포 주소만
+       * 있어서, 폰이 LAN 주소로 접속하면 handshake 가 거절되고 upgrade 가 끝나지 않은 채 close
+       * code 1006 으로 끊긴다. 서버가 close frame 을 보낼 기회조차 없어 원인 코드도 남지 않았다.
+       * 데스크톱은 허용 목록에 있는 `localhost` 라 같은 코드가 그대로 붙어, 실기기에서만 재현됐다.
+       *
+       * `/ws` 가 아니라 `/ws/signaling` 으로 좁힌다. Vite 자신의 HMR 소켓과 겹칠 여지를 두지
+       * 않는다.
+       */
+      '/ws/signaling': { ...devProxy(mode), ws: true },
+    },
+  },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.ts',
+    include: ['src/**/*.test.{ts,tsx}'],
+    /**
+     * 테스트가 볼 환경변수를 고정한다.
+     *
+     * Vite가 `.env.local`도 읽으므로, 개발자가 개발용으로 그 파일을 두면 API base URL이
+     * 바뀌어 절대 URL을 기대하는 테스트가 깨졌다. 사람마다 로컬 설정이 다른데 테스트 결과가
+     * 그것에 딸려 가면 안 된다.
+     */
+    env: {
+      VITE_API_BASE_URL: 'http://localhost:8080',
+    },
+  },
+}));

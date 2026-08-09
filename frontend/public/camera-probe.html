@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>카메라 화각 진단</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        padding: 12px;
+        font: 13px/1.5 system-ui, -apple-system, sans-serif;
+        color: #e8f5ef;
+        background: #0a1512;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 16px;
+      }
+
+      p.lede {
+        margin: 0 0 12px;
+        color: #8fb3a6;
+        font-size: 12px;
+      }
+
+      section {
+        margin-bottom: 14px;
+        padding: 10px;
+        background: #10201b;
+        border: 1px solid #1e3a31;
+        border-radius: 8px;
+      }
+
+      h2 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        color: #7fefc3;
+      }
+
+      button {
+        margin: 0 6px 6px 0;
+        padding: 9px 12px;
+        font: 600 12px/1 system-ui, sans-serif;
+        color: #06251b;
+        background: #7fefc3;
+        border: 0;
+        border-radius: 6px;
+      }
+
+      button.ghost {
+        color: #cdece0;
+        background: #1e3a31;
+      }
+
+      button:disabled {
+        opacity: 0.45;
+      }
+
+      /*
+        원본 비율 그대로 보여 준다(`contain`). 앱 화면은 `object-fit: cover` 라 상자 비율에 따라
+        잘리는데, 그 크롭을 배제해야 "렌즈가 넓어진 것"과 "CSS가 덜 자르는 것"이 구별된다.
+      */
+      video {
+        display: block;
+        width: 100%;
+        max-height: 46vh;
+        background: #000;
+        object-fit: contain;
+      }
+
+      /* 앱 촬영 화면과 같은 조건(cover + 52% 영역)을 재현해 비교하는 상자. */
+      .coverBox {
+        position: relative;
+        width: 100%;
+        height: 34vh;
+        margin-top: 8px;
+        overflow: hidden;
+        background: #000;
+      }
+
+      .coverBox video {
+        width: 100%;
+        height: 100%;
+        max-height: none;
+        object-fit: cover;
+      }
+
+      .caption {
+        margin: 4px 0 0;
+        color: #8fb3a6;
+        font-size: 11px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11.5px;
+      }
+
+      th,
+      td {
+        padding: 4px 6px;
+        text-align: left;
+        border-bottom: 1px solid #1e3a31;
+        vertical-align: top;
+      }
+
+      th {
+        width: 40%;
+        color: #8fb3a6;
+        font-weight: 600;
+      }
+
+      td.changed {
+        color: #ffd479;
+        font-weight: 700;
+      }
+
+      pre {
+        margin: 0;
+        max-height: 34vh;
+        overflow: auto;
+        font: 11px/1.45 ui-monospace, monospace;
+        color: #cdece0;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      .verdict {
+        margin-top: 8px;
+        padding: 9px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        border-radius: 6px;
+      }
+
+      .verdict.lens {
+        color: #1c0f00;
+        background: #ffb35c;
+      }
+
+      .verdict.same {
+        color: #06251b;
+        background: #7fefc3;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>카메라 화각 진단</h1>
+    <p class="lede">
+      촬영 화면이 광각으로 보이는 원인이 <b>렌즈</b>인지 <b>화면 크롭</b>인지 가른다.
+      adb 없이 폰 브라우저만으로 확인한다. HTTPS 로 접속해야 카메라가 열린다.
+    </p>
+
+    <section>
+      <h2>1. 수정 전 / 수정 후 비교</h2>
+      <button id="openPicked">수정 후 — 메인 렌즈 자동 선택</button>
+      <button id="openApp" class="ghost">수정 전 — facingMode 만</button>
+      <button id="openPlain" class="ghost">{ video: true }</button>
+      <button id="stop" class="ghost" disabled>정지</button>
+      <p class="caption">
+        <b>수정 후</b>는 <code>cameraStream.ts</code> 의 렌즈 선택과 같은 규칙이다 —
+        라벨에서 <code>camera N, facing back</code> 을 읽어 <b>N 이 가장 작은 것</b>을 연다.
+        <b>수정 전</b>은 <code>{ facingMode: { ideal: 'environment' } }</code> 만 준다.
+        이쪽이 광각으로 나오면 버그가 재현된 것이다. 상담
+        쪽(<code>consultMedia.ts</code>)은 <code>{ video: true }</code> 로 연다.
+      </p>
+    </section>
+
+    <section>
+      <h2>2. 원본 비율 그대로 (크롭 없음)</h2>
+      <video id="preview" autoplay playsinline muted></video>
+      <p class="caption">
+        이 화면이 <b>이미 광각으로 보이면 렌즈 문제</b>다. 여기서 정상인데 아래 상자에서만
+        넓어 보이면 CSS 크롭 문제다.
+      </p>
+      <div class="coverBox"><video id="previewCover" autoplay playsinline muted></video></div>
+      <p class="caption">↑ 앱 촬영 화면과 같은 조건(<code>object-fit: cover</code>).</p>
+    </section>
+
+    <section>
+      <h2>3. 지금 열린 트랙</h2>
+      <table id="settings">
+        <tbody>
+          <tr>
+            <td colspan="2" style="color: #8fb3a6">아직 열지 않았다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>4. 장치 목록</h2>
+      <button id="enumerate" class="ghost">장치 다시 조회</button>
+      <div id="devices"><p class="caption">권한을 허용하면 이름이 보인다.</p></div>
+      <p class="caption">
+        렌즈가 여러 개면 여기서 하나씩 열어 본다. 초광각은 보통 화각이 눈에 띄게 넓다.
+      </p>
+    </section>
+
+    <section>
+      <h2>5. 장치 재구성 검증</h2>
+      <button id="overlap">겹쳐 열기 테스트 실행</button>
+      <p class="caption">
+        앱 제약으로 연 뒤, 상담 화면과 같은 <code>{ video: true }</code> 를 <b>겹쳐서</b> 연다.
+        안드로이드 크롬은 같은 카메라를 한 세션으로 공유해서, 두 번째 요청이 장치를 다시
+        구성하면 <b>먼저 열린 트랙의 해상도까지 바뀐다.</b> 그 현상이 실제로 일어나는지 본다.
+      </p>
+      <div id="overlapResult"></div>
+    </section>
+
+    <section>
+      <h2>6. 보고서</h2>
+      <button id="copy" class="ghost">전체 복사</button>
+      <pre id="log">준비됨.</pre>
+    </section>
+
+    <script>
+      /**
+       * 앱 촬영 화면이 쓰는 제약. `frontend/src/widgets/camera-preview/model/cameraStream.ts`
+       * 의 `REAR_CAMERA` 와 같아야 의미가 있다. 그쪽이 바뀌면 여기도 맞춘다.
+       */
+      const APP_CONSTRAINT = { facingMode: { ideal: 'environment' } };
+      /** 상담 화면이 쓰는 제약. `consultMedia.ts` 의 `captureConsultCamera`. */
+      const PLAIN_CONSTRAINT = true;
+
+      /** 보고서에 남길 줄. 폰에서는 콘솔을 볼 수 없으니 화면에 그대로 쌓는다. */
+      const lines = [];
+      const logEl = document.getElementById('log');
+      const preview = document.getElementById('preview');
+      const previewCover = document.getElementById('previewCover');
+
+      let current = null;
+
+      function log(message) {
+        lines.push(message);
+        logEl.textContent = lines.join('\n');
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function stamp() {
+        return new Date().toTimeString().slice(0, 8);
+      }
+
+      /** 트랙에서 진단에 쓰는 값만 추린다. 전부 찍으면 폰 화면에서 읽기 어렵다. */
+      function settingsOf(track) {
+        const s = track.getSettings();
+        const caps = typeof track.getCapabilities === 'function' ? track.getCapabilities() : {};
+
+        return {
+          label: track.label,
+          deviceId: (s.deviceId || '').slice(0, 12),
+          groupId: (s.groupId || '').slice(0, 12),
+          해상도: `${s.width}×${s.height}`,
+          비율: s.width && s.height ? (s.width / s.height).toFixed(4) : '—',
+          facingMode: s.facingMode ?? '(없음)',
+          frameRate: s.frameRate,
+          zoom: s.zoom ?? '(미지원)',
+          'zoom 범위': caps.zoom ? `${caps.zoom.min}~${caps.zoom.max}` : '(미지원)',
+          '해상도 상한': caps.width ? `${caps.width.max}×${caps.height.max}` : '(알 수 없음)',
+        };
+      }
+
+      function renderSettings(values, previousValues) {
+        const rows = Object.entries(values)
+          .map(([key, value]) => {
+            const changed = previousValues && String(previousValues[key]) !== String(value);
+            return `<tr><th>${key}</th><td class="${changed ? 'changed' : ''}">${value}${
+              changed ? ` <small>(이전: ${previousValues[key]})</small>` : ''
+            }</td></tr>`;
+          })
+          .join('');
+
+        document.getElementById('settings').innerHTML = `<tbody>${rows}</tbody>`;
+      }
+
+      function stopCurrent() {
+        if (!current) return;
+        current.getTracks().forEach((track) => track.stop());
+        current = null;
+        document.getElementById('stop').disabled = true;
+      }
+
+      async function open(constraint, note) {
+        stopCurrent();
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: constraint });
+          current = stream;
+          preview.srcObject = stream;
+          previewCover.srcObject = stream;
+          document.getElementById('stop').disabled = false;
+
+          const track = stream.getVideoTracks()[0];
+          const values = settingsOf(track);
+
+          renderSettings(values);
+          log(`\n[${stamp()}] ${note}`);
+          log(JSON.stringify(values, null, 2));
+
+          return track;
+        } catch (error) {
+          log(`\n[${stamp()}] ${note} — 실패: ${error.name} ${error.message}`);
+          if (!window.isSecureContext) {
+            log('  보안 컨텍스트가 아니다. HTTPS 로 접속해야 카메라가 열린다.');
+          }
+          return null;
+        }
+      }
+
+      /**
+       * 메인 후면 렌즈를 고른다. **`cameraStream.ts` 의 `preferredRearDeviceId` 와 같은 규칙이다.**
+       *
+       * 그쪽이 바뀌면 여기도 맞춘다. 규칙이 갈라지면 이 페이지의 판정을 믿을 수 없다.
+       */
+      const REAR_LABEL = /camera\s+(\d+),\s*facing\s+back/i;
+
+      async function preferredRearDeviceId() {
+        const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+        let best = null;
+
+        for (const device of devices) {
+          if (device.kind !== 'videoinput' || !device.deviceId) continue;
+
+          const matched = REAR_LABEL.exec(device.label);
+
+          if (!matched) continue;
+
+          const number = Number(matched[1]);
+
+          if (!best || number < best.number) best = { number, deviceId: device.deviceId };
+        }
+
+        return best;
+      }
+
+      document.getElementById('openPicked').onclick = async () => {
+        const best = await preferredRearDeviceId();
+
+        if (!best) {
+          log(
+            `\n[${stamp()}] 수정 후 — 고를 수 없다. 라벨이 비었거나(권한 전) 형식이 다르다.` +
+              ' 앱은 이때 facingMode 로 폴백한다.',
+          );
+          await open(APP_CONSTRAINT, '수정 후 → 폴백 { facingMode }');
+          return;
+        }
+
+        log(`\n[${stamp()}] 수정 후 — camera ${best.number} 선택`);
+        await open({ deviceId: { exact: best.deviceId } }, `수정 후 camera ${best.number}`);
+      };
+
+      document.getElementById('openApp').onclick = () =>
+        open(APP_CONSTRAINT, '수정 전 { facingMode: { ideal: "environment" } }');
+
+      document.getElementById('openPlain').onclick = () =>
+        open(PLAIN_CONSTRAINT, '상담 제약 { video: true }');
+
+      document.getElementById('stop').onclick = () => {
+        stopCurrent();
+        log(`\n[${stamp()}] 정지`);
+      };
+
+      /**
+       * 장치 목록. **권한을 한 번 허용해야 label 이 채워진다.** 허용 전에는 빈 문자열이라
+       * 어느 것이 초광각인지 알 수 없다.
+       */
+      async function enumerate() {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter((device) => device.kind === 'videoinput');
+        const target = document.getElementById('devices');
+
+        if (cameras.length === 0) {
+          target.innerHTML = '<p class="caption">카메라를 찾지 못했다.</p>';
+          return;
+        }
+
+        target.innerHTML = cameras
+          .map(
+            (device, index) =>
+              `<div style="margin-bottom:6px">
+                 <button class="ghost" data-device="${device.deviceId}">${index + 1}번 열기</button>
+                 <span style="font-size:11.5px">${device.label || '(이름 없음 — 권한 필요)'}</span>
+                 <div class="caption">${device.deviceId.slice(0, 24)}…</div>
+               </div>`,
+          )
+          .join('');
+
+        target.querySelectorAll('button[data-device]').forEach((button) => {
+          button.onclick = () =>
+            open({ deviceId: { exact: button.dataset.device } }, `장치 지정: ${button.dataset.device.slice(0, 12)}`);
+        });
+
+        log(`\n[${stamp()}] 카메라 ${cameras.length}대`);
+        cameras.forEach((device, index) => {
+          log(`  ${index + 1}. ${device.label || '(이름 없음)'} — ${device.deviceId.slice(0, 16)}`);
+        });
+      }
+
+      document.getElementById('enumerate').onclick = enumerate;
+
+      /**
+       * 겹쳐 열기. 이 페이지의 핵심 실험이다.
+       *
+       * 앱 제약으로 연 트랙의 설정을 재 두고, 상담 제약으로 두 번째 스트림을 연 뒤 **첫 트랙을
+       * 다시 잰다.** 값이 달라지면 두 번째 요청이 장치를 재구성한 것이고, 그것이 촬영 화면의
+       * 화각이 바뀌는 경로다.
+       */
+      document.getElementById('overlap').onclick = async () => {
+        const result = document.getElementById('overlapResult');
+        result.innerHTML = '<p class="caption">실행 중…</p>';
+
+        const first = await open(APP_CONSTRAINT, '겹쳐 열기 ① 앱 제약');
+        if (!first) {
+          result.innerHTML = '<p class="caption">첫 스트림을 열지 못해 중단했다.</p>';
+          return;
+        }
+
+        const before = settingsOf(first);
+        let second = null;
+
+        try {
+          second = await navigator.mediaDevices.getUserMedia({ video: PLAIN_CONSTRAINT });
+          log(`\n[${stamp()}] 겹쳐 열기 ② { video: true } 열림`);
+          log(JSON.stringify(settingsOf(second.getVideoTracks()[0]), null, 2));
+        } catch (error) {
+          log(`\n[${stamp()}] 겹쳐 열기 ② 실패: ${error.name} ${error.message}`);
+        }
+
+        // 재구성은 즉시 반영되지 않을 수 있다. 한 박자 두고 다시 잰다.
+        await new Promise((resolve) => setTimeout(resolve, 900));
+
+        const after = settingsOf(first);
+        const changed = Object.keys(before).filter(
+          (key) => String(before[key]) !== String(after[key]),
+        );
+
+        renderSettings(after, before);
+        log(`\n[${stamp()}] 겹쳐 열기 ③ 첫 트랙 재측정`);
+        log(JSON.stringify(after, null, 2));
+
+        if (second) second.getTracks().forEach((track) => track.stop());
+
+        result.innerHTML = changed.length
+          ? `<div class="verdict lens">첫 트랙이 바뀌었다 — ${changed.join(', ')}<br />
+               두 번째 요청이 카메라를 재구성했다. 이것이 촬영 화면 화각이 바뀌는 경로다.</div>`
+          : `<div class="verdict same">첫 트랙은 그대로다. 재구성은 일어나지 않았다 —
+               다른 원인을 봐야 한다.</div>`;
+
+        log(
+          changed.length
+            ? `  → 재구성 확인: ${changed.join(', ')}`
+            : '  → 재구성 없음. 첫 트랙 설정 불변.',
+        );
+      };
+
+      document.getElementById('copy').onclick = async () => {
+        const report = [
+          `UA: ${navigator.userAgent}`,
+          `화면: ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio}`,
+          `보안 컨텍스트: ${window.isSecureContext}`,
+          '',
+          ...lines,
+        ].join('\n');
+
+        try {
+          await navigator.clipboard.writeText(report);
+          log(`\n[${stamp()}] 복사했다.`);
+        } catch {
+          // 클립보드가 막힌 환경에서는 직접 선택해 복사하게 둔다.
+          log(`\n[${stamp()}] 복사 실패 — 아래 내용을 길게 눌러 직접 복사한다.`);
+        }
+      };
+
+      log(`UA: ${navigator.userAgent}`);
+      log(`화면: ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio}`);
+      log(`보안 컨텍스트: ${window.isSecureContext}`);
+
+      enumerate();
+    </script>
+  </body>
+</html>

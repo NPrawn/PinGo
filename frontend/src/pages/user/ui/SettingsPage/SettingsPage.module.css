@@ -1,0 +1,118 @@
+/* Screen 24 (FR-U-016) — settings. Ported from prototype `#s-settings`. */
+
+.topSpacer {
+  flex: none;
+  height: 8px;
+}
+
+.title {
+  margin-top: clamp(22px, 2.8dvh, 34px);
+}
+
+.sectionLabel {
+  margin: clamp(20px, 2.4dvh, 28px) 0 10px;
+}
+
+.helpSectionLabel {
+  margin-top: clamp(34px, 3.6dvh, 46px);
+}
+
+.consult {
+  flex: none;
+  margin-bottom: 12px;
+}
+
+.languages {
+  display: flex;
+  gap: 8px;
+}
+
+.language {
+  flex: 1;
+  justify-content: center;
+  padding: 13px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.list {
+  padding: 6px 14px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 11px 0;
+  font-family: inherit;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgb(15 44 34 / 7%);
+}
+
+.rowLast {
+  border-bottom: none;
+}
+
+/* 권한 카드가 왜 눌리지 않는지 바로 아래에서 설명한다. */
+.permissionNote {
+  margin-top: 12px;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.rowLabel {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-align: left;
+}
+
+@media (height >= 700px) {
+  :global(html[lang='en']) .body {
+    overflow-y: hidden;
+  }
+}
+
+/* Fit the complete English settings screen inside the same phone viewport. */
+:global(html[lang='en']) .title {
+  margin-top: 14px;
+  font-size: 23px;
+}
+
+:global(html[lang='en']) .sectionLabel {
+  margin-top: 14px;
+  margin-bottom: 7px;
+}
+
+:global(html[lang='en']) .helpSectionLabel {
+  margin-top: 30px;
+}
+
+:global(html[lang='en']) .language {
+  padding: 10px;
+  font-size: 12px;
+}
+
+:global(html[lang='en']) .list {
+  padding-block: 3px;
+}
+
+:global(html[lang='en']) .row {
+  padding-block: 8px;
+}
+
+:global(html[lang='en']) .rowLabel {
+  font-size: 12px;
+}
+
+:global(html[lang='en']) .permissionNote {
+  margin-top: 8px;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+:global(html[lang='en']) .consult {
+  margin-bottom: 4px;
+}

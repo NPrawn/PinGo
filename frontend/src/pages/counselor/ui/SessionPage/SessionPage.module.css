@@ -1,0 +1,1024 @@
+/* Screen 30 (FR-C-004 / FR-W-002) — counselor WebRTC session.
+   Ported from prototype `#c-rtc`. */
+
+.reconnecting {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e7e6ef;
+  background: rgb(14 14 17 / 78%);
+}
+
+.reconnectingSpinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgb(255 255 255 / 20%);
+  border-top-color: var(--color-mint-mid, #3cd8a0);
+  border-radius: 50%;
+  animation: reconnecting-spin 1s linear infinite;
+}
+
+@keyframes reconnecting-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: #faf9fb;
+}
+
+/* Positioned so the video, local preview and connection status anchor inside
+   this pane instead of escaping to the page corner. */
+.main {
+  position: relative;
+  flex: 1;
+  padding: 22px 26px;
+  overflow: auto;
+}
+
+/* 영상이 오기 전이나 오지 않을 때의 안내. 거울의 지도·카메라보다 앞에 둔다. */
+.streamPlaceholder {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: center;
+  color: #9a9aa4;
+}
+
+.localVideo {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 4;
+  width: 120px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #10211c;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 10px;
+}
+
+.connectionStatus {
+  position: absolute;
+  right: 18px;
+  bottom: 116px;
+  z-index: 5;
+  padding: 5px 8px;
+  font-size: 10px;
+  color: #fff;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 8px;
+}
+
+/* User summary banner. */
+.summary {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-left: 4px solid var(--color-mint-mid);
+  border-radius: 14px;
+  box-shadow: 0 2px 10px -4px rgb(15 44 34 / 18%);
+}
+
+.summaryBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.summaryHead {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.summaryMark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: var(--color-mint-veil);
+  border-radius: 10px;
+}
+
+.summaryLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--color-sub);
+}
+
+.summaryRoute {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+
+.summaryArrow {
+  font-weight: 700;
+  color: var(--color-sub);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.tag {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.endCall {
+  width: auto;
+  padding: 0 16px;
+  background: var(--color-red);
+}
+
+/* Sync status bar. */
+.syncBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  margin: 20px 0 10px;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+}
+
+.syncChip {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 6px 11px;
+  border-radius: var(--radius-pill);
+}
+
+.syncOn {
+  background: var(--color-mint-veil);
+  border: 1px solid #bfe0c9;
+}
+
+.syncOff {
+  background: #fdede6;
+  border: 1px solid #f3c9b6;
+}
+
+.syncDotOn {
+  width: 7px;
+  height: 7px;
+  background: #0f5a3e;
+  border-radius: 50%;
+  animation: session-pulse 1.4s infinite;
+}
+
+.syncDotOff {
+  width: 7px;
+  height: 7px;
+  background: #c24a3d;
+  border-radius: 50%;
+}
+
+.syncLabelOn {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #0f5a3e;
+}
+
+.syncLabelOff {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #c24a3d;
+}
+
+.syncHint {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-sub);
+}
+
+.syncModes {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* Map legend. */
+.legend {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.legendItem {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.legendDot {
+  width: 11px;
+  height: 11px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #ccc;
+}
+
+/*
+  지도 마커와 **같은 변수**를 쓴다. (S15P11A206-89)
+
+  예전에는 스와치가 민트·`--color-red` 인데 지도의 마커는 파스텔 레드·진한 레드였고, 글자는
+  "파란점"·"빨간점" 이었다 — 세 곳이 서로 다른 색을 말하고 있었다. 범례는 지도를 읽는 열쇠라
+  틀리면 없는 것보다 나쁘다.
+
+  글자에서 색 이름을 뺀 것도 같은 이유다. 색을 글자로 적으면 색이 바뀔 때마다 함께 고쳐야 하고,
+  빠뜨리면 이번처럼 조용히 거짓이 된다. 무엇인지만 적고 색은 스와치가 보여 준다.
+*/
+.legendMe {
+  background: var(--color-route);
+}
+
+.legendDest {
+  background: var(--color-route-deep);
+}
+
+.mapRow {
+  display: flex;
+  gap: 12px;
+}
+
+.map {
+  flex: 1;
+  height: 250px;
+  background: #eef1f5;
+  border: 1px solid #dfe3e8;
+}
+
+/* 실내 지도 위젯이 채우는 자리. 안내 화면과 같은 배치다. */
+.mapCanvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* 오버레이 SVG를 지도 위 요소보다 앞에 둔다. 현재 위치와 목적지 이름이 가리면 안 된다. */
+.mapCanvas svg {
+  z-index: 4;
+}
+
+/*
+  시설 유형 칩. 지도 위 오른쪽 아래에 깔린다.
+
+  오른쪽 끝을 복귀 버튼(위젯의 `.resetView`, 32px + 여백) 만큼 비워 둔다. 예전에는 `right: 8px`
+  이라 마지막 칩이 그 버튼 아래로 들어가 눌리지 않았다. 칩은 줄바꿈되므로 폭이 줄면 위로 한 줄
+  더 쌓일 뿐이고, 가려지는 것보다는 낫다.
+*/
+/*
+  시설 표시 칩. 지도 **아래** 줄이다.
+
+  예전에는 `position: absolute` 로 도면 위에 얹혀 있었다. 유형이 일곱 개가 되자 세 줄로 늘어
+  도면의 절반 가까이를 덮었다 — 시설이 가리는 것을 치우려고 누르는 버튼이 그 자리를 가리고 있었다.
+  흐름 안에 두면 몇 줄이 되든 지도를 밀어내지 않고 아래로 늘어난다. (S15P11A206-89)
+
+  왼쪽 여백 78px 은 층 목록을 비켜 도면의 시작선에 맞추는 값이다. 아래 `.mapActions` 와 같은
+  값이며, 둘이 갈라지면 지도 아래 두 줄의 시작선이 서로 어긋난다.
+*/
+/*
+  시설 표시 줄 전체. 왼쪽은 유형 칩, 오른쪽은 표시 모드(숨기기)다.
+
+  `align-items: flex-start` 로 두어 유형이 줄바꿈으로 늘어나도 숨기기는 **첫 줄 오른쪽**에
+  남는다. 늘어난 높이의 가운데로 내려가면 찾는 자리가 층마다 달라진다.
+*/
+.facilityBar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 10px 0 0 78px;
+}
+
+/* 유형 칩. 남는 폭을 모두 쓰고 넘치면 줄바꿈한다. */
+.facilityFilters {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/*
+  표시 모드 칸. 유형과 성격이 달라 선으로 갈라 둔다.
+
+  줄이지 않는다(`flex: none`) — 유형이 많아도 이 칩의 글자가 접히면 안 된다.
+*/
+.facilityVisibility {
+  display: flex;
+  flex: none;
+  padding-left: 12px;
+  border-left: 1px solid #e6e6ee;
+}
+
+/*
+  표시 층에 없는 유형.
+
+  숨기지 않고 연하게 남긴다 — 상담자는 층을 오가며 보는 사람이라 칩이 층마다 사라지고 나타나면
+  누르려던 자리가 계속 바뀐다. 줄을 고정해 두고 진하기로만 알린다. (S15P11A206-89)
+
+  `cursor: default` 로 되돌린다. 누를 수 없는 것에 손가락 커서가 뜨면 눌러도 되는 것으로 읽힌다.
+*/
+.facilityFilterAbsent {
+  cursor: default;
+  opacity: 0.38;
+}
+
+/* 사용자 지도가 아직 오지 않았을 때. 아무 지도나 대신 띄우지 않는다. */
+.mapPlaceholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-sub);
+  text-align: center;
+}
+
+.mapActions {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 0 78px;
+}
+
+.mapAction {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Live captions and transcript are intentionally separate visual surfaces. */
+.captionWorkspace {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.liveCaptionPanel,
+.transcriptPanel {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #3a3a44;
+  border-radius: 10px;
+}
+
+.liveCaptionPanel {
+  background: #202027;
+  border-color: rgb(60 216 160 / 32%);
+}
+
+.transcriptPanel {
+  background: #17171d;
+}
+
+.captionPanelHeader {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.captionPanelHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.captionPanelKicker {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #3cd8a0;
+}
+
+.transcriptPanel .captionPanelKicker {
+  color: #aeb7ff;
+}
+
+.captionPanelTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #f3f3f7;
+}
+
+.captionPanelStatus {
+  flex: none;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #b8b8c4;
+  background: rgb(255 255 255 / 7%);
+  border-radius: 999px;
+}
+
+/* 재지정 안내와 결과. 버튼만 켜지고 아무 말이 없으면 무엇을 해야 할지 알 수 없다. */
+.mapHint {
+  padding: 7px 10px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #0f5a3e;
+  background: #eaf6ef;
+  border-radius: 8px;
+}
+
+/* 옮기기 전 원문. 출구 번호나 역 이름을 눈으로 맞춰 보는 데 쓴다. */
+.sourceLine {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #8b8b96;
+}
+
+/* 사용자가 지금 말하고 있는 원문. 확정된 원문과 같은 회색이면 글자가 바뀌는 것을 못 알아챈다. */
+.sourceLineLive {
+  color: #cfcfd8;
+}
+
+/* 음성 인식이 멈췄다는 경고. 상담 중에 알아야 되돌릴 수 있다. */
+.notesAlert {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #ffd9d9;
+  background: rgb(220 70 70 / 22%);
+  border-radius: 7px;
+}
+
+.notesRetry {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  background: rgb(255 255 255 / 18%);
+  border: 0;
+  border-radius: 6px;
+}
+
+.notesRetry:hover {
+  background: rgb(255 255 255 / 28%);
+}
+
+.liveCaptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 620px) {
+  .liveCaptions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.liveCaption {
+  min-width: 0;
+  padding: 10px;
+  background: #202027;
+  border: 1px solid #3a3a44;
+  border-radius: 8px;
+}
+
+.liveCaptionUser {
+  border-color: rgb(139 224 155 / 38%);
+}
+
+.liveCaptionCounselor {
+  border-color: rgb(169 155 255 / 38%);
+}
+
+.liveCaptionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 18px;
+}
+
+.liveCaptionState {
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #a2a2af;
+  background: rgb(255 255 255 / 6%);
+  border-radius: 999px;
+}
+
+.liveCaptionText {
+  display: block;
+  min-height: 2.9em;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #f0f0f5;
+}
+
+.bilingualCaption {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 5.8em;
+  margin-top: 8px;
+}
+
+.bilingualLine {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.bilingualLanguage {
+  padding: 2px 5px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.35;
+  color: #c8c8d2;
+  text-align: center;
+  background: rgb(255 255 255 / 8%);
+  border-radius: 4px;
+}
+
+.bilingualText,
+.bilingualTranslation {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.bilingualText {
+  color: #f0f0f5;
+}
+
+.bilingualTranslation {
+  color: #b8d8ff;
+}
+
+.notesBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 250px;
+  padding: 0 2px;
+  overflow-y: auto;
+  font-size: 11.5px;
+  line-height: 1.5;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  background: transparent;
+  border: 0;
+}
+
+.transcriptEntry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+}
+
+.transcriptEntry:last-child {
+  border-bottom: 0;
+}
+
+.transcriptSpeaker {
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+}
+
+.transcriptLine {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.transcriptLanguage {
+  padding-top: 2px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #777783;
+}
+
+.transcriptLine .line,
+.transcriptTranslation {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.transcriptTranslation {
+  display: block;
+  color: #aeb7ff;
+}
+
+.transcriptEmpty {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  color: #777783;
+  text-align: center;
+}
+
+.speakerUser {
+  font-weight: 700;
+  color: #8be09b;
+}
+
+.speakerAgent {
+  font-weight: 700;
+  color: #a99bff;
+}
+
+.line {
+  color: #dcdce4;
+}
+
+/* Shared-screen rail. */
+.rail {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 12px;
+  width: 300px;
+  padding: 18px;
+  background: #20202a;
+}
+
+.railHead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.liveChip {
+  position: relative;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 4px 11px 4px 9px;
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #9bf0cd;
+  background: linear-gradient(100deg, rgb(60 216 160 / 16%), rgb(60 216 160 / 5%));
+  border: 1px solid rgb(60 216 160 / 32%);
+  border-radius: var(--radius-pill);
+}
+
+.liveDotWrap {
+  position: relative;
+  display: flex;
+  flex: none;
+  width: 7px;
+  height: 7px;
+}
+
+.liveDot {
+  position: absolute;
+  inset: 0;
+  background: #3cd8a0;
+  border-radius: 50%;
+  box-shadow: 0 0 8px 1px rgb(60 216 160 / 90%);
+}
+
+.liveRing {
+  position: absolute;
+  inset: -3px;
+  border: 1.5px solid rgb(60 216 160 / 55%);
+  border-radius: 50%;
+  animation: live-ring 1.9s ease-out infinite;
+}
+
+.liveShine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgb(190 255 225 / 42%) 50%, transparent 62%);
+  animation: live-shine 2.8s ease-in-out infinite;
+}
+
+.syncedChip {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 3px 8px;
+  background: rgb(60 216 160 / 16%);
+  border: 1px solid rgb(60 216 160 / 35%);
+  border-radius: var(--radius-pill);
+}
+
+.syncedDot {
+  width: 6px;
+  height: 6px;
+  background: #3cd8a0;
+  border-radius: 50%;
+  animation: session-pulse 1.4s infinite;
+}
+
+.syncedLabel {
+  font-size: 10px;
+  font-weight: 800;
+  color: #8be09b;
+}
+
+/*
+  사용자 화면 거울이 놓일 자리. (S15P11A206-89)
+
+  `container-type: size` 로 두는 이유는 아래 `.mirror` 가 이 상자의 **가로와 세로 양쪽**을
+  알아야 하기 때문이다. 폰 비율(약 9:19)은 세로로 길어서, 창이 높으면 폭이 걸리고 창이 낮으면
+  높이가 걸린다. `aspect-ratio` 에 `max-width`·`max-height` 를 함께 걸면 어느 쪽이 먼저
+  적용되는지가 브라우저마다 다르므로, 두 치수를 직접 비교해 작은 쪽을 고른다.
+*/
+.mirrorFit {
+  container-type: size;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+  사용자 화면 전체를 같은 비율로 비추는 상자.
+
+  **비율은 사용자가 재서 보낸다**(`ScreenGeometryPayload`). 여기에 52:48 같은 숫자를 박아 두면
+  화면 높이가 다른 기기에서 어긋나고, 어긋나면 상담자가 짚어 준 자리가 사용자 화면의 다른 곳에
+  찍힌다. `--mirror-aspect` 는 그 값이며 도착하기 전에는 어림값이 들어온다.
+
+  가로세로 중 상자에 들어가는 쪽을 고른다 — `min()` 이 곧 `contain` 이다.
+*/
+.mirror {
+  position: relative;
+  width: min(100cqw, calc(100cqh * var(--mirror-aspect)));
+  height: min(100cqh, calc(100cqw / var(--mirror-aspect)));
+  margin: auto;
+  overflow: hidden;
+  background: #000;
+  border-radius: 14px;
+}
+
+/*
+  카메라 영상의 원본 비율을 되돌리는 상자.
+
+  보내오는 트랙은 320×240 고정이라, 원본이 16:9인 기기에서는 세로로 늘어난 채로 도착한다
+  (`cameraFrames.ts`). 원본 비율의 상자를 만들고 그 안에서 영상을 늘려 채우면(`fill`) 그
+  늘어남이 정확히 되돌아간다.
+
+  그 상자를 거울보다 크게 잡아(`min-width`·`min-height` 100%) 넘치는 쪽을 잘라 낸다. 사용자
+  화면에서도 XR 컴포지터가 카메라를 화면에 맞춰 잘라 합성하므로, 같은 화각이 된다.
+
+  **실기기 확인이 필요하다.** 컴포지터가 정확히 이렇게 자르는지는 문서로 확정되지 않았다.
+*/
+.mirrorCameraCrop {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  min-width: 100%;
+  min-height: 100%;
+  aspect-ratio: var(--mirror-camera-aspect);
+  transform: translate(-50%, -50%);
+}
+
+/* 원본 비율 상자를 그대로 채운다. `contain` 이면 여백이 생겨 화각이 달라진다. */
+.mirrorCamera {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/*
+  사용자 화면 아래쪽. 카메라를 가리는 크림색 바탕이며, 자리는 사용자가 잰 값이다.
+  사용자 화면의 `.lower` 와 같은 배경을 쓴다 — 색이 다르면 어디까지가 지도인지 헷갈린다.
+*/
+.mirrorLower {
+  position: absolute;
+  z-index: 2;
+  background: var(--color-cream);
+}
+
+/*
+  거울 안의 지도. **읽기 전용이다.**
+
+  포인터를 받지 않는다. 상담자가 여기서 확대하거나 밀면 사용자 화면과 다른 곳을 비추게 되고,
+  그 위에 그은 선은 사용자 화면의 엉뚱한 자리에 찍힌다. 탐색은 왼쪽 지도에서 한다.
+*/
+.mirrorMap {
+  position: absolute;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  background: #eef1f5;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.drawTools {
+  position: absolute;
+  right: 0;
+  bottom: 10px;
+  left: 0;
+  z-index: 7;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drawTool {
+  pointer-events: auto;
+}
+
+/* Camera feed — prototype `.cam`. */
+.cam {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  overflow: hidden;
+  color: #6f6f78;
+  background: radial-gradient(120% 90% at 50% 20%, #2b2b30, #0e0e11);
+}
+
+.camPill {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: rgb(20 20 22 / 82%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: var(--radius-pill);
+}
+
+.camArrow {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  font-size: 44px;
+  color: #fff;
+  text-shadow: 0 3px 12px rgb(0 0 0 / 50%);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-mint-mid) 70%, transparent));
+  transform: translateX(-50%);
+}
+
+.camSentArrow {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  z-index: 2;
+  font-size: 34px;
+  color: #ffe36b;
+  transform: translateX(-50%);
+}
+
+.camCaption {
+  position: absolute;
+  right: 0;
+  bottom: 8px;
+  left: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 2px 6px #000;
+}
+
+.miniMapWrap {
+  position: relative;
+  flex: 1;
+  padding: 8px;
+  background: var(--color-cream);
+}
+
+.miniMap {
+  height: 100%;
+  background: #eef1f5;
+  border: 1px solid #dfe3e8;
+}
+
+@keyframes session-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes live-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.7);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes live-shine {
+  0%,
+  100% {
+    transform: translateX(-120%);
+  }
+
+  50% {
+    transform: translateX(120%);
+  }
+}
+
+/* 종료가 서버에 닿지 않았다는 경고. 놓치면 상담이 진행 중으로 남는다. */
+.endAlert {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  padding: 9px 11px;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #8a1f1f;
+  background: #fdeaea;
+  border: 1px solid #f3c6c6;
+  border-radius: 9px;
+}

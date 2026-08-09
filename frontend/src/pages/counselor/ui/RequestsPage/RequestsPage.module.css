@@ -1,0 +1,431 @@
+/* Screens 28·29 (FR-C-002/003) — request queue plus detail.
+   Ported from prototype `#c-list`. */
+
+.wrap {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Prototype `.clist` — the glass request rail. */
+.rail {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 290px;
+  background: rgb(255 255 255 / 65%);
+  backdrop-filter: blur(20px);
+  border-right: 1px solid rgb(207 226 213 / 50%);
+}
+
+.railTools {
+  padding: 12px 12px 4px;
+}
+
+.scopeFilters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+
+.scopeButton {
+  justify-content: center;
+  min-width: 0;
+  height: 40px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.railScroll {
+  flex: 1;
+  padding: 10px 0;
+  overflow: auto;
+}
+
+.stateMessage {
+  padding: 16px 18px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-sub);
+  line-height: 1.5;
+}
+
+.pagination {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgb(207 226 213 / 50%);
+}
+
+.pageButton {
+  justify-content: center;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.pageLabel {
+  min-width: 52px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-sub);
+  text-align: center;
+}
+
+/* Prototype `.creq`, on the glass elevation of the shared `Card`. Status only
+   tints the surface and colors the drop shadow, so the status-sorted list reads
+   as colored groups while every card keeps the same raised look. */
+.request {
+  --status-tint: rgb(233 240 236 / 70%);
+  --status-glow: color-mix(in srgb, var(--color-ink) 16%, transparent);
+
+  position: relative;
+  width: calc(100% - 24px);
+  padding: 13px 14px;
+  margin: 10px 12px;
+  font-family: inherit;
+  text-align: left;
+  background: linear-gradient(150deg, rgb(255 255 255 / 92%) 0%, var(--status-tint) 100%);
+  backdrop-filter: blur(20px) saturate(1.25);
+  border: 1.5px solid rgb(255 255 255 / 95%);
+  border-radius: 18px;
+  box-shadow:
+    0 12px 24px -12px var(--status-glow),
+    0 4px 10px -5px color-mix(in srgb, var(--color-ink) 8%, transparent),
+    inset 0 1.5px 0 rgb(255 255 255 / 95%),
+    inset 0 -2px 4px color-mix(in srgb, var(--color-ink) 4%, transparent);
+  transition:
+    transform var(--duration-fast) ease,
+    box-shadow var(--duration-base) ease;
+}
+
+.request:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 18px 30px -12px var(--status-glow),
+    0 6px 14px -6px color-mix(in srgb, var(--color-ink) 10%, transparent),
+    inset 0 1.5px 0 rgb(255 255 255 / 95%),
+    inset 0 -2px 4px color-mix(in srgb, var(--color-ink) 4%, transparent);
+}
+
+.cardWaiting {
+  --status-tint: color-mix(in srgb, var(--color-gold) 30%, #fff);
+  --status-glow: color-mix(in srgb, var(--color-gold) 45%, transparent);
+}
+
+.cardLive {
+  --status-tint: color-mix(in srgb, var(--color-mint) 32%, #fff);
+  --status-glow: color-mix(in srgb, var(--color-mint-dark) 42%, transparent);
+}
+
+.cardDone {
+  --status-tint: color-mix(in srgb, var(--color-lilac) 40%, #fff);
+  --status-glow: color-mix(in srgb, var(--color-lilac) 55%, transparent);
+}
+
+/* 취소·거절·실패 — 처리할 일이 없으니 가장 뒤로 물러나게 둔다. */
+.cardMuted {
+  --status-tint: color-mix(in srgb, var(--color-sky) 20%, #fff);
+  --status-glow: color-mix(in srgb, var(--color-ink) 12%, transparent);
+}
+
+/* Selection rides on top of the status tint — outline keeps the shadow intact. */
+.requestOn {
+  outline: 2.5px solid color-mix(in srgb, var(--color-mint-dark) 65%, transparent);
+  outline-offset: 1px;
+  transform: translateY(-2px);
+}
+
+/* Problem type on the left, consultation status on the right. */
+.cardHead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+/* White pill so it stays legible on every status tint. */
+.tag {
+  display: inline-block;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-mint-forest);
+  background: rgb(255 255 255 / 88%);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--color-sub);
+}
+
+.loc {
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Consultation status. One badge for every status so ended, canceled and
+   waiting requests are never mistaken for one another. */
+.statusBadge {
+  flex: none;
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+.badgeWaiting {
+  color: #8a5a0f;
+  background: color-mix(in srgb, var(--color-gold) 38%, #fff);
+}
+
+.badgeLive {
+  color: var(--color-mint-forest);
+  background: color-mix(in srgb, var(--color-mint) 42%, #fff);
+}
+
+.badgeDone {
+  color: #453a91;
+  background: color-mix(in srgb, var(--color-lilac) 48%, #fff);
+}
+
+.badgeMuted {
+  color: var(--color-sub);
+  background: rgb(255 255 255 / 88%);
+}
+
+/* Prototype `.cmain` — the detail pane. */
+.detail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 22px 26px;
+  overflow: auto;
+  background: #faf9fb;
+}
+
+.detailHead {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.eyebrow {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-mint-mid);
+}
+
+.headingRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0 4px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.route {
+  font-size: 12.5px;
+  color: var(--color-sub);
+}
+
+/* Button is full-width by default; the header actions size to their label. */
+.accept {
+  flex: none;
+  width: auto;
+  padding: 0 18px;
+  white-space: nowrap;
+}
+
+.inProgress {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 44px;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f5a3e;
+  cursor: default;
+  background: #d9f0df;
+  border: 1px solid #bfe0c9;
+  border-radius: 12px;
+}
+
+.inProgressDot {
+  width: 7px;
+  height: 7px;
+  background: #0f5a3e;
+  border-radius: 50%;
+  animation: request-pulse 1.4s infinite;
+}
+
+/* Two columns while there is room; one below ~520px of pane width. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.card {
+  min-width: 0;
+  padding: 18px;
+  background: rgb(255 255 255 / 75%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 14px;
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+.actionError {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b42318;
+}
+
+.cardLabel {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-sub);
+}
+
+.cardValue {
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+/* 값이 비었거나 종류를 덧붙일 때 쓰는 보조 문장. */
+.cardHint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-sub);
+}
+
+.optionList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--color-sub);
+}
+
+.option {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.issueCard {
+  margin-top: 12px;
+}
+
+.issueText {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.acceptedBanner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: #0f5a3e;
+  background: #d9f0df;
+  border: 1px solid #bfe0c9;
+  border-radius: 10px;
+}
+
+.openSession {
+  width: auto;
+  padding: 0 16px;
+  background: var(--color-mint-forest);
+}
+
+.completedChip {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 44px;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-sub);
+  background: var(--color-line-soft);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+}
+
+.doneBanner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--color-sub);
+  background: var(--color-line-soft);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+.openHistory {
+  width: auto;
+  padding: 0 16px;
+}
+
+@keyframes request-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* 다른 상담자가 맡은 상담. 들어가 봐야 연결되지 않고 종료도 거절된다. */
+.otherCounselor {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-sub);
+  background: #f1f1f4;
+  border-radius: var(--radius-pill);
+}

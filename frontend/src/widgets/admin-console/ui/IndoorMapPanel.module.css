@@ -1,0 +1,218 @@
+/* Prototype's `aIsMap` branch inside `#a-console`. */
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--color-sub);
+}
+
+/* 역 선택과 층 추가를 같은 축에 세운다. 둘 다 높이가 달라 예전에는 겹쳐 보였다. */
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* SelectField는 폼용이라 width 100% · height 50px다. 헤더에서는 내용 폭에 맞추고
+   옆에 서는 sm 버튼과 같은 높이로 낮춘다. */
+.stationSelect {
+  width: auto;
+  min-width: 120px;
+  height: 44px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 12px;
+}
+
+.addFloor {
+  width: auto;
+  padding: 0 18px;
+  white-space: nowrap;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.card {
+  padding: 0;
+  overflow: hidden;
+  background: rgb(255 255 255 / 75%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 14px;
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+.preview {
+  position: relative;
+  height: 132px;
+  background: #eef1f5;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.previewSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.floorTag {
+  position: absolute;
+  top: 9px;
+  left: 10px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: #0f2c22;
+  border-radius: 6px;
+}
+
+.statusTag {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  border-radius: 6px;
+}
+
+.cardBody {
+  padding: 13px 14px;
+}
+
+.cardTitle {
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.cardMeta {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--color-sub);
+}
+
+/* 남은 동작은 삭제 하나다. 폭을 다 차지하면 위험한 동작이 과하게 강조되므로
+   오른쪽에 붙인다. AdminTable의 행 동작과 같은 치수를 쓴다. */
+.cardActions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.cardAction {
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.cardActionDanger {
+  color: #c24a3d;
+  border: 1px solid #f3c9b6;
+}
+
+.notice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 18px;
+  margin-top: 14px;
+  background: rgb(255 255 255 / 75%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 14px;
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+.noticeMark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: #fbf0db;
+  border-radius: 11px;
+}
+
+.noticeBody {
+  flex: 1;
+}
+
+.noticeTitle {
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.noticeDesc {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--color-sub);
+}
+
+.noticeAction {
+  width: auto;
+  padding: 0 16px;
+}
+
+/* 층 카드가 비었을 때 그 자리에서 이유를 말하는 한 줄. */
+.state {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  padding: 26px 14px;
+  margin-bottom: 14px;
+  background: rgb(255 255 255 / 75%);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 14px;
+}
+
+.stateText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-sub);
+}
+
+.stateError {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #c24a3d;
+}
+
+.retry {
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-mint-mid);
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}

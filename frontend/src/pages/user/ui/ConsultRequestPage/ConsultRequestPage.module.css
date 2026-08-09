@@ -1,0 +1,97 @@
+/* Screen 17 (FR-U-013) — raise a consultation request.
+   Ported from prototype `#s-consult-req`. */
+
+.topSpacer {
+  height: 18px;
+}
+
+.header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.headerIcon {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+}
+
+.kicker {
+  margin: 0;
+}
+
+.title {
+  margin-top: 2px;
+  font-size: 24px;
+}
+
+.lede {
+  margin-top: 16px;
+}
+
+.issues {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 32px;
+}
+
+.issue {
+  padding: 15px;
+}
+
+.issueIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.issueLabel {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* 기존 위치 인식 경고 모달과 같은 그래픽 구조를 사용한다. */
+.warningHero {
+  height: 96px;
+  margin: 0;
+}
+
+.warningHeroIcon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  color: #fff;
+  filter: drop-shadow(0 2px 5px rgb(120 30 20 / 45%));
+  transform: translate(-50%, -50%);
+}
+
+.heading {
+  margin: 15px 0 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-ink);
+  text-align: center;
+  letter-spacing: -0.03em;
+}
+
+.reminderBody {
+  margin: 9px 0 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-sub);
+  text-align: center;
+}
+
+.reminderBody b {
+  color: var(--color-ink);
+}
+
+.confirm {
+  min-height: 52px;
+}

@@ -1,0 +1,472 @@
+# WebRTC Signaling 이벤트 명세서
+
+> 최신화: 2026-08-07 (S15P11A206-89 프록시 경로 반영)
+> 구현 상태: Backend WebSocket relay, envelope 검증, 상담 상태 기반 JOIN 검증은 구현됨. Frontend PeerConnection 연동과 WebSocket 참여자 본인 검증은 진행 중이다.
+
+## 1. 목적
+
+본 문서는 PinGo 사용자와 상담자 간 WebRTC 연결을 생성하기 위해 WebSocket으로 교환하는 signaling 이벤트 계약을 정의한다.
+
+REST API는 Swagger와 `docs/API_명세서.md`를 기준으로 관리하고, WebSocket signaling 및 DataChannel 이벤트는 별도 문서로 관리한다.
+
+---
+
+## 2. 연결 Endpoint
+
+### Local
+
+```text
+ws://localhost:8080/ws/signaling?token={signalingAccessToken}
+```
+
+### Production
+
+```text
+wss://{service-domain}/ws/signaling?token={signalingAccessToken}
+```
+
+운영 환경에서는 HTTPS reverse proxy를 통해 `/ws/` 요청이 backend로 전달된다.
+
+### 프론트가 실제로 쓰는 주소 (S15P11A206-89)
+
+**프론트는 위 절대 주소를 쓰지 않는다.** `VITE_API_BASE_URL`이 비어 있으면 API와 같은 길로
+보낸다 — 페이지 오리진으로 붙고, vite 개발 서버가 backend로 넘긴다
+([`signalingBaseUrl.ts`](../frontend/src/features/consult-signaling/model/signalingBaseUrl.ts)).
+
+```js
+// VITE_API_BASE_URL 이 비어 있으면
+`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`
+```
+
+**실기기 확인 때문이다.** `signaling.websocket.allowed-origin-patterns`에는 `localhost:5173`
+계열과 배포 주소만 있어서, 폰이 LAN 주소로 접속하면 handshake가 거절되고 upgrade가 끝나지
+않은 채 **close code 1006**으로 끊긴다. 서버가 close frame을 보낼 기회조차 없어 원인 코드도
+남지 않는다. 데스크톱은 허용 목록에 있는 `localhost`라 같은 코드가 그대로 붙어, **실기기에서만
+재현됐다.** 같은 오리진으로 보내면 개발 서버가 `Origin`을 바꿔 전달하므로 허용 목록을 건드리지
+않아도 된다. LAN IP를 목록에 넣는 방법은 IP가 바뀔 때마다 백엔드를 다시 배포해야 해서
+유지되지 않는다.
+
+> **vite 프록시에 `ws: true`가 있어야 한다.** 없으면 upgrade 요청이 전달되지 않는다.
+> 경로도 `/ws`가 아니라 `/ws/signaling`으로 좁혀 vite 자신의 HMR 소켓과 겹치지 않게 한다.
+> (`frontend/vite.config.ts`)
+
+`VITE_API_BASE_URL`에 절대 주소를 지정한 경우에만 `VITE_WS_BASE_URL` 값을 그대로 쓴다.
+
+### ICE 서버 설정
+
+Frontend는 `RTCPeerConnection` 생성 전에 `GET /api/webrtc/ice-servers?token={signalingAccessToken}`를 호출해 ICE server 설정을 조회한다. Backend는 STUN 기본값을 제공하며, TURN URL과 credential은 운영 환경변수로 주입된 경우에만 응답에 포함한다. ICE 설정 조회에는 계정 JWT 대신 상담별 `signalingAccessToken`이 필요하다.
+
+```json
+{
+  "iceServers": [
+    {
+      "urls": ["stun:stun.l.google.com:19302"]
+    }
+  ]
+}
+```
+
+### 인증
+
+WebSocket handshake에는 상담별 `signalingAccessToken`을 전달한다. 브라우저 표준 `WebSocket` API는 커스텀 header 지정이 제한되므로 query parameter 전달을 기본 방식으로 사용한다. header 지정이 가능한 클라이언트는 `Authorization: Bearer {signalingAccessToken}`도 사용할 수 있다.
+
+`signalingAccessToken`은 상담별 단기 토큰이며, payload는 아래 정보를 포함한다.
+
+| 필드 | 설명 |
+| --- | --- |
+| `consultationId` | 참여할 상담 ID |
+| `tokenType` | signaling 전용 토큰 식별값. 값은 `SIGNALING` |
+| `senderType` | `USER` 또는 `COUNSELOR` |
+| `userSessionId` | USER 토큰에 포함되는 익명 사용자 세션 ID |
+| `accountId` | COUNSELOR 토큰에 포함되는 상담자 계정 ID |
+| `exp` | 만료 시각 |
+
+Backend는 handshake에서 토큰을 검증해 WebSocket session attributes에 참여자 정보를 저장한다. 토큰이 누락되었거나 만료·변조·형식 오류가 있으면 `401 Unauthorized`로 handshake를 거절하고 WebSocket 연결을 수립하지 않는다. `JOIN` 시에는 token payload와 message의 `sessionId`, `senderType`, 상담 session의 `userSessionId` 또는 `counselorId`가 일치하는지 확인한 뒤 room에 등록한다.
+
+WebSocket handshake 허용 Origin은 `SIGNALING_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS` 환경변수로 설정한다. 기본값은 local 개발 origin과 운영 서비스 도메인만 허용한다.
+
+---
+
+## 3. 책임 경계
+
+| 구분 | 책임 |
+| --- | --- |
+| Frontend | WebRTC PeerConnection 생성, 사용자 화면 공유 track 생성, offer/answer 생성, ICE candidate 수집, signaling message 송수신, DataChannel 생성, 음성 입력 수집 및 번역 자막 표시 |
+| Backend | WebSocket 연결 수락, signaling session 검증, signaling room 등록/정리, 사용자와 상담자 간 signaling message relay, 비정상 메시지 오류 응답 |
+| Infra | HTTPS/WSS reverse proxy, STUN/TURN 서버, 외부망 NAT 연결 검증 |
+
+Backend는 SDP와 ICE candidate 내용을 해석하거나 수정하지 않는다. Backend는 `sessionId`와 `senderType` 기준으로 같은 room의 상대방에게 signaling message를 relay한다. 단, `JOIN` 시 signaling session 검증을 통과해야 room에 등록되며, `OFFER`, `ANSWER`, `ICE_CANDIDATE`는 해당 `sessionId`와 `senderType`으로 `JOIN`된 WebSocket session에서 보낸 경우에만 relay한다.
+
+상담 중 사용자의 화면은 WebRTC media track으로 상담자에게 공유한다. 단, 사용자와 상담자의 원본 음성은 서로에게 직접 전달하지 않는다. 음성 입력은 STT 및 번역 처리 후 상대방 화면에 자막으로 표시하는 것을 기본 정책으로 한다.
+
+---
+
+## 4. 공통 Message Envelope
+
+모든 signaling message는 아래 공통 구조를 따른다.
+
+```json
+{
+  "sessionId": "room_cs_abc123",
+  "senderType": "USER",
+  "type": "OFFER",
+  "payload": {},
+  "timestamp": "2026-07-23T10:00:00Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `sessionId` | string | Y | 상담 signaling room/session ID |
+| `senderType` | string | Y | 메시지 발신자 타입 |
+| `type` | string | Y | signaling 이벤트 타입 |
+| `payload` | object | N | 이벤트별 상세 데이터 |
+| `timestamp` | string | Y | ISO-8601 UTC 기준 메시지 생성 시각 |
+
+---
+
+## 5. Sender Type
+
+| 값 | 설명 |
+| --- | --- |
+| `USER` | 외국인 관광객 사용자 |
+| `COUNSELOR` | 상담자 또는 역무원 |
+| `SYSTEM` | 서버가 생성한 시스템 메시지 |
+
+---
+
+## 6. Message Type
+
+| 값 | 방향 | 설명 |
+| --- | --- | --- |
+| `JOIN` | FE -> BE | signaling room 입장 |
+| `LEAVE` | FE -> BE | signaling room 퇴장 |
+| `OFFER` | USER/COUNSELOR -> BE -> 상대방 | WebRTC SDP offer 전달 |
+| `ANSWER` | USER/COUNSELOR -> BE -> 상대방 | WebRTC SDP answer 전달 |
+| `ICE_CANDIDATE` | USER/COUNSELOR -> BE -> 상대방 | ICE candidate 전달 |
+| `CAPTION` | USER/COUNSELOR -> BE -> 상대방 | STT 자막 한 줄 전달 |
+| `RENEGOTIATE` | USER -> BE -> COUNSELOR | 연결을 처음부터 다시 맺어 달라는 요청 |
+| `ERROR` | BE -> FE | signaling 오류 응답 |
+
+---
+
+## 7. 이벤트별 Payload
+
+### 7.1 JOIN
+
+room에 입장할 때 전송한다.
+
+Backend는 `JOIN` 요청을 받은 뒤 signaling session 검증을 먼저 수행한다. `sessionId`는 `room_{consultationId}` 형식이어야 하며, 해당 상담이 `ACCEPTED` 또는 `IN_PROGRESS` 상태일 때만 room에 등록된다. 검증에 실패하면 room에 등록하지 않고 `ERROR` 메시지를 응답한다.
+
+```json
+{
+  "sessionId": "room_cs_abc123",
+  "senderType": "USER",
+  "type": "JOIN",
+  "payload": {
+    "displayName": "anonymous-user",
+    "mediaMode": "SCREEN_SHARE_WITH_CAPTIONS",
+    "sourceLanguage": "en",
+    "targetLanguage": "ko",
+    "captionEnabled": true
+  },
+  "timestamp": "2026-07-23T10:00:00Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `displayName` | string | N | 상담 화면 표시용 이름 |
+| `mediaMode` | string | N | `SCREEN_SHARE`, `SCREEN_SHARE_WITH_CAPTIONS`, `CHAT` 중 하나 |
+| `sourceLanguage` | string | N | 발화자의 언어. 예: `en`, `ko` |
+| `targetLanguage` | string | N | 상대방에게 표시할 번역 언어. 예: `ko`, `en` |
+| `captionEnabled` | boolean | N | 번역 자막 사용 여부 |
+
+### 7.2 LEAVE
+
+사용자 또는 상담자가 room에서 나갈 때 전송한다.
+
+```json
+{
+  "sessionId": "room_cs_abc123",
+  "senderType": "COUNSELOR",
+  "type": "LEAVE",
+  "payload": {
+    "reason": "CONSULTATION_ENDED"
+  },
+  "timestamp": "2026-07-23T10:05:00Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `reason` | string | N | `USER_CANCELLED`, `COUNSELOR_LEFT`, `CONSULTATION_ENDED`, `NETWORK_CLOSED` |
+
+### 7.3 OFFER
+
+WebRTC SDP offer를 상대방에게 전달한다.
+
+`OFFER`는 동일한 `sessionId`와 `senderType`으로 `JOIN`이 완료된 WebSocket session에서 보낸 경우에만 relay된다. `JOIN`하지 않은 session이 전송하면 Backend는 `SIGNALING_SESSION_NOT_JOINED` 오류를 응답한다.
+
+```json
+{
+  "sessionId": "room_cs_abc123",
+  "senderType": "USER",
+  "type": "OFFER",
+  "payload": {
+    "sdp": "v=0...",
+    "sdpType": "offer"
+  },
+  "timestamp": "2026-07-23T10:00:05Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `sdp` | string | Y | WebRTC Session Description |
+| `sdpType` | string | Y | `offer` |
+
+### 7.4 ANSWER
+
+WebRTC SDP answer를 상대방에게 전달한다.
+
+`ANSWER`는 동일한 `sessionId`와 `senderType`으로 `JOIN`이 완료된 WebSocket session에서 보낸 경우에만 relay된다. `JOIN`하지 않은 session이 전송하면 Backend는 `SIGNALING_SESSION_NOT_JOINED` 오류를 응답한다.
+
+```json
+{
+  "sessionId": "room_cs_abc123",
+  "senderType": "COUNSELOR",
+  "type": "ANSWER",
+  "payload": {
+    "sdp": "v=0...",
+    "sdpType": "answer"
+  },
+  "timestamp": "2026-07-23T10:00:08Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `sdp` | string | Y | WebRTC Session Description |
+| `sdpType` | string | Y | `answer` |
+
+### 7.5 ICE_CANDIDATE
+
+ICE candidate를 상대방에게 전달한다.
+
+`ICE_CANDIDATE`는 동일한 `sessionId`와 `senderType`으로 `JOIN`이 완료된 WebSocket session에서 보낸 경우에만 relay된다. `JOIN`하지 않은 session이 전송하면 Backend는 `SIGNALING_SESSION_NOT_JOINED` 오류를 응답한다.
+
+```json
+{
+  "sessionId": "room_cs_abc123",
+  "senderType": "USER",
+  "type": "ICE_CANDIDATE",
+  "payload": {
+    "candidate": "candidate:...",
+    "sdpMid": "0",
+    "sdpMLineIndex": 0
+  },
+  "timestamp": "2026-07-23T10:00:10Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `candidate` | string | Y | ICE candidate 문자열 |
+| `sdpMid` | string | N | media stream 식별자 |
+| `sdpMLineIndex` | number | N | media line index |
+
+### 7.6 ERROR
+
+Backend가 잘못된 메시지나 room 상태 오류를 응답할 때 사용한다.
+
+```json
+{
+  "sessionId": "room_cs_abc123",
+  "senderType": "SYSTEM",
+  "type": "ERROR",
+  "payload": {
+    "code": "INVALID_SIGNALING_MESSAGE",
+    "message": "Invalid signaling message type.",
+    "retryable": false
+  },
+  "timestamp": "2026-07-23T10:00:11Z"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `code` | string | Y | 오류 코드 |
+| `message` | string | Y | 사용자 또는 개발자 확인용 메시지 |
+| `retryable` | boolean | Y | 동일 요청 재시도 가능 여부 |
+
+---
+
+## 8. 오류 코드
+
+| 코드 | 설명 | retryable | 현재 구현 |
+| --- | --- | --- | --- |
+| `INVALID_SIGNALING_MESSAGE` | JSON 형식, 필수 필드, enum 값이 잘못됨 | false | Y |
+| `INVALID_SIGNALING_SESSION` | signaling session 검증에 실패함. `SESSION_NOT_ACCEPTED` 성격의 오류만 retryable=true로 응답한다. | false 또는 true | Y |
+| `SIGNALING_SESSION_NOT_JOINED` | `JOIN`하지 않은 WebSocket session이 relay 메시지를 보냄 | false | Y |
+| `SIGNALING_PEER_NOT_CONNECTED` | 상대방이 아직 연결되지 않음 | true | Y |
+| `SIGNALING_ROOM_FULL` | 사용자와 상담자가 이미 모두 입장한 room | false | N |
+| `SIGNALING_INTERNAL_ERROR` | 서버 내부 오류 | true | Y |
+
+---
+
+## 9. Session 규칙
+
+- `sessionId`는 상담 요청이 수락되거나 상담 room이 생성될 때 서버가 발급한다.
+- `sessionId`는 `room_{consultationId}` 형식이어야 한다.
+- `JOIN`은 signaling session 검증을 통과한 경우에만 room 등록으로 이어진다.
+- 존재하지 않는 상담 session은 `INVALID_SIGNALING_SESSION` 오류를 응답한다.
+- `WAITING` 상태의 상담 session은 아직 수락되지 않았으므로 `INVALID_SIGNALING_SESSION` 오류와 `retryable=true`를 응답한다.
+- `ENDED`, `CANCELED`, `REJECTED`, `FAILED` 상태의 상담 session은 닫힌 session으로 판단하여 `INVALID_SIGNALING_SESSION` 오류와 `retryable=false`를 응답한다.
+- 하나의 `sessionId`에는 기본적으로 `USER` 1명과 `COUNSELOR` 1명만 입장할 수 있다.
+- 동일 `sessionId`에서 같은 `senderType`이 다시 `JOIN`하면 현재 WebSocket session으로 교체된다.
+- `OFFER`, `ANSWER`, `ICE_CANDIDATE`는 동일한 `sessionId`와 `senderType`으로 `JOIN`된 WebSocket session에서 보낸 경우에만 relay된다.
+- `LEAVE` 또는 비정상 연결 종료 시 Backend는 room cleanup을 수행한다.
+- 상담 종료 API가 성공하면 Backend는 해당 signaling room을 즉시 제거하고, room에 남아 있는 WebSocket session을 `4400 Signaling Room Closed`로 종료한다.
+- 상담 수락 API가 성공하면 상담자 상태는 `BUSY`가 되며, 상담 종료 API가 성공하면 `AVAILABLE`로 복귀한다.
+- `JOIN`, `OFFER`, `ANSWER`, `ICE_CANDIDATE` relay 과정에서 room의 마지막 활동 시각을 갱신한다.
+- 마지막 활동 시각 기준으로 만료 시간이 지난 room은 Backend scheduler가 주기적으로 제거한다.
+- 만료 room 제거 시 room에 남아 있는 WebSocket session은 `4408 Signaling Room Expired`로 종료한다.
+- 현재 구현은 인메모리 room registry 기준이다. 서버 재시작 시 room 정보는 유지되지 않는다.
+- Backend의 현재 JOIN 검증 범위는 session ID 형식, 상담 session 존재 여부, 상담 상태, `SYSTEM` sender 차단이다.
+- USER의 `userSessionId`와 COUNSELOR의 `accountId`는 WebSocket handshake에서 검증한 `signalingAccessToken` payload와 상담 session 정보를 대조해 검증한다.
+- SDP와 ICE candidate payload 내부 값은 relay 서버가 검증하지 않는다.
+
+---
+
+## 10. Room 만료 설정
+
+signaling room 만료 정책은 운영 환경 변수로 조정한다.
+
+| 환경 변수 | 기본값 | 설명 |
+| --- | --- | --- |
+| `SIGNALING_ROOM_EXPIRATION_MINUTES` | `30` | 마지막 활동 시각 이후 room을 만료 처리할 기준 시간 |
+| `SIGNALING_ROOM_CLEANUP_FIXED_DELAY_MS` | `60000` | 만료 room 정리 scheduler 실행 간격 |
+
+---
+
+## 11. 처리 순서 예시
+
+```text
+USER      -> BE -> COUNSELOR : JOIN
+COUNSELOR -> BE -> USER      : JOIN
+USER      -> BE -> COUNSELOR : OFFER
+COUNSELOR -> BE -> USER      : ANSWER
+USER      -> BE -> COUNSELOR : ICE_CANDIDATE
+COUNSELOR -> BE -> USER      : ICE_CANDIDATE
+USER      -> BE -> COUNSELOR : LEAVE
+```
+
+---
+
+## 12. DataChannel과의 경계
+
+이 문서는 WebRTC 연결 생성을 위한 signaling만 다룬다.
+
+상담 중 화면 동기화 이벤트는 WebRTC 연결 이후 DataChannel로 처리한다.
+
+DataChannel 대상 예시:
+
+- 화살표 전송
+- 펜 그리기 stroke 전송
+- 그리기 초기화
+- 안내 메시지 전송
+- 목적지 변경
+- 사용자 현재 위치 수정
+- 경로 갱신 요청
+
+DataChannel 이벤트 계약은 별도 문서에서 관리한다.
+
+상담자가 공유된 사용자 화면 위에 펜으로 표시하는 기능은 signaling이 아니라 DataChannel 이벤트로 처리한다. Backend signaling 서버는 펜 좌표, 선 색상, 선 굵기, 지우기 이벤트를 해석하지 않는다.
+
+펜 그리기 좌표는 사용자와 상담자의 화면 크기가 달라도 같은 위치에 표시될 수 있도록 공유 화면 기준 정규화 좌표를 사용한다.
+
+```text
+x: 0.0 ~ 1.0
+y: 0.0 ~ 1.0
+```
+
+예시:
+
+```json
+{
+  "eventType": "DRAW_STROKE",
+  "payload": {
+    "strokeId": "stroke_abc123",
+    "points": [
+      { "x": 0.42, "y": 0.31 },
+      { "x": 0.44, "y": 0.33 }
+    ],
+    "color": "#FF3B30",
+    "width": 4
+  }
+}
+```
+
+후속 DataChannel 이벤트 명세에서는 최소 다음 이벤트를 정의한다.
+
+- `DRAW_STROKE_START`
+- `DRAW_STROKE_MOVE`
+- `DRAW_STROKE_END`
+- `DRAW_CLEAR`
+
+---
+
+## 13. 상담 화면 공유 및 번역 자막 정책
+
+### 13.1 화면 공유
+
+상담 연결 시 상담자는 사용자의 현재 화면을 볼 수 있어야 한다.
+
+화면 공유는 signaling message의 `payload`로 화면 데이터를 보내는 방식이 아니다. Frontend가 사용자의 화면 또는 앱 화면을 WebRTC media track으로 생성하고, 해당 track을 `RTCPeerConnection`에 추가한다.
+
+Backend는 화면 공유 track을 직접 처리하지 않는다. Backend는 `OFFER`, `ANSWER`, `ICE_CANDIDATE` 메시지를 relay하여 화면 공유 media track이 연결될 수 있도록 signaling만 담당한다.
+
+### 13.2 음성 전달 정책
+
+사용자와 상담자는 서로 다른 언어를 사용하는 상황을 기본 전제로 한다.
+
+원본 음성은 상대방에게 직접 전달하지 않는다. 즉, 사용자 마이크 음성 track과 상담자 마이크 음성 track은 상대방에게 그대로 송출하지 않는 것을 기본 정책으로 한다.
+
+대신 각 클라이언트는 자기 음성을 수집하고, STT 및 번역 처리를 통해 상대방 화면에 번역 자막을 표시한다.
+
+예시:
+
+- 사용자가 영어로 말하면 상담자 화면에는 한국어 자막이 표시된다.
+- 상담자가 한국어로 말하면 사용자 화면에는 영어 자막이 표시된다.
+
+### 13.3 번역 자막 이벤트 경계
+
+번역 자막은 WebRTC 연결 생성을 위한 signaling 이벤트가 아니다.
+
+따라서 `JOIN`, `OFFER`, `ANSWER`, `ICE_CANDIDATE`와 같은 signaling message type에 원문 음성 데이터나 번역 자막 본문을 섞지 않는다.
+
+번역 자막은 후속 실시간 상담 이벤트 계약에서 별도로 정의한다. 전송 방식은 후속 구현에서 다음 중 하나로 결정한다.
+
+- WebSocket 기반 caption 이벤트
+- WebRTC DataChannel 기반 caption 이벤트
+
+번역 자막 이벤트가 별도로 정의될 때 최소 포함해야 하는 필드는 다음과 같다.
+
+```json
+{
+  "sessionId": "room_cs_abc123",
+  "senderType": "USER",
+  "eventType": "TRANSLATED_CAPTION",
+  "payload": {
+    "sourceLanguage": "en",
+    "targetLanguage": "ko",
+    "originalText": "Where is exit 3?",
+    "translatedText": "3번 출구가 어디인가요?",
+    "isFinal": true
+  },
+  "timestamp": "2026-07-23T10:01:00Z"
+}
+```
+
+이 문서에서는 번역 자막의 상세 이벤트 계약을 확정하지 않고, signaling 계약과 분리한다는 원칙만 확정한다.
