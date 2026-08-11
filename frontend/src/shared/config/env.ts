@@ -13,6 +13,8 @@ const envSchema = z.object({
     .default('https://jenkins.example.invalid'),
   VITE_WS_BASE_URL: z.url().default('wss://jenkins.example.invalid'),
   VITE_APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // The presentation build uses deterministic captions unless explicitly disabled.
+  VITE_DEMO_CAPTIONS: z.enum(['true', 'false']).default('true'),
   VITE_NAVER_MAP_BASE_URL: optionalUrl,
   VITE_STUN_URL: optionalUrl,
   VITE_TURN_URL: optionalUrl,
