@@ -551,7 +551,22 @@ export function NavigationPage() {
    */
   const bearing = routeBearingOf({
     pathNodes,
-    currentLocation,
+    /**
+     * **경로 위에 얹은 자리를 쓴다.** 날것의 좌표가 아니다. (S15P11A206-382)
+     *
+     * 화살표는 `내 자리 → 앞쪽 노드` 벡터로 각도를 잡는데, 목표 노드는 경로선 위에 있고 내
+     * 자리만 측위 오차만큼 옆으로 벗어나 있었다. 그 어긋남이 그대로 각도로 들어간다 — 옆으로
+     * 2m 벗어나 있고 목표 노드가 3m 앞이면 `atan(2/3)`, 즉 34°다. `LOOKAHEAD_M`이 3m라 노드를
+     * 막 지난 직후가 늘 그 상황이었다.
+     *
+     * 두 점이 모두 경로선 위에 있으면 둘을 잇는 벡터가 곧 복도 방향이 되어 이 항이 사라진다.
+     * 지도 마커도 같은 값을 쓰므로(아래 `IndoorMapView`), 한 화면에서 마커와 화살표가 서로
+     * 다른 자리를 기준으로 삼는 일도 없어진다.
+     *
+     * 이탈했으면 `snappedLocation`이 null이라 날것의 좌표로 떨어진다. 그게 맞다 — 정말 벗어난
+     * 사용자에게는 복도 방향이 아니라 경로로 돌아가는 방향을 가리켜야 한다.
+     */
+    currentLocation: (snapToRoute ? progress.snappedLocation : null) ?? currentLocation,
     headingDeg,
     travelledM: progress.travelledM,
   });

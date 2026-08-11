@@ -163,4 +163,46 @@ describe('routeBearingOf', () => {
       routeBearingOf({ pathNodes: [], currentLocation: AT_START, headingDeg: 0, travelledM: 0 }),
     ).toBeNull();
   });
+
+  /**
+   * 옆으로 벗어난 자리를 그대로 넣으면 그 어긋남이 각도로 들어온다. (S15P11A206-382)
+   *
+   * 부르는 쪽이 경로에 얹은 자리(`routeProgressOf`의 `snappedLocation`)를 넘겨야 하는 이유다.
+   * 목표 노드는 이미 경로선 위에 있으므로, 내 자리까지 경로 위에 있으면 두 점을 잇는 벡터가
+   * 곧 복도 방향이 된다.
+   */
+  describe('경로에서 옆으로 벗어난 자리', () => {
+    /** 3m 앞 노드를 가리키게 두고, 옆으로 2m 벗어난 자리에서 재는 각도. */
+    const NEAR_PATH: RoutePathNode[] = [
+      { nodeId: 1, floorId: B3, mapX: 0, mapY: 0 },
+      { nodeId: 2, floorId: B3, mapX: 4, mapY: 0 },
+      { nodeId: 3, floorId: B3, mapX: 20, mapY: 0 },
+    ];
+
+    it('날것의 좌표를 넣으면 옆으로 벗어난 만큼 화살표가 틀어진다', () => {
+      const bearing = routeBearingOf({
+        pathNodes: NEAR_PATH,
+        // 경로선(y=0)에서 위로 2m 벗어나 있다. 목표 노드는 +x로 4m 앞이다.
+        currentLocation: { floorId: B3, mapX: 0, mapY: -2 },
+        headingDeg: 0,
+        travelledM: 0,
+      });
+
+      // atan2(2, 4) = 26.57°. 복도는 정면인데 화살표는 오른쪽 아래를 가리킨다.
+      expect(bearing?.relativeDeg).toBeCloseTo(26.57, 1);
+    });
+
+    it('경로에 얹은 좌표를 넣으면 복도 방향을 그대로 가리킨다', () => {
+      const bearing = routeBearingOf({
+        pathNodes: NEAR_PATH,
+        // 위 좌표를 경로선에 수직으로 내린 발.
+        currentLocation: { floorId: B3, mapX: 0, mapY: 0 },
+        headingDeg: 0,
+        travelledM: 0,
+      });
+
+      expect(bearing?.relativeDeg).toBeCloseTo(0);
+      expect(bearing?.turn).toBe('straight');
+    });
+  });
 });
