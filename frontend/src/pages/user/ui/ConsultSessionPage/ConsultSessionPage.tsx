@@ -6,6 +6,7 @@ import { isClosedConsultation, useConsultStore } from '@/entities/consult';
 import {
   FACILITY_MAP_FILTERS,
   destinationFacilityOf,
+  facilityIconOf,
   localizedFacilityNameAtNode,
   localizedFacilityNameOf,
   useStationFacilities,
@@ -13,6 +14,7 @@ import {
 } from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
+  MAX_WAYPOINTS,
   xrDistanceScaleOf,
   routeProgressOf,
   useNavigationStore,
@@ -42,7 +44,7 @@ import {
   type XrCameraStreamState,
 } from '@/shared/lib/webxr';
 import type { ConsultDataEvent } from '@/shared/types';
-import { Icon, MapPreview } from '@/shared/ui';
+import { Button, Icon, MapPreview, Sheet } from '@/shared/ui';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { VPS_FRAME_SIZE } from '@/widgets/camera-preview';
 import { PhoneFrame } from '@/widgets/phone-frame';
@@ -224,6 +226,7 @@ export function ConsultSessionPage() {
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
   const routeType = useNavigationStore((state) => state.route);
   const waypoints = useNavigationStore((state) => state.waypoints);
+  const addWaypoint = useNavigationStore((state) => state.addWaypoint);
   const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
   const storedTravelledM = useNavigationStore((state) => state.travelledM);
 
@@ -650,6 +653,29 @@ export function ConsultSessionPage() {
       : facilityView;
   /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
   const effectiveType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
+
+  /**
+   * 고른 시설을 경유지로 삼을 수 있는지. 안내 화면과 같은 조건이다.
+   *
+   * **도착지 판정은 노드로 한다.** 안내 화면은 이름을 비교하지만, 이 화면의 목적지는 상담자가
+   * `DESTINATION_CHANGE_REQUESTED` 로 바꿀 수도 있어 화면에 적힌 이름이 그 시설의 `nameKo` 와
+   * 같다고 보장되지 않는다. 노드는 경로가 실제로 끝나는 자리라 그 흔들림이 없다.
+   */
+  const selectedFacilityIsWaypoint = selectedFacility
+    ? waypoints.some((waypoint) => waypoint.nodeId === selectedFacility.linkedNodeId)
+    : false;
+  const selectedFacilityIsDestination =
+    selectedFacility?.linkedNodeId != null && selectedFacility.linkedNodeId === targetNodeId;
+  const selectedFacilityName = selectedFacility
+    ? localizedFacilityNameOf(selectedFacility, displayLanguage)
+    : '';
+  /**
+   * 노드를 모르는 시설은 경유지가 될 수 없다.
+   *
+   * 경로는 노드로만 계산된다. 이름만 들고 추가하면 요청에 실을 것이 없어, 화면에만 칩이 붙고
+   * 경로는 그대로인 상태가 된다(`Waypoint`).
+   */
+  const selectedFacilityRoutable = selectedFacility?.linkedNodeId != null;
 
   /**
    * 연결이 지금 어떤 상태인지. **`상담 연결됨`을 고정으로 쓰지 않는다.**
@@ -1164,6 +1190,10 @@ export function ConsultSessionPage() {
                 /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼진다. */
                 showAllFacilities={effectiveView === 'all'}
                 selectedFacilityId={selectedFacility?.facilityId}
+                /* 넘기지 않으면 마커가 탭을 받지 않는다(`IndoorMapOverlay`). 상담 중에도 시설을
+                   눌러 경유지를 넣을 수 있어야 한다 — 상담자가 "저기 화장실 먼저 들르세요"라고
+                   말해 주는 순간이 이 화면에서 가장 흔한 요구다. */
+                onSelectFacility={setSelectedFacility}
               />
             </div>
 
@@ -1251,6 +1281,72 @@ export function ConsultSessionPage() {
             <p className={styles.syncText}>{t('user.consultSession.mapSync')}</p>
           </div>
         </div>
+
+        {/*
+          시설 시트. **오버레이 루트 안에 둔다.** (S15P11A206-206)
+
+          `PhoneFrame` 의 `overlay` 로 넘기면 이 화면이 세션에 넘긴 루트 밖에 그려진다. 세션이
+          열리면 컴포지터는 그 루트 아래만 카메라 위에 합성하므로, 시트는 열려 있어도 화면에
+          나타나지 않는다 — 안내 화면에서 이미 같은 자리에서 겪은 문제다.
+
+          세션 안내가 떠 있는 동안에는 열지 않는다. 그것은 화면 전체를 덮고 다른 조작을 받을
+          이유가 없는 구간이다.
+        */}
+        {!isNoticeOpen && selectedFacility && (
+          <Sheet
+            label={t('user.consultSession.facilityWaypoint', { name: selectedFacilityName })}
+            onDismiss={() => setSelectedFacility(null)}
+          >
+            <div className={styles.sheetHandle} aria-hidden />
+            <div className={styles.sheetHead}>
+              <span className={styles.sheetIcon}>
+                <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
+              </span>
+              <div>
+                <h2>{selectedFacilityName}</h2>
+                <p>
+                  {selectedFacility.isAccessible
+                    ? t('user.consultSession.accessible')
+                    : t('user.consultSession.mayHaveStairs')}
+                </p>
+              </div>
+            </div>
+            <p className={styles.sheetNote}>{t('user.consultSession.waypointNote')}</p>
+            <div className={styles.sheetActions}>
+              {/*
+                목적지 변경은 두지 않는다. 상담 중 목적지는 상담자가
+                `DESTINATION_CHANGE_REQUESTED` 로 옮기는 흐름이 이미 있고, 사용자가 같은 것을
+                따로 바꾸면 두 화면이 서로 다른 목적지를 안내하게 된다.
+              */}
+              <Button
+                disabled={
+                  waypoints.length >= MAX_WAYPOINTS ||
+                  selectedFacilityIsWaypoint ||
+                  selectedFacilityIsDestination ||
+                  !selectedFacilityRoutable
+                }
+                onClick={() => {
+                  if (selectedFacility.linkedNodeId == null) return;
+                  addWaypoint({
+                    nodeId: selectedFacility.linkedNodeId,
+                    nameKo: selectedFacility.nameKo,
+                  });
+                  setSelectedFacility(null);
+                }}
+              >
+                {selectedFacilityIsDestination
+                  ? t('user.consultSession.cannotAddDestination')
+                  : selectedFacilityIsWaypoint
+                    ? t('user.consultSession.alreadyWaypoint')
+                    : !selectedFacilityRoutable
+                      ? t('user.consultSession.notRoutable')
+                      : waypoints.length >= MAX_WAYPOINTS
+                        ? t('user.consultSession.waypointLimit')
+                        : t('user.consultSession.addWaypoint')}
+              </Button>
+            </div>
+          </Sheet>
+        )}
       </div>
     </PhoneFrame>
   );

@@ -245,6 +245,13 @@ export const en = {
         statusWithChannel: 'Connection: {{status}} · Event channel {{channel}}',
         channelOpen: 'open', channelClosed: 'closed',
         waypoint: 'Stop {{order}}', noDestination: 'No destination selected', captionLabel: 'Live captions · Agent',
+        /* 시설 시트. 상담 중에도 지도 시설을 눌러 경유지를 넣을 수 있다. (S15P11A206-382) */
+        facilityWaypoint: 'Add {{name}} as a stop', accessible: 'Step-free route available',
+        mayHaveStairs: 'This route may include stairs',
+        waypointNote: 'You can add up to 2 stops. Changing them recalculates the route from your current location.',
+        addWaypoint: 'Add as a stop', alreadyWaypoint: 'Already a stop',
+        notRoutable: 'Cannot be used as a stop', waypointLimit: '2 stops already added',
+        cannotAddDestination: 'This is your destination',
         captionWaiting: 'The agent’s speech will appear here.', captionUnsupported: 'Speech captions are not supported in this browser.',
         captionRetry: 'Retry',
         mapSync: 'The agent is guiding you using the same map',

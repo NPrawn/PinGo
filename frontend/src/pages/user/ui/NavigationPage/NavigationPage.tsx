@@ -19,6 +19,7 @@ import {
   useStationFloorMaps,
 } from '@/entities/floor-map';
 import {
+  MAX_WAYPOINTS,
   carriesDistance,
   instructionAt,
   routeBearingOf,
@@ -1485,7 +1486,7 @@ export function NavigationPage() {
             <div className={styles.sheetActions}>
               <Button
                 disabled={
-                  waypoints.length >= 2 ||
+                  waypoints.length >= MAX_WAYPOINTS ||
                   selectedFacilityIsWaypoint ||
                   selectedFacilityIsDestination ||
                   !selectedFacilityRoutable
@@ -1507,7 +1508,7 @@ export function NavigationPage() {
                     ? t('user.navigation.alreadyWaypoint')
                     : !selectedFacilityRoutable
                       ? t('user.navigation.notRoutable')
-                      : waypoints.length >= 2
+                      : waypoints.length >= MAX_WAYPOINTS
                         ? t('user.navigation.waypointLimit')
                         : t('user.navigation.addWaypoint')}
               </Button>

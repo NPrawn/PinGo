@@ -239,6 +239,13 @@ export const ko = {
         statusWithChannel: '연결 상태: {{status}} · 이벤트 채널 {{channel}}',
         channelOpen: '열림', channelClosed: '닫힘',
         waypoint: '경유 {{order}}', noDestination: '목적지 미지정', captionLabel: '실시간 자막 · 상담원',
+        /* 시설 시트. 상담 중에도 지도 시설을 눌러 경유지를 넣을 수 있다. (S15P11A206-382) */
+        facilityWaypoint: '{{name}} 경유지 설정', accessible: '계단 없이 갈 수 있어요',
+        mayHaveStairs: '계단 구간이 있을 수 있어요',
+        waypointNote: '경유지는 최대 2개까지 추가할 수 있어요. 변경하면 현재 위치에서 경로를 다시 계산합니다.',
+        addWaypoint: '경유지로 추가', alreadyWaypoint: '이미 추가된 경유지',
+        notRoutable: '경유지로 지정할 수 없는 곳', waypointLimit: '경유지 2개 추가 완료',
+        cannotAddDestination: '현재 목적지는 추가 불가',
         captionWaiting: '상담원이 말하면 이 자리에 표시됩니다.', captionUnsupported: '이 브라우저에서는 음성 자막을 지원하지 않습니다.',
         captionRetry: '다시 시도',
         mapSync: '상담원이 같은 지도를 보며 안내 중이에요',
