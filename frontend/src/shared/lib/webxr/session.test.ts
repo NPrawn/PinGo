@@ -149,6 +149,25 @@ function poseYaw(yawDeg: number): XRViewerPose {
   } as unknown as XRViewerPose;
 }
 
+/**
+ * 방향을 향한 채 단말을 앞뒤로 눕힌 자세. 손을 내리는 동작이 이것이다.
+ *
+ * `방향 회전 × 기울임 회전` 순서로 곱한다 — 세계 기준으로 먼저 방향을 잡고 그 자리에서 눕힌다.
+ */
+function poseYawTilt(yawDeg: number, tiltDeg: number): XRViewerPose {
+  const y = Math.sin((yawDeg * Math.PI) / 360);
+  const w1 = Math.cos((yawDeg * Math.PI) / 360);
+  const x = Math.sin((tiltDeg * Math.PI) / 360);
+  const w2 = Math.cos((tiltDeg * Math.PI) / 360);
+
+  return {
+    transform: {
+      position: { x: 0, y: 0, z: 0 },
+      orientation: { x: w1 * x, y: y * w2, z: -y * x, w: w1 * w2 },
+    },
+  } as unknown as XRViewerPose;
+}
+
 describe('createXrSessionController', () => {
   it('처음 상태는 idle이다', () => {
     expect(createController({ xr: undefined }).getState()).toEqual({
@@ -679,6 +698,42 @@ describe('createXrSessionController', () => {
         fake.emitFrame(1232, poseYaw(40));
 
         expect(headings).toHaveLength(2);
+      });
+
+      /**
+       * 몸은 정면인데 들고 있던 손만 내린 경우다. (S15P11A206-382)
+       *
+       * 카메라는 바닥을, 더 내리면 뒤쪽을 향한다. 그 값을 흘리면 지도와 화살표가 사용자가
+       * 뒤돌아선 것처럼 돈다 — 실기기에서 관측된 현상이다. 기기 자세만으로 몸의 방향을 알 수는
+       * 없으니 맞히려 하지 않고, 믿을 수 없는 구간에서는 갱신하지 않는다.
+       */
+      it('카메라가 앞을 보지 않는 자세에서는 방향을 내보내지 않는다', async () => {
+        const fake = createFakeSession();
+        const headings: number[] = [];
+        const controller = createController({
+          xr: fakeXr(async () => fake.session),
+          headingRule: { deadbandDeg: 5, minIntervalMs: 0 },
+        });
+
+        controller.subscribeHeading((yawDeg) => headings.push(yawDeg));
+        await controller.start();
+
+        // 정면을 보며 자연스럽게 든 자세. 기준점이 세워진다.
+        fake.emitFrame(1200, poseYawTilt(0, -20));
+        expect(headings).toHaveLength(1);
+
+        // 손을 내렸다. 방향은 그대로인데 카메라만 아래·뒤를 본다.
+        fake.emitFrame(1216, poseYawTilt(0, -80));
+        fake.emitFrame(1232, poseYawTilt(0, -120));
+        fake.emitFrame(1248, poseYawTilt(0, -170));
+
+        expect(headings).toHaveLength(1);
+
+        // 다시 들면 이어서 갱신된다.
+        fake.emitFrame(1264, poseYawTilt(40, -20));
+
+        expect(headings).toHaveLength(2);
+        expect(headings[1]).toBeCloseTo(40, 6);
       });
     });
 

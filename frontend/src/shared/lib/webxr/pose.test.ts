@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { angleDiffDeg, planarDistanceM, toPoseReading, yawDegOf } from './pose';
+import {
+  angleDiffDeg,
+  isHeadingTrustworthy,
+  planarDistanceM,
+  toPoseReading,
+  yawDegOf,
+} from './pose';
 
 describe('yawDegOf', () => {
   it('회전이 없으면 0도다', () => {
@@ -123,10 +129,13 @@ describe('yawDegOf', () => {
      * 만들어지면 그 뒤의 모든 좌표가 반대로 회전됐다. 값이 아니라 **이어짐**을 검사한다.
      *
      * **수직을 넘어선 구간(약 102도 이상)은 검사하지 않는다.** 그 자세에서는 카메라가 실제로
-     * 사용자의 뒤쪽을 향하므로 방향각이 반대가 되는 것이 맞다. 스펙 8.2가 정의한 값이 `단말
-     * 전방`이기 때문이다. 뒤집힘까지 이으려면 "단말 up 축이 아래를 향하면 180도 돌린다"는 규칙을
-     * 넣어야 하는데, 그 규칙은 폰을 옆으로 눕혔을 때(roll 90도) up 축의 수직 성분이 0을 지나며
-     * 부호가 요동쳐 오히려 작은 손떨림에 180도씩 뒤집힌다. 실측으로 확인해 넣지 않았다.
+     * 사용자의 뒤쪽을 향하므로, 스펙 8.2가 정의한 `단말 전방`으로서는 반대가 되는 것이 맞다.
+     * 각도를 이어 붙이려면 "단말 up 축이 아래를 향하면 180도 돌린다"는 규칙이 필요한데, 그 규칙은
+     * 폰을 옆으로 눕혔을 때(roll 90도) up 축의 수직 성분이 0을 지나며 부호가 요동쳐 작은 손떨림에
+     * 180도씩 뒤집힌다. 실측으로 확인해 넣지 않았다.
+     *
+     * 그 자세를 화면에 반영하지 않는 일은 `isHeadingTrustworthy`가 맡는다 — 값을 고치는 대신
+     * 믿을 수 없는 자세에서 갱신을 멈춘다.
      */
     it.each([1, -1])('수직에 닿기까지 방향각이 튀지 않는다 (기울임 부호 %i)', (sign) => {
       for (const heading of HEADINGS) {
@@ -140,6 +149,72 @@ describe('yawDegOf', () => {
         }
       }
     });
+  });
+});
+
+describe('isHeadingTrustworthy', () => {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+
+  /** 방향을 향한 채 앞뒤로 눕힌 자세. 손을 내리는 동작이다. */
+  function tilted(yawDeg: number, tiltDeg: number) {
+    const y = Math.sin(rad(yawDeg) / 2);
+    const w1 = Math.cos(rad(yawDeg) / 2);
+    const x = Math.sin(rad(tiltDeg) / 2);
+    const w2 = Math.cos(rad(tiltDeg) / 2);
+
+    return { x: w1 * x, y: y * w2, z: -y * x, w: w1 * w2 };
+  }
+
+  /** 좌우로 비스듬히 든 자세를 더한다. */
+  function rolled(yawDeg: number, tiltDeg: number, rollDeg: number) {
+    const base = tilted(yawDeg, tiltDeg);
+    const z = Math.sin(rad(rollDeg) / 2);
+    const w = Math.cos(rad(rollDeg) / 2);
+
+    return {
+      w: base.w * w - base.z * z,
+      x: base.x * w + base.y * z,
+      y: base.y * w - base.x * z,
+      z: base.w * z + base.z * w,
+    };
+  }
+
+  it('걸으며 앞을 보는 자세는 믿는다', () => {
+    for (const tilt of [0, -10, -30, -45, -60, 15, 40, 60]) {
+      expect(isHeadingTrustworthy(tilted(35, tilt))).toBe(true);
+    }
+  });
+
+  /** 바닥이나 천장을 향한 자세. 수평 성분이 빠르게 줄어 방향각이 잡음에 가까워진다. */
+  it('거의 수직으로 눕힌 자세는 믿지 않는다', () => {
+    for (const tilt of [-75, -85, -90, -95, 80, 90]) {
+      expect(isHeadingTrustworthy(tilted(35, tilt))).toBe(false);
+    }
+  });
+
+  /**
+   * 손을 내려 카메라가 뒤를 향하도록 넘어간 자세. **이것이 QA 보고의 핵심이다.**
+   *
+   * 기울임의 `sin`만 보면 120도가 60도와 같은 값이라 통과한다. 뒤집힘 판정이 함께 걸려야
+   * 걸러진다 — 통과하면 지도와 화살표가 사용자가 뒤돌아선 것처럼 돈다.
+   */
+  it('카메라가 뒤를 향하도록 넘어간 자세는 믿지 않는다', () => {
+    for (const tilt of [-110, -120, -150, -170, -179, 120, 170]) {
+      expect(isHeadingTrustworthy(tilted(35, tilt))).toBe(false);
+    }
+  });
+
+  /** 통과하는 구간이 기울임 65도 안쪽으로 떨어져야 한다. */
+  it('통과 구간이 65도에서 끊긴다', () => {
+    expect(isHeadingTrustworthy(tilted(0, -64))).toBe(true);
+    expect(isHeadingTrustworthy(tilted(0, -66))).toBe(false);
+  });
+
+  /** 자연스럽게 든 자세에서 조금 비스듬해도 방향은 계속 갱신돼야 한다. */
+  it('조금 비스듬히 들어도 믿는다', () => {
+    for (const roll of [0, 10, 20, -15]) {
+      expect(isHeadingTrustworthy(rolled(35, -20, roll))).toBe(true);
+    }
   });
 });
 
