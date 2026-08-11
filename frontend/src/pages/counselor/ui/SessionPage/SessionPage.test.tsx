@@ -548,6 +548,58 @@ describe('SessionPage', () => {
       ] as unknown as typeof facilityMocks.data;
     });
 
+    afterEach(() => {
+      facilityMocks.data = undefined;
+      // 상자 크기를 심은 검사가 다음 검사에까지 영향을 주지 않게 되돌린다.
+      vi.unstubAllGlobals();
+    });
+
+    /**
+     * 사용자가 확대·이동해 둔 시점을 거울이 그대로 쓴다. (S15P11A206-382)
+     *
+     * 없으면 거울이 자기 추종을 돌려 전혀 다른 곳을 보여 준다. 배율은 다른 무엇과도 겹치지 않는
+     * 값으로 보내 그것이 실제로 화면에 걸렸는지 본다.
+     */
+    it('사용자가 보낸 시점을 그대로 쓴다', async () => {
+      /*
+        jsdom 에는 `ResizeObserver` 가 없어 지도 위젯이 상자를 재지 못하고, 그러면 받은 시점을 상자
+        픽셀로 되돌릴 수 없다. **전역 설정에 두지 않는다** — 심는 순간 모든 지도가 추종 배율로
+        들어가 마커·경로 좌표를 검사하는 이 파일의 다른 검사들이 다른 값을 보게 된다.
+      */
+      class Stub {
+        callback: ResizeObserverCallback;
+
+        constructor(callback: ResizeObserverCallback) {
+          this.callback = callback;
+        }
+
+        observe() {
+          this.callback(
+            [{ contentRect: { width: 188, height: 175 } } as ResizeObserverEntry],
+            this as unknown as ResizeObserver,
+          );
+        }
+
+        unobserve() {}
+        disconnect() {}
+      }
+      vi.stubGlobal('ResizeObserver', Stub);
+
+      await renderWithMapSync(1, {
+        screen: SCREEN,
+        view: { x: 0.13, y: -0.27, scale: 2.53, rotation: -41 },
+      });
+
+      await screen.findByText('사용자 시점 따라가기');
+
+      const transforms = [...document.querySelectorAll<HTMLElement>('div[style]')]
+        .map((each) => each.style.transform)
+        .filter(Boolean);
+
+      expect(transforms.some((each) => each.includes('scale(2.53)'))).toBe(true);
+      expect(transforms.some((each) => each.includes('rotate(-41deg)'))).toBe(true);
+    });
+
     it('사용자가 보낸 표시 상태대로 아이콘을 그린다', async () => {
       await renderWithMapSync(1, { screen: SCREEN, facilityView: 'all' });
 

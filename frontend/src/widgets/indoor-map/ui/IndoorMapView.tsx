@@ -16,7 +16,7 @@ import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
 import { resolveAssetUrl } from '@/shared/config';
 import { Icon } from '@/shared/ui';
 import { MOCK_CURRENT_LOCATION, MOCK_DESTINATION, MOCK_PATH_NODES } from '../model/fixtures';
-import { useMapGestures } from '../model/useMapGestures';
+import { useMapGestures, type NormalizedMapView } from '../model/useMapGestures';
 import { useSmoothedRotationDeg } from '../model/useSmoothedRotation';
 import { IndoorMapOverlay } from './IndoorMapOverlay';
 import styles from './IndoorMapView.module.css';
@@ -102,6 +102,24 @@ interface IndoorMapViewProps {
    * 거울 지도에는 켜지 않는다. 그쪽은 상자 비율이 사용자 화면과 같아 기본값으로 이미 일치한다.
    */
   coverUserSpan?: boolean;
+  /**
+   * 화면이 확대·이동·회전된 상태가 바뀔 때마다 알린다. (S15P11A206-382)
+   *
+   * 상자 크기로 나눈 값이 오므로 크기가 다른 화면에 그대로 넘길 수 있다. 상담 화면이 이걸 받아
+   * `MAP_SYNC` 에 실어 보내고, 상담자 거울이 `mirroredView` 로 되돌린다.
+   *
+   * 손가락이 움직이는 동안 매 이벤트마다 불린다. 보내는 쪽이 빈도를 줄여야 한다.
+   */
+  onViewChange?: (view: NormalizedMapView) => void;
+  /**
+   * 다른 화면의 시점을 그대로 비춘다. (S15P11A206-382)
+   *
+   * 넘기면 추종과 손 조작을 모두 제치고 이 값이 화면이 된다. 거울처럼 **스스로 시점을 정하지 않는**
+   * 자리에서만 쓴다.
+   *
+   * 상자 비율이 보내는 쪽과 같아야 정확히 맞는다. 거울 상자는 사용자가 잰 비율로 만들어져 있다.
+   */
+  mirroredView?: NormalizedMapView | null;
   /**
    * 진행 방향이 화면 위를 향하도록 **지도를 돌릴지**. 기본은 돌린다.
    *
@@ -195,6 +213,8 @@ export function IndoorMapView({
   onSelectFacility,
   followCamera = false,
   coverUserSpan = false,
+  onViewChange,
+  mirroredView,
   rotateWithHeading = true,
   onRecenter,
   showZoomControls = false,
@@ -267,19 +287,44 @@ export function IndoorMapView({
   const {
     ref: mapRef,
     view: mapView,
+    normalizedView,
     reset: resetMapView,
     zoomBy: zoomMapBy,
     isFollowing: mapFollowing,
     isTransformed: mapTransformed,
     handlers: mapHandlers,
-  } = useMapGestures({
-    target: followTarget,
-    canvas: PLAN_CANVAS,
-    spanPx: FOLLOW_SPAN_PX,
-    spanAxis: coverUserSpan ? 'shorter' : 'width',
-    anchorY: FOLLOW_ANCHOR_Y,
-    rotationDeg: mapRotationDeg,
-  });
+  } = useMapGestures(
+    {
+      target: followTarget,
+      canvas: PLAN_CANVAS,
+      spanPx: FOLLOW_SPAN_PX,
+      spanAxis: coverUserSpan ? 'shorter' : 'width',
+      anchorY: FOLLOW_ANCHOR_Y,
+      rotationDeg: mapRotationDeg,
+    },
+    mirroredView,
+  );
+
+  /**
+   * 시점이 바뀌면 알린다. 비추는 쪽에 보낼 값이다. (S15P11A206-382)
+   *
+   * 값이 바뀔 때만 부른다 — 네 숫자를 직접 비교해 의존성으로 삼으므로, 같은 시점을 다시 계산한
+   * 렌더에서는 다시 부르지 않는다. 객체를 의존성에 넣으면 렌더마다 새 참조라 매번 불린다.
+   */
+  const notifyView = onViewChange;
+  const viewX = normalizedView?.x ?? null;
+  const viewY = normalizedView?.y ?? null;
+  const viewScaleValue = normalizedView?.scale ?? null;
+  const viewRotation = normalizedView?.rotation ?? null;
+
+  useEffect(() => {
+    if (!notifyView) return;
+    if (viewX === null || viewY === null || viewScaleValue === null || viewRotation === null) {
+      return;
+    }
+
+    notifyView({ x: viewX, y: viewY, scale: viewScaleValue, rotation: viewRotation });
+  }, [notifyView, viewX, viewY, viewScaleValue, viewRotation]);
 
   /**
    * 추종을 켜라는 요청이 오면 시점을 되돌린다. (S15P11A206-89)

@@ -107,6 +107,35 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
   },
 }));
 
+/**
+ * 지도 상자 크기를 알려주는 가짜 `ResizeObserver`. (S15P11A206-382)
+ *
+ * jsdom 에는 없어서 지도 위젯이 상자를 재지 못하고, 그러면 추종 시점도 정규화한 시점도 만들어지지
+ * 않는다. **전역 설정에 두지 않는다** — 심는 순간 모든 지도가 추종 배율로 들어가 마커·경로 좌표를
+ * 검사하는 기존 테스트들이 다른 값을 보게 된다. 필요한 테스트에서만 심는다.
+ */
+function stubMapBox(size = { width: 314, height: 291 }) {
+  class Stub {
+    callback: ResizeObserverCallback;
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+
+    observe() {
+      this.callback(
+        [{ contentRect: size } as ResizeObserverEntry],
+        this as unknown as ResizeObserver,
+      );
+    }
+
+    unobserve() {}
+    disconnect() {}
+  }
+
+  vi.stubGlobal('ResizeObserver', Stub);
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -156,6 +185,8 @@ describe('ConsultSessionPage', () => {
     useConsultStore.getState().reset();
     useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
     vi.clearAllMocks();
+    // 지도 상자 크기를 심은 검사가 다음 검사에까지 영향을 주지 않게 되돌린다.
+    vi.unstubAllGlobals();
   });
 
   /**
@@ -624,6 +655,41 @@ describe('ConsultSessionPage', () => {
 
         expect(lastMapSync().current).toMatchObject({ floorId: 1, mapX: 3, mapY: -4 });
         expect(lastMapSync().connectCurrentToRoute).toBe(true);
+      });
+
+      /**
+       * 확대·이동한 상태를 거울에 그대로 비추는 근거. (S15P11A206-382)
+       *
+       * 이것이 없으면 거울이 자기 추종을 돌린다. 사용자가 지도를 밀면 그쪽 화면은 회전까지 멈추는데
+       * 거울은 계속 도므로 두 화면이 전혀 다른 곳을 본다.
+       *
+       * `x`·`y` 는 상자 크기로 나눈 값이라 크기가 다른 거울에 그대로 넣을 수 있다.
+       */
+      it('지도 시점을 상자 크기와 무관한 값으로 보낸다', async () => {
+        // 상자를 재지 못하면 시점을 만들 수 없다. 이 검사에서만 크기를 알려 준다.
+        stubMapBox();
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: 0,
+          currentMapY: 0,
+          routeResult: { pathNodes: PATH },
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        const view = lastMapSync().view as {
+          x: number;
+          y: number;
+          scale: number;
+          rotation: number;
+        } | null;
+
+        expect(view).not.toBeNull();
+        // 추종 중이라 확대돼 있다. 배율이 1이면 시점을 전혀 담지 못한 것이다.
+        expect(view!.scale).toBeGreaterThan(1);
+        expect(Number.isFinite(view!.x)).toBe(true);
+        expect(Number.isFinite(view!.y)).toBe(true);
       });
 
       /**

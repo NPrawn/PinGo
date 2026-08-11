@@ -1,5 +1,10 @@
 import { act, render } from '@testing-library/react';
-import { useMapGestures, type FollowOptions, type MapView } from './useMapGestures';
+import {
+  useMapGestures,
+  type FollowOptions,
+  type MapView,
+  type NormalizedMapView,
+} from './useMapGestures';
 
 /**
  * 시점 추종. (S15P11A206-79)
@@ -39,20 +44,36 @@ function stubResizeObserver({ width, height }: { width: number; height: number }
 /** 검사에 쓰는 것만 노출한다. ref까지 넘기면 렌더 중 읽는 것으로 판정된다. */
 type Gestures = Omit<ReturnType<typeof useMapGestures>, 'ref'>;
 
-function Harness({ options, expose }: { options: FollowOptions; expose: (g: Gestures) => void }) {
+function Harness({
+  options,
+  mirroredView,
+  expose,
+}: {
+  options: FollowOptions;
+  mirroredView?: NormalizedMapView | null;
+  expose: (g: Gestures) => void;
+}) {
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
-  const { ref, view, reset, zoomBy, isFollowing, isTransformed, handlers } =
-    useMapGestures(options);
-  expose({ view, reset, zoomBy, isFollowing, isTransformed, handlers });
+  const { ref, view, normalizedView, reset, zoomBy, isFollowing, isTransformed, handlers } =
+    useMapGestures(options, mirroredView);
+  expose({ view, normalizedView, reset, zoomBy, isFollowing, isTransformed, handlers });
   // 실제 사용처와 같이 ref를 요소에 붙인다. 붙지 않으면 크기를 관찰하지 못해 추종이 꺼진다.
   return <div ref={ref} {...handlers} />;
 }
 
-function mount(options: FollowOptions) {
+function mount(options: FollowOptions, mirroredView?: NormalizedMapView | null) {
   const state: { current: Gestures | null } = { current: null };
-  const view = render(<Harness options={options} expose={(g) => (state.current = g)} />);
-  const rerender = (next: FollowOptions) =>
-    view.rerender(<Harness options={next} expose={(g) => (state.current = g)} />);
+  const view = render(
+    <Harness options={options} mirroredView={mirroredView} expose={(g) => (state.current = g)} />,
+  );
+  const rerender = (next: FollowOptions, nextMirrored?: NormalizedMapView | null) =>
+    view.rerender(
+      <Harness
+        options={next}
+        mirroredView={nextMirrored ?? mirroredView}
+        expose={(g) => (state.current = g)}
+      />,
+    );
   return { state, rerender };
 }
 
@@ -382,6 +403,82 @@ describe('시점 추종', () => {
       const { state } = mount(followOptions({ px: 1200, py: 400 }, null));
 
       expect(state.current!.view.rotation).toBe(0);
+    });
+  });
+
+  /**
+   * 다른 화면의 시점을 그대로 비추기. (S15P11A206-382)
+   *
+   * 사용자가 지도를 확대·이동하면 상담자 거울도 같은 곳을 보여야 한다. `x`·`y`가 상자 픽셀이라
+   * 그대로는 옮길 수 없어 상자 크기로 나눈 값을 주고받는다. **비율이 같은 상자 사이에서는 크기가
+   * 달라도 정확히 옮겨진다**는 것이 이 값의 계약이다.
+   */
+  describe('시점 비추기', () => {
+    /** 거울 상자. `BOX`(314×291)와 비율이 같고 크기는 60%다. */
+    const MIRROR_BOX = { width: 188, height: 175 };
+
+    it('정규화한 시점은 상자 크기가 달라도 같은 값이다', () => {
+      const target = { px: 1200, py: 400 };
+      const big = mount(followOptions(target, -130));
+      const bigNormalized = big.state.current!.normalizedView!;
+
+      vi.unstubAllGlobals();
+      stubResizeObserver(MIRROR_BOX);
+      const small = mount(followOptions(target, -130));
+      const smallNormalized = small.state.current!.normalizedView!;
+
+      // 비율이 같으므로 나눈 값이 일치한다. 이것이 거울로 옮길 수 있는 근거다.
+      expect(smallNormalized.x).toBeCloseTo(bigNormalized.x, 2);
+      expect(smallNormalized.y).toBeCloseTo(bigNormalized.y, 2);
+      expect(smallNormalized.scale).toBeCloseTo(bigNormalized.scale, 3);
+      expect(smallNormalized.rotation).toBeCloseTo(bigNormalized.rotation, 6);
+
+      // 상자 픽셀 값은 크기만큼 다르다. 그대로 넘기면 어긋난다는 뜻이다.
+      expect(small.state.current!.view.x).not.toBeCloseTo(big.state.current!.view.x, 0);
+    });
+
+    /**
+     * 손으로 밀어 둔 시점을 비출 때. **추종보다 앞선다.**
+     *
+     * 사용자가 지도를 밀면 그쪽 화면은 회전까지 그 자리에 멈춘다. 거울이 자기 추종을 계속 돌리면
+     * 사용자는 멈춘 지도를 보고 상담자는 도는 지도를 본다.
+     */
+    it('비출 시점이 있으면 추종을 제치고 그 값을 쓴다', () => {
+      const panned: NormalizedMapView = { x: 0.25, y: -0.4, scale: 3, rotation: 0 };
+      const { state } = mount(followOptions({ px: 1200, py: 400 }, -130), panned);
+      const view = state.current!.view;
+
+      expect(view.scale).toBe(3);
+      expect(view.rotation).toBe(0);
+      expect(view.x).toBeCloseTo(0.25 * BOX.width, 6);
+      expect(view.y).toBeCloseTo(-0.4 * BOX.height, 6);
+    });
+
+    /** 보낸 값을 그대로 되돌려 받으면 같은 화면이어야 한다. 왕복이 손실 없이 닫힌다. */
+    it('보내고 되돌린 시점이 원래 화면과 같다', () => {
+      const target = { px: 900, py: 700 };
+      const source = mount(followOptions(target, -130));
+      const sent = source.state.current!.normalizedView!;
+
+      vi.unstubAllGlobals();
+      stubResizeObserver(MIRROR_BOX);
+      const mirror = mount(followOptions(null, null), sent);
+      const mirrored = mirror.state.current!.normalizedView!;
+
+      expect(mirrored.x).toBeCloseTo(sent.x, 6);
+      expect(mirrored.y).toBeCloseTo(sent.y, 6);
+      expect(mirrored.scale).toBeCloseTo(sent.scale, 6);
+      expect(mirrored.rotation).toBeCloseTo(sent.rotation, 6);
+    });
+
+    it('비출 시점이 없으면 스스로 추종한다', () => {
+      const target = { px: 1200, py: 400 };
+      const withMirror = mount(followOptions(target), { x: 0, y: 0, scale: 1, rotation: 0 });
+      const withoutMirror = mount(followOptions(target), null);
+
+      expect(withMirror.state.current!.view.scale).toBe(1);
+      // 옛 사용자 화면에서 온 스냅숏이다. 지금까지처럼 자기 추종을 돌린다.
+      expect(withoutMirror.state.current!.view.scale).toBeGreaterThan(1);
     });
   });
 

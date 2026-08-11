@@ -44,7 +44,7 @@ import {
   type XrCameraStreamHandle,
   type XrCameraStreamState,
 } from '@/shared/lib/webxr';
-import type { ConsultDataEvent } from '@/shared/types';
+import type { ConsultDataEvent, MapViewPayload } from '@/shared/types';
 import { Button, Icon, MapPreview, Sheet } from '@/shared/ui';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { VPS_FRAME_SIZE } from '@/widgets/camera-preview';
@@ -83,6 +83,18 @@ const PENDING_ANCHOR_RETRY_MS = 200;
 
 /** 들고 있던 재인식 좌표를 버리는 나이(ms). 근거는 아래 재시도 effect 주석에 있다. */
 const PENDING_ANCHOR_MAX_AGE_MS = 5000;
+
+/**
+ * 지도 시점을 상담자에게 다시 알리는 최소 간격(ms). (S15P11A206-382)
+ *
+ * 확대·이동은 `pointermove` 마다 값을 바꾼다. 그대로 실어 보내면 초당 60통이 나가고, 한 통에는
+ * 경로 노드와 배치까지 들어 있어 상담 영상과 대역폭을 다툰다.
+ *
+ * 120ms 는 방향 채널의 최소 간격(`PROVISIONAL_HEADING_MIN_INTERVAL_MS`)과 같은 값이다. 초당 8통이면
+ * 손으로 미는 동작이 끊겨 보이지 않고, **마지막 값은 반드시 보낸다** — 손을 뗀 자리가 어긋난 채로
+ * 남으면 그 뒤 그리기 좌표가 계속 틀린다.
+ */
+const MAP_VIEW_SYNC_INTERVAL_MS = 120;
 
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
@@ -954,6 +966,57 @@ export function ConsultSessionPage() {
   const connectDisplayedToRoute = progress.snappedLocation === null;
 
   /**
+   * 지도를 확대·이동해 둔 상태. 상담자 거울이 그대로 되돌려 그린다. (S15P11A206-382)
+   *
+   * **빈도를 줄여 상태로 옮긴다.** 위젯은 `pointermove` 마다 알려 오는데, 그것을 그대로 상태로
+   * 두면 미는 동안 초당 60번 리렌더되고 MAP_SYNC 도 그만큼 나간다.
+   *
+   * 마지막 값은 반드시 반영한다 — 간격 안에 들어온 값은 타이머로 미뤄 두고 나중에 적용한다. 손을
+   * 뗀 자리를 놓치면 거울이 어긋난 채로 남고, 그 뒤 상담자가 그리는 좌표가 계속 틀린다.
+   */
+  const [syncedMapView, setSyncedMapView] = useState<MapViewPayload | null>(null);
+  const viewSentAtRef = useRef(0);
+  const pendingViewRef = useRef<MapViewPayload | null>(null);
+  const viewTimerRef = useRef<number | undefined>(undefined);
+
+  const handleMapViewChange = useCallback((view: MapViewPayload) => {
+    const now = Date.now();
+    const waited = now - viewSentAtRef.current;
+
+    if (waited >= MAP_VIEW_SYNC_INTERVAL_MS) {
+      viewSentAtRef.current = now;
+      pendingViewRef.current = null;
+      setSyncedMapView(view);
+      return;
+    }
+
+    // 아직 이르다. 마지막 값만 들고 있다가 간격이 차면 적용한다.
+    pendingViewRef.current = view;
+    if (viewTimerRef.current !== undefined) return;
+
+    viewTimerRef.current = window.setTimeout(
+      () => {
+        viewTimerRef.current = undefined;
+        const pending = pendingViewRef.current;
+
+        if (!pending) return;
+
+        pendingViewRef.current = null;
+        viewSentAtRef.current = Date.now();
+        setSyncedMapView(pending);
+      },
+      MAP_VIEW_SYNC_INTERVAL_MS - waited,
+    );
+  }, []);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(viewTimerRef.current);
+    },
+    [],
+  );
+
+  /**
    * 보고 있는 지도를 상담자 화면에 그대로 옮긴다.
    *
    * 상담자는 사용자의 안내 상태를 알 방법이 없다. 이 스냅숏이 없으면 상담자 화면은 사용자와
@@ -995,6 +1058,13 @@ export function ConsultSessionPage() {
          * `effectiveView` 를 보낸다. 고른 값 그대로가 아니라 **층에 없는 유형을 걸러 낸 뒤의 값**
          * 이라 실제로 화면에 그려지는 상태와 같다.
          */
+        /**
+         * 지도를 확대·이동·회전해 둔 상태. 거울이 그대로 되돌려 그린다.
+         *
+         * 아직 상자를 재지 못했으면 null 이다. 그때 거울은 스스로 추종한다 — 옛 사용자 화면과
+         * 같은 처리이고, 곧 실제 값이 온다.
+         */
+        view: syncedMapView,
         facilityView: effectiveView,
         selectedFacilityId: selectedFacility?.facilityId ?? null,
         /**
@@ -1030,6 +1100,8 @@ export function ConsultSessionPage() {
     /* 시설 칩을 누르거나 마커를 골라도 다시 보낸다. 거울이 같은 아이콘을 그려야 한다. */
     effectiveView,
     selectedFacility,
+    /* 지도를 밀거나 확대해도 다시 보낸다. 위에서 빈도를 줄여 둔 값이다. */
+    syncedMapView,
     destination,
     destinationPoint,
     /**
@@ -1406,6 +1478,8 @@ export function ConsultSessionPage() {
                 */
                 connectCurrentToRoute={connectDisplayedToRoute}
                 followCamera
+                /* 확대·이동한 상태를 상담자 거울에 그대로 비추려면 알려야 한다. (S15P11A206-382) */
+                onViewChange={handleMapViewChange}
                 /* `내 위치` 버튼은 고른 층까지 함께 되돌린다. 시점만 돌리면 다른 층을 보던
                    사용자는 그 층 지도가 자기 좌표로 옮겨진 것만 보고 마커는 그려지지 않는다. */
                 onRecenter={() => setPickedFloorId(null)}

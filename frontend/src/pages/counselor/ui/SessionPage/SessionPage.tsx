@@ -1291,6 +1291,17 @@ export function SessionPage() {
                       showAllFacilities={mapSync.facilityView === 'all'}
                       selectedFacilityId={mapSync.selectedFacilityId}
                       followCamera
+                      /**
+                       * 사용자가 확대·이동해 둔 시점을 그대로 비춘다. (S15P11A206-382)
+                       *
+                       * 없으면 이 지도가 자기 추종을 돌린다. 사용자가 지도를 밀면 그쪽 화면은
+                       * 회전까지 그 자리에 멈추는데 거울은 계속 돌아, 두 화면이 전혀 다른 곳을
+                       * 보게 된다.
+                       *
+                       * 옛 사용자 화면은 이 값을 보내지 않아 null 이다. 그때는 지금까지처럼
+                       * 스스로 추종한다.
+                       */
+                      mirroredView={mapSync.view}
                     />
                   </div>
                 </>

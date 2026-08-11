@@ -96,7 +96,54 @@ export interface FollowOptions {
   rotationDeg: number | null;
 }
 
-export function useMapGestures(follow?: FollowOptions) {
+/**
+ * 상자 크기로 나눈 시점. **다른 크기의 상자에 그대로 옮길 수 있다.** (S15P11A206-382)
+ *
+ * `MapView` 의 `x`·`y` 는 상자 픽셀이라 크기가 다른 화면에 그대로 넣으면 어긋난다. 상자 폭·높이로
+ * 나눠 두면 **비율이 같은 상자 사이에서는 정확히 옮겨진다** — `scale` 은 이미 비율값이고,
+ * `computeFollowView` 가 만드는 `x`·`y` 는 상자 크기에 비례하므로 나눈 값이 상자 크기와 무관해진다.
+ *
+ * 사용자 화면의 확대·이동을 상담자 거울에 그대로 비추는 데 쓴다. 거울 상자는 사용자가 잰 비율로
+ * 만들어져 있어(`ScreenGeometryPayload`) 이 조건이 성립한다.
+ */
+export interface NormalizedMapView {
+  /** 상자 폭으로 나눈 가로 이동량. */
+  x: number;
+  /** 상자 높이로 나눈 세로 이동량. */
+  y: number;
+  scale: number;
+  rotation: number;
+}
+
+function normalizeView(view: MapView, box: { width: number; height: number }): NormalizedMapView {
+  return {
+    x: box.width === 0 ? 0 : view.x / box.width,
+    y: box.height === 0 ? 0 : view.y / box.height,
+    scale: view.scale,
+    rotation: view.rotation,
+  };
+}
+
+function denormalizeView(
+  view: NormalizedMapView,
+  box: { width: number; height: number },
+): MapView {
+  return {
+    x: view.x * box.width,
+    y: view.y * box.height,
+    scale: view.scale,
+    rotation: view.rotation,
+  };
+}
+
+/**
+ * @param mirroredView 다른 화면의 시점을 그대로 비출 때 넘긴다. 넘기면 추종과 손 조작을 모두
+ *   제치고 이 값이 화면이 된다 — 비추는 자리는 스스로 시점을 정하지 않는다.
+ */
+export function useMapGestures(
+  follow?: FollowOptions,
+  mirroredView?: NormalizedMapView | null,
+) {
   const [view, setView] = useState<MapView>(IDENTITY);
   /**
    * 시점이 내 위치를 따라가는 중인지.
@@ -428,11 +475,26 @@ export function useMapGestures(follow?: FollowOptions) {
     followViewRef.current = followView;
   }, [followView]);
 
-  const active = following && followView ? followView : view;
+  /**
+   * 비출 시점이 들어왔으면 그것이 화면이다. (S15P11A206-382)
+   *
+   * 추종보다 앞선다. 사용자가 지도를 밀어 추종을 풀면 그쪽 시점은 회전까지 그 자리에 멈추는데,
+   * 거울이 자기 추종을 계속 돌리면 사용자는 멈춘 지도를 보고 상담자는 도는 지도를 본다.
+   *
+   * 상자 크기를 모르는 첫 렌더에는 되돌릴 수 없으므로 평소 경로로 떨어진다. 곧 관찰값이 들어온다.
+   */
+  const mirrored = mirroredView && box ? denormalizeView(mirroredView, box) : null;
+  const active = mirrored ?? (following && followView ? followView : view);
 
   return {
     ref,
     view: active,
+    /**
+     * 지금 화면을 상자 크기와 무관한 값으로. 다른 화면에 비추게 보낼 때 쓴다.
+     *
+     * 상자를 아직 재지 못했으면 null 이다 — 그때 0으로 채워 보내면 받는 쪽이 원점으로 튄다.
+     */
+    normalizedView: box ? normalizeView(active, box) : null,
     reset,
     /** 버튼으로 배율만 바꾼다. 1보다 크면 확대, 작으면 축소다. */
     zoomBy,

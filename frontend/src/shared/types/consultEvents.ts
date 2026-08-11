@@ -42,6 +42,22 @@ export interface MapPointPayload {
   mapY: number;
 }
 
+/**
+ * 지도를 확대·이동·회전해 둔 상태. (S15P11A206-382)
+ *
+ * `x`·`y` 는 지도 상자의 폭·높이로 나눈 값이라 **크기가 다른 상자에 그대로 옮길 수 있다** — 비율이
+ * 같기만 하면 된다. `scale` 은 이미 비율값이고 `rotation` 은 도(度)다.
+ *
+ * 지도 위젯의 `NormalizedMapView` 와 같은 모양이다. 계층 규칙상 `shared` 가 `widgets` 를 참조할 수
+ * 없어 여기서 따로 선언하고, 화면이 구조가 같은 값을 그대로 넘긴다.
+ */
+export interface MapViewPayload {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+}
+
 /** 화면 안의 한 영역. 좌표·크기 모두 화면 기준 0~1 이다. */
 export interface NormalizedRect {
   x: number;
@@ -130,6 +146,18 @@ export interface MapSyncPayload {
    * **`null` 은 "옛 사용자 화면이라 알 수 없다"는 뜻이다.** 그때 거울은 시설을 그리지 않는다 —
    * 지금까지의 동작이며, 모르는 상태를 짐작해 그리면 사용자 화면에 없는 아이콘이 거울에 뜬다.
    */
+  /**
+   * 사용자가 지도를 확대·이동·회전해 둔 상태. (S15P11A206-382)
+   *
+   * `x`·`y` 는 **상자 크기로 나눈 값**이다. 상담자 거울은 크기가 다르지만 비율이 같아(사용자가 잰
+   * `screen`) 그대로 되돌리면 정확히 맞는다.
+   *
+   * 이것이 없으면 거울이 자기 추종을 돌린다. 사용자가 지도를 밀어 추종을 풀면 그쪽 화면은 회전까지
+   * 멈추는데 거울은 계속 도므로, 두 화면이 전혀 다른 곳을 보게 된다.
+   *
+   * **`null` 은 "옛 사용자 화면이라 알 수 없다"는 뜻이다.** 그때 거울은 지금까지처럼 스스로 추종한다.
+   */
+  view: MapViewPayload | null;
   facilityView: string | null;
   /**
    * 사용자가 이름표를 띄워 둔 시설. 없으면 null.
