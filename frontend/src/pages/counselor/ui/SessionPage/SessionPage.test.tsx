@@ -70,6 +70,7 @@ vi.mock('@/shared/api', async (importOriginal) => ({
 
 /** WebRTC·음성 인식은 이 화면의 관심사가 아니다. 쌓인 전문만 넘겨준다. */
 vi.mock('@/features/consult-signaling', async (importOriginal) => ({
+  DEMO_PHARMACY_DRAW_DELAY_MS: 9500,
   useCaptionTranslation: signalingMocks.translateCaption,
   useTranslatedSpeech: vi.fn(),
   // 안내 문구를 만드는 것은 순수 함수다. 가짜로 바꾸면 실제로 무슨 말이 뜨는지 못 본다.
