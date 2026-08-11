@@ -109,6 +109,27 @@ function reading(x: number, z: number, yawDeg = 0): XrPoseReading {
   };
 }
 
+/**
+ * 앞뒤로 `pitchDeg`만큼 눕힌 자세의 pose. 회전축은 단말 X축이다.
+ *
+ * 그 자세에서 `cameraTiltSinOf`는 `sin θ`, `deviceUprightOf`는 `cos θ`가 된다. 150도면 sin이
+ * 0.5로 기울임 한계(sin 65도 = 0.906)를 통과하지만 cos가 -0.866이라 뒤집힘 조건에 걸린다 —
+ * 몸은 정면인데 들고 있던 손을 내려 카메라만 뒤를 보는 자세가 그것이다.
+ *
+ * `yawDeg`는 그대로 둔다. 이 자세에서 뒤집혀 나오는 것이 바로 그 값이므로, 검사가 보는 것은
+ * "값이 얼마인가"가 아니라 "이 자세의 값을 앵커에 굽지 않는가"다.
+ */
+function tiltedReading(pitchDeg: number, yawDeg = 0): XrPoseReading {
+  const half = (pitchDeg * Math.PI) / 360;
+
+  return {
+    position: { x: 0, y: 0, z: 0 },
+    orientation: { x: Math.sin(half), y: 0, z: 0, w: Math.cos(half) },
+    yawDeg,
+    timestamp: 0,
+  };
+}
+
 function snapshot(x: number, z: number, timestamp = 1000): XrPoseSnapshot {
   return { ...reading(x, z), timestamp, trigger: 'move' };
 }
@@ -377,6 +398,84 @@ describe('useXrMapPosition', () => {
       expect(result.current.anchorRevision).toBe(0);
       expect(result.current.currentLocation).toEqual(CONFIRMED);
       expect(result.current.source).toBe('anchored');
+    });
+
+    /**
+     * 자세가 나쁜 순간의 yaw를 앵커에 구우면 뒤집힘이 **영구히** 남는다. (S15P11A206-382)
+     *
+     * 표시 단계의 뒤집힘은 자세가 돌아오면 함께 돌아온다(방향 채널이 같은 게이트를 쓴다). 앵커는
+     * 회전을 얼려 두고 그 뒤 모든 방향각과 **모든 변위**가 그것을 지나므로, 한 번 잘못 구워지면
+     * 방향은 반대를 가리키고 앞으로 걸으면 마커가 뒤로 간다.
+     */
+    it('카메라가 뒤를 보는 자세에서는 앵커를 만들지 않는다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake, tiltedReading(150));
+
+      let created = true;
+      act(() => {
+        created = result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      expect(created).toBe(false);
+      expect(result.current.anchorStatus).toBe('none');
+      // 앵커가 없으므로 확정 위치만 보여 준다. 틀린 좌표계를 보여 주는 것보다 낫다.
+      expect(result.current.currentLocation).toEqual(CONFIRMED);
+    });
+
+    it('자세가 돌아오면 앵커가 만들어진다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake, tiltedReading(150));
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+      expect(result.current.anchorStatus).toBe('none');
+
+      // 손을 다시 들었다.
+      fake.setReading(tiltedReading(10));
+
+      let created = false;
+      act(() => {
+        created = result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      expect(created).toBe(true);
+      expect(result.current.anchorStatus).toBe('established');
+    });
+
+    /**
+     * 갱신도 같은 게이트를 지난다. 상담 화면은 30초마다 재인식으로 앵커를 다시 세우는데, 그때
+     * 자세가 나쁘면 멀쩡히 돌던 앵커가 뒤집힌 것으로 갈아치워진다.
+     *
+     * 누적 오차가 남는 것이 뒤집히는 것보다 낫다. 다음 주기에 다시 시도한다.
+     */
+    it('앵커가 있어도 나쁜 자세로는 갱신하지 않는다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      const heading = result.current.headingDeg;
+
+      fake.setReading(tiltedReading(150, 180));
+
+      let created = true;
+      act(() => {
+        created = result.current.setAnchor({ floorId: 2, mapX: 300, mapY: 400 }, FORWARD_DIAGONAL);
+      });
+
+      expect(created).toBe(false);
+      // 옛 앵커가 그대로 남아 있다. 개정 번호도 올라가지 않는다.
+      expect(result.current.anchorStatus).toBe('established');
+      expect(result.current.anchorRevision).toBe(0);
+      expect(result.current.headingDeg).toBe(heading);
+      expect(result.current.currentLocation).toEqual(CONFIRMED);
     });
   });
 
