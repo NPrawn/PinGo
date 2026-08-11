@@ -1,3 +1,5 @@
+import { shortestAngleDeltaDeg } from '@/shared/lib/angle';
+
 /**
  * 방향각 표본을 받아들일지 버릴지 정한다. (S15P11A206-382)
  *
@@ -56,18 +58,6 @@ export interface HeadingFilterResult {
   state: HeadingFilterState;
   /** 이번 표본을 버렸는지. 버렸으면 `state.deg`는 직전 값 그대로다. */
   rejected: boolean;
-}
-
-/**
- * 두 각도 사이의 최단 차이(도). 결과는 `[-180, 180)`이다.
- *
- * 각도를 그냥 빼면 179도와 -179도가 358도 떨어진 것으로 나온다. 실제로는 2도다.
- *
- * 지도 위젯에도 같은 함수가 있는데(`useSmoothedRotationDeg`) 그쪽을 가져다 쓰지 않는다. FSD
- * 에서 feature는 widget을 import할 수 없다. 여섯 줄을 공유하려고 층을 거스르는 대신 각자 둔다.
- */
-function shortestAngleDeltaDeg(from: number, to: number): number {
-  return ((((to - from) % 360) + 540) % 360) - 180;
 }
 
 /**

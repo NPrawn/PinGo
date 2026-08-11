@@ -459,8 +459,10 @@
   예전에는 유니코드 글리프 `↑` 하나에 `rotate()`를 걸어 뒀다. 카메라 위에 얹히는 유일한 3D
   요소인데 납작한 글자여서 카메라 영상과 같은 공간에 있는 것으로 읽히지 않았다.
 
-  **기울기는 여기서 정하고 방향만 화면에서 받는다.** 기울기는 디자인 상수라 CSS에 두는 것이
-  맞고, 방향은 경로 기하와 XR 방향각에서 나오므로 미리 정해 둘 수 없다.
+  **기울기와 방향 모두 화면이 인라인 변수로 준다.** 기울기는 디자인 상수지만 화면 쪽 계산에도
+  쓰인다 — 눕힌 평면은 앞뒤 축이 `cos(기울기)`만큼 눌려 보이므로, 지도와 같은 방향을 가리키려면
+  같은 값으로 각도를 보정해야 한다(`inPlaneAngleDeg`). 두 곳에 적어 두면 갈라지므로 상수는
+  `ARROW_TILT_DEG` 하나만 둔다.
 
   **`rotateX`가 먼저, `rotateZ`가 나중이다.** 순서를 뒤집으면 눕힌 그림을 화면 안에서 통째로
   돌리는 것이 되어, 화살표가 바닥을 따라 도는 대신 옆으로 누워 버린다. 자식이 이 3D 공간을
@@ -472,7 +474,8 @@
   /* 앞쪽 셰브론이 아래(사용자에게 가까운 쪽)에 오게 쌓는다. */
   flex-direction: column-reverse;
   align-items: center;
-  transform: perspective(340px) rotateX(58deg) rotateZ(var(--arrow-deg, 0deg));
+  transform: perspective(340px) rotateX(var(--arrow-tilt, 58deg))
+    rotateZ(var(--arrow-deg, 0deg));
   transform-origin: center;
   transform-style: preserve-3d;
   /* 방향은 계단으로 들어오므로(5° 데드밴드) 짧게 이어 붙여 튀지 않게 한다. */
