@@ -247,7 +247,7 @@ export const ko = {
         notRoutable: '경유지로 지정할 수 없는 곳', waypointLimit: '경유지 2개 추가 완료',
         cannotAddDestination: '현재 목적지는 추가 불가',
         captionWaiting: '상담원이 말하면 이 자리에 표시됩니다.', captionUnsupported: '이 브라우저에서는 음성 자막을 지원하지 않습니다.',
-        captionRetry: '다시 시도',
+        captionRetry: '다시 시도', captionTranslating: '옮기는 중…',
         mapSync: '상담원이 같은 지도를 보며 안내 중이에요',
       },
       navigation: {

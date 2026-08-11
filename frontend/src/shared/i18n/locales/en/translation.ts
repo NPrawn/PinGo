@@ -253,7 +253,8 @@ export const en = {
         notRoutable: 'Cannot be used as a stop', waypointLimit: '2 stops already added',
         cannotAddDestination: 'This is your destination',
         captionWaiting: 'The agent’s speech will appear here.', captionUnsupported: 'Speech captions are not supported in this browser.',
-        captionRetry: 'Retry',
+        /* 아직 옮기지 못한 동안 원문(한국어) 대신 띄운다. 읽지 못하는 글자를 보여 주지 않는다. */
+        captionRetry: 'Retry', captionTranslating: 'Translating…',
         mapSync: 'The agent is guiding you using the same map',
       },
       navigation: {

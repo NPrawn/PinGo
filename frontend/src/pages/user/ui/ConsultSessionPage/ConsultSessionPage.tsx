@@ -100,7 +100,16 @@ const MAP_VIEW_SYNC_INTERVAL_MS = 120;
 export function ConsultSessionPage() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const userLanguage = i18n.resolvedLanguage ?? i18n.language ?? 'en';
+  /**
+   * 사용자가 처음에 고른 언어. **상담 화면의 자막·번역·음성이 모두 이 값 하나를 따른다.**
+   *
+   * 세션 저장소에 남는 값을 먼저 읽는다. 화면 문구 언어(i18n)는 새로고침하면 기본값(`ko`)으로
+   * 돌아갔다가 `UserRoutes` 의 effect 가 세션 언어로 되돌리는데, 그 사이 첫 렌더에서 자막
+   * 번역 언어가 잡히면 영어를 고른 사용자에게 한국어 자막이 그대로 나간다.
+   */
+  const sessionLanguage = useUserSessionStore((state) => state.language);
+  const userLanguage: 'ko' | 'en' =
+    sessionLanguage ?? ((i18n.resolvedLanguage ?? i18n.language) === 'en' ? 'en' : 'ko');
   const consultationId = useConsultStore((state) => state.consultationId);
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
   const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
@@ -204,33 +213,46 @@ export function ConsultSessionPage() {
     */
     'server',
   );
-  /** 상담원이 말한 한국어를 영어 자막으로 옮겨 보여 준다. */
+  /** 상담원이 말한 한국어를 사용자가 고른 언어로 옮겨 보여 준다. */
   const translatedRemoteCaption = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
     userLanguage,
     remoteFinalCaptionId,
   );
-  useTranslatedSpeech(translatedRemoteCaption, userLanguage, remoteCaptionFinal);
+  useTranslatedSpeech(
+    translatedRemoteCaption,
+    userLanguage === 'en' ? 'en-US' : 'ko-KR',
+    remoteCaptionFinal,
+  );
   /**
-   * 옮긴 문장을 큰 자리에, 지금 들어오는 원문을 아래 줄에 둔다.
+   * 화면에 띄우는 자막. **고른 언어 하나뿐이다.**
    *
-   * 번역은 말이 끝난 문장에만 건다 — 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라지고,
-   * 번역 요청도 초당 몇 번씩 나간다. 그런데 옮긴 문장만 띄우면 상담원이 다음 말을 하는
-   * 내내 화면이 지난 문장에서 멈춰 있다. 첫 문장만 실시간으로 흐르고 그 뒤로는 문장이
-   * 끝날 때까지 아무 변화가 없어, 사용자는 자막이 멈춘 것으로 본다.
+   * 예전에는 옮긴 문장을 큰 자리에 두고 한국어 원문을 아래 작은 줄에 함께 흘렸다. 그 줄을
+   * 걷어 낸다 — 한국어를 읽지 못해 언어를 고른 사용자에게 읽을 수 없는 글자를 계속 보여 줄
+   * 이유가 없고, 원문과 번역이 한 문장 차이로 어긋난 채 나란히 놓이면 어느 쪽이 지금 말인지
+   * 알기 어렵다.
    *
-   * 그래서 옮긴 문장은 큰 자리에 그대로 두되(읽어야 하는 것은 자기 언어로 된 쪽이다),
-   * 지금 들어오는 원문은 아래 줄에 흘려보낸다.
+   * 번역은 말이 끝난 문장에만 건다 — 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라지고, 번역
+   * 요청도 초당 몇 번씩 나간다. 그래서 상담원이 말하는 중에는 지난 문장이 그대로 남고, 아래
+   * `captionPending` 이 지금 옮기고 있다는 것을 알린다.
+   *
+   * **한국어를 고른 사용자에게는 옮길 것이 없다.** 상담원 발화가 이미 한국어이므로 원문을
+   * 그대로 띄운다 — 번역 응답을 기다리는 동안 자막이 비는 일이 없다.
    */
-  const captionPrimary = translatedRemoteCaption || remoteCaption;
-  /** 큰 자리와 같은 말이면 두 번 쓰지 않는다(아직 옮기지 못해 원문이 위에 올라간 경우다). */
-  const captionSource = remoteCaption && remoteCaption !== captionPrimary ? remoteCaption : '';
+  const captionPrimary = userLanguage === 'ko' ? remoteCaption : translatedRemoteCaption;
+  /**
+   * 아직 옮기지 못한 상담원 발화가 있는지.
+   *
+   * 그동안 원문을 대신 띄우지 않는다 — 읽지 못하는 언어를 고른 사용자에게는 글자가 있는 것이
+   * 없는 것보다 낫지 않다. 대신 옮기는 중이라고 적어 자막이 죽은 것과 구분한다.
+   */
+  const captionTranslating = userLanguage !== 'ko' && Boolean(remoteCaption) && !captionPrimary;
   /** 상담원 쪽 자막이 죽었다는 사실. 이쪽 마이크 문제와 섞이지 않게 따로 띄운다. */
   const remoteCaptionNotice = describeRemoteCaptionTrouble(
     remoteCaptionError,
     t('user.consultSession.agent'),
-    i18n.resolvedLanguage === 'en' ? 'en' : 'ko',
+    userLanguage,
   );
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
@@ -247,7 +269,8 @@ export function ConsultSessionPage() {
   const destinationType = useNavigationStore((state) => state.destinationType);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
-  const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
+  /** 지도·경로 이름표에 쓰는 언어. 자막과 같은 값을 쓴다 — 한 화면이 두 언어로 갈리지 않게 한다. */
+  const displayLanguage = userLanguage;
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
@@ -734,10 +757,10 @@ export function ConsultSessionPage() {
     destinationNameEn,
   );
   const displayedDestination = destination
-    ? (storedDestinationFacility
-        ? localizedFacilityNameOf(storedDestinationFacility, displayLanguage)
-        : (localizedNameOf(displayLanguage, destinationNameKo, destinationNameEn) ??
-          localizeUserLabel(destination, displayLanguage)))
+    ? storedDestinationFacility
+      ? localizedFacilityNameOf(storedDestinationFacility, displayLanguage)
+      : (localizedNameOf(displayLanguage, destinationNameKo, destinationNameEn) ??
+        localizeUserLabel(destination, displayLanguage))
     : null;
   /**
    * 표시 층에 실제로 있는 유형만 칩으로 둔다. 눌러서 아무것도 나오지 않는 칩은 두지 않는다 —
@@ -1400,31 +1423,21 @@ export function ConsultSessionPage() {
               </div>
             )}
             {/*
-              옮긴 문장을 크게, 원문을 그 아래 작게 둔다. 사용자가 읽어야 하는 것은 자기
-              언어로 된 쪽이고, 원문은 숫자나 출구 이름을 눈으로 맞춰 보는 데 쓴다.
-              아직 옮기지 못했으면 원문이라도 큰 자리에 띄운다 — 빈 화면보다 낫다.
+              고른 언어로 된 문장만 띄운다. 한국어 원문 줄은 두지 않는다 — 그것을 읽을 수 없어
+              언어를 고른 사용자에게는 화면만 어지럽힌다.
+
+              아직 옮기지 못한 동안에는 원문 대신 '옮기는 중'이라고 적는다. 그래야 자막이 죽은
+              것과 구분되고, 상담원이 방금 한 말이 곧 이 자리에 온다는 것을 알 수 있다.
             */}
             <div className={styles.translationPrimary}>
               {captionPrimary ||
+                (captionTranslating ? t('user.consultSession.captionTranslating') : '') ||
                 remoteCaptionNotice ||
                 (captionError ??
                   (captionsSupported
                     ? t('user.consultSession.captionWaiting')
                     : t('user.consultSession.captionUnsupported')))}
             </div>
-            {/*
-              상담원이 말하는 중에는 이 줄이 한 마디씩 흘러간다. 위의 옮긴 문장은 말이
-              끝나야 바뀌므로, 이 줄이 없으면 화면은 멈춰 있는 것처럼 보인다.
-            */}
-            {captionSource && (
-              <div
-                className={[styles.translationSource, !remoteCaptionFinal && styles.captionLive]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                {captionSource}
-              </div>
-            )}
           </div>
           {/*
             안내 화면과 같은 방향 화살표. 기울기·방향 보정·이어 붙이기는 위젯이 갖고 있다.

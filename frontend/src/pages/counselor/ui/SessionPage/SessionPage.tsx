@@ -45,6 +45,14 @@ import styles from './SessionPage.module.css';
 
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
+
+/**
+ * 상담원 화면이 쓰는 언어. **고정이다.**
+ *
+ * 상담원 콘솔의 모든 문구가 한국어이고 상담원의 발화 인식도 `ko-KR` 로 고정돼 있다. 자막만
+ * 상대 언어를 따라가면 상담원은 자기가 읽을 수 없는 글자를 보게 된다.
+ */
+const COUNSELOR_CAPTION_LANGUAGE = 'ko';
 const TRANSCRIPT_SAVE_ATTEMPTS = 3;
 const TRANSCRIPT_RETRY_DELAY_MS = 500;
 
@@ -186,13 +194,13 @@ export function SessionPage() {
    *
    * 상담자 콘솔은 한국어로 쓰인다. 사용자가 다른 언어로 말하면 상담자는 자막을 읽고도
    * 무슨 말인지 알 수 없어, 실시간 자막이 있으나 마나가 된다.
+   *
+   * **여기서 만드는 언어는 한국어 하나뿐이다.** 예전에는 사용자·상담원 발화를 각각 영어로도
+   * 옮겨 자막을 두 줄로 띄웠는데, 상담원이 읽는 것은 언제나 한국어 줄이었다. 영어 줄은 자리만
+   * 차지하면서 발화마다 번역 요청을 두 배로 냈고, 상담원 발화의 영어 번역이 전문의
+   * `translatedContent` 자리를 차지해 사용자 언어 번역이 들어갈 곳도 없었다.
    */
   const handleUserCaptionTranslation = useCallback(
-    (captionId: string, _source: string, translated: string) =>
-      updateTranscriptTranslation(captionId, translated),
-    [updateTranscriptTranslation],
-  );
-  const handleCounselorCaptionTranslation = useCallback(
     (captionId: string, _source: string, translated: string) =>
       updateTranscriptTranslation(captionId, translated),
     [updateTranscriptTranslation],
@@ -200,22 +208,9 @@ export function SessionPage() {
   const translatedUserCaptionKo = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
-    'ko',
+    COUNSELOR_CAPTION_LANGUAGE,
     remoteFinalCaptionId,
     handleUserCaptionTranslation,
-  );
-  const translatedUserCaptionEn = useCaptionTranslation(
-    consultationId,
-    remoteFinalCaption,
-    'en',
-    remoteFinalCaptionId,
-  );
-  const translatedCounselorCaptionEn = useCaptionTranslation(
-    consultationId,
-    localCaptionFinal ? localCaption : '',
-    'en',
-    localFinalCaptionId,
-    handleCounselorCaptionTranslation,
   );
   /**
    * 사용자 발화의 번역문을 소리내어 읽을지. **기본은 끔이다.**
@@ -231,13 +226,22 @@ export function SessionPage() {
    */
   const [readUserCaptionAloud, setReadUserCaptionAloud] = useState(false);
   useTranslatedSpeech(translatedUserCaptionKo, 'ko-KR', remoteCaptionFinal && readUserCaptionAloud);
-  /** 한국어와 영어를 고정된 순서로 함께 보여 언어에 따라 자막 위치가 바뀌지 않게 한다. */
-  const userCaptionKorean = remoteCaptionFinal
-    ? translatedUserCaptionKo || remoteCaption
-    : remoteCaption;
-  const userCaptionEnglish = remoteCaptionFinal ? translatedUserCaptionEn : '';
+  /**
+   * 화면에 띄우는 사용자 자막. **옮긴 한국어만 띄운다.**
+   *
+   * 아직 옮기지 못한 동안 원문을 대신 띄우지 않는다. 사용자가 어느 언어로 말할지는 상담원이
+   * 고르지 않았고, 읽지 못하는 글자를 잠깐 보여 주는 것은 빈 자리보다 나을 것이 없다. 대신
+   * 아래 `userCaptionTranslating` 이 옮기는 중이라고 알려, 자막이 죽은 것과 구분되게 한다.
+   *
+   * **말하는 중에도 원문은 띄우지 않는다.** 번역은 말이 끝난 문장에만 걸리므로(중간 결과는
+   * 계속 고쳐 쓰인다) 그동안 이 자리는 지난 문장에 머문다. 말하고 있다는 사실은 머리말의
+   * `말하는 중` 표시가 이미 알린다.
+   */
+  const userCaptionKorean = translatedUserCaptionKo;
+  /** 사용자가 방금 한 말을 아직 옮기는 중인지. */
+  const userCaptionTranslating = Boolean(remoteCaption) && !userCaptionKorean;
+  /** 상담원 발화는 `ko-KR` 로 인식하므로 옮길 것이 없다. */
   const counselorCaptionKorean = localCaption;
-  const counselorCaptionEnglish = translatedCounselorCaptionEn;
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
   const userCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '사용자');
   const displayTranscript = (
@@ -1098,25 +1102,16 @@ export function SessionPage() {
                       {remoteCaptionFinal ? '확정' : '말하는 중'}
                     </span>
                   </div>
+                  {/* 사용자가 어느 언어로 말했든 상담원에게는 한국어로만 옮겨 보여 준다. */}
                   <div className={styles.bilingualCaption} aria-live="polite" aria-atomic="true">
-                    <div className={styles.bilingualLine}>
-                      <span className={styles.bilingualLanguage}>한국어</span>
-                      <span className={styles.bilingualText}>
-                        {userCaptionKorean ||
-                          (captionsSupported
+                    <span className={styles.bilingualText}>
+                      {userCaptionKorean ||
+                        (userCaptionTranslating
+                          ? '옮기는 중…'
+                          : captionsSupported
                             ? '사용자가 말하면 자막을 표시합니다.'
                             : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
-                      </span>
-                    </div>
-                    <div className={styles.bilingualLine}>
-                      <span className={styles.bilingualLanguage}>English</span>
-                      <span className={styles.bilingualTranslation}>
-                        {userCaptionEnglish ||
-                          (remoteCaptionFinal && remoteFinalCaption
-                            ? 'Translating…'
-                            : 'English translation appears after the sentence ends.')}
-                      </span>
-                    </div>
+                    </span>
                   </div>
                 </div>
                 <div className={[styles.liveCaption, styles.liveCaptionCounselor].join(' ')}>
@@ -1126,25 +1121,14 @@ export function SessionPage() {
                       {localCaptionFinal ? '확정' : '말하는 중'}
                     </span>
                   </div>
+                  {/* 상담원 발화는 한국어 고정이라 옮길 것이 없다. 인식한 그대로 띄운다. */}
                   <div className={styles.bilingualCaption} aria-live="polite" aria-atomic="true">
-                    <div className={styles.bilingualLine}>
-                      <span className={styles.bilingualLanguage}>한국어</span>
-                      <span className={styles.bilingualText}>
-                        {counselorCaptionKorean ||
-                          (captionsSupported
-                            ? '마이크를 켜고 말하면 자막을 표시합니다.'
-                            : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
-                      </span>
-                    </div>
-                    <div className={styles.bilingualLine}>
-                      <span className={styles.bilingualLanguage}>English</span>
-                      <span className={styles.bilingualTranslation}>
-                        {counselorCaptionEnglish ||
-                          (localCaptionFinal && localCaption
-                            ? 'Translating…'
-                            : 'English translation appears after the sentence ends.')}
-                      </span>
-                    </div>
+                    <span className={styles.bilingualText}>
+                      {counselorCaptionKorean ||
+                        (captionsSupported
+                          ? '마이크를 켜고 말하면 자막을 표시합니다.'
+                          : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1174,19 +1158,23 @@ export function SessionPage() {
                           {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
                         </span>
                       </div>
+                      {/*
+                        한국어 한 줄만 남긴다. 사용자 발화는 옮긴 글을, 상담원 발화는 인식한
+                        그대로를 띄운다.
+
+                        예전에는 `원문`·`번역` 두 줄이었다. 상담원이 읽을 수 있는 것은 번역 줄
+                        하나인데 원문이 늘 위에 있어, 대화를 되짚을 때마다 읽지 못하는 줄을 건너뛰며
+                        읽어야 했고 로그에 담기는 대화 수도 절반이 됐다.
+
+                        **저장되는 전문은 그대로다.** 서버로 올리는 `transcript` 에는 원문과 번역이
+                        모두 실린다(`submitTranscriptWithRetry`) — 상담 이력과 AI 요약은 사용자가
+                        실제로 한 말을 근거로 삼아야 한다. 여기서 줄이는 것은 화면뿐이다.
+                      */}
                       <div className={styles.transcriptLine}>
-                        <span className={styles.transcriptLanguage}>원문</span>
-                        <span className={styles.line}>{segment.content}</span>
+                        <span className={styles.line}>
+                          {segment.translatedContent || segment.content}
+                        </span>
                       </div>
-                      {segment.translatedContent &&
-                        segment.translatedContent !== segment.content && (
-                          <div className={styles.transcriptLine}>
-                            <span className={styles.transcriptLanguage}>번역</span>
-                            <span className={styles.transcriptTranslation}>
-                              {segment.translatedContent}
-                            </span>
-                          </div>
-                        )}
                     </div>
                   ))
                 )}

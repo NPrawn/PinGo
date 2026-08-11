@@ -220,10 +220,10 @@ describe('ConsultSessionPage', () => {
   });
 
   /**
-   * 번역은 말이 끝난 문장에만 걸린다. 옮긴 문장만 띄우면 상담원이 다음 말을 하는 내내
-   * 화면이 지난 문장에서 멈춰 있어, 사용자는 자막이 죽은 것으로 본다.
+   * 자막은 고른 언어로만 나간다. 한국어를 읽지 못해 영어를 고른 사용자에게 원문을 함께
+   * 보여 주면 화면만 어지럽고, 어느 쪽이 지금 말인지도 알기 어렵다.
    */
-  it('상담원이 말하는 중에는 옮긴 지난 문장 아래로 지금 원문이 흘러간다', async () => {
+  it('상담원이 말하는 중이어도 원문은 띄우지 않는다', async () => {
     apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
     // 앞 문장은 옮겨 두었고, 상담원은 이미 다음 문장을 말하는 중이다.
     apiMocks.useCaptionTranslation.mockReturnValue('Go to exit 3');
@@ -237,14 +237,13 @@ describe('ConsultSessionPage', () => {
     renderPage();
 
     await screen.findByRole('button', { name: 'End consultation' });
-    // 읽어야 하는 것은 자기 언어로 된 쪽이라 옮긴 문장이 큰 자리를 지킨다.
+    // 읽어야 하는 것은 자기 언어로 된 쪽이라 옮긴 문장이 자리를 지킨다.
     expect(screen.getByText('Go to exit 3')).toBeInTheDocument();
-    // 그 아래로 지금 들어오는 말이 흘러간다. 이것이 없으면 화면은 멈춰 보인다.
-    expect(screen.getByText('그리고 왼쪽으로')).toBeInTheDocument();
+    expect(screen.queryByText('그리고 왼쪽으로')).toBeNull();
   });
 
-  /** 아직 옮기지 못한 원문이 큰 자리에 올라갔으면 같은 말을 아래에 또 쓰지 않는다. */
-  it('옮기기 전에는 원문을 한 번만 띄운다', async () => {
+  /** 아직 옮기지 못했으면 원문 대신 옮기는 중이라고 적는다. 자막이 죽은 것과 구분돼야 한다. */
+  it('옮기기 전에는 원문 대신 옮기는 중이라고 적는다', async () => {
     apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
     apiMocks.useCaptionTranslation.mockReturnValue('');
     signaling.state = { ...signaling.state, remoteCaption: '3번 출구로 가세요' };
@@ -252,7 +251,8 @@ describe('ConsultSessionPage', () => {
     renderPage();
 
     await screen.findByRole('button', { name: 'End consultation' });
-    expect(screen.getAllByText('3번 출구로 가세요')).toHaveLength(1);
+    expect(screen.queryByText('3번 출구로 가세요')).toBeNull();
+    expect(screen.getByText('Translating…')).toBeInTheDocument();
   });
 
   /**

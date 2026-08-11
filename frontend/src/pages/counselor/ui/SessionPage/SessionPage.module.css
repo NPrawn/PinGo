@@ -570,45 +570,19 @@
   color: #f0f0f5;
 }
 
+/* 한국어 한 줄만 담는다. 높이는 두 줄 분량으로 잡아 문장이 길어져도 아래 칸이 밀리지 않게 한다. */
 .bilingualCaption {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  min-height: 5.8em;
+  min-height: 3em;
   margin-top: 8px;
 }
 
-.bilingualLine {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 7px;
-  align-items: start;
-}
-
-.bilingualLanguage {
-  padding: 2px 5px;
-  font-size: 9px;
-  font-weight: 800;
-  line-height: 1.35;
-  color: #c8c8d2;
-  text-align: center;
-  background: rgb(255 255 255 / 8%);
-  border-radius: 4px;
-}
-
-.bilingualText,
-.bilingualTranslation {
+.bilingualText {
   overflow-wrap: anywhere;
   font-size: 12px;
   line-height: 1.5;
-}
-
-.bilingualText {
   color: #f0f0f5;
-}
-
-.bilingualTranslation {
-  color: #b8d8ff;
 }
 
 .notesBody {
@@ -645,29 +619,14 @@
   min-height: 18px;
 }
 
+/* 한국어 한 줄만 담는다. `원문`·`번역` 라벨 칸이 없어져 글이 화자 이름 아래에서 바로 시작한다. */
 .transcriptLine {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
+  display: block;
 }
 
-.transcriptLanguage {
-  padding-top: 2px;
-  font-size: 9px;
-  font-weight: 800;
-  color: #777783;
-}
-
-.transcriptLine .line,
-.transcriptTranslation {
+.transcriptLine .line {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.transcriptTranslation {
-  display: block;
-  color: #aeb7ff;
 }
 
 .transcriptEmpty {
