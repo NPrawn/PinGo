@@ -1,6 +1,7 @@
 export { useConsultSignaling } from './model/useConsultSignaling';
 export { useCaptionTranslation } from './model/useCaptionTranslation';
 export { useTranslatedSpeech } from './model/useTranslatedSpeech';
+export { DEMO_PHARMACY_DRAW_DELAY_MS } from './model/demoCaptions';
 export { describeRemoteCaptionTrouble } from './model/captionTrouble';
 export type { CaptionTrouble } from './model/captionTrouble';
 export {

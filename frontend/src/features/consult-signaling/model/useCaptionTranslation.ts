@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { translateConsultationCaption } from '@/shared/api';
+import { demoCaptionTranslationOf } from './demoCaptions';
 
 type TranslationResult = {
   consultationId: string;
@@ -42,6 +43,17 @@ export function useCaptionTranslation(
 
     const timer = window.setTimeout(() => {
       timersRef.current.delete(requestKey);
+      const demoTranslation = captionId.includes(':demo:')
+        ? demoCaptionTranslationOf(source, targetLanguage)
+        : null;
+      if (demoTranslation !== null) {
+        if (captionId === currentCaptionIdRef.current) {
+          setResult({ consultationId, targetLanguage, captionId, text: demoTranslation });
+        }
+        onTranslated?.(captionId, source, demoTranslation);
+        return;
+      }
+
       void translateConsultationCaption(consultationId, { text: source, targetLanguage })
         .then((response) => {
           if (disposedRef.current) return;

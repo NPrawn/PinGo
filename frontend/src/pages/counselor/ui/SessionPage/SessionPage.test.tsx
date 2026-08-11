@@ -78,6 +78,7 @@ vi.mock('@/shared/api', async (importOriginal) => ({
 
 /** WebRTC·음성 인식은 이 화면의 관심사가 아니다. 쌓인 전문만 넘겨준다. */
 vi.mock('@/features/consult-signaling', async (importOriginal) => ({
+  DEMO_PHARMACY_DRAW_DELAY_MS: 9500,
   useCaptionTranslation: signalingMocks.translateCaption,
   useTranslatedSpeech: vi.fn(),
   // 안내 문구를 만드는 것은 순수 함수다. 가짜로 바꾸면 실제로 무슨 말이 뜨는지 못 본다.
@@ -408,7 +409,7 @@ describe('SessionPage', () => {
     renderPage();
 
     /* 한 줄에 둘이 함께 적히므로 그 요소를 잡아 두 값을 함께 본다. */
-    const route = await screen.findByText(/지하3층 승강장/);
+    const route = await screen.findByText(/3번출구 앞/);
 
     expect(route.textContent).toContain('3번 출구');
     // 식별자는 상담자에게 아무 뜻이 없다. 화면에 남기지 않는다.
