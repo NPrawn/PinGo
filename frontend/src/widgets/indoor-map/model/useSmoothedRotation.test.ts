@@ -1,5 +1,9 @@
 import { act, renderHook } from '@testing-library/react';
-import { shortestAngleDeltaDeg, useSmoothedRotationDeg } from './useSmoothedRotation';
+import {
+  shortestAngleDeltaDeg,
+  useSmoothedRotationDeg,
+  type SmoothedRotationOptions,
+} from './useSmoothedRotation';
 
 describe('shortestAngleDeltaDeg', () => {
   it('경계를 넘어도 짧은 쪽으로 잰다', () => {
@@ -72,10 +76,12 @@ describe('useSmoothedRotationDeg', () => {
     vi.unstubAllGlobals();
   });
 
-  const mount = (deg: number | null) =>
-    renderHook(({ target }) => useSmoothedRotationDeg(target, { inputTauMs: 500, holdDeg: 8 }), {
+  const mountWith = (deg: number | null, options: SmoothedRotationOptions) =>
+    renderHook(({ target }) => useSmoothedRotationDeg(target, options), {
       initialProps: { target: deg },
     });
+
+  const mount = (deg: number | null) => mountWith(deg, { inputTauMs: 500, holdDeg: 8 });
 
   it('방향을 모르면 돌리지 않는다', () => {
     const { result } = mount(null);
@@ -149,6 +155,43 @@ describe('useSmoothedRotationDeg', () => {
     }
 
     expect(updated.result.current!).toBeCloseTo(quiet.result.current!, 1);
+  });
+
+  /**
+   * 돌고 있는 동안의 뒤처짐. (S15P11A206-382)
+   *
+   * 램프 입력에 대한 지수 필터의 정상상태 뒤처짐은 `회전속도 × 시간상수`다. 두 단계를 지나므로
+   * 서 있는 값(500+250ms)을 그대로 쓰면 75°/s에서 56°가 되고, 그것이 "회전할 때 지도가 늦게
+   * 따라온다"는 보고의 정체였다.
+   *
+   * 절대값과 함께 **서 있는 값으로 강제한 훅과 나란히** 잰다. 상수를 다시 조율해도 "돌 때는
+   * 서 있을 때보다 훨씬 덜 뒤처진다"는 성질 자체는 남아야 한다.
+   */
+  it('돌고 있는 동안에는 서 있는 상수보다 훨씬 덜 뒤처진다', () => {
+    const RATE_DPS = 75;
+    const base = { inputTauMs: 500, holdDeg: 8 } satisfies SmoothedRotationOptions;
+    const fast = mountWith(0, base);
+    // 도는 동안에도 서 있는 값을 쓰던 예전 동작.
+    const slow = mountWith(0, { ...base, turningInputTauMs: 500, turningChaseTauMs: 250 });
+    driver.advance(16);
+
+    let atMs = 0;
+    for (let index = 0; index < 200; index += 1) {
+      atMs += 16;
+      const target = (RATE_DPS * atMs) / 1000;
+      fast.rerender({ target });
+      slow.rerender({ target });
+      driver.advance(16);
+    }
+
+    const finalTarget = (RATE_DPS * atMs) / 1000;
+    const fastLag = finalTarget - fast.result.current!;
+    const slowLag = finalTarget - slow.result.current!;
+
+    // 160+100ms면 19.5°다. 500+250ms였을 때의 56°와 비교한다.
+    expect(fastLag).toBeGreaterThan(0);
+    expect(fastLag).toBeLessThan(26);
+    expect(fastLag).toBeLessThan(slowLag / 2);
   });
 
   it('경계를 넘어도 짧은 쪽으로 돈다', () => {

@@ -19,6 +19,7 @@ import {
   useStationFloorMaps,
 } from '@/entities/floor-map';
 import {
+  MAX_WAYPOINTS,
   carriesDistance,
   instructionAt,
   routeBearingOf,
@@ -42,7 +43,12 @@ import { stopCamera } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { PhoneFrame } from '@/widgets/phone-frame';
-import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
+import {
+  ArDirectionArrow,
+  useXrNavigationSession,
+  XrSessionNotice,
+  XrTrackingBadge,
+} from '@/widgets/xr-navigation';
 import styles from './NavigationPage.module.css';
 
 /**
@@ -551,7 +557,22 @@ export function NavigationPage() {
    */
   const bearing = routeBearingOf({
     pathNodes,
-    currentLocation,
+    /**
+     * **경로 위에 얹은 자리를 쓴다.** 날것의 좌표가 아니다. (S15P11A206-382)
+     *
+     * 화살표는 `내 자리 → 앞쪽 노드` 벡터로 각도를 잡는데, 목표 노드는 경로선 위에 있고 내
+     * 자리만 측위 오차만큼 옆으로 벗어나 있었다. 그 어긋남이 그대로 각도로 들어간다 — 옆으로
+     * 2m 벗어나 있고 목표 노드가 3m 앞이면 `atan(2/3)`, 즉 34°다. `LOOKAHEAD_M`이 3m라 노드를
+     * 막 지난 직후가 늘 그 상황이었다.
+     *
+     * 두 점이 모두 경로선 위에 있으면 둘을 잇는 벡터가 곧 복도 방향이 되어 이 항이 사라진다.
+     * 지도 마커도 같은 값을 쓰므로(아래 `IndoorMapView`), 한 화면에서 마커와 화살표가 서로
+     * 다른 자리를 기준으로 삼는 일도 없어진다.
+     *
+     * 이탈했으면 `snappedLocation`이 null이라 날것의 좌표로 떨어진다. 그게 맞다 — 정말 벗어난
+     * 사용자에게는 복도 방향이 아니라 경로로 돌아가는 방향을 가리켜야 한다.
+     */
+    currentLocation: (snapToRoute ? progress.snappedLocation : null) ?? currentLocation,
     headingDeg,
     travelledM: progress.travelledM,
   });
@@ -1014,20 +1035,11 @@ export function NavigationPage() {
               <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
           </div>
-          {/* 방향을 알 때만 그린다. 모르는데 위를 향한 화살표를 두면 "정면"이라고 말하는 셈이다. */}
-          {camGuide && (
-            <>
-              <div
-                className={styles.arrow}
-                style={{ transform: `rotate(${camGuide.relativeDeg}deg)` }}
-                role="img"
-                aria-label={camGuide.caption}
-              >
-                ↑
-              </div>
-              <div className={styles.camCaption}>{camGuide.caption}</div>
-            </>
-          )}
+          {/* 상담 화면과 같은 화살표다. 기울기·방향 보정·이어 붙이기는 위젯이 갖고 있다. */}
+          <ArDirectionArrow
+            relativeDeg={camGuide?.relativeDeg ?? null}
+            label={camGuide?.caption ?? ''}
+          />
         </div>
 
         <div className={styles.lower}>
@@ -1462,7 +1474,7 @@ export function NavigationPage() {
             <div className={styles.sheetActions}>
               <Button
                 disabled={
-                  waypoints.length >= 2 ||
+                  waypoints.length >= MAX_WAYPOINTS ||
                   selectedFacilityIsWaypoint ||
                   selectedFacilityIsDestination ||
                   !selectedFacilityRoutable
@@ -1484,7 +1496,7 @@ export function NavigationPage() {
                     ? t('user.navigation.alreadyWaypoint')
                     : !selectedFacilityRoutable
                       ? t('user.navigation.notRoutable')
-                      : waypoints.length >= 2
+                      : waypoints.length >= MAX_WAYPOINTS
                         ? t('user.navigation.waypointLimit')
                         : t('user.navigation.addWaypoint')}
               </Button>

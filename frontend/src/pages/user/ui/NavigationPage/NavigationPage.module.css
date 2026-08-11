@@ -453,45 +453,13 @@
   color: rgb(223 246 230 / 68%);
 }
 
-/* 다음 지점을 가리키는 큰 화살표. 각도는 화면이 인라인 스타일로 준다 —
-   경로 기하와 XR 방향각에서 나온 값이라 CSS로 미리 정해 둘 수 없다.
-   회전 중심을 글리프 한가운데로 두어, 돌 때 화살표가 제자리에서 돈다. */
-.arrow {
-  margin-top: 30px;
-  font-size: 58px;
-  line-height: 1;
-  color: #fff;
-  text-shadow: 0 3px 12px rgb(0 0 0 / 50%);
-  transform-origin: center;
-  /* 방향은 계단으로 들어오므로(5° 데드밴드) 짧게 이어 붙여 튀지 않게 한다. */
-  transition: transform 0.24s ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .arrow {
-    transition: none;
-  }
-}
-
 /*
-  방향 자막. **위치 재촬영 버튼 위에 둔다.**
+  다음 지점을 가리키는 큰 화살표는 `ArDirectionArrow` 위젯이 갖고 있다. 상담 화면과 같은 것을
+  써야 하므로 이 화면의 스타일시트에 두지 않는다. (S15P11A206-382)
 
-  예전에는 둘이 같은 `bottom: 88px`이었다. 자막은 좌우 전체를 쓰고 가운데 정렬이라, 문장이 길면
-  오른쪽 버튼 아래로 파고들었다. 폭을 좁히는 대신 한 줄 위로 올린다 — 좁히면 긴 문장이 잘리거나
-  두 줄로 접힌다. 값은 버튼 높이(26px)에 여백을 더한 것이다. (S15P11A206-206)
+  이 화면이 하는 일은 `.cam` 이 가운데 정렬된 flex 컨테이너라는 것뿐이다 — 화살표는 그 안의
+  유일한 흐름 자식이고 자기 위치를 스스로 정한다.
 */
-.camCaption {
-  position: absolute;
-  right: 0;
-  bottom: 122px;
-  left: 0;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  text-align: center;
-  text-shadow: 0 2px 8px #000;
-}
-
 .lower {
   display: flex;
   flex: 0 0 calc(var(--content-region-ratio) - 22.08px);

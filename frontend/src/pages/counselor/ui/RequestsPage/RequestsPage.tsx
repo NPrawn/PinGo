@@ -15,6 +15,10 @@ import { acceptConsultation, ApiError, getCounselorConsultation, queryKeys } fro
 import { COUNSELOR_ROUTES } from '@/shared/config';
 import { Button, GhostButton, Icon, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
+import {
+  consultationDestinationLabel,
+  consultationOriginLabel,
+} from '../../lib/consultationPlaceLabel';
 import styles from './RequestsPage.module.css';
 
 const STATUS_CLASS: Record<string, string> = {
@@ -184,7 +188,7 @@ export function RequestsPage() {
                       : consultationDateTimeLabel(request.requestedAt)}
                   </div>
                   <div className={styles.loc}>
-                    {request.currentLocationLabel ?? '위치를 아직 못 찾은 사용자'}
+                    {consultationOriginLabel(request.currentLocationLabel)}
                   </div>
                 </button>
               ))}
@@ -234,8 +238,8 @@ export function RequestsPage() {
                     </span>
                   </div>
                   <div className={styles.route}>
-                    {selected.currentLocationLabel ?? '위치 확인 안 됨'} →{' '}
-                    {selected.destinationLabel ?? '목적지 미정'}
+                    {consultationOriginLabel(selected.currentLocationLabel)} →{' '}
+                    {consultationDestinationLabel(selected.destinationLabel)}
                   </div>
                 </div>
                 {selected.status === 'WAITING' && (
@@ -270,21 +274,21 @@ export function RequestsPage() {
                 <div className={styles.card}>
                   <div className={styles.cardLabel}>현재 위치</div>
                   <div className={styles.cardValue}>
-                    {selected.currentLocationLabel ?? '확인 안 됨'}
+                    {consultationOriginLabel(selected.currentLocationLabel)}
                   </div>
-                  {!selected.currentLocationLabel && (
-                    <p className={styles.cardHint}>
-                      사용자가 위치 인식을 끝내지 못한 채 상담을 요청했어요. 상담 중에 함께 찾아
-                      주세요.
-                    </p>
-                  )}
+                  {/*
+                    "위치를 못 찾았다"는 안내를 두지 않는다. 이름을 채우는 자리이므로 늘 값이 있고,
+                    없다고 적으면 화면에 이름이 떠 있는데 못 찾았다고 말하는 셈이 된다.
+                    (S15P11A206-382)
+                  */}
                 </div>
                 <div className={styles.card}>
                   <div className={styles.cardLabel}>목적지</div>
-                  <div className={styles.cardValue}>{selected.destinationLabel ?? '미정'}</div>
+                  <div className={styles.cardValue}>
+                    {consultationDestinationLabel(selected.destinationLabel)}
+                  </div>
                   <p className={styles.cardHint}>
-                    {destinationTypeLabel(selected.destinationType) ??
-                      '사용자가 목적지를 아직 고르지 않았어요.'}
+                    {destinationTypeLabel(selected.destinationType) ?? '역 밖으로 나가는 경로예요.'}
                   </p>
                 </div>
               </div>

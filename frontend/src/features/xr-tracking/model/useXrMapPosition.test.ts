@@ -109,6 +109,27 @@ function reading(x: number, z: number, yawDeg = 0): XrPoseReading {
   };
 }
 
+/**
+ * 앞뒤로 `pitchDeg`만큼 눕힌 자세의 pose. 회전축은 단말 X축이다.
+ *
+ * 그 자세에서 `cameraTiltSinOf`는 `sin θ`, `deviceUprightOf`는 `cos θ`가 된다. 150도면 sin이
+ * 0.5로 기울임 한계(sin 65도 = 0.906)를 통과하지만 cos가 -0.866이라 뒤집힘 조건에 걸린다 —
+ * 몸은 정면인데 들고 있던 손을 내려 카메라만 뒤를 보는 자세가 그것이다.
+ *
+ * `yawDeg`는 그대로 둔다. 이 자세에서 뒤집혀 나오는 것이 바로 그 값이므로, 검사가 보는 것은
+ * "값이 얼마인가"가 아니라 "이 자세의 값을 앵커에 굽지 않는가"다.
+ */
+function tiltedReading(pitchDeg: number, yawDeg = 0): XrPoseReading {
+  const half = (pitchDeg * Math.PI) / 360;
+
+  return {
+    position: { x: 0, y: 0, z: 0 },
+    orientation: { x: Math.sin(half), y: 0, z: 0, w: Math.cos(half) },
+    yawDeg,
+    timestamp: 0,
+  };
+}
+
 function snapshot(x: number, z: number, timestamp = 1000): XrPoseSnapshot {
   return { ...reading(x, z), timestamp, trigger: 'move' };
 }
@@ -122,12 +143,28 @@ const FORWARD_DIAGONAL = { x: 0.6, y: 0.8 };
 /** 평활을 끄고 변환 결과를 그대로 본다. 평활 자체는 displaySmoothing.test.ts가 검사한다. */
 const NO_SMOOTHING = { deadbandM: 0, followRatio: 1 };
 
+/**
+ * 방향각 필터가 보는 시계. 테스트가 직접 밀어 준다.
+ *
+ * 회전 속도 상한이 "지난 시각 대비 얼마나 돌았는가"로 판정하므로, 시간을 통제하지 않으면 같은
+ * 순간에 들어온 큰 변화가 이상치로 걸러진다 — 실기기에서는 채널 최소 간격(120ms)이 있어
+ * 생기지 않는 상황이다.
+ */
+const clock = { ms: 0 };
+
+function advanceClock(ms: number): void {
+  clock.ms += ms;
+}
+
 function renderTracking(fake: FakeController, currentIndoorLocation = CONFIRMED) {
+  clock.ms = 0;
+
   return renderHook(() =>
     useXrMapPosition({
       controller: fake.controller,
       currentIndoorLocation,
       smoothing: NO_SMOOTHING,
+      now: () => clock.ms,
     }),
   );
 }
@@ -361,6 +398,84 @@ describe('useXrMapPosition', () => {
       expect(result.current.anchorRevision).toBe(0);
       expect(result.current.currentLocation).toEqual(CONFIRMED);
       expect(result.current.source).toBe('anchored');
+    });
+
+    /**
+     * 자세가 나쁜 순간의 yaw를 앵커에 구우면 뒤집힘이 **영구히** 남는다. (S15P11A206-382)
+     *
+     * 표시 단계의 뒤집힘은 자세가 돌아오면 함께 돌아온다(방향 채널이 같은 게이트를 쓴다). 앵커는
+     * 회전을 얼려 두고 그 뒤 모든 방향각과 **모든 변위**가 그것을 지나므로, 한 번 잘못 구워지면
+     * 방향은 반대를 가리키고 앞으로 걸으면 마커가 뒤로 간다.
+     */
+    it('카메라가 뒤를 보는 자세에서는 앵커를 만들지 않는다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake, tiltedReading(150));
+
+      let created = true;
+      act(() => {
+        created = result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      expect(created).toBe(false);
+      expect(result.current.anchorStatus).toBe('none');
+      // 앵커가 없으므로 확정 위치만 보여 준다. 틀린 좌표계를 보여 주는 것보다 낫다.
+      expect(result.current.currentLocation).toEqual(CONFIRMED);
+    });
+
+    it('자세가 돌아오면 앵커가 만들어진다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake, tiltedReading(150));
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+      expect(result.current.anchorStatus).toBe('none');
+
+      // 손을 다시 들었다.
+      fake.setReading(tiltedReading(10));
+
+      let created = false;
+      act(() => {
+        created = result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      expect(created).toBe(true);
+      expect(result.current.anchorStatus).toBe('established');
+    });
+
+    /**
+     * 갱신도 같은 게이트를 지난다. 상담 화면은 30초마다 재인식으로 앵커를 다시 세우는데, 그때
+     * 자세가 나쁘면 멀쩡히 돌던 앵커가 뒤집힌 것으로 갈아치워진다.
+     *
+     * 누적 오차가 남는 것이 뒤집히는 것보다 낫다. 다음 주기에 다시 시도한다.
+     */
+    it('앵커가 있어도 나쁜 자세로는 갱신하지 않는다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      const heading = result.current.headingDeg;
+
+      fake.setReading(tiltedReading(150, 180));
+
+      let created = true;
+      act(() => {
+        created = result.current.setAnchor({ floorId: 2, mapX: 300, mapY: 400 }, FORWARD_DIAGONAL);
+      });
+
+      expect(created).toBe(false);
+      // 옛 앵커가 그대로 남아 있다. 개정 번호도 올라가지 않는다.
+      expect(result.current.anchorStatus).toBe('established');
+      expect(result.current.anchorRevision).toBe(0);
+      expect(result.current.headingDeg).toBe(heading);
+      expect(result.current.currentLocation).toEqual(CONFIRMED);
     });
   });
 
@@ -671,12 +786,68 @@ describe('useXrMapPosition', () => {
       const before = result.current.currentLocation;
 
       act(() => {
+        // 90도를 돌 만한 시간이 지난 뒤의 표본이다. 상한은 240도/초다.
+        advanceClock(500);
         fake.emitHeading(90);
       });
 
       expect(result.current.headingDeg).not.toBeCloseTo(-90, 3);
       // 위치는 그대로다. 방향 채널이 위치를 건드리지 않는다.
       expect(result.current.currentLocation).toEqual(before);
+    });
+
+    /**
+     * 사람이 낼 수 없는 회전은 흘려보내지 않는다. (S15P11A206-382)
+     *
+     * 화살표가 튄다는 QA 보고의 표시 쪽 대책이다. 판정 자체는 `headingFilter.test.ts`가 보고,
+     * 여기서는 그것이 이 채널에 실제로 걸려 있는지만 확인한다.
+     */
+    it('한 표본에 순간이동하는 방향은 버린다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      const anchored = result.current.headingDeg;
+
+      act(() => {
+        // 채널 최소 간격(120ms)만 지난 사이에 90도가 들어왔다. 상한은 그 사이 28.8도다.
+        advanceClock(120);
+        fake.emitHeading(90);
+      });
+
+      expect(result.current.headingDeg).toBe(anchored);
+    });
+
+    /**
+     * 앵커 갱신은 잡음이 아니라 보정이다. 이것까지 걸러 버리면 재인식이 무력해진다 — 누적
+     * 오차를 초기화하려고 다시 찍었는데 화면이 옛 방향을 붙들고 있게 된다.
+     */
+    it('앵커를 갱신하면 방향이 얼마나 달라져도 그대로 따른다', () => {
+      const fake = createFakeController();
+      const { result } = renderTracking(fake);
+
+      startTracking(fake);
+      act(() => {
+        result.current.setAnchor(CONFIRMED, FORWARD_IDENTITY);
+      });
+
+      const anchored = result.current.headingDeg;
+
+      act(() => {
+        // 시간을 밀지 않는다. 걸러진다면 여기서 걸릴 것이다.
+        result.current.setAnchor(CONFIRMED, FORWARD_DIAGONAL);
+      });
+
+      expect(result.current.headingDeg).not.toBeCloseTo(anchored ?? 0, 3);
+      // 새 앵커의 방향 벡터가 그대로 각도가 된다.
+      expect(result.current.headingDeg).toBeCloseTo(
+        (Math.atan2(FORWARD_DIAGONAL.y, FORWARD_DIAGONAL.x) * 180) / Math.PI,
+        6,
+      );
     });
 
     it('앵커를 버리면 방향도 사라진다', () => {

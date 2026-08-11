@@ -16,7 +16,7 @@ import type { IndoorPoint, RoutePathNode } from '@/entities/navigation';
 import { resolveAssetUrl } from '@/shared/config';
 import { Icon } from '@/shared/ui';
 import { MOCK_CURRENT_LOCATION, MOCK_DESTINATION, MOCK_PATH_NODES } from '../model/fixtures';
-import { useMapGestures } from '../model/useMapGestures';
+import { useMapGestures, type NormalizedMapView } from '../model/useMapGestures';
 import { useSmoothedRotationDeg } from '../model/useSmoothedRotation';
 import { IndoorMapOverlay } from './IndoorMapOverlay';
 import styles from './IndoorMapView.module.css';
@@ -79,12 +79,47 @@ interface IndoorMapViewProps {
   /**
    * 시점이 현재 위치를 따라가게 한다. 길안내 화면용이다.
    *
-   * 켜면 전체 조망 대신 내 주변 60m를 화면 아래쪽 기준으로 보여준다. 지도를 밀거나 확대하면
+   * 켜면 전체 조망 대신 내 주변 90m를 화면 아래쪽 기준으로 보여준다. 지도를 밀거나 확대하면
    * 추종이 풀려 전체까지 자유롭게 볼 수 있고, `내 위치` 버튼으로 되돌아온다.
    *
    * 지도를 훑어보는 화면(`/user/map`)에서는 꺼 둔다 — 거기서는 조망이 목적이다.
    */
   followCamera?: boolean;
+  /**
+   * 추종 범위를 **사용자가 보는 만큼 담을지**. 기본은 담지 않는다. (S15P11A206-382)
+   *
+   * 추종 배율은 `FOLLOW_SPAN_PX`(90m)를 상자 **가로**에 맞춰 정해진다. 그래서 세로로 보이는 범위가
+   * 상자 비율에 그대로 좌우된다 — 사용자 화면(비율 약 0.95)은 90m×85m를 보는데, 가로로 긴 상담자
+   * 지도(비율 약 0.40)는 90m×36m밖에 못 본다. 사용자가 보는 것의 절반도 안 되는 화면에
+   * "사용자와 같은 지도"라고 적혀 있었다.
+   *
+   * 켜면 90m를 **짧은 축**에 맞춘다. 가로로 긴 상자에서는 세로 90m·가로 225m가 되어 사용자가 보는
+   * 범위를 품는다. 상담자는 사용자가 보는 것 + 주변 맥락을 함께 본다.
+   *
+   * **기본을 바꾸지 않는다.** 안내 화면 지도 상자도 가로로 길어(358×278) 기본을 바꾸면 사용자
+   * 화면의 배율까지 함께 내려가고, 그 화면은 앞쪽을 좁게 보는 것이 목적이다.
+   *
+   * 거울 지도에는 켜지 않는다. 그쪽은 상자 비율이 사용자 화면과 같아 기본값으로 이미 일치한다.
+   */
+  coverUserSpan?: boolean;
+  /**
+   * 화면이 확대·이동·회전된 상태가 바뀔 때마다 알린다. (S15P11A206-382)
+   *
+   * 상자 크기로 나눈 값이 오므로 크기가 다른 화면에 그대로 넘길 수 있다. 상담 화면이 이걸 받아
+   * `MAP_SYNC` 에 실어 보내고, 상담자 거울이 `mirroredView` 로 되돌린다.
+   *
+   * 손가락이 움직이는 동안 매 이벤트마다 불린다. 보내는 쪽이 빈도를 줄여야 한다.
+   */
+  onViewChange?: (view: NormalizedMapView) => void;
+  /**
+   * 다른 화면의 시점을 그대로 비춘다. (S15P11A206-382)
+   *
+   * 넘기면 추종과 손 조작을 모두 제치고 이 값이 화면이 된다. 거울처럼 **스스로 시점을 정하지 않는**
+   * 자리에서만 쓴다.
+   *
+   * 상자 비율이 보내는 쪽과 같아야 정확히 맞는다. 거울 상자는 사용자가 잰 비율로 만들어져 있다.
+   */
+  mirroredView?: NormalizedMapView | null;
   /**
    * 진행 방향이 화면 위를 향하도록 **지도를 돌릴지**. 기본은 돌린다.
    *
@@ -139,13 +174,25 @@ function selectFloorMap(maps: readonly FloorMap[], floorId?: number): FloorMap |
 }
 
 /**
- * 시점 추종이 화면 가로에 담을 캔버스 픽셀. 60m에 해당한다(기준 프레임 mpp 0.19).
+ * 시점 추종이 화면에 담을 캔버스 픽셀. 90m에 해당한다(기준 프레임 mpp 0.19).
  *
- * 전체 조망은 화면 폭에 320m가 들어가 1m가 1화면px이 채 안 된다. 20m를 걸어도 19px밖에
- * 움직이지 않아 이동하고 있다는 것이 보이지 않는다. 60m로 좁히면 같은 20m가 100px 넘게
- * 움직인다 — 내비게이션이 걷기 안내에서 쓰는 범위다.
+ * **여기 적는 미터가 곧 설정값이다.** 배율은 이 값을 지도 상자에 채우면서 정해지므로
+ * (`computeFollowView`) 상자 크기와 무관하게 "화면에 몇 미터를 담는가"만 정하면 된다. 어느 축에
+ * 담을지는 `coverUserSpan`이 가른다.
+ *
+ * **왜 좁히는가.** 전체 조망은 화면 폭에 약 320m가 들어가 1m가 1화면px이 채 안 된다. 20m를 걸어도
+ * 19px밖에 움직이지 않아 이동하고 있다는 것이 보이지 않는다.
+ *
+ * **왜 60m가 아니라 90m인가.** 처음에는 60m였고 안내 화면 지도 박스에서 배율 5.4배였다. 걷는 것은
+ * 잘 보였지만 화면이 너무 당겨져 주변 구조가 들어오지 않았다. 90m면 배율이 3.6배로 내려가면서
+ * 20m 이동이 여전히 약 80px 움직인다 — 이동감을 지키는 하한이 이 근처다.
+ *
+ * 더 넓히려면 이동감이 먼저 무너진다. 100m에서 72px, 120m에서 60px이고 그 아래는 마커가 제자리에
+ * 있는 것처럼 보인다. 시설 마커 밀도도 함께 올라간다(역삼역 B2 한 층에 36개).
+ *
+ * TODO: 실기기에서 확정한다. 걷는 것이 안 보이면 내리고, 주변이 안 들어오면 올린다.
  */
-const FOLLOW_SPAN_PX = 60 / 0.19;
+const FOLLOW_SPAN_PX = 90 / 0.19;
 
 /** 내 위치를 화면 세로 68% 지점에 둔다. 위쪽 3분의 2를 진행 방향에 내주는 배치다. */
 const FOLLOW_ANCHOR_Y = 0.68;
@@ -177,6 +224,9 @@ export function IndoorMapView({
   destinationNodeId,
   onSelectFacility,
   followCamera = false,
+  coverUserSpan = false,
+  onViewChange,
+  mirroredView,
   rotateWithHeading = true,
   onRecenter,
   showZoomControls = false,
@@ -206,34 +256,87 @@ export function IndoorMapView({
    * `rotateWithHeading`을 끈 화면은 방향을 알아도 돌리지 않는다. 추종(`followTarget`)은 위에서
    * 따로 정하므로, 사용자를 화면 가운데 붙들어 둔 채 도면 방위만 고정된다.
    */
-  const targetRotationDeg =
-    followCamera && rotateWithHeading && typeof currentHeadingDeg === 'number'
-      ? -90 - (currentHeadingDeg + PLAN_REFERENCE.frame.angleDeg)
-      : null;
+  const rotatesWithHeading =
+    followCamera && rotateWithHeading && typeof currentHeadingDeg === 'number';
 
   /**
    * 방향은 5° 데드밴드로 걸러진 계단으로 들어오고, 부호가 ±180°에서 뒤집힌다. 그대로 지도에
    * 걸면 5.4배로 당겨진 화면이 계단마다 튀고, 경계에서는 한 바퀴 돈다. 각도를 이어 붙이고
    * 완만하게 편 값을 쓴다.
+   *
+   * **회전각이 아니라 방향각을 평활한다.** (S15P11A206-382)
+   *
+   * 예전에는 위 회전각을 평활하고 마커의 방향 부채꼴에는 원본 방향각을 넘겼다. 둘의 속도가 달라
+   * 부채꼴이 먼저 튀고 지도가 뒤늦게 따라오다가, 따라가기가 끝나는 순간 함께 멈추는 것으로
+   * 보였다. 방향각 하나를 평활해 두 곳이 같은 값을 쓰면 부채꼴은 화면 위를 그대로 향하고 지도만
+   * 돈다. 회전각은 방향각의 일차식이라 평활 결과도 같다.
    */
-  const mapRotationDeg = useSmoothedRotationDeg(targetRotationDeg);
+  const smoothedHeadingDeg = useSmoothedRotationDeg(
+    rotatesWithHeading ? (currentHeadingDeg ?? null) : null,
+  );
+
+  /**
+   * 진행 방향이 화면 위를 향하도록 지도를 돌릴 각도.
+   *
+   * 방향각은 미터 프레임 기준이라 먼저 캔버스 기준으로 옮긴다(`+ angleDeg`). 캔버스에서 0도는
+   * 오른쪽이고 위는 -90도이므로, 방향각 φ를 위로 세우려면 `-90 - φ`만큼 돌린다.
+   */
+  const mapRotationDeg =
+    smoothedHeadingDeg === null
+      ? null
+      : -90 - (smoothedHeadingDeg + PLAN_REFERENCE.frame.angleDeg);
+
+  /**
+   * 마커의 방향 부채꼴이 쓸 방향각.
+   *
+   * 지도가 방향에 따라 도는 동안에는 지도와 **같은** 값을 쓴다. 돌지 않는 화면(상담자 거울,
+   * 지도를 밀어 추종이 풀린 상태)에서는 지도가 보정해 주지 않으므로 원본을 그대로 쓴다 — 그때는
+   * 부채꼴이 유일한 방향 표시다.
+   */
+  const beamHeadingDeg = smoothedHeadingDeg ?? currentHeadingDeg;
 
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
   const {
     ref: mapRef,
     view: mapView,
+    normalizedView,
     reset: resetMapView,
     zoomBy: zoomMapBy,
     isFollowing: mapFollowing,
     isTransformed: mapTransformed,
     handlers: mapHandlers,
-  } = useMapGestures({
-    target: followTarget,
-    canvas: PLAN_CANVAS,
-    spanPx: FOLLOW_SPAN_PX,
-    anchorY: FOLLOW_ANCHOR_Y,
-    rotationDeg: mapRotationDeg,
-  });
+  } = useMapGestures(
+    {
+      target: followTarget,
+      canvas: PLAN_CANVAS,
+      spanPx: FOLLOW_SPAN_PX,
+      spanAxis: coverUserSpan ? 'shorter' : 'width',
+      anchorY: FOLLOW_ANCHOR_Y,
+      rotationDeg: mapRotationDeg,
+    },
+    mirroredView,
+  );
+
+  /**
+   * 시점이 바뀌면 알린다. 비추는 쪽에 보낼 값이다. (S15P11A206-382)
+   *
+   * 값이 바뀔 때만 부른다 — 네 숫자를 직접 비교해 의존성으로 삼으므로, 같은 시점을 다시 계산한
+   * 렌더에서는 다시 부르지 않는다. 객체를 의존성에 넣으면 렌더마다 새 참조라 매번 불린다.
+   */
+  const notifyView = onViewChange;
+  const viewX = normalizedView?.x ?? null;
+  const viewY = normalizedView?.y ?? null;
+  const viewScaleValue = normalizedView?.scale ?? null;
+  const viewRotation = normalizedView?.rotation ?? null;
+
+  useEffect(() => {
+    if (!notifyView) return;
+    if (viewX === null || viewY === null || viewScaleValue === null || viewRotation === null) {
+      return;
+    }
+
+    notifyView({ x: viewX, y: viewY, scale: viewScaleValue, rotation: viewRotation });
+  }, [notifyView, viewX, viewY, viewScaleValue, viewRotation]);
 
   /**
    * 추종을 켜라는 요청이 오면 시점을 되돌린다. (S15P11A206-89)
@@ -394,7 +497,7 @@ export function IndoorMapView({
           floorId={floorMap.floorId}
           placement={placement}
           currentLocation={mockable(currentLocation, MOCK_CURRENT_LOCATION, useMockData)}
-          currentHeadingDeg={currentHeadingDeg}
+          currentHeadingDeg={beamHeadingDeg}
           destination={mockable(destination, MOCK_DESTINATION, useMockData)}
           destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}

@@ -19,6 +19,14 @@ const signalingMocks = vi.hoisted(() => ({
     { seq: 1, speaker: 'USER' as const, content: '3번 출구가 어디예요' },
     { seq: 2, speaker: 'COUNSELOR' as const, content: '왼쪽으로 가시면 됩니다' },
   ],
+  /** 화면이 실제로 그리는 목록. 발화 ID와 번역문까지 들어 있다. */
+  transcriptTimeline: [] as {
+    seq: number;
+    speaker: 'USER' | 'COUNSELOR';
+    content: string;
+    translatedContent?: string;
+    captionId: string;
+  }[],
   /** 화면이 등록한 이벤트 수신 함수. 사용자가 보낸 것처럼 흘려 넣는 데 쓴다. */
   onEvent: null as ((event: unknown) => void) | null,
   /** 사용자에게 나간 이벤트. 렌더마다 새로 만들면 무엇이 나갔는지 검사할 수 없다. */
@@ -101,6 +109,11 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
       remoteCaptionError: null,
       captionsSupported: true,
       transcript: signalingMocks.transcript,
+      /* 비어 있으면 화면이 `transcript` 로 대신 그린다. 그 갈래도 테스트가 그대로 쓴다. */
+      transcriptTimeline: signalingMocks.transcriptTimeline.length
+        ? signalingMocks.transcriptTimeline
+        : undefined,
+      updateTranscriptTranslation: vi.fn(),
       sendConsultEvent: signalingMocks.sendConsultEvent,
     };
   },
@@ -126,6 +139,16 @@ function sendMapSync(floorId: number | null = null, extra: Partial<MapSyncPayloa
         destinationNodeId: null,
         pathNodes: [],
         screen: null,
+        /*
+          지금 사용자 화면이 보내는 값들. 옛 화면을 흉내내려면 테스트가 `extra` 로 null 을 준다.
+
+          `connectCurrentToRoute` 의 기본을 참으로 둔다 — 이 값이 생기기 전 상담자 지도가 늘 이어
+          그렸으므로(S15P11A206-382 전) 그 동작을 기본으로 삼아야 이 값과 무관한 검사들이 원래
+          보던 것을 그대로 본다.
+        */
+        connectCurrentToRoute: true,
+        facilityView: 'none',
+        selectedFacilityId: null,
         ...extra,
       },
     });
@@ -171,6 +194,7 @@ describe('SessionPage', () => {
     signalingMocks.remoteFinalCaption = '';
     signalingMocks.remoteFinalCaptionId = null;
     signalingMocks.remoteCaptionFinal = true;
+    signalingMocks.transcriptTimeline = [];
     signalingMocks.translateCaption.mockImplementation(
       (_consultationId: string, text: string, targetLanguage: string) => {
         if (!text) return '';
@@ -184,7 +208,11 @@ describe('SessionPage', () => {
     });
   });
 
-  it('실시간 자막을 한국어와 영어로 함께 표시한다', async () => {
+  /**
+   * 상담원 콘솔은 한국어 전용이다. 사용자가 어느 언어로 말했든 한국어로 옮겨 한 줄만 띄운다 —
+   * 영어 줄은 상담원이 읽지 않으면서 발화마다 번역 요청만 두 배로 냈다.
+   */
+  it('실시간 자막을 한국어로만 표시한다', async () => {
     apiMocks.getCounselorConsultations.mockResolvedValue([
       { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
     ]);
@@ -197,9 +225,68 @@ describe('SessionPage', () => {
     renderPage();
 
     expect(await screen.findByText('한국어: Where is exit three?')).toBeInTheDocument();
-    expect(screen.getByText('English: Where is exit three?')).toBeInTheDocument();
+    // 상담원 발화는 이미 한국어라 옮기지 않는다.
     expect(screen.getByText('3번 출구는 왼쪽입니다.')).toBeInTheDocument();
-    expect(screen.getByText('English: 3번 출구는 왼쪽입니다.')).toBeInTheDocument();
+    expect(screen.queryByText('English: Where is exit three?')).toBeNull();
+    expect(screen.queryByText('English: 3번 출구는 왼쪽입니다.')).toBeNull();
+    // 번역은 사용자 발화 한 건에 대해 한국어 한 번만 나간다.
+    expect(signalingMocks.translateCaption).toHaveBeenCalledWith(
+      'cs_1',
+      'Where is exit three?',
+      'ko',
+      'caption-user-1',
+      expect.any(Function),
+    );
+    expect(
+      signalingMocks.translateCaption.mock.calls.filter((call: unknown[]) => call[2] === 'en'),
+    ).toHaveLength(0);
+  });
+
+  /**
+   * 옮기는 데 걸리는 동안에도 원문을 대신 띄우지 않는다. 사용자가 어느 언어로 말할지는
+   * 상담원이 고르지 않았고, 읽지 못하는 글자를 잠깐 보여 주는 것은 빈 자리보다 낫지 않다.
+   */
+  it('아직 옮기지 못한 사용자 발화는 원문 대신 옮기는 중이라고 적는다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
+    ]);
+    signalingMocks.translateCaption.mockReturnValue('');
+    signalingMocks.remoteCaption = 'Where is exit three?';
+    signalingMocks.remoteFinalCaption = 'Where is exit three?';
+    signalingMocks.remoteFinalCaptionId = 'caption-user-1';
+
+    renderPage();
+
+    expect(await screen.findByText('옮기는 중…')).toBeInTheDocument();
+    expect(screen.queryByText('Where is exit three?')).toBeNull();
+  });
+
+  /** 대화 로그도 한국어 한 줄이다. 상담원이 읽지 못하는 원문 줄은 화면에 남기지 않는다. */
+  it('대화 로그를 한국어로만 보여 준다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
+    ]);
+    signalingMocks.transcriptTimeline = [
+      {
+        seq: 1,
+        speaker: 'USER',
+        content: 'Where is exit three?',
+        translatedContent: '3번 출구가 어디예요?',
+        captionId: 'caption-user-1',
+      },
+      {
+        seq: 2,
+        speaker: 'COUNSELOR',
+        content: '왼쪽으로 가시면 됩니다',
+        captionId: 'caption-counselor-1',
+      },
+    ];
+
+    renderPage();
+
+    expect(await screen.findByText('3번 출구가 어디예요?')).toBeInTheDocument();
+    expect(screen.getByText('왼쪽으로 가시면 됩니다')).toBeInTheDocument();
+    expect(screen.queryByText('Where is exit three?')).toBeNull();
   });
 
   /**
@@ -273,14 +360,19 @@ describe('SessionPage', () => {
   /**
    * 사용자 정보는 상담 요청에 실제로 담겨 온 값이어야 한다. 예전에는 `역삼역 2번 개찰구 →
    * 3번 출구`가 고정으로 적혀 있어, 상담자가 사용자와 무관한 경로를 읽고 안내를 시작했다.
+   *
+   * **서버 값이 있으면 그것이 이긴다.** 지금은 서버가 이름을 만들지 못해 시연 문구로 채우는데
+   * (`consultationPlaceLabel`), 그 대체 문구가 실제 값을 덮으면 예전 문제로 되돌아간다.
+   * (S15P11A206-382)
    */
-  it('출발지·목적지를 상담 데이터에서 읽고, 없으면 지어내지 않는다', async () => {
+  it('출발지·목적지는 상담 데이터가 있으면 그것을 쓴다', async () => {
     apiMocks.getCounselorConsultations.mockResolvedValue([
       {
         consultationId: 'cs_1',
         status: 'ACCEPTED',
         requestedAt: '2026-08-03T00:00:00Z',
         currentLocationLabel: '역삼역 3번 개찰구',
+        destinationLabel: '7번 출구',
         problemType: 'CANNOT_FIND_EXIT',
       },
     ]);
@@ -288,10 +380,40 @@ describe('SessionPage', () => {
     renderPage();
 
     expect(await screen.findByText(/역삼역 3번 개찰구/)).toBeInTheDocument();
-    // 목적지를 아직 안 골랐으면 빈 자리로 두지 말고 모른다고 적는다.
-    expect(screen.getByText(/목적지 미지정/)).toBeInTheDocument();
+    expect(screen.getByText(/7번 출구/)).toBeInTheDocument();
     expect(screen.getByText('출구를 못 찾겠어요')).toBeInTheDocument();
+    // 예전에 박혀 있던 문구가 되살아나지 않았는지.
     expect(screen.queryByText(/2번 개찰구/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * 서버가 이름을 만들지 못하는 동안의 처리. (S15P11A206-382)
+   *
+   * 상세 응답은 두 라벨을 `null` 로 하드코딩해 두었고, 목록 응답은 `"Node " + nodeId` 를 조립해
+   * 보낸다. 둘 다 상담자에게 아무 뜻이 없으므로 시연 여정의 이름으로 채운다. 서버 수정은 백엔드로
+   * 넘겼고, 실제 이름이 오기 시작하면 위 검사가 그대로 통과한다.
+   */
+  it('서버가 이름을 못 만들면 식별자를 그대로 적지 않는다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      {
+        consultationId: 'cs_1',
+        status: 'ACCEPTED',
+        requestedAt: '2026-08-03T00:00:00Z',
+        // 서버가 조립해 보내는 자리표시자. `place 3` 도 같은 형태다.
+        currentLocationLabel: 'Node 204',
+        destinationLabel: null,
+        problemType: 'CANNOT_FIND_EXIT',
+      },
+    ]);
+
+    renderPage();
+
+    /* 한 줄에 둘이 함께 적히므로 그 요소를 잡아 두 값을 함께 본다. */
+    const route = await screen.findByText(/지하3층 승강장/);
+
+    expect(route.textContent).toContain('3번 출구');
+    // 식별자는 상담자에게 아무 뜻이 없다. 화면에 남기지 않는다.
+    expect(screen.queryByText(/Node 204/)).not.toBeInTheDocument();
   });
 
   /**
@@ -488,6 +610,8 @@ describe('SessionPage', () => {
         { nodeId: 1, floorId: 1, mapX: 0, mapY: 0 },
         { nodeId: 2, floorId: 1, mapX: 20, mapY: 0 },
       ],
+      /* 사용자가 경로 위에 얹지 못한 상황이다. 이을 자리가 있다는 것이 이 검사의 전제다. */
+      connectCurrentToRoute: true,
     });
 
     const marker = screen.getAllByRole('img', { name: '현재 위치' })[0];
@@ -506,6 +630,111 @@ describe('SessionPage', () => {
 
       expect(x).toBeCloseTo(at.x, 0);
       expect(y).toBeCloseTo(at.y, 0);
+    });
+  });
+
+  /**
+   * 거울에도 시설 아이콘이 있어야 한다. (S15P11A206-382)
+   *
+   * 예전에는 거울에 도면과 경로만 있었다. 상담자가 "저기 화장실 앞에서 기다리세요"라고 짚어 줘도
+   * 그 아이콘이 거울에 없어, 사용자가 무엇을 보고 있는지 확인할 방법이 없었다.
+   *
+   * **사용자가 보낸 표시 상태를 따른다.** 상담자가 자기 지도에서 고른 유형이 아니다 — 왼쪽에서
+   * 화장실만 켜 두었다고 사용자 화면도 그렇다는 뜻은 아니다.
+   *
+   * 왼쪽 지도의 마커는 누를 수 있어 `button` 이고, 거울의 마커는 누를 수 없어 `img` 다. 그래서
+   * `img` 로 찾은 것이 곧 거울의 마커다.
+   */
+  describe('거울의 시설 아이콘', () => {
+    /** 거울은 배치 정보(`screen`)가 와야 그려진다. */
+    const SCREEN = {
+      width: 390,
+      height: 844,
+      lower: { x: 0, y: 0.545, width: 1, height: 0.455 },
+      map: { x: 0.041, y: 0.5616, width: 0.9179, height: 0.3555 },
+      cameraSource: { width: 1920, height: 1080 },
+    };
+
+    beforeEach(() => {
+      facilityMocks.data = [
+        { facilityId: 7, floorId: 1, facilityType: 'toilet', nameKo: '화장실', mapX: 0, mapY: 0 },
+      ] as unknown as typeof facilityMocks.data;
+    });
+
+    afterEach(() => {
+      facilityMocks.data = undefined;
+      // 상자 크기를 심은 검사가 다음 검사에까지 영향을 주지 않게 되돌린다.
+      vi.unstubAllGlobals();
+    });
+
+    /**
+     * 사용자가 확대·이동해 둔 시점을 거울이 그대로 쓴다. (S15P11A206-382)
+     *
+     * 없으면 거울이 자기 추종을 돌려 전혀 다른 곳을 보여 준다. 배율은 다른 무엇과도 겹치지 않는
+     * 값으로 보내 그것이 실제로 화면에 걸렸는지 본다.
+     */
+    it('사용자가 보낸 시점을 그대로 쓴다', async () => {
+      /*
+        jsdom 에는 `ResizeObserver` 가 없어 지도 위젯이 상자를 재지 못하고, 그러면 받은 시점을 상자
+        픽셀로 되돌릴 수 없다. **전역 설정에 두지 않는다** — 심는 순간 모든 지도가 추종 배율로
+        들어가 마커·경로 좌표를 검사하는 이 파일의 다른 검사들이 다른 값을 보게 된다.
+      */
+      class Stub {
+        callback: ResizeObserverCallback;
+
+        constructor(callback: ResizeObserverCallback) {
+          this.callback = callback;
+        }
+
+        observe() {
+          this.callback(
+            [{ contentRect: { width: 188, height: 175 } } as ResizeObserverEntry],
+            this as unknown as ResizeObserver,
+          );
+        }
+
+        unobserve() {}
+        disconnect() {}
+      }
+      vi.stubGlobal('ResizeObserver', Stub);
+
+      await renderWithMapSync(1, {
+        screen: SCREEN,
+        view: { x: 0.13, y: -0.27, scale: 2.53, rotation: -41 },
+      });
+
+      await screen.findByText('사용자 시점 따라가기');
+
+      const transforms = [...document.querySelectorAll<HTMLElement>('div[style]')]
+        .map((each) => each.style.transform)
+        .filter(Boolean);
+
+      expect(transforms.some((each) => each.includes('scale(2.53)'))).toBe(true);
+      expect(transforms.some((each) => each.includes('rotate(-41deg)'))).toBe(true);
+    });
+
+    it('사용자가 보낸 표시 상태대로 아이콘을 그린다', async () => {
+      await renderWithMapSync(1, { screen: SCREEN, facilityView: 'all' });
+
+      expect(await screen.findByRole('img', { name: '화장실' })).toBeInTheDocument();
+    });
+
+    it('사용자가 숨겼으면 거울에도 그리지 않는다', async () => {
+      await renderWithMapSync(1, { screen: SCREEN, facilityView: 'none' });
+
+      await screen.findByText('사용자 시점 따라가기');
+      expect(screen.queryByRole('img', { name: '화장실' })).toBeNull();
+    });
+
+    /**
+     * 옛 사용자 화면은 표시 상태를 보내지 않는다. 모르는 것을 짐작해 그리면 사용자 화면에 없는
+     * 아이콘이 거울에 뜬다.
+     */
+    it('표시 상태를 모르면 그리지 않는다', async () => {
+      await renderWithMapSync(1, { screen: SCREEN, facilityView: null });
+
+      await screen.findByText('사용자 시점 따라가기');
+      expect(screen.queryByRole('img', { name: '화장실' })).toBeNull();
     });
   });
 

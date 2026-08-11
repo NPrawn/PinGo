@@ -18,7 +18,10 @@ export function shortestAngleDeltaDeg(from: number, to: number): number {
  *
  * 다만 흔들림은 걸음 주기(1~2Hz)로 좌우가 상쇄되고 실제 회전은 한쪽으로 지속된다. 그래서
  * 시간으로 고르는 것이 여기서는 통한다 — 500ms면 1.5Hz 성분이 5분의 1로 줄어 ±12°가 ±2.5°가
- * 되고, 실제 회전은 0.5초 늦게 따라온다. 지도에서 0.5초는 눈에 띄지 않는다.
+ * 된다.
+ *
+ * **이 값은 서 있는 동안만 쓴다.** 실제 회전이 문턱을 넘으면 `PROVISIONAL_TURNING_INPUT_TAU_MS`
+ * 로 갈아탄다 — 0.5초는 흔들림을 버리는 값으로는 맞지만 도는 동안의 뒤처짐으로는 너무 크다.
  *
  * **차례가 중요하다.** 고르기를 먼저 하고 문턱을 뒤에 둔다. 반대로 하면 흔들리는 원본이 문턱을
  * 넘어 버려서 문턱이 하는 일이 없다.
@@ -44,8 +47,16 @@ export const PROVISIONAL_ROTATION_HOLD_DEG = 8;
  *
  * 문턱보다 넉넉히 작되 0에 가깝지 않아야 한다. 목표가 미세하게 움직이는 동안에는 차이가 0으로
  * 수렴하지 않으므로, 너무 좁게 잡으면 따라가는 구간에서 빠져나오지 못한다.
+ *
+ * **3도에서 0.5도로 내렸다. (S15P11A206-382)**
+ *
+ * 놓는 순간 남은 차이를 한 프레임에 메우므로(`current + delta`) 이 값이 곧 마지막에 튀는 크기다.
+ * 실기기에서 "회전이 끝날 때 끊기듯이 고정된다"고 보고된 것이 그 3도였다 — 5.4배로 당겨진 화면
+ * 에서는 눈에 띈다(그때의 추종 폭이 60m였다. 지금은 90m·약 3.6배라 덜 두드러지지만 없어지지는
+ * 않는다). 0.5도면 보이지 않고, 따라가기가 그만큼 더 도는 대신 `REDRAW_DEG`(0.05도)가
+ * 리렌더를 막으므로 화면을 다시 그리는 횟수는 늘지 않는다.
  */
-const RELEASE_DEG = 3;
+const RELEASE_DEG = 0.5;
 
 /** 이만큼도 안 움직였으면 화면을 다시 그리지 않는다. 0.05°는 도면 모서리가 0.3px 움직인다. */
 const REDRAW_DEG = 0.05;
@@ -57,6 +68,49 @@ const REDRAW_DEG = 0.05;
  */
 export const PROVISIONAL_ROTATION_TIME_CONSTANT_MS = 250;
 
+/**
+ * **돌고 있는 동안** 쓰는 고르기 시간 상수(ms). (S15P11A206-382)
+ *
+ * 위 두 상수는 서 있는 동안의 값이다. 그것을 돌 때도 그대로 쓰면 램프 입력의 정상상태 뒤처짐이
+ * `회전속도 × (500+250)ms` 가 된다 — 몸을 1.2초에 90° 돌리면(75°/s) 지도가 **56° 뒤에 있다.**
+ * 실기기에서 "회전할 때 지도가 늦게 따라온다"고 보고된 것이 이 값이다.
+ *
+ * **그냥 낮출 수는 없다.** 걸음 흔들림(±12°·1.5Hz)의 각속도는 12×2π×1.5 = 113°/s 로 실제
+ * 회전보다 **오히려 빠르다.** 속도만 보는 필터로는 둘을 가를 수 없고, 1€ 필터처럼 컷오프를
+ * 각속도에 비례시키면 흔들리는 동안에도 컷오프가 올라가 잔떨림이 그대로 통과한다. 수치로도
+ * 확인했다 — 컷오프를 0.05Hz/(°/s) 로 올리면 흔들림 구간의 실효 시간 상수가 50ms 로 떨어져
+ * 잔떨림이 ±11° 가 되고 8° 문턱을 넘는다.
+ *
+ * 둘을 가르는 것은 속도가 아니라 **지속성**이고, 그 판정은 이미 8° 문턱이 하고 있다. 500ms
+ * 필터를 통과한 값이 8° 를 넘었다는 것은 한쪽으로 지속된 회전이라는 뜻이다(흔들림의 잔떨림은
+ * ±2.5° 로 3배 이상 여유가 있다). 그래서 새 판정기를 만들지 않고 **`chasingRef` 를 그대로
+ * 모드로 쓴다** — 잡아 두는 동안은 500/250, 따라가는 동안은 이 값들이다.
+ *
+ * 160ms 는 흔들림을 완전히 버리는 값이 아니다. 1.5Hz 를 12°→6.9° 로 줄이고 아래 따라가기가
+ * 다시 4.8° 로 줄인다. 돌고 있는 동안의 ±5° 는 눈에 걸리지 않는다 — 그 구간에는 지도가 이미
+ * 크게 돌고 있다.
+ *
+ * TODO: 실기기에서 확정한다. 도는 동안 지도가 떨면 올리고, 여전히 굼뜨면 내린다.
+ */
+export const PROVISIONAL_TURNING_INPUT_TAU_MS = 160;
+
+/**
+ * **돌고 있는 동안** 쓰는 따라가기 시간 상수(ms). (S15P11A206-382)
+ *
+ * 따라가기가 있는 이유는 문턱이 열리는 순간 표시 각도가 목표에서 8° 떨어져 있다는 것뿐이다.
+ * 그 8° 를 한 프레임에 메우면 튀므로 완만하게 흡수한다. 그런데 도는 동안에는 그 간격이
+ * `회전속도 × 시간상수` 로 계속 유지되므로, 이 상수가 곧 도는 내내 남는 뒤처짐이다.
+ *
+ * 100ms 면 75°/s 에서 간격이 7.5° — 문턱이 열릴 때 흡수하던 8° 와 같은 크기다. 흡수의 목적은
+ * 그대로 지키면서 뒤처짐은 250ms 의 40% 로 줄어든다. 60fps 에서 6프레임에 걸쳐 메우므로
+ * 계단으로 보이지도 않는다.
+ *
+ * 합해서 도는 동안의 뒤처짐은 260ms — 75°/s 에서 19.5° 다. 750ms(56°) 에서 3분의 1이다.
+ * 나머지는 방향 채널이 갖고 있다(최소 간격 120ms 로 평균 4.5°, 데드밴드 5°). 그쪽을 좁히면
+ * 방향 이벤트와 리렌더 횟수가 함께 늘어나므로 이 태스크에서는 건드리지 않는다.
+ */
+export const PROVISIONAL_TURNING_CHASE_TAU_MS = 100;
+
 export interface SmoothedRotationOptions {
   /** 들어온 각도를 고르는 시간 상수. 걸음 흔들림 제거용이다. */
   inputTauMs?: number;
@@ -64,6 +118,10 @@ export interface SmoothedRotationOptions {
   chaseTauMs?: number;
   /** 돌기 시작하는 최소 변화. */
   holdDeg?: number;
+  /** 돌고 있는 동안의 고르기 시간 상수. */
+  turningInputTauMs?: number;
+  /** 돌고 있는 동안의 따라가기 시간 상수. */
+  turningChaseTauMs?: number;
 }
 
 /**
@@ -74,6 +132,10 @@ export interface SmoothedRotationOptions {
  * 1. **고르기** — 들어온 방향각을 시간 상수로 low-pass한다. 걸음 흔들림이 여기서 빠진다.
  * 2. **문턱** — 고른 값과 화면의 차이가 문턱을 넘어야 돌기 시작한다.
  * 3. **따라가기** — 남은 차이를 좁히고, 다 좁히면 멈춘다.
+ *
+ * 1단계와 3단계의 시간 상수는 **2단계의 판정에 따라 달라진다.** 잡아 두는 동안에는 흔들림을
+ * 버리는 것이 목적이라 길게(500/250ms), 넘어선 뒤에는 뒤처지지 않는 것이 목적이라 짧게
+ * (160/100ms) 쓴다. 근거는 두 상수의 주석에 있다. (S15P11A206-382)
  *
  * 어느 단계든 각도는 **최단 차이로만** 누적한다. 방향각은 `atan2`에서 나와 `(-180, 180]`을
  * 도는데(역삼역이면 대합실을 되돌아 걷는 방향이 그 경계다) 그 값을 그대로 CSS `rotate`에
@@ -96,6 +158,8 @@ export function useSmoothedRotationDeg(
     inputTauMs = PROVISIONAL_HEADING_INPUT_TAU_MS,
     chaseTauMs = PROVISIONAL_ROTATION_TIME_CONSTANT_MS,
     holdDeg = PROVISIONAL_ROTATION_HOLD_DEG,
+    turningInputTauMs = PROVISIONAL_TURNING_INPUT_TAU_MS,
+    turningChaseTauMs = PROVISIONAL_TURNING_CHASE_TAU_MS,
   } = options;
 
   const [displayDeg, setDisplayDeg] = useState<number | null>(null);
@@ -160,9 +224,20 @@ export function useSmoothedRotationDeg(
       const elapsed = previousTimeRef.current === null ? 0 : time - previousTimeRef.current;
       previousTimeRef.current = time;
 
+      /**
+       * 지금 돌고 있는가. **문턱이 곧 그 판정이다.** (S15P11A206-382)
+       *
+       * 이 프레임이 아니라 직전 프레임의 상태를 읽는다. 문턱은 아래에서 열리므로 열리는 그 한
+       * 프레임만 서 있는 값으로 계산되고, 다음 프레임부터 짧은 상수가 적용된다. 한 프레임의
+       * 차이라 눈에 보이지 않으면서 판정과 적용의 순서가 뒤엉키지 않는다.
+       */
+      const turning = chasingRef.current;
+      const activeInputTauMs = turning ? turningInputTauMs : inputTauMs;
+      const activeChaseTauMs = turning ? turningChaseTauMs : chaseTauMs;
+
       // 1) 고르기.
       const toTarget = shortestAngleDeltaDeg(inputRef.current, targetDeg);
-      inputRef.current += toTarget * (1 - Math.exp(-elapsed / inputTauMs));
+      inputRef.current += toTarget * (1 - Math.exp(-elapsed / activeInputTauMs));
 
       const current = displayRef.current;
       const delta = shortestAngleDeltaDeg(current, inputRef.current);
@@ -175,7 +250,7 @@ export function useSmoothedRotationDeg(
         const next =
           Math.abs(delta) <= RELEASE_DEG
             ? current + delta
-            : current + delta * (1 - Math.exp(-elapsed / chaseTauMs));
+            : current + delta * (1 - Math.exp(-elapsed / activeChaseTauMs));
         if (Math.abs(delta) <= RELEASE_DEG) chasingRef.current = false;
         // 눈에 보이지 않는 변화로는 리렌더하지 않는다.
         if (Math.abs(shortestAngleDeltaDeg(current, next)) >= REDRAW_DEG) apply(next);
@@ -197,7 +272,7 @@ export function useSmoothedRotationDeg(
     return () => {
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [targetDeg, inputTauMs, chaseTauMs, holdDeg]);
+  }, [targetDeg, inputTauMs, chaseTauMs, holdDeg, turningInputTauMs, turningChaseTauMs]);
 
   return displayDeg;
 }

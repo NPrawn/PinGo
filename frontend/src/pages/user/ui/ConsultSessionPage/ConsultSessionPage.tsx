@@ -6,6 +6,7 @@ import { isClosedConsultation, useConsultStore } from '@/entities/consult';
 import {
   FACILITY_MAP_FILTERS,
   destinationFacilityOf,
+  facilityIconOf,
   localizedFacilityNameAtNode,
   localizedFacilityNameOf,
   useStationFacilities,
@@ -13,7 +14,9 @@ import {
 } from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
+  MAX_WAYPOINTS,
   xrDistanceScaleOf,
+  routeBearingOf,
   routeProgressOf,
   useNavigationStore,
   type IndoorPoint,
@@ -29,7 +32,7 @@ import {
   useTranslatedSpeech,
 } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
-import { readForwardMap } from '@/features/xr-tracking';
+import { readForwardMap, type PlanarVector } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
 import { env, USER_ROUTES } from '@/shared/config';
@@ -41,12 +44,17 @@ import {
   type XrCameraStreamHandle,
   type XrCameraStreamState,
 } from '@/shared/lib/webxr';
-import type { ConsultDataEvent } from '@/shared/types';
-import { Icon, MapPreview } from '@/shared/ui';
+import type { ConsultDataEvent, MapViewPayload } from '@/shared/types';
+import { Button, Icon, MapPreview, Sheet } from '@/shared/ui';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { VPS_FRAME_SIZE } from '@/widgets/camera-preview';
 import { PhoneFrame } from '@/widgets/phone-frame';
-import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
+import {
+  ArDirectionArrow,
+  useXrNavigationSession,
+  XrSessionNotice,
+  XrTrackingBadge,
+} from '@/widgets/xr-navigation';
 import styles from './ConsultSessionPage.module.css';
 
 /** 상담자가 끊었는지 확인하는 간격. 끊긴 걸 알아채기까지 사용자가 기다리는 시간이기도 하다. */
@@ -64,11 +72,44 @@ const CONSULTATION_WATCH_MS = 4000;
  */
 const RELOCALIZE_INTERVAL_MS = 30_000;
 
+/**
+ * 자세가 나빠 거절된 앵커를 다시 세워 보는 간격(ms). (S15P11A206-382)
+ *
+ * `setAnchor` 는 카메라가 앞을 보지 않는 자세의 방향을 앵커에 굽지 않는다 — 한 번 구워지면
+ * 뒤집힘이 영구히 남기 때문이다. 그 거절은 자세가 풀리는 순간 사라지므로 짧게 두드리는 것이 맞다.
+ * 하는 일은 `getLatestReading` 하나와 자세 판정 하나다.
+ */
+const PENDING_ANCHOR_RETRY_MS = 200;
+
+/** 들고 있던 재인식 좌표를 버리는 나이(ms). 근거는 아래 재시도 effect 주석에 있다. */
+const PENDING_ANCHOR_MAX_AGE_MS = 5000;
+
+/**
+ * 지도 시점을 상담자에게 다시 알리는 최소 간격(ms). (S15P11A206-382)
+ *
+ * 확대·이동은 `pointermove` 마다 값을 바꾼다. 그대로 실어 보내면 초당 60통이 나가고, 한 통에는
+ * 경로 노드와 배치까지 들어 있어 상담 영상과 대역폭을 다툰다.
+ *
+ * 120ms 는 방향 채널의 최소 간격(`PROVISIONAL_HEADING_MIN_INTERVAL_MS`)과 같은 값이다. 초당 8통이면
+ * 손으로 미는 동작이 끊겨 보이지 않고, **마지막 값은 반드시 보낸다** — 손을 뗀 자리가 어긋난 채로
+ * 남으면 그 뒤 그리기 좌표가 계속 틀린다.
+ */
+const MAP_VIEW_SYNC_INTERVAL_MS = 120;
+
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const userLanguage = i18n.resolvedLanguage ?? i18n.language ?? 'en';
+  /**
+   * 사용자가 처음에 고른 언어. **상담 화면의 자막·번역·음성이 모두 이 값 하나를 따른다.**
+   *
+   * 세션 저장소에 남는 값을 먼저 읽는다. 화면 문구 언어(i18n)는 새로고침하면 기본값(`ko`)으로
+   * 돌아갔다가 `UserRoutes` 의 effect 가 세션 언어로 되돌리는데, 그 사이 첫 렌더에서 자막
+   * 번역 언어가 잡히면 영어를 고른 사용자에게 한국어 자막이 그대로 나간다.
+   */
+  const sessionLanguage = useUserSessionStore((state) => state.language);
+  const userLanguage: 'ko' | 'en' =
+    sessionLanguage ?? ((i18n.resolvedLanguage ?? i18n.language) === 'en' ? 'en' : 'ko');
   const consultationId = useConsultStore((state) => state.consultationId);
   const signalingRoomId = useConsultStore((state) => state.signalingRoomId);
   const signalingAccessToken = useConsultStore((state) => state.signalingAccessToken);
@@ -163,33 +204,46 @@ export function ConsultSessionPage() {
     /* Demo mode replaces both sides' STT with the fixed presentation script. */
     env.VITE_DEMO_CAPTIONS === 'true' ? 'demo' : 'server',
   );
-  /** 상담원이 말한 한국어를 영어 자막으로 옮겨 보여 준다. */
+  /** 상담원이 말한 한국어를 사용자가 고른 언어로 옮겨 보여 준다. */
   const translatedRemoteCaption = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
     userLanguage,
     remoteFinalCaptionId,
   );
-  useTranslatedSpeech(translatedRemoteCaption, userLanguage, remoteCaptionFinal);
+  useTranslatedSpeech(
+    translatedRemoteCaption,
+    userLanguage === 'en' ? 'en-US' : 'ko-KR',
+    remoteCaptionFinal,
+  );
   /**
-   * 옮긴 문장을 큰 자리에, 지금 들어오는 원문을 아래 줄에 둔다.
+   * 화면에 띄우는 자막. **고른 언어 하나뿐이다.**
    *
-   * 번역은 말이 끝난 문장에만 건다 — 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라지고,
-   * 번역 요청도 초당 몇 번씩 나간다. 그런데 옮긴 문장만 띄우면 상담원이 다음 말을 하는
-   * 내내 화면이 지난 문장에서 멈춰 있다. 첫 문장만 실시간으로 흐르고 그 뒤로는 문장이
-   * 끝날 때까지 아무 변화가 없어, 사용자는 자막이 멈춘 것으로 본다.
+   * 예전에는 옮긴 문장을 큰 자리에 두고 한국어 원문을 아래 작은 줄에 함께 흘렸다. 그 줄을
+   * 걷어 낸다 — 한국어를 읽지 못해 언어를 고른 사용자에게 읽을 수 없는 글자를 계속 보여 줄
+   * 이유가 없고, 원문과 번역이 한 문장 차이로 어긋난 채 나란히 놓이면 어느 쪽이 지금 말인지
+   * 알기 어렵다.
    *
-   * 그래서 옮긴 문장은 큰 자리에 그대로 두되(읽어야 하는 것은 자기 언어로 된 쪽이다),
-   * 지금 들어오는 원문은 아래 줄에 흘려보낸다.
+   * 번역은 말이 끝난 문장에만 건다 — 중간 결과는 계속 고쳐 쓰여 옮겨 봐야 곧 달라지고, 번역
+   * 요청도 초당 몇 번씩 나간다. 그래서 상담원이 말하는 중에는 지난 문장이 그대로 남고, 아래
+   * `captionPending` 이 지금 옮기고 있다는 것을 알린다.
+   *
+   * **한국어를 고른 사용자에게는 옮길 것이 없다.** 상담원 발화가 이미 한국어이므로 원문을
+   * 그대로 띄운다 — 번역 응답을 기다리는 동안 자막이 비는 일이 없다.
    */
-  const captionPrimary = translatedRemoteCaption || remoteCaption;
-  /** 큰 자리와 같은 말이면 두 번 쓰지 않는다(아직 옮기지 못해 원문이 위에 올라간 경우다). */
-  const captionSource = remoteCaption && remoteCaption !== captionPrimary ? remoteCaption : '';
+  const captionPrimary = userLanguage === 'ko' ? remoteCaption : translatedRemoteCaption;
+  /**
+   * 아직 옮기지 못한 상담원 발화가 있는지.
+   *
+   * 그동안 원문을 대신 띄우지 않는다 — 읽지 못하는 언어를 고른 사용자에게는 글자가 있는 것이
+   * 없는 것보다 낫지 않다. 대신 옮기는 중이라고 적어 자막이 죽은 것과 구분한다.
+   */
+  const captionTranslating = userLanguage !== 'ko' && Boolean(remoteCaption) && !captionPrimary;
   /** 상담원 쪽 자막이 죽었다는 사실. 이쪽 마이크 문제와 섞이지 않게 따로 띄운다. */
   const remoteCaptionNotice = describeRemoteCaptionTrouble(
     remoteCaptionError,
     t('user.consultSession.agent'),
-    i18n.resolvedLanguage === 'en' ? 'en' : 'ko',
+    userLanguage,
   );
   const station = useStationStore((state) => state.station);
   const stationId = useStationStore((state) => state.stationId);
@@ -206,15 +260,34 @@ export function ConsultSessionPage() {
   const destinationType = useNavigationStore((state) => state.destinationType);
   const currentLocationLabel = useNavigationStore((state) => state.currentLocationLabel);
   const currentLocationLabelEn = useNavigationStore((state) => state.currentLocationLabelEn);
-  const displayLanguage = i18n.resolvedLanguage === 'en' ? 'en' : 'ko';
+  /** 지도·경로 이름표에 쓰는 언어. 자막과 같은 값을 쓴다 — 한 화면이 두 언어로 갈리지 않게 한다. */
+  const displayLanguage = userLanguage;
   const currentFloorId = useNavigationStore((state) => state.currentFloorId);
   const currentMapX = useNavigationStore((state) => state.currentMapX);
   const currentMapY = useNavigationStore((state) => state.currentMapY);
   const storedRouteResult = useNavigationStore((state) => state.routeResult);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
+  /**
+   * 지금 살아 있는 역 안 도착지 이름. **안내 화면과 같은 목적지를 띄우기 위해 필요하다.**
+   * (S15P11A206-382)
+   *
+   * 안내 화면은 이 값을 `activeDestination` 이라는 지역 상태로 들고 있고 목적지 이름을 찾을 때
+   * **가장 먼저** 쓴다. 이 화면은 그것을 몰라 `destinationNameKo` 부터 찾았고, 그래서 두 화면이
+   * 다른 곳을 목적지라고 적었다 — 안내 화면은 `3번 출구`, 이 화면은 `스타벅스 아크플레이스`.
+   *
+   * 갈라진 이유는 `destinationFacilityOf` 의 마지막 단계다. 도착 노드에서 이름이 맞는 시설을
+   * 찾지 못하면 **역 전체에서** 찾으므로, `스타벅스 아크플레이스` 로 먼저 물으면 역 어딘가의
+   * 스타벅스를 집어 온다. 역 밖 목적지로 가는 여정에서 실제로 걸어갈 곳은 그 출구다.
+   *
+   * 스토어 값이라 지역 상태와 달리 두 화면이 함께 본다. `setTargetNode` 가 쓰고
+   * `setDestination` 이 비우므로 "지금 향하는 역 안 지점"과 정확히 같이 움직인다 — 상담자가
+   * 목적지를 옮기면(`DESTINATION_CHANGE_REQUESTED`) 그 시설 이름으로 바뀐다.
+   */
+  const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
   const routeType = useNavigationStore((state) => state.route);
   const waypoints = useNavigationStore((state) => state.waypoints);
+  const addWaypoint = useNavigationStore((state) => state.addWaypoint);
   const removeWaypoint = useNavigationStore((state) => state.removeWaypoint);
   const storedTravelledM = useNavigationStore((state) => state.travelledM);
 
@@ -267,6 +340,18 @@ export function ConsultSessionPage() {
    */
   const cameraStreamRef = useRef<XrCameraStreamHandle | null>(null);
   const [cameraStreamState, setCameraStreamState] = useState<XrCameraStreamState>('idle');
+
+  /**
+   * 자세 때문에 거절돼 아직 세우지 못한 재인식 결과. (S15P11A206-382)
+   *
+   * ref 가 아니라 상태다 — 대기가 생길 때만 재시도 타이머를 걸어야 하고, ref 변경으로는 effect 가
+   * 다시 돌지 않는다.
+   */
+  const [pendingAnchor, setPendingAnchor] = useState<{
+    point: IndoorPoint;
+    forwardMap: PlanarVector | null;
+    atMs: number;
+  } | null>(null);
 
   useEffect(() => {
     /**
@@ -489,8 +574,18 @@ export function ConsultSessionPage() {
      *
      * 방향이 없으면(정합되지 않은 층 등) 앵커를 만들지 못한다. 그때는 지금 앵커를 그대로 두는
      * 편이 낫다 — 오차가 남더라도 방향 없는 앵커보다는 정확하다.
+     *
+     * **거절되면 좌표를 들고 있다가 곧 다시 세운다.** (S15P11A206-382) `setAnchor` 가 자세를 보게
+     * 된 뒤로 이 경로가 새로 열렸다. 상담 중에는 통화하면서 폰을 낮춰 드는 일이 흔해 거절이
+     * 이어질 수 있고, 반환값을 버리면 재인식이 매 주기 조용히 실패한 채 누적 오차만 쌓인다.
+     *
+     * 프레임을 다시 올리지 않는다. VPS 는 성공했고 좌표도 손에 있다 — 어긋난 것은 그 순간의
+     * 자세뿐이므로 그것이 풀릴 때까지 같은 좌표로 앵커만 다시 세우면 된다.
      */
-    setAnchor({ floorId: position.floorId, mapX: position.mapX, mapY: position.mapY }, forwardMap);
+    const point = { floorId: position.floorId, mapX: position.mapX, mapY: position.mapY };
+    const anchored = setAnchor(point, forwardMap);
+
+    setPendingAnchor(anchored ? null : { point, forwardMap, atMs: Date.now() });
 
     /**
      * 경로 시작 노드가 달라졌을 때만 스토어를 건드린다.
@@ -511,6 +606,37 @@ export function ConsultSessionPage() {
       });
     }
   }, [currentNodeId, setAnchor, setCurrentLocation, stationId, userSessionId]);
+
+  /**
+   * 자세 때문에 거절된 앵커를 다시 세운다. (S15P11A206-382)
+   *
+   * 대기 중일 때만 타이머를 건다. 세션 내내 도는 간격을 두면 상담 영상과 같은 스레드에서 아무
+   * 일도 하지 않는 일을 초당 다섯 번 하게 된다.
+   */
+  useEffect(() => {
+    if (!pendingAnchor) return;
+
+    const timer = window.setInterval(() => {
+      /**
+       * 너무 오래된 좌표는 버린다.
+       *
+       * 앵커는 지도 좌표와 pose 를 **같은 순간의 값으로** 묶어야 한다. 기다린 시간만큼 그 짝이
+       * 어긋나므로 무한히 들고 있을 수는 없다. 5초면 걸어서 4m 안쪽이고, 그것을 넘기면 다음 재인식
+       * 주기가 더 신선한 좌표를 준다. 그래도 180도 회전 오차(20m 걸으면 위치 40m)와는 비교가
+       * 되지 않는 크기다.
+       */
+      if (Date.now() - pendingAnchor.atMs > PENDING_ANCHOR_MAX_AGE_MS) {
+        setPendingAnchor(null);
+        return;
+      }
+
+      if (setAnchor(pendingAnchor.point, pendingAnchor.forwardMap)) setPendingAnchor(null);
+    }, PENDING_ANCHOR_RETRY_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [pendingAnchor, setAnchor]);
 
   useEffect(() => {
     // 세션이 열려야 카메라 프레임이 나온다. 추적을 포기한 사용자에게는 재인식할 것도 없다.
@@ -602,19 +728,30 @@ export function ConsultSessionPage() {
     displayLanguage,
     facilityOrigin,
   );
+  /**
+   * 목적지 시설. **라벨 순서를 안내 화면과 똑같이 맞춘다.** (S15P11A206-382)
+   *
+   * `destinationFacilityOf` 는 넘긴 라벨을 **순서대로** 시도하므로 순서가 곧 결과다. 도착 노드
+   * 이름을 먼저 물어야 역 밖 목적지의 이름이 역 안의 동명 시설을 집어 오는 일이 없다. 근거는
+   * `targetExitLabel` 주석에 있다.
+   *
+   * `destination` 은 라벨 목록에서 뺐다. 안내 화면이 쓰지 않는 값이고, 역 밖 목적지 이름이라
+   * 여기 들어가면 지금 고친 것이 그대로 되살아난다. 시설을 찾지 못했을 때의 대체 문구로는
+   * 아래에서 그대로 쓴다.
+   */
   const storedDestinationFacility = destinationFacilityOf(
     facilities,
     destinationType?.toLowerCase() === 'facility' ? destinationId : null,
     targetNodeId,
+    targetExitLabel,
     destinationNameKo,
     destinationNameEn,
-    destination,
   );
   const displayedDestination = destination
-    ? (storedDestinationFacility
-        ? localizedFacilityNameOf(storedDestinationFacility, displayLanguage)
-        : (localizedNameOf(displayLanguage, destinationNameKo, destinationNameEn) ??
-          localizeUserLabel(destination, displayLanguage)))
+    ? storedDestinationFacility
+      ? localizedFacilityNameOf(storedDestinationFacility, displayLanguage)
+      : (localizedNameOf(displayLanguage, destinationNameKo, destinationNameEn) ??
+        localizeUserLabel(destination, displayLanguage))
     : null;
   /**
    * 표시 층에 실제로 있는 유형만 칩으로 둔다. 눌러서 아무것도 나오지 않는 칩은 두지 않는다 —
@@ -641,6 +778,29 @@ export function ConsultSessionPage() {
       : facilityView;
   /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
   const effectiveType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
+
+  /**
+   * 고른 시설을 경유지로 삼을 수 있는지. 안내 화면과 같은 조건이다.
+   *
+   * **도착지 판정은 노드로 한다.** 안내 화면은 이름을 비교하지만, 이 화면의 목적지는 상담자가
+   * `DESTINATION_CHANGE_REQUESTED` 로 바꿀 수도 있어 화면에 적힌 이름이 그 시설의 `nameKo` 와
+   * 같다고 보장되지 않는다. 노드는 경로가 실제로 끝나는 자리라 그 흔들림이 없다.
+   */
+  const selectedFacilityIsWaypoint = selectedFacility
+    ? waypoints.some((waypoint) => waypoint.nodeId === selectedFacility.linkedNodeId)
+    : false;
+  const selectedFacilityIsDestination =
+    selectedFacility?.linkedNodeId != null && selectedFacility.linkedNodeId === targetNodeId;
+  const selectedFacilityName = selectedFacility
+    ? localizedFacilityNameOf(selectedFacility, displayLanguage)
+    : '';
+  /**
+   * 노드를 모르는 시설은 경유지가 될 수 없다.
+   *
+   * 경로는 노드로만 계산된다. 이름만 들고 추가하면 요청에 실을 것이 없어, 화면에만 칩이 붙고
+   * 경로는 그대로인 상태가 된다(`Waypoint`).
+   */
+  const selectedFacilityRoutable = selectedFacility?.linkedNodeId != null;
 
   /**
    * 연결이 지금 어떤 상태인지. **`상담 연결됨`을 고정으로 쓰지 않는다.**
@@ -746,10 +906,138 @@ export function ConsultSessionPage() {
       : waypointNodeIds.filter((nodeId) => progress.passedNodeIds.includes(nodeId)).length;
 
   /**
+   * 카메라 위에 얹는 방향 화살표. **안내 화면과 같은 계산이다.** (S15P11A206-382)
+   *
+   * 상담 중에도 사용자는 걷는다. 이 화면에 화살표가 없으면 카메라 영상 위에 방향이 하나도 없어,
+   * 상담자가 "그쪽으로 조금 더 가세요"라고 말할 때 어느 쪽인지 짚어 줄 표시가 화면에 없다.
+   * 지도는 아래 절반에 있고 그것만 보면서 걸을 수는 없다.
+   *
+   * 기준이 되는 자리·게이트·기울기 보정을 안내 화면과 똑같이 맞춘다. 두 화면이 같은 카메라를
+   * 비추므로 갈라지면 화면을 오갈 때 화살표가 다른 곳을 가리킨다.
+   */
+  const activeStep =
+    progress.currentStepIndex === null
+      ? undefined
+      : routeResult?.steps?.[progress.currentStepIndex];
+  /**
+   * 층을 오르내리는 구간에서는 수평 방향을 그리지 않는다. 엘리베이터 앞에서 화살표가 통로를
+   * 가리키면 그쪽으로 걷게 된다 — 가야 할 곳은 위층이다.
+   */
+  const activeStepMovesVertically =
+    activeStep?.moveType === 'elevator' ||
+    activeStep?.moveType === 'stair' ||
+    activeStep?.moveType === 'escalator';
+  const bearing = routeBearingOf({
+    pathNodes,
+    /**
+     * **경로 위에 얹은 자리를 쓴다.** 아래 지도 마커와 같은 값이다.
+     *
+     * 날것의 좌표를 쓰면 측위 오차가 그대로 각도로 들어간다 — 옆으로 2m 벗어나 있고 목표 노드가
+     * 3m 앞이면 34°다. 두 점이 모두 경로선 위에 있으면 그 항이 사라진다.
+     */
+    currentLocation: progress.snappedLocation ?? currentLocation,
+    headingDeg,
+    travelledM: progress.travelledM,
+  });
+  const camGuide =
+    progress.offRoute || activeStepMovesVertically || bearing === null
+      ? null
+      : {
+          relativeDeg: bearing.relativeDeg,
+          caption: t(`user.navigation.cameraDirection.${bearing.turn}`),
+        };
+
+  /**
+   * 이 화면의 지도가 실제로 그리는 현재 위치. **MAP_SYNC 도 이 값을 보낸다.** (S15P11A206-382)
+   *
+   * 예전에는 지도에는 경로 위에 얹은 자리를 그리고 상담자에게는 날것의 좌표를 보냈다. 그래서
+   * 사용자의 마커는 경로선 위에 있고 상담자의 마커는 그 옆에 떠 있었다 — 측위 오차만큼, 최대
+   * `OFF_ROUTE_M`(15m)까지 벌어진다. 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수
+   * 없게 만드는 종류의 어긋남이다.
+   *
+   * **한 변수로 묶는 것이 고침의 본체다.** 값을 두 곳에 따로 적어 두면 한쪽만 고쳐질 때 조용히
+   * 다시 갈라진다. 실제로 그렇게 갈라져 있었다.
+   *
+   * `useMemo` 로 참조를 안정시킨다. `routeProgressOf` 는 렌더마다 새 객체를 돌려주므로 그대로
+   * 쓰면 아래 발신 effect 가 매 렌더 돌아 DataChannel 로 같은 스냅숏이 쏟아진다.
+   */
+  const snappedFloorId = progress.snappedLocation?.floorId ?? null;
+  const snappedMapX = progress.snappedLocation?.mapX ?? null;
+  const snappedMapY = progress.snappedLocation?.mapY ?? null;
+  const displayedLocation = useMemo<IndoorPoint | null>(
+    () =>
+      snappedFloorId != null && snappedMapX != null && snappedMapY != null
+        ? { floorId: snappedFloorId, mapX: snappedMapX, mapY: snappedMapY }
+        : currentLocation,
+    [snappedFloorId, snappedMapX, snappedMapY, currentLocation],
+  );
+  /**
+   * 내 점과 경로 사이를 이을지. 위와 같은 이유로 한 곳에서만 정한다.
+   *
+   * 얹었으면 점이 이미 경로선 위에 있어 이을 자리가 없다. 상담자 화면은 이 값을 보지 않고 늘
+   * 이어 그렸으므로, 사용자에게는 없는 선이 상담자 화면에만 있었다.
+   */
+  const connectDisplayedToRoute = progress.snappedLocation === null;
+
+  /**
+   * 지도를 확대·이동해 둔 상태. 상담자 거울이 그대로 되돌려 그린다. (S15P11A206-382)
+   *
+   * **빈도를 줄여 상태로 옮긴다.** 위젯은 `pointermove` 마다 알려 오는데, 그것을 그대로 상태로
+   * 두면 미는 동안 초당 60번 리렌더되고 MAP_SYNC 도 그만큼 나간다.
+   *
+   * 마지막 값은 반드시 반영한다 — 간격 안에 들어온 값은 타이머로 미뤄 두고 나중에 적용한다. 손을
+   * 뗀 자리를 놓치면 거울이 어긋난 채로 남고, 그 뒤 상담자가 그리는 좌표가 계속 틀린다.
+   */
+  const [syncedMapView, setSyncedMapView] = useState<MapViewPayload | null>(null);
+  const viewSentAtRef = useRef(0);
+  const pendingViewRef = useRef<MapViewPayload | null>(null);
+  const viewTimerRef = useRef<number | undefined>(undefined);
+
+  const handleMapViewChange = useCallback((view: MapViewPayload) => {
+    const now = Date.now();
+    const waited = now - viewSentAtRef.current;
+
+    if (waited >= MAP_VIEW_SYNC_INTERVAL_MS) {
+      viewSentAtRef.current = now;
+      pendingViewRef.current = null;
+      setSyncedMapView(view);
+      return;
+    }
+
+    // 아직 이르다. 마지막 값만 들고 있다가 간격이 차면 적용한다.
+    pendingViewRef.current = view;
+    if (viewTimerRef.current !== undefined) return;
+
+    viewTimerRef.current = window.setTimeout(
+      () => {
+        viewTimerRef.current = undefined;
+        const pending = pendingViewRef.current;
+
+        if (!pending) return;
+
+        pendingViewRef.current = null;
+        viewSentAtRef.current = Date.now();
+        setSyncedMapView(pending);
+      },
+      MAP_VIEW_SYNC_INTERVAL_MS - waited,
+    );
+  }, []);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(viewTimerRef.current);
+    },
+    [],
+  );
+
+  /**
    * 보고 있는 지도를 상담자 화면에 그대로 옮긴다.
    *
    * 상담자는 사용자의 안내 상태를 알 방법이 없다. 이 스냅숏이 없으면 상담자 화면은 사용자와
    * 무관한 지도를 띄우고, 거기에 그린 길은 사용자가 보는 자리와 어긋난다.
+   *
+   * **보내는 것은 "내부 상태"가 아니라 "화면에 그린 것"이다.** (S15P11A206-382) 이 원칙이 깨져
+   * 세 값이 갈라져 있었다 — 현재 위치, 경로 연결선, 표시 층.
    */
   useEffect(() => {
     if (stationId == null) return;
@@ -758,8 +1046,41 @@ export function ConsultSessionPage() {
       eventType: 'MAP_SYNC',
       payload: {
         stationId,
-        floorId: currentLocation?.floorId ?? currentFloorId,
-        current: currentLocation,
+        /**
+         * **사용자가 보고 있는 층이다.** 서 있는 층이 아니다. (S15P11A206-382)
+         *
+         * 예전에는 `currentLocation?.floorId` 를 보냈다. 걸어서 층이 바뀌는 경우는 맞았지만, 층
+         * 버튼으로 다른 층을 열어 보면(`pickedFloorId`) 사용자 화면은 B2 인데 상담자 화면과
+         * 거울은 계속 B3 를 그렸다 — "사용자와 같은 지도를 보고 있다"고 적힌 화면에서 상담자가
+         * 다른 층을 본다.
+         */
+        floorId: displayedFloorId ?? null,
+        current: displayedLocation,
+        /**
+         * 내 점과 경로 사이의 연결선을 그릴지. 사용자 화면과 같은 값이어야 한다.
+         *
+         * 옛 사용자 화면은 이 값을 보내지 않으므로 상담자 쪽에서 `?? true` 로 옛 동작을 지킨다.
+         */
+        connectCurrentToRoute: connectDisplayedToRoute,
+        /**
+         * 지금 그리고 있는 시설 표시 상태와 이름표를 띄운 시설. (S15P11A206-382)
+         *
+         * 거울이 시설 아이콘까지 같이 그리는 근거다. 이것이 없으면 거울에는 도면과 경로만 있고
+         * 시설이 하나도 없어, 상담자가 "저기 화장실 앞에서 기다리세요"라고 짚어 준 자리를 거울에서
+         * 확인할 수 없다.
+         *
+         * `effectiveView` 를 보낸다. 고른 값 그대로가 아니라 **층에 없는 유형을 걸러 낸 뒤의 값**
+         * 이라 실제로 화면에 그려지는 상태와 같다.
+         */
+        /**
+         * 지도를 확대·이동·회전해 둔 상태. 거울이 그대로 되돌려 그린다.
+         *
+         * 아직 상자를 재지 못했으면 null 이다. 그때 거울은 스스로 추종한다 — 옛 사용자 화면과
+         * 같은 처리이고, 곧 실제 값이 온다.
+         */
+        view: syncedMapView,
+        facilityView: effectiveView,
+        selectedFacilityId: selectedFacility?.facilityId ?? null,
         /**
          * 사용자가 바라보는 방향. 상담자 화면은 이것으로 마커의 부채꼴만 돌린다 — 지도는
          * 북쪽에 고정한다(`rotateWithHeading={false}`). 역 구조를 짚어 주려면 도면의 방위가
@@ -781,8 +1102,20 @@ export function ConsultSessionPage() {
       },
     });
   }, [
-    currentFloorId,
-    currentLocation,
+    /*
+      화면에 그리는 값들. 사용자가 보는 것이 바뀌면 곧 다시 보낸다. (S15P11A206-382)
+
+      `currentFloorId`·`currentLocation` 을 직접 넣지 않는다 — 아래 세 값이 그것들에서 파생되고,
+      층 버튼 조작(`pickedFloorId`)처럼 원본에는 없는 변화까지 담는다.
+    */
+    displayedFloorId,
+    displayedLocation,
+    connectDisplayedToRoute,
+    /* 시설 칩을 누르거나 마커를 골라도 다시 보낸다. 거울이 같은 아이콘을 그려야 한다. */
+    effectiveView,
+    selectedFacility,
+    /* 지도를 밀거나 확대해도 다시 보낸다. 위에서 빈도를 줄여 둔 값이다. */
+    syncedMapView,
     destination,
     destinationPoint,
     /**
@@ -1081,32 +1414,33 @@ export function ConsultSessionPage() {
               </div>
             )}
             {/*
-              옮긴 문장을 크게, 원문을 그 아래 작게 둔다. 사용자가 읽어야 하는 것은 자기
-              언어로 된 쪽이고, 원문은 숫자나 출구 이름을 눈으로 맞춰 보는 데 쓴다.
-              아직 옮기지 못했으면 원문이라도 큰 자리에 띄운다 — 빈 화면보다 낫다.
+              고른 언어로 된 문장만 띄운다. 한국어 원문 줄은 두지 않는다 — 그것을 읽을 수 없어
+              언어를 고른 사용자에게는 화면만 어지럽힌다.
+
+              아직 옮기지 못한 동안에는 원문 대신 '옮기는 중'이라고 적는다. 그래야 자막이 죽은
+              것과 구분되고, 상담원이 방금 한 말이 곧 이 자리에 온다는 것을 알 수 있다.
             */}
             <div className={styles.translationPrimary}>
               {captionPrimary ||
+                (captionTranslating ? t('user.consultSession.captionTranslating') : '') ||
                 remoteCaptionNotice ||
                 (captionError ??
                   (captionsSupported
                     ? t('user.consultSession.captionWaiting')
                     : t('user.consultSession.captionUnsupported')))}
             </div>
-            {/*
-              상담원이 말하는 중에는 이 줄이 한 마디씩 흘러간다. 위의 옮긴 문장은 말이
-              끝나야 바뀌므로, 이 줄이 없으면 화면은 멈춰 있는 것처럼 보인다.
-            */}
-            {captionSource && (
-              <div
-                className={[styles.translationSource, !remoteCaptionFinal && styles.captionLive]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                {captionSource}
-              </div>
-            )}
           </div>
+          {/*
+            안내 화면과 같은 방향 화살표. 기울기·방향 보정·이어 붙이기는 위젯이 갖고 있다.
+
+            **상담자에게는 건너가지 않는다.** 상담자가 받는 것은 XR 세션의 카메라 프레임이고 이
+            화살표는 DOM 오버레이에 있다. 상담자 화면의 방향 표시는 거울 지도의 마커 부채꼴이
+            맡는다(`MAP_SYNC` 의 `headingDeg`).
+          */}
+          <ArDirectionArrow
+            relativeDeg={camGuide?.relativeDeg ?? null}
+            label={camGuide?.caption ?? ''}
+          />
         </div>
 
         {/* `ref` 는 상담자에게 보낼 배치를 재는 데 쓴다 — 카메라가 끝나는 자리다. */}
@@ -1123,10 +1457,10 @@ export function ConsultSessionPage() {
               <IndoorMapView
                 stationId={stationId ?? 0}
                 floorId={displayedFloorId}
-                /* 안내 화면과 같이 경로 위에 얹은 자리로 그린다. 두 화면이 같은 자리를 보여야
-                   상담자가 짚어 주는 지점과 사용자가 보는 점이 어긋나지 않는다. 얹을 수 없을
-                   만큼 멀면 null이라 날것의 좌표로 떨어진다. */
-                currentLocation={progress.snappedLocation ?? currentLocation}
+                /* 안내 화면과 같이 경로 위에 얹은 자리로 그린다. 얹을 수 없을 만큼 멀면 날것의
+                   좌표로 떨어진다. **MAP_SYNC 가 보내는 값과 같은 변수다** — 두 곳에 따로 적어
+                   두었더니 상담자 마커만 경로선 밖에 떠 있었다. (S15P11A206-382) */
+                currentLocation={displayedLocation}
                 /* 사용자 화면은 안내 화면과 같이 진행 방향이 위를 향하게 돈다. */
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
@@ -1146,8 +1480,10 @@ export function ConsultSessionPage() {
                   판정되어 지도가 통째로 빈다. 아무것도 그리지 않으면 사용자는 자기 층에 경로가
                   없다고 읽는다. (S15P11A206-83)
                 */
-                connectCurrentToRoute={progress.snappedLocation === null}
+                connectCurrentToRoute={connectDisplayedToRoute}
                 followCamera
+                /* 확대·이동한 상태를 상담자 거울에 그대로 비추려면 알려야 한다. (S15P11A206-382) */
+                onViewChange={handleMapViewChange}
                 /* `내 위치` 버튼은 고른 층까지 함께 되돌린다. 시점만 돌리면 다른 층을 보던
                    사용자는 그 층 지도가 자기 좌표로 옮겨진 것만 보고 마커는 그려지지 않는다. */
                 onRecenter={() => setPickedFloorId(null)}
@@ -1155,6 +1491,10 @@ export function ConsultSessionPage() {
                 /* 유형을 고르기 전에는 그 층 시설을 모두 보여 준다. 숨김이면 둘 다 꺼진다. */
                 showAllFacilities={effectiveView === 'all'}
                 selectedFacilityId={selectedFacility?.facilityId}
+                /* 넘기지 않으면 마커가 탭을 받지 않는다(`IndoorMapOverlay`). 상담 중에도 시설을
+                   눌러 경유지를 넣을 수 있어야 한다 — 상담자가 "저기 화장실 먼저 들르세요"라고
+                   말해 주는 순간이 이 화면에서 가장 흔한 요구다. */
+                onSelectFacility={setSelectedFacility}
               />
             </div>
 
@@ -1242,6 +1582,72 @@ export function ConsultSessionPage() {
             <p className={styles.syncText}>{t('user.consultSession.mapSync')}</p>
           </div>
         </div>
+
+        {/*
+          시설 시트. **오버레이 루트 안에 둔다.** (S15P11A206-206)
+
+          `PhoneFrame` 의 `overlay` 로 넘기면 이 화면이 세션에 넘긴 루트 밖에 그려진다. 세션이
+          열리면 컴포지터는 그 루트 아래만 카메라 위에 합성하므로, 시트는 열려 있어도 화면에
+          나타나지 않는다 — 안내 화면에서 이미 같은 자리에서 겪은 문제다.
+
+          세션 안내가 떠 있는 동안에는 열지 않는다. 그것은 화면 전체를 덮고 다른 조작을 받을
+          이유가 없는 구간이다.
+        */}
+        {!isNoticeOpen && selectedFacility && (
+          <Sheet
+            label={t('user.consultSession.facilityWaypoint', { name: selectedFacilityName })}
+            onDismiss={() => setSelectedFacility(null)}
+          >
+            <div className={styles.sheetHandle} aria-hidden />
+            <div className={styles.sheetHead}>
+              <span className={styles.sheetIcon}>
+                <Icon name={facilityIconOf(selectedFacility.facilityType)} size={20} />
+              </span>
+              <div>
+                <h2>{selectedFacilityName}</h2>
+                <p>
+                  {selectedFacility.isAccessible
+                    ? t('user.consultSession.accessible')
+                    : t('user.consultSession.mayHaveStairs')}
+                </p>
+              </div>
+            </div>
+            <p className={styles.sheetNote}>{t('user.consultSession.waypointNote')}</p>
+            <div className={styles.sheetActions}>
+              {/*
+                목적지 변경은 두지 않는다. 상담 중 목적지는 상담자가
+                `DESTINATION_CHANGE_REQUESTED` 로 옮기는 흐름이 이미 있고, 사용자가 같은 것을
+                따로 바꾸면 두 화면이 서로 다른 목적지를 안내하게 된다.
+              */}
+              <Button
+                disabled={
+                  waypoints.length >= MAX_WAYPOINTS ||
+                  selectedFacilityIsWaypoint ||
+                  selectedFacilityIsDestination ||
+                  !selectedFacilityRoutable
+                }
+                onClick={() => {
+                  if (selectedFacility.linkedNodeId == null) return;
+                  addWaypoint({
+                    nodeId: selectedFacility.linkedNodeId,
+                    nameKo: selectedFacility.nameKo,
+                  });
+                  setSelectedFacility(null);
+                }}
+              >
+                {selectedFacilityIsDestination
+                  ? t('user.consultSession.cannotAddDestination')
+                  : selectedFacilityIsWaypoint
+                    ? t('user.consultSession.alreadyWaypoint')
+                    : !selectedFacilityRoutable
+                      ? t('user.consultSession.notRoutable')
+                      : waypoints.length >= MAX_WAYPOINTS
+                        ? t('user.consultSession.waypointLimit')
+                        : t('user.consultSession.addWaypoint')}
+              </Button>
+            </div>
+          </Sheet>
+        )}
       </div>
     </PhoneFrame>
   );

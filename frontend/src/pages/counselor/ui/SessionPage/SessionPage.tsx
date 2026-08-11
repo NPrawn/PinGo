@@ -38,10 +38,22 @@ import {
 import { Badge, Button, FloorRail, Icon, MapPreview, MapToggle, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import { IndoorMapView } from '@/widgets/indoor-map';
+import {
+  consultationDestinationLabel,
+  consultationOriginLabel,
+} from '../../lib/consultationPlaceLabel';
 import styles from './SessionPage.module.css';
 
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
+
+/**
+ * 상담원 화면이 쓰는 언어. **고정이다.**
+ *
+ * 상담원 콘솔의 모든 문구가 한국어이고 상담원의 발화 인식도 `ko-KR` 로 고정돼 있다. 자막만
+ * 상대 언어를 따라가면 상담원은 자기가 읽을 수 없는 글자를 보게 된다.
+ */
+const COUNSELOR_CAPTION_LANGUAGE = 'ko';
 const TRANSCRIPT_SAVE_ATTEMPTS = 3;
 const TRANSCRIPT_RETRY_DELAY_MS = 500;
 
@@ -190,13 +202,13 @@ export function SessionPage() {
    *
    * 상담자 콘솔은 한국어로 쓰인다. 사용자가 다른 언어로 말하면 상담자는 자막을 읽고도
    * 무슨 말인지 알 수 없어, 실시간 자막이 있으나 마나가 된다.
+   *
+   * **여기서 만드는 언어는 한국어 하나뿐이다.** 예전에는 사용자·상담원 발화를 각각 영어로도
+   * 옮겨 자막을 두 줄로 띄웠는데, 상담원이 읽는 것은 언제나 한국어 줄이었다. 영어 줄은 자리만
+   * 차지하면서 발화마다 번역 요청을 두 배로 냈고, 상담원 발화의 영어 번역이 전문의
+   * `translatedContent` 자리를 차지해 사용자 언어 번역이 들어갈 곳도 없었다.
    */
   const handleUserCaptionTranslation = useCallback(
-    (captionId: string, _source: string, translated: string) =>
-      updateTranscriptTranslation(captionId, translated),
-    [updateTranscriptTranslation],
-  );
-  const handleCounselorCaptionTranslation = useCallback(
     (captionId: string, _source: string, translated: string) =>
       updateTranscriptTranslation(captionId, translated),
     [updateTranscriptTranslation],
@@ -204,22 +216,9 @@ export function SessionPage() {
   const translatedUserCaptionKo = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
-    'ko',
+    COUNSELOR_CAPTION_LANGUAGE,
     remoteFinalCaptionId,
     handleUserCaptionTranslation,
-  );
-  const translatedUserCaptionEn = useCaptionTranslation(
-    consultationId,
-    remoteFinalCaption,
-    'en',
-    remoteFinalCaptionId,
-  );
-  const translatedCounselorCaptionEn = useCaptionTranslation(
-    consultationId,
-    localCaptionFinal ? localCaption : '',
-    'en',
-    localFinalCaptionId,
-    handleCounselorCaptionTranslation,
   );
   /**
    * 사용자 발화의 번역문을 소리내어 읽을지. **기본은 끔이다.**
@@ -235,13 +234,22 @@ export function SessionPage() {
    */
   const [readUserCaptionAloud, setReadUserCaptionAloud] = useState(false);
   useTranslatedSpeech(translatedUserCaptionKo, 'ko-KR', remoteCaptionFinal && readUserCaptionAloud);
-  /** 한국어와 영어를 고정된 순서로 함께 보여 언어에 따라 자막 위치가 바뀌지 않게 한다. */
-  const userCaptionKorean = remoteCaptionFinal
-    ? translatedUserCaptionKo || remoteCaption
-    : remoteCaption;
-  const userCaptionEnglish = remoteCaptionFinal ? translatedUserCaptionEn : '';
+  /**
+   * 화면에 띄우는 사용자 자막. **옮긴 한국어만 띄운다.**
+   *
+   * 아직 옮기지 못한 동안 원문을 대신 띄우지 않는다. 사용자가 어느 언어로 말할지는 상담원이
+   * 고르지 않았고, 읽지 못하는 글자를 잠깐 보여 주는 것은 빈 자리보다 나을 것이 없다. 대신
+   * 아래 `userCaptionTranslating` 이 옮기는 중이라고 알려, 자막이 죽은 것과 구분되게 한다.
+   *
+   * **말하는 중에도 원문은 띄우지 않는다.** 번역은 말이 끝난 문장에만 걸리므로(중간 결과는
+   * 계속 고쳐 쓰인다) 그동안 이 자리는 지난 문장에 머문다. 말하고 있다는 사실은 머리말의
+   * `말하는 중` 표시가 이미 알린다.
+   */
+  const userCaptionKorean = translatedUserCaptionKo;
+  /** 사용자가 방금 한 말을 아직 옮기는 중인지. */
+  const userCaptionTranslating = Boolean(remoteCaption) && !userCaptionKorean;
+  /** 상담원 발화는 `ko-KR` 로 인식하므로 옮길 것이 없다. */
   const counselorCaptionKorean = localCaption;
-  const counselorCaptionEnglish = translatedCounselorCaptionEn;
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
   const userCaptionNotice = describeRemoteCaptionTrouble(remoteCaptionError, '사용자');
   const displayTranscript = (
@@ -361,6 +369,21 @@ export function SessionPage() {
       : facilityView;
   /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
   const facilityType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
+  /**
+   * 거울이 그릴 시설 유형. **사용자 화면이 보낸 상태에서 온다.** (S15P11A206-382)
+   *
+   * 위 `facilityType` 은 상담자가 자기 지도에서 고른 것이라 거울에 쓰면 안 된다. 거울은 사용자가
+   * 보고 있는 것을 비추는 자리이고, 상담자가 왼쪽에서 화장실만 켜 두었다고 사용자 화면도 그렇다는
+   * 뜻은 아니다.
+   *
+   * 옛 사용자 화면은 이 값을 보내지 않아 `null` 이다. 그때는 유형도 `null` 이고 `showAllFacilities`
+   * 도 거짓이 되어 아무것도 그리지 않는다 — 지금까지의 동작이다.
+   */
+  const mirrorFacilityView = mapSync?.facilityView ?? null;
+  const mirrorFacilityType =
+    mirrorFacilityView === null || mirrorFacilityView === 'all' || mirrorFacilityView === 'none'
+      ? null
+      : mirrorFacilityView;
   /**
    * 사용자 화면 거울의 배치. 사용자가 직접 재서 보낸 값을 그대로 쓴다. (S15P11A206-89)
    *
@@ -783,14 +806,20 @@ export function SessionPage() {
                 <div>
                   <div className={styles.summaryLabel}>사용자 정보</div>
                   {/*
-                    상담 요청에 실제로 담겨 온 출발지·목적지. 예전에는 `역삼역 2번 개찰구 →
-                    3번 출구`가 그대로 적혀 있어, 상담자가 사용자와 무관한 경로를 읽고 안내를
-                    시작했다. 서버가 채우지 못한 값은 지어내지 않고 모른다고 적는다.
+                    상담 요청의 출발지·목적지.
+
+                    예전에는 `역삼역 2번 개찰구 → 3번 출구`가 그대로 적혀 있어 상담자가 사용자와
+                    무관한 경로를 읽고 안내를 시작했다. 그래서 서버 값을 쓰도록 바꿨는데, 그 응답이
+                    두 라벨을 `null` 로 하드코딩해 두어(`ConsultationDetailResponse.from`) 이번에는
+                    `출발지 미확인 → 목적지 미지정` 만 떴다. 프론트에 고칠 것이 없는 상태였다.
+
+                    서버 수정은 백엔드로 넘겼고, 그때까지는 시연 여정의 이름을 채운다. 판정과
+                    되돌리는 방법은 `consultationPlaceLabel` 에 있다. (S15P11A206-382)
                   */}
                   <div className={styles.summaryRoute}>
-                    {consultation?.currentLocationLabel ?? '출발지 미확인'}
+                    {consultationOriginLabel(consultation?.currentLocationLabel)}
                     <span className={styles.summaryArrow}>→</span>
-                    {consultation?.destinationLabel ?? '목적지 미지정'}
+                    {consultationDestinationLabel(consultation?.destinationLabel)}
                   </div>
                 </div>
               </div>
@@ -927,10 +956,14 @@ export function SessionPage() {
                        * 미터 떨어져 보인다. 거울 지도에는 이 옵션이 있었는데 이 지도에만 빠져
                        * 있어, 상담자가 보는 큰 지도에서만 경로가 중간에 끊겨 있었다.
                        *
-                       * 사용자 화면과 같은 값이어야 한다. 두 지도가 다른 그림을 보여 주면
-                       * 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수 없다.
+                       * **사용자 화면이 보낸 값을 그대로 쓴다.** (S15P11A206-382) 예전에는 `true`
+                       * 로 박혀 있었다. 주석은 "사용자 화면과 같은 값이어야 한다"고 적혀 있었지만
+                       * 실제로는 사용자가 잇지 않는 동안에도 여기만 이어 그렸다.
+                       *
+                       * 옛 사용자 화면은 이 값을 보내지 않아 `null` 로 읽힌다. 그때는 옛 동작을
+                       * 지킨다 — 잇지 않는 쪽으로 떨어지면 경로가 중간에 끊겨 보인다.
                        */
-                      connectCurrentToRoute
+                      connectCurrentToRoute={mapSync.connectCurrentToRoute ?? true}
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
                       facilityType={facilityType}
@@ -944,6 +977,14 @@ export function SessionPage() {
                       selectedFacilityId={selectedFacility?.facilityId}
                       /* 따라가기일 때만 사용자 위치를 좇는다. 자유 탐색은 층 전체를 본다. */
                       followCamera={synced}
+                      /**
+                       * 사용자가 보는 범위를 담는다. (S15P11A206-382)
+                       *
+                       * 이 상자는 가로로 길어(비율 약 0.40) 기본 배율로는 세로 24m밖에 담지
+                       * 못했다. 사용자는 57m 를 보고 있었으므로 상담자가 보는 것이 사용자가 보는
+                       * 것의 절반도 되지 않았고, 같은 경로가 전혀 다른 그림으로 보였다.
+                       */
+                      coverUserSpan
                       /*
                         사용자를 좇되 지도는 돌리지 않는다.
                         사용자 화면은 진행 방향이 위를 향하게 돌아가지만(네비게이션 모드), 상담자
@@ -1127,25 +1168,16 @@ export function SessionPage() {
                       {remoteCaptionFinal ? '확정' : '말하는 중'}
                     </span>
                   </div>
+                  {/* 사용자가 어느 언어로 말했든 상담원에게는 한국어로만 옮겨 보여 준다. */}
                   <div className={styles.bilingualCaption} aria-live="polite" aria-atomic="true">
-                    <div className={styles.bilingualLine}>
-                      <span className={styles.bilingualLanguage}>한국어</span>
-                      <span className={styles.bilingualText}>
-                        {userCaptionKorean ||
-                          (captionsSupported
+                    <span className={styles.bilingualText}>
+                      {userCaptionKorean ||
+                        (userCaptionTranslating
+                          ? '옮기는 중…'
+                          : captionsSupported
                             ? '사용자가 말하면 자막을 표시합니다.'
                             : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
-                      </span>
-                    </div>
-                    <div className={styles.bilingualLine}>
-                      <span className={styles.bilingualLanguage}>English</span>
-                      <span className={styles.bilingualTranslation}>
-                        {userCaptionEnglish ||
-                          (remoteCaptionFinal && remoteFinalCaption
-                            ? 'Translating…'
-                            : 'English translation appears after the sentence ends.')}
-                      </span>
-                    </div>
+                    </span>
                   </div>
                 </div>
                 <div className={[styles.liveCaption, styles.liveCaptionCounselor].join(' ')}>
@@ -1155,25 +1187,14 @@ export function SessionPage() {
                       {localCaptionFinal ? '확정' : '말하는 중'}
                     </span>
                   </div>
+                  {/* 상담원 발화는 한국어 고정이라 옮길 것이 없다. 인식한 그대로 띄운다. */}
                   <div className={styles.bilingualCaption} aria-live="polite" aria-atomic="true">
-                    <div className={styles.bilingualLine}>
-                      <span className={styles.bilingualLanguage}>한국어</span>
-                      <span className={styles.bilingualText}>
-                        {counselorCaptionKorean ||
-                          (captionsSupported
-                            ? '마이크를 켜고 말하면 자막을 표시합니다.'
-                            : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
-                      </span>
-                    </div>
-                    <div className={styles.bilingualLine}>
-                      <span className={styles.bilingualLanguage}>English</span>
-                      <span className={styles.bilingualTranslation}>
-                        {counselorCaptionEnglish ||
-                          (localCaptionFinal && localCaption
-                            ? 'Translating…'
-                            : 'English translation appears after the sentence ends.')}
-                      </span>
-                    </div>
+                    <span className={styles.bilingualText}>
+                      {counselorCaptionKorean ||
+                        (captionsSupported
+                          ? '마이크를 켜고 말하면 자막을 표시합니다.'
+                          : '이 브라우저에서는 음성 자막을 지원하지 않습니다.')}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1203,19 +1224,23 @@ export function SessionPage() {
                           {segment.speaker === 'COUNSELOR' ? '상담원' : '사용자'}
                         </span>
                       </div>
+                      {/*
+                        한국어 한 줄만 남긴다. 사용자 발화는 옮긴 글을, 상담원 발화는 인식한
+                        그대로를 띄운다.
+
+                        예전에는 `원문`·`번역` 두 줄이었다. 상담원이 읽을 수 있는 것은 번역 줄
+                        하나인데 원문이 늘 위에 있어, 대화를 되짚을 때마다 읽지 못하는 줄을 건너뛰며
+                        읽어야 했고 로그에 담기는 대화 수도 절반이 됐다.
+
+                        **저장되는 전문은 그대로다.** 서버로 올리는 `transcript` 에는 원문과 번역이
+                        모두 실린다(`submitTranscriptWithRetry`) — 상담 이력과 AI 요약은 사용자가
+                        실제로 한 말을 근거로 삼아야 한다. 여기서 줄이는 것은 화면뿐이다.
+                      */}
                       <div className={styles.transcriptLine}>
-                        <span className={styles.transcriptLanguage}>원문</span>
-                        <span className={styles.line}>{segment.content}</span>
+                        <span className={styles.line}>
+                          {segment.translatedContent || segment.content}
+                        </span>
                       </div>
-                      {segment.translatedContent &&
-                        segment.translatedContent !== segment.content && (
-                          <div className={styles.transcriptLine}>
-                            <span className={styles.transcriptLanguage}>번역</span>
-                            <span className={styles.transcriptTranslation}>
-                              {segment.translatedContent}
-                            </span>
-                          </div>
-                        )}
                     </div>
                   ))
                 )}
@@ -1309,9 +1334,38 @@ export function SessionPage() {
                          어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
                       destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
-                      /* 사용자 화면과 같은 값이어야 시점이 같아진다. 회전은 기본값(켬)이다. */
-                      connectCurrentToRoute
+                      /* 사용자 화면이 보낸 값을 그대로 쓴다. 시점이 같아야 그리기 좌표가 맞는다.
+                         회전은 기본값(켬)이다. 근거는 왼쪽 지도의 같은 속성 주석에 있다. */
+                      connectCurrentToRoute={mapSync.connectCurrentToRoute ?? true}
+                      /**
+                       * 시설 아이콘도 사용자 화면과 같이 그린다. (S15P11A206-382)
+                       *
+                       * 예전에는 도면과 경로만 있었다. 상담자가 "저기 화장실 앞에서 기다리세요"
+                       * 라고 짚어 줘도 그 아이콘이 거울에 없어, 사용자가 무엇을 보고 있는지 확인할
+                       * 수 없었다.
+                       *
+                       * **누를 수는 없다.** `onSelectFacility` 를 넘기지 않으면 마커가 탭을 받지
+                       * 않는다(`IndoorMapOverlay`). 거울에서 시설을 골라 사용자 화면을 바꾸면
+                       * 거울이 아니게 된다 — 그 조작은 왼쪽 지도에 있다.
+                       *
+                       * 옛 사용자 화면은 표시 상태를 보내지 않는다. 그때는 그리지 않는다 —
+                       * 모르는 상태를 짐작해 그리면 사용자 화면에 없는 아이콘이 거울에 뜬다.
+                       */
+                      facilityType={mirrorFacilityType}
+                      showAllFacilities={mapSync.facilityView === 'all'}
+                      selectedFacilityId={mapSync.selectedFacilityId}
                       followCamera
+                      /**
+                       * 사용자가 확대·이동해 둔 시점을 그대로 비춘다. (S15P11A206-382)
+                       *
+                       * 없으면 이 지도가 자기 추종을 돌린다. 사용자가 지도를 밀면 그쪽 화면은
+                       * 회전까지 그 자리에 멈추는데 거울은 계속 돌아, 두 화면이 전혀 다른 곳을
+                       * 보게 된다.
+                       *
+                       * 옛 사용자 화면은 이 값을 보내지 않아 null 이다. 그때는 지금까지처럼
+                       * 스스로 추종한다.
+                       */
+                      mirroredView={mapSync.view}
                     />
                   </div>
                 </>

@@ -9,6 +9,7 @@ export type {
   DrawPoint,
   MapPointPayload,
   MapSyncPayload,
+  MapViewPayload,
   NormalizedRect,
   ScreenGeometryPayload,
 } from './consultEvents';

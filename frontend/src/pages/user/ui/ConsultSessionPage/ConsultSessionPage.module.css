@@ -607,6 +607,72 @@
   color: var(--color-ink);
 }
 
+/*
+  시설 시트. 안내 화면의 같은 시트와 치수를 맞춘다 — 두 화면을 오가며 같은 동작을 하므로
+  생김새가 달라지면 다른 기능으로 읽힌다. 시트 자체는 밝은 면이라 이 화면의 어두운 배경과
+  달리 `--color-ink` 계열을 그대로 쓴다.
+*/
+.sheetHandle {
+  width: 36px;
+  height: 4px;
+  margin: -10px auto 16px;
+  background: var(--color-line);
+  border-radius: var(--radius-pill);
+}
+
+.sheetHead {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.sheetIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--color-mint-darker);
+  background: var(--color-mint-light);
+  border-radius: 14px;
+}
+
+.sheetHead h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.sheetHead p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--color-sub);
+}
+
+.sheetNote {
+  padding: 11px 12px;
+  margin: 16px 0 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-sub);
+  background: var(--color-mint-tint);
+  border-radius: 12px;
+}
+
+/* 버튼이 하나뿐이다. 목적지 변경은 상담자 쪽 흐름이라 이 시트에 두지 않는다. */
+.sheetActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.sheetActions button {
+  min-height: 46px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 @keyframes consult-ring {
   0% {
     opacity: 0.9;

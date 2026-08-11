@@ -28,7 +28,7 @@ export interface Waypoint {
  * 목적지를 한 줄에 늘어놓는 구조라, 셋을 넘기면 좁은 화면에서 이름이 읽을 수 없게 눌린다.
  * 늘리려면 헤더를 먼저 다시 짜야 한다.
  */
-const MAX_WAYPOINTS = 2;
+export const MAX_WAYPOINTS = 2;
 
 type NavigationStore = {
   /** Destination name the user picked from search. */
