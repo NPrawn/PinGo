@@ -523,10 +523,30 @@
       let lastSample = null;
       let markCount = 0;
 
+      /**
+       * 앱의 `src/shared/lib/webxr/pose.ts` 와 같은 식을 유지한다. 두 식이 갈라지면 여기서 잰
+       * 값을 앱에 옮길 수 없다.
+       *
+       * 분모를 `1 - 2(y² + z²)` 에서 `1 - 2(x² + y²)` 로 고쳤다. 옛 식은 분자(전방 축)와
+       * 분모(오른쪽 축)가 서로 다른 축이라 단말을 기울이면 값이 0쪽으로 끌려갔다 — 기울임 60도
+       * 에서 최대 18.4도. 자세한 근거는 앱 쪽 주석과 `docs/WebXR_검증_결과.md` 개정 이력에 있다.
+       * (S15P11A206-382)
+       */
       function yawDegOf(orientation) {
         const { x, y, z, w } = orientation;
-        const rad = Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z));
-        return (rad * 180) / Math.PI;
+        const forwardX = 2 * (x * z + w * y);
+        const forwardZ = 1 - 2 * (x * x + y * y);
+
+        // 거의 수직으로 눕히면 전방의 수평 성분이 사라진다. 그때는 up 축으로 갈아탄다.
+        if (Math.hypot(forwardX, forwardZ) < 0.2) {
+          const upX = 2 * (x * y - w * z);
+          const upZ = 2 * (y * z + w * x);
+          const forwardY = 2 * (w * x - y * z);
+          const deg = (Math.atan2(upX, upZ) * 180) / Math.PI;
+          return forwardY > 0 ? deg - 180 : deg;
+        }
+
+        return (Math.atan2(forwardX, forwardZ) * 180) / Math.PI;
       }
 
       function angleDiffDeg(a, b) {

@@ -9,7 +9,7 @@ import {
   type XrCameraFrameSink,
   type XrCameraFrameSize,
 } from './cameraFrames';
-import { angleDiffDeg, toPoseReading } from './pose';
+import { angleDiffDeg, isHeadingTrustworthy, toPoseReading } from './pose';
 import { createPoseSampler, DEFAULT_SAMPLING_RULE } from './sampler';
 import { detectXrSupport } from './support';
 import type {
@@ -576,7 +576,7 @@ export function createXrSessionController(
 
     latestReading = reading;
 
-    maybeEmitHeading(reading.yawDeg, time);
+    maybeEmitHeading(reading, time);
 
     /** 확정 주기 판정은 샘플러가 한다. 통과한 프레임만 바깥으로 나간다. */
     const snapshot = sampler.consider(reading);
@@ -829,8 +829,22 @@ export function createXrSessionController(
    * 첫 pose는 기준이 없으므로 무조건 내보낸다 — 그 값이 이후 판정의 기준점이 된다.
    * 최소 간격을 먼저 보고 데드밴드를 본다. 순서를 뒤집으면 큰 회전이 매 프레임 통과한다.
    */
-  function maybeEmitHeading(yawDeg: number, time: DOMHighResTimeStamp): void {
+  function maybeEmitHeading(reading: XrPoseReading, time: DOMHighResTimeStamp): void {
+    const { yawDeg } = reading;
+
     if (!Number.isFinite(yawDeg)) return;
+
+    /**
+     * 카메라가 앞을 보고 있지 않으면 내보내지 않는다. (S15P11A206-382)
+     *
+     * 정면을 보고 서서 들고 있던 손만 내리면 카메라는 바닥을, 더 내리면 뒤쪽을 향한다. 그 값을
+     * 흘리면 지도와 화살표가 사용자가 뒤돌아선 것처럼 돈다 — 몸은 그대로인데 화면만 돌아간다.
+     *
+     * 여기서 막는 이유는 이 채널의 뜻이 "화면에 반영할 방향"이기 때문이다. 자세가 나쁠 때는
+     * 직전 방향이 그대로 남고, 손을 다시 들면 이어서 갱신된다. `getLatestReading`은 이 게이트를
+     * 지나지 않으므로 앵커를 만드는 쪽은 영향을 받지 않는다.
+     */
+    if (!isHeadingTrustworthy(reading.orientation)) return;
 
     if (lastHeadingYawDeg !== null && lastHeadingAt !== null) {
       if (time - lastHeadingAt < headingRule.minIntervalMs) return;

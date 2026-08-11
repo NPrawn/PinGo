@@ -206,17 +206,44 @@ export function IndoorMapView({
    * `rotateWithHeading`을 끈 화면은 방향을 알아도 돌리지 않는다. 추종(`followTarget`)은 위에서
    * 따로 정하므로, 사용자를 화면 가운데 붙들어 둔 채 도면 방위만 고정된다.
    */
-  const targetRotationDeg =
-    followCamera && rotateWithHeading && typeof currentHeadingDeg === 'number'
-      ? -90 - (currentHeadingDeg + PLAN_REFERENCE.frame.angleDeg)
-      : null;
+  const rotatesWithHeading =
+    followCamera && rotateWithHeading && typeof currentHeadingDeg === 'number';
 
   /**
    * 방향은 5° 데드밴드로 걸러진 계단으로 들어오고, 부호가 ±180°에서 뒤집힌다. 그대로 지도에
    * 걸면 5.4배로 당겨진 화면이 계단마다 튀고, 경계에서는 한 바퀴 돈다. 각도를 이어 붙이고
    * 완만하게 편 값을 쓴다.
+   *
+   * **회전각이 아니라 방향각을 평활한다.** (S15P11A206-382)
+   *
+   * 예전에는 위 회전각을 평활하고 마커의 방향 부채꼴에는 원본 방향각을 넘겼다. 둘의 속도가 달라
+   * 부채꼴이 먼저 튀고 지도가 뒤늦게 따라오다가, 따라가기가 끝나는 순간 함께 멈추는 것으로
+   * 보였다. 방향각 하나를 평활해 두 곳이 같은 값을 쓰면 부채꼴은 화면 위를 그대로 향하고 지도만
+   * 돈다. 회전각은 방향각의 일차식이라 평활 결과도 같다.
    */
-  const mapRotationDeg = useSmoothedRotationDeg(targetRotationDeg);
+  const smoothedHeadingDeg = useSmoothedRotationDeg(
+    rotatesWithHeading ? (currentHeadingDeg ?? null) : null,
+  );
+
+  /**
+   * 진행 방향이 화면 위를 향하도록 지도를 돌릴 각도.
+   *
+   * 방향각은 미터 프레임 기준이라 먼저 캔버스 기준으로 옮긴다(`+ angleDeg`). 캔버스에서 0도는
+   * 오른쪽이고 위는 -90도이므로, 방향각 φ를 위로 세우려면 `-90 - φ`만큼 돌린다.
+   */
+  const mapRotationDeg =
+    smoothedHeadingDeg === null
+      ? null
+      : -90 - (smoothedHeadingDeg + PLAN_REFERENCE.frame.angleDeg);
+
+  /**
+   * 마커의 방향 부채꼴이 쓸 방향각.
+   *
+   * 지도가 방향에 따라 도는 동안에는 지도와 **같은** 값을 쓴다. 돌지 않는 화면(상담자 거울,
+   * 지도를 밀어 추종이 풀린 상태)에서는 지도가 보정해 주지 않으므로 원본을 그대로 쓴다 — 그때는
+   * 부채꼴이 유일한 방향 표시다.
+   */
+  const beamHeadingDeg = smoothedHeadingDeg ?? currentHeadingDeg;
 
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
   const {
@@ -394,7 +421,7 @@ export function IndoorMapView({
           floorId={floorMap.floorId}
           placement={placement}
           currentLocation={mockable(currentLocation, MOCK_CURRENT_LOCATION, useMockData)}
-          currentHeadingDeg={currentHeadingDeg}
+          currentHeadingDeg={beamHeadingDeg}
           destination={mockable(destination, MOCK_DESTINATION, useMockData)}
           destinationLabel={destinationLabel}
           pathNodes={pathNodes ?? (useMockData ? MOCK_PATH_NODES : undefined)}

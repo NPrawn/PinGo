@@ -10,6 +10,7 @@ import {
   type XrMapAnchor,
 } from '../lib/mapAlignment';
 import { smoothMapPoint, type DisplaySmoothingOptions } from '../lib/displaySmoothing';
+import { acceptHeading, type HeadingFilterState } from '../lib/headingFilter';
 import { useXrTracking, type UseXrTrackingValue } from './useXrTracking';
 
 /** 지도에 그리는 좌표가 어디서 왔는지. */
@@ -48,6 +49,13 @@ export interface UseXrMapPositionOptions {
   distanceScale?: number;
   /** 테스트에서 가짜 컨트롤러를 주입한다. */
   controller?: XrSessionController;
+  /**
+   * 방향각 표본의 시각을 재는 시계. 기본값은 `performance.now`다.
+   *
+   * 회전 속도 상한이 "지난 시각 대비 얼마나 돌았는가"로 판정하므로, 테스트가 시간을 통제해야
+   * 그 판정을 확인할 수 있다. 컨트롤러도 같은 이유로 `now`를 받는다(`session.ts`).
+   */
+  now?: () => DOMHighResTimeStamp;
 }
 
 export interface UseXrMapPositionValue extends UseXrTrackingValue {
@@ -119,6 +127,7 @@ export function useXrMapPosition({
   smoothing,
   distanceScale = 1,
   controller = xrSessionController,
+  now = () => performance.now(),
 }: UseXrMapPositionOptions = {}): UseXrMapPositionValue {
   /**
    * 앵커는 ref에 둔다.
@@ -136,6 +145,14 @@ export function useXrMapPosition({
   const [headingDeg, setHeadingDeg] = useState<number | null>(null);
 
   /**
+   * 방향각 표본을 거르는 상태. (S15P11A206-382)
+   *
+   * **출처에서 한 번만 거른다.** 이 값을 쓰는 곳이 셋이다 — 지도 회전, 카메라 위 화살표, 현재
+   * 위치 마커의 방향 빔. 소비자마다 따로 걸면 같은 순간에 서로 다른 각도를 그리게 된다.
+   */
+  const headingFilterRef = useRef<HeadingFilterState | null>(null);
+
+  /**
    * 평활의 기준점.
    *
    * 상태와 별도로 ref에 두는 이유는 스냅샷 콜백이 동기적으로 직전 값을 읽어야 하기
@@ -151,6 +168,12 @@ export function useXrMapPosition({
    */
   const smoothingRef = useRef(smoothing);
   const distanceScaleRef = useRef(distanceScale);
+  /** 같은 이유로 시계도 ref로 떼어낸다. 인라인 함수를 받으면 렌더마다 식별자가 달라진다. */
+  const nowRef = useRef(now);
+
+  useEffect(() => {
+    nowRef.current = now;
+  }, [now]);
 
   useEffect(() => {
     smoothingRef.current = smoothing;
@@ -195,7 +218,24 @@ export function useXrMapPosition({
 
         if (!anchor) return;
 
-        setHeadingDeg(mapHeadingDegOf(yawDeg, anchor));
+        const mapped = mapHeadingDegOf(yawDeg, anchor);
+
+        if (mapped === null) return;
+
+        /**
+         * 말이 안 되는 표본은 버린다. 채널이 이미 데드밴드와 최소 간격을 적용했지만, 그것은
+         * "너무 잦은 갱신"을 막는 장치이고 "너무 큰 변화"는 그대로 통과한다.
+         */
+        const { state, rejected } = acceptHeading(
+          headingFilterRef.current,
+          mapped,
+          nowRef.current(),
+        );
+
+        headingFilterRef.current = state;
+
+        // 버린 표본으로는 화면을 다시 그리지 않는다. 값이 같으므로 그릴 것도 없다.
+        if (!rejected) setHeadingDeg(state.deg);
       }),
     [controller],
   );
@@ -240,7 +280,18 @@ export function useXrMapPosition({
        * 여기서 세우지 않으면 다음 스냅샷까지(정지 상태에서 최대 5초) 이전 앵커 기준의 방향이
        * 남는다. 재인식으로 방향까지 다시 확정한 뒤인데 화면이 옛 방향을 가리키게 된다.
        */
-      setHeadingDeg(mapHeadingDegOf(reading.yawDeg, anchor));
+      const anchored = mapHeadingDegOf(reading.yawDeg, anchor);
+
+      /**
+       * 필터도 이 값에서 새로 시작한다. **거르지 않고 그대로 세운다.**
+       *
+       * 앵커 갱신은 잡음이 아니라 보정이다. 지도 프레임 방향각은 앵커의 회전으로 만들어지므로
+       * 갱신 순간 값이 크게 달라질 수 있는데, 그것을 이상치로 버리면 재인식이 무력해진다 —
+       * 누적 오차를 초기화하려고 다시 찍은 것인데 화면이 옛 방향을 붙들고 있게 된다.
+       */
+      headingFilterRef.current =
+        anchored === null ? null : { deg: anchored, atMs: nowRef.current(), rejected: 0 };
+      setHeadingDeg(anchored);
 
       return true;
     },
@@ -250,6 +301,7 @@ export function useXrMapPosition({
   const clearAnchor = useCallback(() => {
     anchorRef.current = null;
     smoothedRef.current = null;
+    headingFilterRef.current = null;
     setAnchorRevision(null);
     setTrackedLocation(null);
     setHeadingDeg(null);

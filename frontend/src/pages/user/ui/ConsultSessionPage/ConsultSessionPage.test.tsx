@@ -111,6 +111,17 @@ function renderPage() {
   );
 }
 
+/**
+ * 세션 안내를 지나간다.
+ *
+ * jsdom 에는 `navigator.xr` 이 없어 미지원 안내가 화면 전체를 덮는다. 시설 시트는 그 구간에
+ * 열리지 않으므로(다른 조작을 받을 이유가 없는 구간이다) 지도를 만지는 테스트는 먼저 이것을
+ * 지나야 한다.
+ */
+async function dismissXrNotice() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Continue with map' }));
+}
+
 describe('ConsultSessionPage', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('en');
@@ -577,6 +588,84 @@ describe('ConsultSessionPage', () => {
         'aria-pressed',
         'false',
       );
+    });
+
+    /**
+     * 상담 중에도 시설을 눌러 경유지를 넣을 수 있어야 한다. (S15P11A206-382)
+     *
+     * 예전에는 이 화면이 `onSelectFacility` 를 넘기지 않아 마커가 탭을 받지 않았다. 경유지 칩과
+     * 삭제 버튼은 이미 있었는데 추가할 길이 없어, 상담자가 들를 곳을 말해 줘도 사용자가 경로에
+     * 넣을 방법이 없었다.
+     */
+    it('시설 마커를 눌러 경유지로 추가한다', async () => {
+      useNavigationStore.setState({
+        currentFloorId: 1,
+        currentMapX: 0,
+        currentMapY: 0,
+        currentNodeId: 209,
+        targetNodeId: 341,
+        routeResult: null,
+        waypoints: [],
+      } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+      vi.mocked(useStationFacilities).mockReturnValue({
+        data: [
+          {
+            facilityId: 9,
+            floorId: 1,
+            facilityType: 'toilet',
+            nameKo: '화장실',
+            nameEn: 'Restroom',
+            mapX: 4,
+            mapY: -3,
+            linkedNodeId: 77,
+            isAccessible: true,
+          },
+        ],
+      } as unknown as ReturnType<typeof useStationFacilities>);
+
+      renderPage();
+      await dismissXrNotice();
+
+      await userEvent.click(await screen.findByRole('button', { name: '화장실' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Add as a stop' }));
+
+      expect(useNavigationStore.getState().waypoints).toEqual([{ nodeId: 77, nameKo: '화장실' }]);
+    });
+
+    /**
+     * 노드를 모르는 시설은 경로 요청에 실을 것이 없다. 눌러도 칩만 붙고 경로는 그대로인 상태를
+     * 만들지 않는다.
+     */
+    it('노드가 없는 시설은 경유지로 추가하지 못한다', async () => {
+      useNavigationStore.setState({
+        currentFloorId: 1,
+        currentMapX: 0,
+        currentMapY: 0,
+        waypoints: [],
+      } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+      vi.mocked(useStationFacilities).mockReturnValue({
+        data: [
+          {
+            facilityId: 9,
+            floorId: 1,
+            facilityType: 'toilet',
+            nameKo: '화장실',
+            mapX: 4,
+            mapY: -3,
+            linkedNodeId: null,
+          },
+        ],
+      } as unknown as ReturnType<typeof useStationFacilities>);
+
+      renderPage();
+      await dismissXrNotice();
+
+      await userEvent.click(await screen.findByRole('button', { name: '화장실' }));
+
+      expect(
+        await screen.findByRole('button', { name: 'Cannot be used as a stop' }),
+      ).toBeDisabled();
+      expect(useNavigationStore.getState().waypoints).toEqual([]);
     });
   });
 });

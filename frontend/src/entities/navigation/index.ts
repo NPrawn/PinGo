@@ -12,6 +12,6 @@ export { routeProgressOf } from './lib/routeProgress';
 export type { RouteProgress } from './lib/routeProgress';
 export { carriesDistance, instructionAt } from './lib/stepInstruction';
 export type { StepInstruction } from './lib/stepInstruction';
-export { useNavigationStore } from './model/navigationStore';
+export { MAX_WAYPOINTS, useNavigationStore } from './model/navigationStore';
 export type { Waypoint } from './model/navigationStore';
 export type { IndoorPoint, MapDirection, RoutePathNode } from './model/types';

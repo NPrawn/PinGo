@@ -309,6 +309,55 @@ describe('IndoorMapView 시점 추종과 회전', () => {
     expect(rotation).toBeCloseTo(-98.72, 6);
   });
 
+  /**
+   * 지도와 마커의 부채꼴이 같은 속도로 돌아야 한다. (S15P11A206-382)
+   *
+   * 예전에는 지도만 평활하고 부채꼴에는 원본 방향각을 넘겼다. 방향이 바뀌면 부채꼴이 먼저 튀고
+   * 지도가 뒤늦게 따라오다가 따라가기가 끝나는 순간 함께 멈추는 것으로 보였다.
+   *
+   * 검사는 **합**으로 한다. 부채꼴은 지도 안에 그려지므로 화면에서 보이는 각도가
+   * `부채꼴 각도 + 지도 회전`이고, 추종 중에는 그 값이 늘 위(-90도)여야 한다. 중간값이 얼마인지는
+   * 평활 시간 상수에 달렸으므로 값 자체를 기대하지 않는다.
+   */
+  it('추종 중에는 방향이 바뀌는 동안에도 부채꼴이 위를 향한다', async () => {
+    const view = render(
+      <IndoorMapView
+        stationId={1}
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+        currentHeadingDeg={30}
+        followCamera
+      />,
+    );
+
+    const plan = screen.getByRole('img', { name: 'B2 실내 지도' });
+    const beamImageDeg = () => {
+      const beam = screen.getByRole('img', { name: '현재 위치' }).querySelector('path');
+      const matched = /rotate\((-?[\d.]+) /.exec(beam?.getAttribute('transform') ?? '');
+
+      expect(matched).not.toBeNull();
+
+      return Number(matched?.[1]);
+    };
+
+    expect(await stageRotationDeg(plan)).toBeCloseTo(-98.72, 6);
+    expect(beamImageDeg() + (await stageRotationDeg(plan))).toBeCloseTo(-90, 6);
+
+    // 90도 돌았다. 지도는 아직 따라가는 중이다.
+    view.rerender(
+      <IndoorMapView
+        stationId={1}
+        currentLocation={{ floorId: 1, mapX: 0, mapY: 0 }}
+        currentHeadingDeg={120}
+        followCamera
+      />,
+    );
+
+    const midRotation = await stageRotationDeg(plan);
+
+    // 원본을 넘기던 때는 부채꼴만 새 방향으로 튀어 합이 -90에서 벗어났다.
+    expect(beamImageDeg() + midRotation).toBeCloseTo(-90, 6);
+  });
+
   it('회전을 끄면 추종은 유지한 채 지도를 돌리지 않는다', async () => {
     render(
       <IndoorMapView

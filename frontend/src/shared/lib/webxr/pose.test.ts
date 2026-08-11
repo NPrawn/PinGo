@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { angleDiffDeg, planarDistanceM, toPoseReading, yawDegOf } from './pose';
+import {
+  angleDiffDeg,
+  isHeadingTrustworthy,
+  planarDistanceM,
+  toPoseReading,
+  yawDegOf,
+} from './pose';
 
 describe('yawDegOf', () => {
   it('회전이 없으면 0도다', () => {
@@ -28,6 +34,187 @@ describe('yawDegOf', () => {
     const half = Math.SQRT1_2;
 
     expect(yawDegOf({ x: 0, y: -half, z: 0, w: half })).toBeCloseTo(-90, 6);
+  });
+
+  /**
+   * 단말을 기울여도 방향각이 흔들리지 않아야 한다. (S15P11A206-382)
+   *
+   * 옛 식(`atan2(R₀₂, R₀₀)`)은 분자가 전방 축, 분모가 오른쪽 축이라 기울임각이 섞이면
+   * `atan2(sin ψ·cos θ, cos ψ)`가 되어 값이 0쪽으로 끌려갔다. 기울임 60도에서 최대 18.4도,
+   * 75도에서 30.5도였다. QA가 본 "폰을 기울이면 방향이 바뀐다"가 이것이다.
+   *
+   * **오차가 heading 0·90·180도에서 정확히 0이다.** 그래서 축에 정렬된 방향만 확인한 실기기
+   * 검증(체크리스트 16번)에서는 드러나지 않았다. 10번이 "실제 각도 대비 오차는 미측정"으로
+   * 남겨 둔 구간이 여기이므로, 격자로 덮어 다시 새지 않게 한다.
+   */
+  describe('기울여 들어도 같은 방향을 읽는다', () => {
+    type Quaternion = { x: number; y: number; z: number; w: number };
+
+    function multiply(a: Quaternion, b: Quaternion): Quaternion {
+      return {
+        w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+        x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+      };
+    }
+
+    const rad = (deg: number) => (deg * Math.PI) / 180;
+    /** 방향(+y 축). */
+    const yaw = (deg: number): Quaternion => ({
+      x: 0,
+      y: Math.sin(rad(deg) / 2),
+      z: 0,
+      w: Math.cos(rad(deg) / 2),
+    });
+    /** 앞뒤로 눕히기(+x 축). */
+    const pitch = (deg: number): Quaternion => ({
+      x: Math.sin(rad(deg) / 2),
+      y: 0,
+      z: 0,
+      w: Math.cos(rad(deg) / 2),
+    });
+    /** 좌우로 비스듬히 들기(+z 축). */
+    const roll = (deg: number): Quaternion => ({
+      x: 0,
+      y: 0,
+      z: Math.sin(rad(deg) / 2),
+      w: Math.cos(rad(deg) / 2),
+    });
+
+    /** 두 각도의 최단 차이. 179도와 -179도는 2도 차이다. */
+    const errorDeg = (actual: number, expected: number) =>
+      Math.abs(((((actual - expected) % 360) + 540) % 360) - 180);
+
+    const HEADINGS = [0, 20, 45, 70, 90, 135, 180, -45, -120];
+    /** 위·아래 모두 본다. 오차는 `cos θ`에만 의존해 대칭이므로 부호를 함께 확인한다. */
+    const TILTS = [0, 15, 30, 45, 60, 75, -30, -60];
+
+    it.each(HEADINGS)('heading %i도는 기울임과 무관하다', (heading) => {
+      for (const tilt of TILTS) {
+        const actual = yawDegOf(multiply(yaw(heading), pitch(tilt)));
+
+        expect(errorDeg(actual, heading)).toBeLessThan(1e-6);
+      }
+    });
+
+    /** 시선축 회전은 회전행렬 3열을 건드리지 않으므로 값이 바뀌지 않아야 한다. */
+    it.each([0, 10, 25, 45, 90, -60])('좌우로 %i도 비스듬히 들어도 같다', (rollDeg) => {
+      for (const heading of HEADINGS) {
+        const actual = yawDegOf(multiply(multiply(yaw(heading), pitch(30)), roll(rollDeg)));
+
+        expect(errorDeg(actual, heading)).toBeLessThan(1e-6);
+      }
+    });
+
+    /**
+     * 거의 수직으로 눕힌 구간. 전방의 수평 성분이 사라져 up 축으로 갈아탄다.
+     *
+     * 위치 인식을 위해 바닥이나 천장을 훑는 동안이 이 구간이고, 그 순간의 값으로 앵커가
+     * 만들어진다. 여기서 포기하면 앵커가 통째로 틀어진다.
+     */
+    it.each([80, 88, 92, 100, -85, -95])('%i도로 눕혀도 방향을 잃지 않는다', (tilt) => {
+      for (const heading of HEADINGS) {
+        const actual = yawDegOf(multiply(yaw(heading), pitch(tilt)));
+
+        expect(errorDeg(actual, heading)).toBeLessThan(1e-6);
+      }
+    });
+
+    /**
+     * 수직에 닿기까지 방향각이 계단 없이 이어져야 한다. (S15P11A206-382)
+     *
+     * QA에서 "정방향으로 들다가 상하가 뒤집히면 방향값이 달라진다"는 보고가 있었다. 옛 식은
+     * 기울임이 커지는 내내 값이 0쪽으로 끌려가다 90도에서 180도 뒤집혀, 뒤집힌 값으로 앵커가
+     * 만들어지면 그 뒤의 모든 좌표가 반대로 회전됐다. 값이 아니라 **이어짐**을 검사한다.
+     *
+     * **수직을 넘어선 구간(약 102도 이상)은 검사하지 않는다.** 그 자세에서는 카메라가 실제로
+     * 사용자의 뒤쪽을 향하므로, 스펙 8.2가 정의한 `단말 전방`으로서는 반대가 되는 것이 맞다.
+     * 각도를 이어 붙이려면 "단말 up 축이 아래를 향하면 180도 돌린다"는 규칙이 필요한데, 그 규칙은
+     * 폰을 옆으로 눕혔을 때(roll 90도) up 축의 수직 성분이 0을 지나며 부호가 요동쳐 작은 손떨림에
+     * 180도씩 뒤집힌다. 실측으로 확인해 넣지 않았다.
+     *
+     * 그 자세를 화면에 반영하지 않는 일은 `isHeadingTrustworthy`가 맡는다 — 값을 고치는 대신
+     * 믿을 수 없는 자세에서 갱신을 멈춘다.
+     */
+    it.each([1, -1])('수직에 닿기까지 방향각이 튀지 않는다 (기울임 부호 %i)', (sign) => {
+      for (const heading of HEADINGS) {
+        let previous = yawDegOf(multiply(yaw(heading), pitch(0)));
+
+        for (let step = 2; step <= 100; step += 2) {
+          const actual = yawDegOf(multiply(yaw(heading), pitch(sign * step)));
+
+          expect(errorDeg(actual, previous)).toBeLessThan(1);
+          previous = actual;
+        }
+      }
+    });
+  });
+});
+
+describe('isHeadingTrustworthy', () => {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+
+  /** 방향을 향한 채 앞뒤로 눕힌 자세. 손을 내리는 동작이다. */
+  function tilted(yawDeg: number, tiltDeg: number) {
+    const y = Math.sin(rad(yawDeg) / 2);
+    const w1 = Math.cos(rad(yawDeg) / 2);
+    const x = Math.sin(rad(tiltDeg) / 2);
+    const w2 = Math.cos(rad(tiltDeg) / 2);
+
+    return { x: w1 * x, y: y * w2, z: -y * x, w: w1 * w2 };
+  }
+
+  /** 좌우로 비스듬히 든 자세를 더한다. */
+  function rolled(yawDeg: number, tiltDeg: number, rollDeg: number) {
+    const base = tilted(yawDeg, tiltDeg);
+    const z = Math.sin(rad(rollDeg) / 2);
+    const w = Math.cos(rad(rollDeg) / 2);
+
+    return {
+      w: base.w * w - base.z * z,
+      x: base.x * w + base.y * z,
+      y: base.y * w - base.x * z,
+      z: base.w * z + base.z * w,
+    };
+  }
+
+  it('걸으며 앞을 보는 자세는 믿는다', () => {
+    for (const tilt of [0, -10, -30, -45, -60, 15, 40, 60]) {
+      expect(isHeadingTrustworthy(tilted(35, tilt))).toBe(true);
+    }
+  });
+
+  /** 바닥이나 천장을 향한 자세. 수평 성분이 빠르게 줄어 방향각이 잡음에 가까워진다. */
+  it('거의 수직으로 눕힌 자세는 믿지 않는다', () => {
+    for (const tilt of [-75, -85, -90, -95, 80, 90]) {
+      expect(isHeadingTrustworthy(tilted(35, tilt))).toBe(false);
+    }
+  });
+
+  /**
+   * 손을 내려 카메라가 뒤를 향하도록 넘어간 자세. **이것이 QA 보고의 핵심이다.**
+   *
+   * 기울임의 `sin`만 보면 120도가 60도와 같은 값이라 통과한다. 뒤집힘 판정이 함께 걸려야
+   * 걸러진다 — 통과하면 지도와 화살표가 사용자가 뒤돌아선 것처럼 돈다.
+   */
+  it('카메라가 뒤를 향하도록 넘어간 자세는 믿지 않는다', () => {
+    for (const tilt of [-110, -120, -150, -170, -179, 120, 170]) {
+      expect(isHeadingTrustworthy(tilted(35, tilt))).toBe(false);
+    }
+  });
+
+  /** 통과하는 구간이 기울임 65도 안쪽으로 떨어져야 한다. */
+  it('통과 구간이 65도에서 끊긴다', () => {
+    expect(isHeadingTrustworthy(tilted(0, -64))).toBe(true);
+    expect(isHeadingTrustworthy(tilted(0, -66))).toBe(false);
+  });
+
+  /** 자연스럽게 든 자세에서 조금 비스듬해도 방향은 계속 갱신돼야 한다. */
+  it('조금 비스듬히 들어도 믿는다', () => {
+    for (const roll of [0, 10, 20, -15]) {
+      expect(isHeadingTrustworthy(rolled(35, -20, roll))).toBe(true);
+    }
   });
 });
 
