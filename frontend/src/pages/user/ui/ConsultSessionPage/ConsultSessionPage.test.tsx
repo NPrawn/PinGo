@@ -627,6 +627,39 @@ describe('ConsultSessionPage', () => {
       });
 
       /**
+       * 거울이 시설 아이콘까지 같이 그리는 근거. (S15P11A206-382)
+       *
+       * 이 값이 없으면 거울에는 도면과 경로만 있고 시설이 하나도 없다. 상담자가 "저기 화장실
+       * 앞에서 기다리세요"라고 짚어 준 자리를 사용자가 무엇을 보고 있는지 확인할 수 없다.
+       */
+      it('시설 표시 상태를 보내고, 칩을 누르면 바뀐 상태를 다시 보낸다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: 0,
+          currentMapY: 0,
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+        vi.mocked(useStationFacilities).mockReturnValue({
+          data: [{ facilityId: 1, floorId: 1, facilityType: 'exit', nameKo: '2번 출입구' }],
+        } as unknown as ReturnType<typeof useStationFacilities>);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        // 진입 시 기본값은 그 층 시설을 모두 보여 주는 상태다.
+        expect(lastMapSync().facilityView).toBe('all');
+        expect(lastMapSync().selectedFacilityId).toBeNull();
+
+        const filters = await screen.findByRole('group', { name: '시설 필터' });
+        const exitChip = [...filters.querySelectorAll('button')].find(
+          (each) => each.getAttribute('title') === '출구',
+        );
+
+        await userEvent.click(exitChip!);
+
+        expect(lastMapSync().facilityView).toBe('exit');
+      });
+
+      /**
        * 층 버튼으로 다른 층을 열어 본 경우. **서 있는 층이 아니라 보고 있는 층을 보낸다.**
        *
        * 예전에는 `currentLocation.floorId` 를 보냈다. 걸어서 층이 바뀌는 경우는 맞았지만 층

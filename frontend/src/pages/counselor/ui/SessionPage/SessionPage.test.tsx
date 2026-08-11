@@ -125,6 +125,16 @@ function sendMapSync(floorId: number | null = null, extra: Partial<MapSyncPayloa
         destinationNodeId: null,
         pathNodes: [],
         screen: null,
+        /*
+          지금 사용자 화면이 보내는 값들. 옛 화면을 흉내내려면 테스트가 `extra` 로 null 을 준다.
+
+          `connectCurrentToRoute` 의 기본을 참으로 둔다 — 이 값이 생기기 전 상담자 지도가 늘 이어
+          그렸으므로(S15P11A206-382 전) 그 동작을 기본으로 삼아야 이 값과 무관한 검사들이 원래
+          보던 것을 그대로 본다.
+        */
+        connectCurrentToRoute: true,
+        facilityView: 'none',
+        selectedFacilityId: null,
         ...extra,
       },
     });
@@ -487,6 +497,8 @@ describe('SessionPage', () => {
         { nodeId: 1, floorId: 1, mapX: 0, mapY: 0 },
         { nodeId: 2, floorId: 1, mapX: 20, mapY: 0 },
       ],
+      /* 사용자가 경로 위에 얹지 못한 상황이다. 이을 자리가 있다는 것이 이 검사의 전제다. */
+      connectCurrentToRoute: true,
     });
 
     const marker = screen.getAllByRole('img', { name: '현재 위치' })[0];
@@ -505,6 +517,59 @@ describe('SessionPage', () => {
 
       expect(x).toBeCloseTo(at.x, 0);
       expect(y).toBeCloseTo(at.y, 0);
+    });
+  });
+
+  /**
+   * 거울에도 시설 아이콘이 있어야 한다. (S15P11A206-382)
+   *
+   * 예전에는 거울에 도면과 경로만 있었다. 상담자가 "저기 화장실 앞에서 기다리세요"라고 짚어 줘도
+   * 그 아이콘이 거울에 없어, 사용자가 무엇을 보고 있는지 확인할 방법이 없었다.
+   *
+   * **사용자가 보낸 표시 상태를 따른다.** 상담자가 자기 지도에서 고른 유형이 아니다 — 왼쪽에서
+   * 화장실만 켜 두었다고 사용자 화면도 그렇다는 뜻은 아니다.
+   *
+   * 왼쪽 지도의 마커는 누를 수 있어 `button` 이고, 거울의 마커는 누를 수 없어 `img` 다. 그래서
+   * `img` 로 찾은 것이 곧 거울의 마커다.
+   */
+  describe('거울의 시설 아이콘', () => {
+    /** 거울은 배치 정보(`screen`)가 와야 그려진다. */
+    const SCREEN = {
+      width: 390,
+      height: 844,
+      lower: { x: 0, y: 0.545, width: 1, height: 0.455 },
+      map: { x: 0.041, y: 0.5616, width: 0.9179, height: 0.3555 },
+      cameraSource: { width: 1920, height: 1080 },
+    };
+
+    beforeEach(() => {
+      facilityMocks.data = [
+        { facilityId: 7, floorId: 1, facilityType: 'toilet', nameKo: '화장실', mapX: 0, mapY: 0 },
+      ] as unknown as typeof facilityMocks.data;
+    });
+
+    it('사용자가 보낸 표시 상태대로 아이콘을 그린다', async () => {
+      await renderWithMapSync(1, { screen: SCREEN, facilityView: 'all' });
+
+      expect(await screen.findByRole('img', { name: '화장실' })).toBeInTheDocument();
+    });
+
+    it('사용자가 숨겼으면 거울에도 그리지 않는다', async () => {
+      await renderWithMapSync(1, { screen: SCREEN, facilityView: 'none' });
+
+      await screen.findByText('사용자 시점 따라가기');
+      expect(screen.queryByRole('img', { name: '화장실' })).toBeNull();
+    });
+
+    /**
+     * 옛 사용자 화면은 표시 상태를 보내지 않는다. 모르는 것을 짐작해 그리면 사용자 화면에 없는
+     * 아이콘이 거울에 뜬다.
+     */
+    it('표시 상태를 모르면 그리지 않는다', async () => {
+      await renderWithMapSync(1, { screen: SCREEN, facilityView: null });
+
+      await screen.findByText('사용자 시점 따라가기');
+      expect(screen.queryByRole('img', { name: '화장실' })).toBeNull();
     });
   });
 

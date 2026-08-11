@@ -354,6 +354,21 @@ export function SessionPage() {
   /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
   const facilityType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
   /**
+   * 거울이 그릴 시설 유형. **사용자 화면이 보낸 상태에서 온다.** (S15P11A206-382)
+   *
+   * 위 `facilityType` 은 상담자가 자기 지도에서 고른 것이라 거울에 쓰면 안 된다. 거울은 사용자가
+   * 보고 있는 것을 비추는 자리이고, 상담자가 왼쪽에서 화장실만 켜 두었다고 사용자 화면도 그렇다는
+   * 뜻은 아니다.
+   *
+   * 옛 사용자 화면은 이 값을 보내지 않아 `null` 이다. 그때는 유형도 `null` 이고 `showAllFacilities`
+   * 도 거짓이 되어 아무것도 그리지 않는다 — 지금까지의 동작이다.
+   */
+  const mirrorFacilityView = mapSync?.facilityView ?? null;
+  const mirrorFacilityType =
+    mirrorFacilityView === null || mirrorFacilityView === 'all' || mirrorFacilityView === 'none'
+      ? null
+      : mirrorFacilityView;
+  /**
    * 사용자 화면 거울의 배치. 사용자가 직접 재서 보낸 값을 그대로 쓴다. (S15P11A206-89)
    *
    * **여기서 계산하지 않는다.** 카메라와 지도가 나뉘는 자리는 화면 높이에 따라 달라지고 카메라
@@ -1258,6 +1273,23 @@ export function SessionPage() {
                       /* 사용자 화면이 보낸 값을 그대로 쓴다. 시점이 같아야 그리기 좌표가 맞는다.
                          회전은 기본값(켬)이다. 근거는 왼쪽 지도의 같은 속성 주석에 있다. */
                       connectCurrentToRoute={mapSync.connectCurrentToRoute ?? true}
+                      /**
+                       * 시설 아이콘도 사용자 화면과 같이 그린다. (S15P11A206-382)
+                       *
+                       * 예전에는 도면과 경로만 있었다. 상담자가 "저기 화장실 앞에서 기다리세요"
+                       * 라고 짚어 줘도 그 아이콘이 거울에 없어, 사용자가 무엇을 보고 있는지 확인할
+                       * 수 없었다.
+                       *
+                       * **누를 수는 없다.** `onSelectFacility` 를 넘기지 않으면 마커가 탭을 받지
+                       * 않는다(`IndoorMapOverlay`). 거울에서 시설을 골라 사용자 화면을 바꾸면
+                       * 거울이 아니게 된다 — 그 조작은 왼쪽 지도에 있다.
+                       *
+                       * 옛 사용자 화면은 표시 상태를 보내지 않는다. 그때는 그리지 않는다 —
+                       * 모르는 상태를 짐작해 그리면 사용자 화면에 없는 아이콘이 거울에 뜬다.
+                       */
+                      facilityType={mirrorFacilityType}
+                      showAllFacilities={mapSync.facilityView === 'all'}
+                      selectedFacilityId={mapSync.selectedFacilityId}
                       followCamera
                     />
                   </div>

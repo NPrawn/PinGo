@@ -986,6 +986,18 @@ export function ConsultSessionPage() {
          */
         connectCurrentToRoute: connectDisplayedToRoute,
         /**
+         * 지금 그리고 있는 시설 표시 상태와 이름표를 띄운 시설. (S15P11A206-382)
+         *
+         * 거울이 시설 아이콘까지 같이 그리는 근거다. 이것이 없으면 거울에는 도면과 경로만 있고
+         * 시설이 하나도 없어, 상담자가 "저기 화장실 앞에서 기다리세요"라고 짚어 준 자리를 거울에서
+         * 확인할 수 없다.
+         *
+         * `effectiveView` 를 보낸다. 고른 값 그대로가 아니라 **층에 없는 유형을 걸러 낸 뒤의 값**
+         * 이라 실제로 화면에 그려지는 상태와 같다.
+         */
+        facilityView: effectiveView,
+        selectedFacilityId: selectedFacility?.facilityId ?? null,
+        /**
          * 사용자가 바라보는 방향. 상담자 화면은 이것으로 마커의 부채꼴만 돌린다 — 지도는
          * 북쪽에 고정한다(`rotateWithHeading={false}`). 역 구조를 짚어 주려면 도면의 방위가
          * 고정돼 있어야 한다.
@@ -1015,6 +1027,9 @@ export function ConsultSessionPage() {
     displayedFloorId,
     displayedLocation,
     connectDisplayedToRoute,
+    /* 시설 칩을 누르거나 마커를 골라도 다시 보낸다. 거울이 같은 아이콘을 그려야 한다. */
+    effectiveView,
+    selectedFacility,
     destination,
     destinationPoint,
     /**
