@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -1014,19 +1014,27 @@ export function NavigationPage() {
               <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
           </div>
-          {/* 방향을 알 때만 그린다. 모르는데 위를 향한 화살표를 두면 "정면"이라고 말하는 셈이다. */}
+          {/*
+            방향을 알 때만 그린다. 모르는데 위를 향한 화살표를 두면 "정면"이라고 말하는 셈이다.
+
+            **자막을 두지 않는다.** 같은 문장을 위 안내 카드가 이미 말하고 있어 화면에서 두 번
+            읽힌다. 대신 `aria-label`에 그대로 남긴다 — 화면을 읽어 주는 사용자에게는 이 라벨이
+            방향을 전달하는 유일한 경로다. (S15P11A206-382)
+
+            셰브론 셋을 겹쳐 바닥에 눕힌 모양이다. 기울기는 CSS가, 방향은 이 자리에서 준다.
+          */}
           {camGuide && (
-            <>
-              <div
-                className={styles.arrow}
-                style={{ transform: `rotate(${camGuide.relativeDeg}deg)` }}
-                role="img"
-                aria-label={camGuide.caption}
-              >
-                ↑
-              </div>
-              <div className={styles.camCaption}>{camGuide.caption}</div>
-            </>
+            <div
+              className={styles.arrow}
+              style={{ '--arrow-deg': `${camGuide.relativeDeg}deg` } as CSSProperties}
+              role="img"
+              aria-label={camGuide.caption}
+            >
+              {/* 앞쪽이 먼저 오도록 뒤에서부터 쌓는다(`column-reverse`). */}
+              <span className={styles.chevron} />
+              <span className={styles.chevron} />
+              <span className={styles.chevron} />
+            </div>
           )}
         </div>
 
