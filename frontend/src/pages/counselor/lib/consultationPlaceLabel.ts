@@ -19,8 +19,8 @@
  * TODO(S15P11A206-382): 서버가 실제 이름을 보내기 시작하면 이 파일을 제거하고 응답 값을 직접 쓴다.
  */
 
-/** 시연 여정의 출발지. 역삼역 B3 승강장에서 출발한다. */
-const FALLBACK_ORIGIN_LABEL = '지하3층 승강장';
+/** 출발지 정보가 없을 때 표시할 기본 위치. */
+const FALLBACK_ORIGIN_LABEL = '3번출구 앞';
 
 /** 시연 여정의 목적지. 3번 출구로 나간다. */
 const FALLBACK_DESTINATION_LABEL = '3번 출구';

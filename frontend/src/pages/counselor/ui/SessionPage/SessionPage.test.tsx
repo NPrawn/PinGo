@@ -409,7 +409,7 @@ describe('SessionPage', () => {
     renderPage();
 
     /* 한 줄에 둘이 함께 적히므로 그 요소를 잡아 두 값을 함께 본다. */
-    const route = await screen.findByText(/지하3층 승강장/);
+    const route = await screen.findByText(/3번출구 앞/);
 
     expect(route.textContent).toContain('3번 출구');
     // 식별자는 상담자에게 아무 뜻이 없다. 화면에 남기지 않는다.
