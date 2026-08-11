@@ -384,4 +384,68 @@ describe('시점 추종', () => {
       expect(state.current!.view.rotation).toBe(0);
     });
   });
+
+  /**
+   * `spanPx`를 어느 축에 맞출지. (S15P11A206-382)
+   *
+   * 기본은 가로다. 그래서 세로로 보이는 범위가 상자 비율에 그대로 좌우된다 — 가로로 긴 상담자
+   * 지도(비율 0.40)는 사용자 화면(비율 0.95)의 절반도 담지 못했고, 같은 경로가 전혀 다른 그림으로
+   * 보였다. `shorter`는 짧은 축에 맞춰 두 축 모두 최소 `spanPx`를 담게 한다.
+   */
+  describe('담을 범위의 기준축', () => {
+    /** 상담자 메인 지도와 같은 비율. 가로로 길다. */
+    const WIDE_BOX = { width: 1170, height: 468 };
+
+    /** 캔버스 픽셀로 잰 가시 범위. `scale * fit`이 캔버스→화면 배율이다. */
+    function visibleSpan(view: MapView, box: { width: number; height: number }) {
+      const fit = Math.min(box.width / CANVAS.width, box.height / CANVAS.height);
+      const perCanvasPx = view.scale * fit;
+
+      return { x: box.width / perCanvasPx, y: box.height / perCanvasPx };
+    }
+
+    it('기본은 가로에 맞춘다. 세로는 상자 비율만큼만 담긴다', () => {
+      vi.unstubAllGlobals();
+      stubResizeObserver(WIDE_BOX);
+
+      const { state } = mount(followOptions({ px: 1200, py: 400 }));
+      const span = visibleSpan(state.current!.view, WIDE_BOX);
+
+      expect(span.x).toBeCloseTo(SPAN_PX, 0);
+      // 가로로 긴 상자라 세로는 절반도 담기지 않는다. 이것이 보고된 현상이었다.
+      expect(span.y).toBeCloseTo(SPAN_PX * (WIDE_BOX.height / WIDE_BOX.width), 0);
+      expect(span.y).toBeLessThan(SPAN_PX / 2);
+    });
+
+    it('shorter는 짧은 축에 맞춰 두 축 모두 담는다', () => {
+      vi.unstubAllGlobals();
+      stubResizeObserver(WIDE_BOX);
+
+      const { state } = mount({ ...followOptions({ px: 1200, py: 400 }), spanAxis: 'shorter' });
+      const span = visibleSpan(state.current!.view, WIDE_BOX);
+
+      // 짧은 축(세로)에 정확히 담기고, 긴 축은 비율만큼 더 담는다.
+      expect(span.y).toBeCloseTo(SPAN_PX, 0);
+      expect(span.x).toBeCloseTo(SPAN_PX * (WIDE_BOX.width / WIDE_BOX.height), 0);
+      // 두 축 모두 최소 `spanPx`를 담는다는 것이 이 값의 계약이다.
+      expect(span.x).toBeGreaterThanOrEqual(SPAN_PX - 1);
+      expect(span.y).toBeGreaterThanOrEqual(SPAN_PX - 1);
+    });
+
+    /** 사용자 화면처럼 정사각형에 가까운 상자에서는 기준축을 바꿔도 거의 같다. */
+    it('정사각형에 가까운 상자에서는 두 기준이 사실상 같다', () => {
+      const byWidth = mount(followOptions({ px: 1200, py: 400 }));
+      const widthSpan = visibleSpan(byWidth.state.current!.view, BOX);
+
+      const byShorter = mount({
+        ...followOptions({ px: 1200, py: 400 }),
+        spanAxis: 'shorter',
+      });
+      const shorterSpan = visibleSpan(byShorter.state.current!.view, BOX);
+
+      // 314×291 이면 차이가 8% 안쪽이다. 거울 지도가 기본값으로 이미 맞는 근거다.
+      expect(shorterSpan.y / widthSpan.y).toBeCloseTo(BOX.width / BOX.height, 1);
+      expect(shorterSpan.y).toBeGreaterThanOrEqual(widthSpan.y);
+    });
+  });
 });

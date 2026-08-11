@@ -38,9 +38,10 @@ const signaling = vi.hoisted(() => ({
    * 예전에는 훅 반환값 안에서 `vi.fn()` 을 만들어 테스트가 호출 기록을 볼 수 없었다. MAP_SYNC 가
    * 무엇을 보내는지가 검사 대상이므로(S15P11A206-382) 밖으로 끌어낸다.
    */
-  sendConsultEvent: vi.fn(
-    (_event: { eventType: string; payload: Record<string, unknown> }) => true,
-  ),
+  /* 인자 타입은 제네릭으로 준다. 자리만 채우는 매개변수를 두면 미사용으로 잡힌다. */
+  sendConsultEvent: vi.fn<
+    (event: { eventType: string; payload: Record<string, unknown> }) => boolean
+  >(() => true),
 }));
 
 /** 권한 조회는 이 화면의 관심사가 아니다. 사라졌는지 여부만 테스트가 정한다. */

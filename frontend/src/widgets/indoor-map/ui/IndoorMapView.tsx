@@ -86,6 +86,23 @@ interface IndoorMapViewProps {
    */
   followCamera?: boolean;
   /**
+   * 추종 범위를 **사용자가 보는 만큼 담을지**. 기본은 담지 않는다. (S15P11A206-382)
+   *
+   * 추종 배율은 `FOLLOW_SPAN_PX`(60m)를 상자 **가로**에 맞춰 정해진다. 그래서 세로로 보이는 범위가
+   * 상자 비율에 그대로 좌우된다 — 사용자 화면(비율 약 0.95)은 60m×57m를 보는데, 가로로 긴 상담자
+   * 지도(비율 약 0.40)는 60m×24m밖에 못 본다. 사용자가 보는 것의 절반도 안 되는 화면에
+   * "사용자와 같은 지도"라고 적혀 있었다.
+   *
+   * 켜면 60m를 **짧은 축**에 맞춘다. 가로로 긴 상자에서는 세로 60m·가로 150m가 되어 사용자가 보는
+   * 범위를 품는다. 상담자는 사용자가 보는 것 + 주변 맥락을 함께 본다.
+   *
+   * **기본을 바꾸지 않는다.** 안내 화면 지도 상자도 가로로 길어(358×278) 기본을 바꾸면 사용자
+   * 화면의 배율까지 함께 내려가고, 그 화면은 앞쪽을 좁게 보는 것이 목적이다.
+   *
+   * 거울 지도에는 켜지 않는다. 그쪽은 상자 비율이 사용자 화면과 같아 기본값으로 이미 일치한다.
+   */
+  coverUserSpan?: boolean;
+  /**
    * 진행 방향이 화면 위를 향하도록 **지도를 돌릴지**. 기본은 돌린다.
    *
    * `followCamera`가 켜져 있을 때만 뜻이 있다. 추종은 그대로 두고 회전만 끄는 자리다.
@@ -177,6 +194,7 @@ export function IndoorMapView({
   destinationNodeId,
   onSelectFacility,
   followCamera = false,
+  coverUserSpan = false,
   rotateWithHeading = true,
   onRecenter,
   showZoomControls = false,
@@ -258,6 +276,7 @@ export function IndoorMapView({
     target: followTarget,
     canvas: PLAN_CANVAS,
     spanPx: FOLLOW_SPAN_PX,
+    spanAxis: coverUserSpan ? 'shorter' : 'width',
     anchorY: FOLLOW_ANCHOR_Y,
     rotationDeg: mapRotationDeg,
   });

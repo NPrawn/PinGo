@@ -64,8 +64,22 @@ export interface FollowOptions {
   target: { px: number; py: number } | null;
   /** 표시 캔버스 크기. 화면 배치를 계산하는 데 쓴다. */
   canvas: { width: number; height: number };
-  /** 화면 가로에 담을 캔버스 픽셀. 내비처럼 앞쪽을 보려면 좁게 잡는다. */
+  /** 화면에 담을 캔버스 픽셀. 내비처럼 앞쪽을 보려면 좁게 잡는다. 어느 축에 맞출지는 `spanAxis`. */
   spanPx: number;
+  /**
+   * `spanPx`를 상자의 어느 축에 맞출지. 기본은 `width`다. (S15P11A206-382)
+   *
+   * **왜 필요한가.** `width`로만 맞추면 세로로 보이는 범위가 상자 비율에 그대로 좌우된다. 같은
+   * `spanPx`(60m)를 두고도 사용자 화면(비율 약 0.95)은 60m×57m를, 상담자 화면(비율 약 0.40)은
+   * 60m×24m를 본다. 상담자가 사용자의 절반도 못 보면서 "사용자와 같은 지도"라고 적혀 있었다.
+   *
+   * `shorter`는 짧은 축에 맞춘다. 그러면 **두 축이 모두 최소 `spanPx`를 담는다** — 가로로 긴
+   * 상자에서는 세로 60m·가로 150m가 되어 사용자가 보는 범위를 품는다.
+   *
+   * 기본을 바꾸지 않는다. 안내 화면 지도 상자도 가로로 길어(358×278) 기본을 `shorter`로 바꾸면
+   * 사용자 화면의 배율까지 함께 내려간다. 필요한 화면만 켠다.
+   */
+  spanAxis?: 'width' | 'shorter';
   /**
    * 따라갈 지점을 화면 세로 어디에 둘지(0이 위, 1이 아래).
    *
@@ -453,7 +467,15 @@ function computeFollowView(
   const fit = Math.min(box.width / follow.canvas.width, box.height / follow.canvas.height);
   if (!(fit > 0)) return null;
 
-  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, box.width / (follow.spanPx * fit)));
+  /**
+   * `spanPx`를 어느 축에 맞출지. (S15P11A206-382)
+   *
+   * `scale * fit`이 캔버스→화면 배율이므로, 아래 식은 `기준축 길이 / spanPx`가 된다. 즉 **기준으로
+   * 삼은 축에 정확히 `spanPx`가 담기고** 다른 축은 상자 비율만큼 더 담긴다. 짧은 축을 기준으로
+   * 삼으면 두 축 모두 최소 `spanPx`를 담는다.
+   */
+  const basis = follow.spanAxis === 'shorter' ? Math.min(box.width, box.height) : box.width;
+  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, basis / (follow.spanPx * fit)));
   const rotation = follow.rotationDeg ?? 0;
   const radians = (rotation * Math.PI) / 180;
   const cos = Math.cos(radians);
