@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -34,9 +34,7 @@ import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
 import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
-import { inPlaneAngleDeg } from '@/shared/lib/angle';
 import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
-import { useUnwrappedDeg } from '@/shared/lib/useUnwrappedDeg';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
 import { localizedNameOf, useApiLanguage } from '@/shared/i18n';
 import type { FloorId, RouteUnavailableReason } from '@/shared/types';
@@ -45,7 +43,12 @@ import { stopCamera } from '@/widgets/camera-preview';
 import { ViewfinderBack } from '@/widgets/capture-viewfinder';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { PhoneFrame } from '@/widgets/phone-frame';
-import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
+import {
+  ArDirectionArrow,
+  useXrNavigationSession,
+  XrSessionNotice,
+  XrTrackingBadge,
+} from '@/widgets/xr-navigation';
 import styles from './NavigationPage.module.css';
 
 /**
@@ -68,16 +71,6 @@ import styles from './NavigationPage.module.css';
  * 처럼 아직 시드되지 않은 유형도 같은 규칙으로 자연히 사라진다.
  */
 const MAP_FILTERS = FACILITY_MAP_FILTERS;
-
-/**
- * 카메라 위 화살표를 눕히는 각도(도). (S15P11A206-382)
- *
- * **여기가 유일한 출처다.** CSS가 이 값으로 평면을 눕히고, 화면이 같은 값으로 방향각을 보정한다
- * (`inPlaneAngleDeg`). 둘이 갈라지면 화살표가 지도와 다른 방향을 가리킨다.
- *
- * 값은 시안 검토에서 정했다. 많이 눕힌 쪽이 바닥에 놓인 느낌이 가장 강하다.
- */
-const ARROW_TILT_DEG = 58;
 
 const PERSONA_STAIRS_6 = {
   fromNodeId: 234,
@@ -606,20 +599,6 @@ export function NavigationPage() {
         };
 
   /**
-   * 화살표를 실제로 돌릴 각도. **접힌 값을 그대로 쓰지 않는다.** (S15P11A206-382)
-   *
-   * 순서가 중요하다 — 눕힌 평면 보정을 **먼저** 하고 그 결과를 이어 붙인다. `inPlaneAngleDeg`는
-   * 주기 함수라 바퀴 수를 잃으므로, 이어 붙인 값을 보정하면 감아 둔 바퀴가 사라진다.
-   *
-   * 이어 붙이지 않으면 경로 반대쪽을 보고 좌우로 조금씩 돌릴 때 화살표가 의미 없이 한 바퀴
-   * 돈다. 방향각이 `+179도`에서 `-179도`로 넘어가는 순간 값이 358도 움직이는데, 실제로 사용자가
-   * 돈 것은 2도다. 이어 붙이면 뒤를 보는 동안 화살표도 뒤를 계속 가리킨다.
-   */
-  const arrowTargetDeg =
-    camGuide === null ? null : inPlaneAngleDeg(camGuide.relativeDeg, ARROW_TILT_DEG);
-  const arrowDeg = useUnwrappedDeg(arrowTargetDeg);
-
-  /**
    * 목적지 마커. **이름과 좌표가 같은 곳을 가리켜야 한다.**
    *
    * 이전에는 좌표가 목업 상수(3번출구 엘리베이터)이고 이름은 경로 옵션 화면에서 온 문자열
@@ -1056,33 +1035,11 @@ export function NavigationPage() {
               <span className={styles.instructionMeta}>{instruction.meta}</span>
             </div>
           </div>
-          {/*
-            방향을 알 때만 그린다. 모르는데 위를 향한 화살표를 두면 "정면"이라고 말하는 셈이다.
-
-            **자막을 두지 않는다.** 같은 문장을 위 안내 카드가 이미 말하고 있어 화면에서 두 번
-            읽힌다. 대신 `aria-label`에 그대로 남긴다 — 화면을 읽어 주는 사용자에게는 이 라벨이
-            방향을 전달하는 유일한 경로다. (S15P11A206-382)
-
-            셰브론 셋을 겹쳐 바닥에 눕힌 모양이다. 기울기는 CSS가, 방향은 이 자리에서 준다.
-          */}
-          {camGuide && arrowDeg !== null && (
-            <div
-              className={styles.arrow}
-              style={
-                {
-                  '--arrow-tilt': `${ARROW_TILT_DEG}deg`,
-                  '--arrow-deg': `${arrowDeg}deg`,
-                } as CSSProperties
-              }
-              role="img"
-              aria-label={camGuide.caption}
-            >
-              {/* 앞쪽이 먼저 오도록 뒤에서부터 쌓는다(`column-reverse`). */}
-              <span className={styles.chevron} />
-              <span className={styles.chevron} />
-              <span className={styles.chevron} />
-            </div>
-          )}
+          {/* 상담 화면과 같은 화살표다. 기울기·방향 보정·이어 붙이기는 위젯이 갖고 있다. */}
+          <ArDirectionArrow
+            relativeDeg={camGuide?.relativeDeg ?? null}
+            label={camGuide?.caption ?? ''}
+          />
         </div>
 
         <div className={styles.lower}>

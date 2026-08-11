@@ -16,6 +16,7 @@ import { useStationFloorMaps } from '@/entities/floor-map';
 import {
   MAX_WAYPOINTS,
   xrDistanceScaleOf,
+  routeBearingOf,
   routeProgressOf,
   useNavigationStore,
   type IndoorPoint,
@@ -48,7 +49,12 @@ import { Button, Icon, MapPreview, Sheet } from '@/shared/ui';
 import { IndoorMapView } from '@/widgets/indoor-map';
 import { VPS_FRAME_SIZE } from '@/widgets/camera-preview';
 import { PhoneFrame } from '@/widgets/phone-frame';
-import { useXrNavigationSession, XrSessionNotice, XrTrackingBadge } from '@/widgets/xr-navigation';
+import {
+  ArDirectionArrow,
+  useXrNavigationSession,
+  XrSessionNotice,
+  XrTrackingBadge,
+} from '@/widgets/xr-navigation';
 import styles from './ConsultSessionPage.module.css';
 
 /** 상담자가 끊었는지 확인하는 간격. 끊긴 걸 알아채기까지 사용자가 기다리는 시간이기도 하다. */
@@ -781,6 +787,48 @@ export function ConsultSessionPage() {
       : waypointNodeIds.filter((nodeId) => progress.passedNodeIds.includes(nodeId)).length;
 
   /**
+   * 카메라 위에 얹는 방향 화살표. **안내 화면과 같은 계산이다.** (S15P11A206-382)
+   *
+   * 상담 중에도 사용자는 걷는다. 이 화면에 화살표가 없으면 카메라 영상 위에 방향이 하나도 없어,
+   * 상담자가 "그쪽으로 조금 더 가세요"라고 말할 때 어느 쪽인지 짚어 줄 표시가 화면에 없다.
+   * 지도는 아래 절반에 있고 그것만 보면서 걸을 수는 없다.
+   *
+   * 기준이 되는 자리·게이트·기울기 보정을 안내 화면과 똑같이 맞춘다. 두 화면이 같은 카메라를
+   * 비추므로 갈라지면 화면을 오갈 때 화살표가 다른 곳을 가리킨다.
+   */
+  const activeStep =
+    progress.currentStepIndex === null
+      ? undefined
+      : routeResult?.steps?.[progress.currentStepIndex];
+  /**
+   * 층을 오르내리는 구간에서는 수평 방향을 그리지 않는다. 엘리베이터 앞에서 화살표가 통로를
+   * 가리키면 그쪽으로 걷게 된다 — 가야 할 곳은 위층이다.
+   */
+  const activeStepMovesVertically =
+    activeStep?.moveType === 'elevator' ||
+    activeStep?.moveType === 'stair' ||
+    activeStep?.moveType === 'escalator';
+  const bearing = routeBearingOf({
+    pathNodes,
+    /**
+     * **경로 위에 얹은 자리를 쓴다.** 아래 지도 마커와 같은 값이다.
+     *
+     * 날것의 좌표를 쓰면 측위 오차가 그대로 각도로 들어간다 — 옆으로 2m 벗어나 있고 목표 노드가
+     * 3m 앞이면 34°다. 두 점이 모두 경로선 위에 있으면 그 항이 사라진다.
+     */
+    currentLocation: progress.snappedLocation ?? currentLocation,
+    headingDeg,
+    travelledM: progress.travelledM,
+  });
+  const camGuide =
+    progress.offRoute || activeStepMovesVertically || bearing === null
+      ? null
+      : {
+          relativeDeg: bearing.relativeDeg,
+          caption: t(`user.navigation.cameraDirection.${bearing.turn}`),
+        };
+
+  /**
    * 보고 있는 지도를 상담자 화면에 그대로 옮긴다.
    *
    * 상담자는 사용자의 안내 상태를 알 방법이 없다. 이 스냅숏이 없으면 상담자 화면은 사용자와
@@ -1142,6 +1190,17 @@ export function ConsultSessionPage() {
               </div>
             )}
           </div>
+          {/*
+            안내 화면과 같은 방향 화살표. 기울기·방향 보정·이어 붙이기는 위젯이 갖고 있다.
+
+            **상담자에게는 건너가지 않는다.** 상담자가 받는 것은 XR 세션의 카메라 프레임이고 이
+            화살표는 DOM 오버레이에 있다. 상담자 화면의 방향 표시는 거울 지도의 마커 부채꼴이
+            맡는다(`MAP_SYNC` 의 `headingDeg`).
+          */}
+          <ArDirectionArrow
+            relativeDeg={camGuide?.relativeDeg ?? null}
+            label={camGuide?.caption ?? ''}
+          />
         </div>
 
         {/* `ref` 는 상담자에게 보낼 배치를 재는 데 쓴다 — 카메라가 끝나는 자리다. */}
