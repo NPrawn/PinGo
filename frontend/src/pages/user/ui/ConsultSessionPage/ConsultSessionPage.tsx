@@ -32,7 +32,7 @@ import { usePermissionsRevoked } from '@/features/permissions';
 import { readForwardMap } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
-import { env, USER_ROUTES } from '@/shared/config';
+import { USER_ROUTES } from '@/shared/config';
 import { localizedNameOf } from '@/shared/i18n';
 import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
 import { localizeUserLabel } from '@/shared/lib/localizeUserLabel';
@@ -160,8 +160,17 @@ export function ConsultSessionPage() {
     signalingAccessToken,
     handleDataEvent,
     userLanguage,
-    /* Demo mode replaces both sides' STT with the fixed presentation script. */
-    env.VITE_DEMO_CAPTIONS === 'true' ? 'demo' : 'server',
+    /*
+      사용자 쪽은 서버에 받아쓰기를 맡긴다.
+
+      브라우저 음성 인식은 `getUserMedia` 와 마이크를 다툰다. 데스크톱에서는 공존하지만
+      안드로이드에서는 배타적이라 통화 캡처가 이기고 인식기가 죽는다. 목소리는 멀쩡히
+      오가니 아무도 눈치채지 못한 채 사용자 발화만 전문에서 통째로 빠졌다.
+
+      상담원 쪽은 데스크톱 Chrome 이라 브라우저 인식이 잘 돌고, 중간 자막이 실시간으로
+      흐르는 이점이 있어 그대로 둔다.
+    */
+    'server',
   );
   /** 상담원이 말한 한국어를 영어 자막으로 옮겨 보여 준다. */
   const translatedRemoteCaption = useCaptionTranslation(
