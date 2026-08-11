@@ -21,7 +21,6 @@ import type { ConsultEventFallback } from './consultEventFallback';
 import { signalingBaseUrl } from './signalingBaseUrl';
 import { flushConsultPhaseReport, markConsultPhase, startRtcStatsMonitor } from '@/shared/lib/perf';
 import type { CaptionTrouble } from './captionTrouble';
-import { DEMO_CAPTIONS } from './demoCaptions';
 
 /** 서버가 한 번에 받는 전문 조각 수와 조각당 길이. 넘기면 400으로 거절된다. */
 const MAX_TRANSCRIPT_SEGMENTS = 500;
@@ -104,7 +103,7 @@ type SignalingRole = 'USER' | 'COUNSELOR';
  * 다투어 안드로이드에서는 잡히지 않는다. `server` 는 마이크 소리를 녹음해 서버에 맡긴다.
  * 중간 결과가 없고 3초쯤 늦는 대신 기기를 가리지 않는다.
  */
-type CaptionSource = 'browser' | 'server' | 'demo';
+type CaptionSource = 'browser' | 'server';
 
 /** 서버 받아쓰기가 잇따라 실패해도 상대에게 알리기까지 견디는 횟수. */
 const MAX_TRANSCRIBE_ERROR_STREAK = 3;
@@ -500,7 +499,6 @@ export function useConsultSignaling(
     let recognition: SpeechRecognitionLike | null = null;
     let recognitionGeneration = 0;
     let captionRestartTimer: number | undefined;
-    let demoCaptionTimers: number[] = [];
     let shouldRecognize = true;
     let socketOpened = false;
     // 메시지 처리가 서로 끼어들지 않게 한 줄로 세운다. OFFER를 적용하는 동안
@@ -1050,45 +1048,6 @@ export function useConsultSignaling(
       armCaptionWatchdog();
     };
 
-    const startDemoCaptions = () => {
-      if (disposed) return;
-
-      setCaptionsSupported(true);
-      reportCaptionStatus(null, null);
-      demoCaptionTimers = DEMO_CAPTIONS[role].flatMap((caption, index) => {
-        const startTimer = window.setTimeout(() => {
-          if (disposed) return;
-
-          setLocalCaption('…');
-          setLocalCaptionFinal(false);
-          setLocalFinalCaptionId(null);
-          sendCaption({ text: '…', final: false, language: caption.language });
-
-          const finalTimer = window.setTimeout(() => {
-            if (disposed) return;
-
-            heardAnything = true;
-            const occurredAt = new Date().toISOString();
-            const captionId = `${roomId}:${role}:demo:${index}`;
-            appendFinalCaption(role, caption.text, { captionId, occurredAt });
-            setLocalCaption(caption.text);
-            setLocalCaptionFinal(true);
-            setLocalFinalCaptionId(captionId);
-            sendCaption({
-              text: caption.text,
-              final: true,
-              language: caption.language,
-              captionId,
-              occurredAt,
-            });
-          }, caption.durationMs);
-          demoCaptionTimers.push(finalTimer);
-        }, caption.delayMs);
-
-        return [startTimer];
-      });
-    };
-
     /**
      * 자막을 처음부터 다시 시작한다. 화면의 '다시 시도' 버튼이 부른다.
      *
@@ -1096,12 +1055,6 @@ export function useConsultSignaling(
      */
     restartCaptionsRef.current = () => {
       if (disposed) return;
-      if (captionSource === 'demo') {
-        demoCaptionTimers.forEach((timer) => window.clearTimeout(timer));
-        demoCaptionTimers = [];
-        startDemoCaptions();
-        return;
-      }
       shouldRecognize = true;
       captionErrorStreak = 0;
       // 다시 시작하는 인식은 아직 아무것도 못 들었다. 감시기도 처음부터 다시 센다.
@@ -1685,9 +1638,7 @@ export function useConsultSignaling(
      * **서버 받아쓰기는 반대로 마이크를 잡은 뒤에 시작한다.** 녹음할 트랙이 있어야 하기
      * 때문인데, 그쪽은 마이크를 새로 열지 않으므로 위의 순서 문제가 애초에 없다.
      */
-    if (captionSource === 'demo') {
-      startDemoCaptions();
-    } else if (captionSource === 'server') {
+    if (captionSource === 'server') {
       void mediaReady.then(() => {
         if (!disposed) startServerCaptions();
       });
@@ -1700,8 +1651,6 @@ export function useConsultSignaling(
       if (offerTimer) window.clearInterval(offerTimer);
       if (recoverTimer) window.clearTimeout(recoverTimer);
       if (captionRestartTimer) window.clearTimeout(captionRestartTimer);
-      demoCaptionTimers.forEach((timer) => window.clearTimeout(timer));
-      demoCaptionTimers = [];
       if (captionWatchdog !== undefined) window.clearTimeout(captionWatchdog);
       stopRtcStatsMonitor?.();
       /**
