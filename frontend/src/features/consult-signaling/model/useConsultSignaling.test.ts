@@ -1373,9 +1373,13 @@ describe('useConsultSignaling', () => {
         'cs_1',
         expect.objectContaining({ audio: expect.any(Blob) }),
       );
-      expect(apiMocks.transcribeConsultationAudio.mock.calls[0]?.[1]).not.toHaveProperty(
-        'language',
-      );
+      /*
+        받아쓸 언어를 함께 보낸다. 자동 감지는 조각 하나만 보고 언어를 정해서, 짧은 대답이나
+        고유명사뿐인 토막에서 자주 틀리고 그때 발화가 통째로 엉뚱한 언어로 음차된다.
+      */
+      expect(apiMocks.transcribeConsultationAudio.mock.calls[0]?.[1]).toMatchObject({
+        language: 'en-US',
+      });
 
       expect(view.result.current.transcript).toEqual([
         { seq: 1, speaker: 'USER', content: '3번 출구로 가려면요?' },

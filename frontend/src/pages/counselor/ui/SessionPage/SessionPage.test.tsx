@@ -19,6 +19,14 @@ const signalingMocks = vi.hoisted(() => ({
     { seq: 1, speaker: 'USER' as const, content: '3번 출구가 어디예요' },
     { seq: 2, speaker: 'COUNSELOR' as const, content: '왼쪽으로 가시면 됩니다' },
   ],
+  /** 화면이 실제로 그리는 목록. 발화 ID와 번역문까지 들어 있다. */
+  transcriptTimeline: [] as {
+    seq: number;
+    speaker: 'USER' | 'COUNSELOR';
+    content: string;
+    translatedContent?: string;
+    captionId: string;
+  }[],
   /** 화면이 등록한 이벤트 수신 함수. 사용자가 보낸 것처럼 흘려 넣는 데 쓴다. */
   onEvent: null as ((event: unknown) => void) | null,
   /** 사용자에게 나간 이벤트. 렌더마다 새로 만들면 무엇이 나갔는지 검사할 수 없다. */
@@ -100,6 +108,11 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
       remoteCaptionError: null,
       captionsSupported: true,
       transcript: signalingMocks.transcript,
+      /* 비어 있으면 화면이 `transcript` 로 대신 그린다. 그 갈래도 테스트가 그대로 쓴다. */
+      transcriptTimeline: signalingMocks.transcriptTimeline.length
+        ? signalingMocks.transcriptTimeline
+        : undefined,
+      updateTranscriptTranslation: vi.fn(),
       sendConsultEvent: signalingMocks.sendConsultEvent,
     };
   },
@@ -170,6 +183,7 @@ describe('SessionPage', () => {
     signalingMocks.remoteFinalCaption = '';
     signalingMocks.remoteFinalCaptionId = null;
     signalingMocks.remoteCaptionFinal = true;
+    signalingMocks.transcriptTimeline = [];
     signalingMocks.translateCaption.mockImplementation(
       (_consultationId: string, text: string, targetLanguage: string) => {
         if (!text) return '';
@@ -183,7 +197,11 @@ describe('SessionPage', () => {
     });
   });
 
-  it('실시간 자막을 한국어와 영어로 함께 표시한다', async () => {
+  /**
+   * 상담원 콘솔은 한국어 전용이다. 사용자가 어느 언어로 말했든 한국어로 옮겨 한 줄만 띄운다 —
+   * 영어 줄은 상담원이 읽지 않으면서 발화마다 번역 요청만 두 배로 냈다.
+   */
+  it('실시간 자막을 한국어로만 표시한다', async () => {
     apiMocks.getCounselorConsultations.mockResolvedValue([
       { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
     ]);
@@ -196,9 +214,68 @@ describe('SessionPage', () => {
     renderPage();
 
     expect(await screen.findByText('한국어: Where is exit three?')).toBeInTheDocument();
-    expect(screen.getByText('English: Where is exit three?')).toBeInTheDocument();
+    // 상담원 발화는 이미 한국어라 옮기지 않는다.
     expect(screen.getByText('3번 출구는 왼쪽입니다.')).toBeInTheDocument();
-    expect(screen.getByText('English: 3번 출구는 왼쪽입니다.')).toBeInTheDocument();
+    expect(screen.queryByText('English: Where is exit three?')).toBeNull();
+    expect(screen.queryByText('English: 3번 출구는 왼쪽입니다.')).toBeNull();
+    // 번역은 사용자 발화 한 건에 대해 한국어 한 번만 나간다.
+    expect(signalingMocks.translateCaption).toHaveBeenCalledWith(
+      'cs_1',
+      'Where is exit three?',
+      'ko',
+      'caption-user-1',
+      expect.any(Function),
+    );
+    expect(
+      signalingMocks.translateCaption.mock.calls.filter((call: unknown[]) => call[2] === 'en'),
+    ).toHaveLength(0);
+  });
+
+  /**
+   * 옮기는 데 걸리는 동안에도 원문을 대신 띄우지 않는다. 사용자가 어느 언어로 말할지는
+   * 상담원이 고르지 않았고, 읽지 못하는 글자를 잠깐 보여 주는 것은 빈 자리보다 낫지 않다.
+   */
+  it('아직 옮기지 못한 사용자 발화는 원문 대신 옮기는 중이라고 적는다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
+    ]);
+    signalingMocks.translateCaption.mockReturnValue('');
+    signalingMocks.remoteCaption = 'Where is exit three?';
+    signalingMocks.remoteFinalCaption = 'Where is exit three?';
+    signalingMocks.remoteFinalCaptionId = 'caption-user-1';
+
+    renderPage();
+
+    expect(await screen.findByText('옮기는 중…')).toBeInTheDocument();
+    expect(screen.queryByText('Where is exit three?')).toBeNull();
+  });
+
+  /** 대화 로그도 한국어 한 줄이다. 상담원이 읽지 못하는 원문 줄은 화면에 남기지 않는다. */
+  it('대화 로그를 한국어로만 보여 준다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
+    ]);
+    signalingMocks.transcriptTimeline = [
+      {
+        seq: 1,
+        speaker: 'USER',
+        content: 'Where is exit three?',
+        translatedContent: '3번 출구가 어디예요?',
+        captionId: 'caption-user-1',
+      },
+      {
+        seq: 2,
+        speaker: 'COUNSELOR',
+        content: '왼쪽으로 가시면 됩니다',
+        captionId: 'caption-counselor-1',
+      },
+    ];
+
+    renderPage();
+
+    expect(await screen.findByText('3번 출구가 어디예요?')).toBeInTheDocument();
+    expect(screen.getByText('왼쪽으로 가시면 됩니다')).toBeInTheDocument();
+    expect(screen.queryByText('Where is exit three?')).toBeNull();
   });
 
   /**

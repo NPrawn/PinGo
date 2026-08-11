@@ -96,6 +96,24 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 type SignalingRole = 'USER' | 'COUNSELOR';
 
+/** 상담원 쪽 발화 언어. 상담원 콘솔은 한국어 전용이라 브라우저 설정과 무관하게 고정한다. */
+const COUNSELOR_SPEECH_LANGUAGE = 'ko-KR';
+
+/**
+ * 화면 언어 코드(`ko`·`en`)를 음성 인식·합성이 받는 BCP47 태그로 바꾼다.
+ *
+ * **`navigator.language` 로 떨어지지 않는다.** 예전에는 고른 언어가 비면 브라우저 설정을 썼는데,
+ * 그러면 같은 상담이 기기마다 다른 언어로 인식된다 — 영어를 고른 사용자의 한국어 폰에서는
+ * `ko-KR` 로 받아쓰고, 그 결과가 다시 영어로 번역돼 상담원에게 간다. 고른 언어가 곧 발화 언어다.
+ */
+function speechLanguageTag(language: string | undefined): string {
+  const base = (language ?? '').slice(0, 2).toLowerCase();
+  if (base === 'ko') return 'ko-KR';
+  if (base === 'ja') return 'ja-JP';
+  if (base === 'zh') return 'zh-CN';
+  return 'en-US';
+}
+
 /**
  * 자막 글자를 어디서 만드는지.
  *
@@ -822,7 +840,7 @@ export function useConsultSignaling(
       currentRecognition.continuous = true;
       currentRecognition.interimResults = true;
       currentRecognition.lang =
-        role === 'COUNSELOR' ? 'ko-KR' : localSpeechLanguage || navigator.language || 'en-US';
+        role === 'COUNSELOR' ? COUNSELOR_SPEECH_LANGUAGE : speechLanguageTag(localSpeechLanguage);
       currentRecognition.onresult = (event) => {
         if (disposed || generation !== recognitionGeneration) return;
         /**
@@ -877,7 +895,7 @@ export function useConsultSignaling(
           sendCaption({
             text,
             final: true,
-            language: currentRecognition.lang || navigator.language,
+            language: currentRecognition.lang,
             captionId,
             occurredAt,
           });
@@ -899,7 +917,7 @@ export function useConsultSignaling(
           sendCaption({
             text: interimTextValue,
             final: false,
-            language: currentRecognition.lang || navigator.language,
+            language: currentRecognition.lang,
           });
           return;
         }
@@ -987,13 +1005,26 @@ export function useConsultSignaling(
     const startServerCaptions = () => {
       if (disposed || !localStream) return;
 
-      // 현재 값은 실제 발화 언어가 아니라 화면 표시 언어다. Whisper에 강제하면 영어 화면에서
-      // 한국어로 말하는 경우 영어처럼 억지로 받아쓰므로, 전사는 자동 언어 감지에 맡긴다.
-      const captionLanguage = localSpeechLanguage || navigator.language;
+      /**
+       * 받아쓸 언어. **고정이다 — Whisper 자동 감지에 맡기지 않는다.**
+       *
+       * 자동 감지는 조각 하나(길어야 6초)만 보고 언어를 정한다. 짧은 대답("네", "yes")이나 역
+       * 이름처럼 고유명사만 있는 조각에서는 자주 틀리고, 한 번 틀리면 그 조각이 통째로 엉뚱한
+       * 언어로 음차돼 돌아온다 — 한국어 발화가 로마자로, 영어 발화가 한글로 적힌다. 그 글이
+       * 그대로 상대 화면에 뜨고 번역까지 걸리므로 무슨 말인지 알 수 없게 된다.
+       *
+       * 상담원은 한국어로만 상담하고 사용자는 시작할 때 언어를 골랐다. 두 값 모두 조각 하나보다
+       * 확실한 근거이므로 그것을 서버에 그대로 실어 보낸다(백엔드가 앞 두 글자만 떼어 쓴다).
+       */
+      const captionLanguage =
+        role === 'COUNSELOR'
+          ? COUNSELOR_SPEECH_LANGUAGE
+          : speechLanguageTag(localSpeechLanguage);
 
       serverRecorder = startServerCaptionRecorder({
         consultationId,
         stream: localStream,
+        language: captionLanguage,
         onFinalText: (text) => {
           if (disposed) return;
 

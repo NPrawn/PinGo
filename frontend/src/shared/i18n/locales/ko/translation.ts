@@ -240,7 +240,7 @@ export const ko = {
         channelOpen: '열림', channelClosed: '닫힘',
         waypoint: '경유 {{order}}', noDestination: '목적지 미지정', captionLabel: '실시간 자막 · 상담원',
         captionWaiting: '상담원이 말하면 이 자리에 표시됩니다.', captionUnsupported: '이 브라우저에서는 음성 자막을 지원하지 않습니다.',
-        captionRetry: '다시 시도',
+        captionRetry: '다시 시도', captionTranslating: '옮기는 중…',
         mapSync: '상담원이 같은 지도를 보며 안내 중이에요',
       },
       navigation: {
