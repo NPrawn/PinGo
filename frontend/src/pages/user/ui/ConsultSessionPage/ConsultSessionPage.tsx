@@ -242,6 +242,23 @@ export function ConsultSessionPage() {
   const storedRouteResult = useNavigationStore((state) => state.routeResult);
   const currentNodeId = useNavigationStore((state) => state.currentNodeId);
   const targetNodeId = useNavigationStore((state) => state.targetNodeId);
+  /**
+   * 지금 살아 있는 역 안 도착지 이름. **안내 화면과 같은 목적지를 띄우기 위해 필요하다.**
+   * (S15P11A206-382)
+   *
+   * 안내 화면은 이 값을 `activeDestination` 이라는 지역 상태로 들고 있고 목적지 이름을 찾을 때
+   * **가장 먼저** 쓴다. 이 화면은 그것을 몰라 `destinationNameKo` 부터 찾았고, 그래서 두 화면이
+   * 다른 곳을 목적지라고 적었다 — 안내 화면은 `3번 출구`, 이 화면은 `스타벅스 아크플레이스`.
+   *
+   * 갈라진 이유는 `destinationFacilityOf` 의 마지막 단계다. 도착 노드에서 이름이 맞는 시설을
+   * 찾지 못하면 **역 전체에서** 찾으므로, `스타벅스 아크플레이스` 로 먼저 물으면 역 어딘가의
+   * 스타벅스를 집어 온다. 역 밖 목적지로 가는 여정에서 실제로 걸어갈 곳은 그 출구다.
+   *
+   * 스토어 값이라 지역 상태와 달리 두 화면이 함께 본다. `setTargetNode` 가 쓰고
+   * `setDestination` 이 비우므로 "지금 향하는 역 안 지점"과 정확히 같이 움직인다 — 상담자가
+   * 목적지를 옮기면(`DESTINATION_CHANGE_REQUESTED`) 그 시설 이름으로 바뀐다.
+   */
+  const targetExitLabel = useNavigationStore((state) => state.targetExitLabel);
   const routeType = useNavigationStore((state) => state.route);
   const waypoints = useNavigationStore((state) => state.waypoints);
   const addWaypoint = useNavigationStore((state) => state.addWaypoint);
@@ -685,13 +702,24 @@ export function ConsultSessionPage() {
     displayLanguage,
     facilityOrigin,
   );
+  /**
+   * 목적지 시설. **라벨 순서를 안내 화면과 똑같이 맞춘다.** (S15P11A206-382)
+   *
+   * `destinationFacilityOf` 는 넘긴 라벨을 **순서대로** 시도하므로 순서가 곧 결과다. 도착 노드
+   * 이름을 먼저 물어야 역 밖 목적지의 이름이 역 안의 동명 시설을 집어 오는 일이 없다. 근거는
+   * `targetExitLabel` 주석에 있다.
+   *
+   * `destination` 은 라벨 목록에서 뺐다. 안내 화면이 쓰지 않는 값이고, 역 밖 목적지 이름이라
+   * 여기 들어가면 지금 고친 것이 그대로 되살아난다. 시설을 찾지 못했을 때의 대체 문구로는
+   * 아래에서 그대로 쓴다.
+   */
   const storedDestinationFacility = destinationFacilityOf(
     facilities,
     destinationType?.toLowerCase() === 'facility' ? destinationId : null,
     targetNodeId,
+    targetExitLabel,
     destinationNameKo,
     destinationNameEn,
-    destination,
   );
   const displayedDestination = destination
     ? (storedDestinationFacility
