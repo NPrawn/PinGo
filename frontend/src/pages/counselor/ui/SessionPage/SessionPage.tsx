@@ -861,10 +861,14 @@ export function SessionPage() {
                        * 미터 떨어져 보인다. 거울 지도에는 이 옵션이 있었는데 이 지도에만 빠져
                        * 있어, 상담자가 보는 큰 지도에서만 경로가 중간에 끊겨 있었다.
                        *
-                       * 사용자 화면과 같은 값이어야 한다. 두 지도가 다른 그림을 보여 주면
-                       * 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수 없다.
+                       * **사용자 화면이 보낸 값을 그대로 쓴다.** (S15P11A206-382) 예전에는 `true`
+                       * 로 박혀 있었다. 주석은 "사용자 화면과 같은 값이어야 한다"고 적혀 있었지만
+                       * 실제로는 사용자가 잇지 않는 동안에도 여기만 이어 그렸다.
+                       *
+                       * 옛 사용자 화면은 이 값을 보내지 않아 `null` 로 읽힌다. 그때는 옛 동작을
+                       * 지킨다 — 잇지 않는 쪽으로 떨어지면 경로가 중간에 끊겨 보인다.
                        */
-                      connectCurrentToRoute
+                      connectCurrentToRoute={mapSync.connectCurrentToRoute ?? true}
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
                       facilityType={facilityType}
@@ -1243,8 +1247,9 @@ export function SessionPage() {
                          어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
                       destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
-                      /* 사용자 화면과 같은 값이어야 시점이 같아진다. 회전은 기본값(켬)이다. */
-                      connectCurrentToRoute
+                      /* 사용자 화면이 보낸 값을 그대로 쓴다. 시점이 같아야 그리기 좌표가 맞는다.
+                         회전은 기본값(켬)이다. 근거는 왼쪽 지도의 같은 속성 주석에 있다. */
+                      connectCurrentToRoute={mapSync.connectCurrentToRoute ?? true}
                       followCamera
                     />
                   </div>

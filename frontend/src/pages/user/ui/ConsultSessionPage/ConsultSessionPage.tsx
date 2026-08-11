@@ -922,10 +922,45 @@ export function ConsultSessionPage() {
         };
 
   /**
+   * 이 화면의 지도가 실제로 그리는 현재 위치. **MAP_SYNC 도 이 값을 보낸다.** (S15P11A206-382)
+   *
+   * 예전에는 지도에는 경로 위에 얹은 자리를 그리고 상담자에게는 날것의 좌표를 보냈다. 그래서
+   * 사용자의 마커는 경로선 위에 있고 상담자의 마커는 그 옆에 떠 있었다 — 측위 오차만큼, 최대
+   * `OFF_ROUTE_M`(15m)까지 벌어진다. 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수
+   * 없게 만드는 종류의 어긋남이다.
+   *
+   * **한 변수로 묶는 것이 고침의 본체다.** 값을 두 곳에 따로 적어 두면 한쪽만 고쳐질 때 조용히
+   * 다시 갈라진다. 실제로 그렇게 갈라져 있었다.
+   *
+   * `useMemo` 로 참조를 안정시킨다. `routeProgressOf` 는 렌더마다 새 객체를 돌려주므로 그대로
+   * 쓰면 아래 발신 effect 가 매 렌더 돌아 DataChannel 로 같은 스냅숏이 쏟아진다.
+   */
+  const snappedFloorId = progress.snappedLocation?.floorId ?? null;
+  const snappedMapX = progress.snappedLocation?.mapX ?? null;
+  const snappedMapY = progress.snappedLocation?.mapY ?? null;
+  const displayedLocation = useMemo<IndoorPoint | null>(
+    () =>
+      snappedFloorId != null && snappedMapX != null && snappedMapY != null
+        ? { floorId: snappedFloorId, mapX: snappedMapX, mapY: snappedMapY }
+        : currentLocation,
+    [snappedFloorId, snappedMapX, snappedMapY, currentLocation],
+  );
+  /**
+   * 내 점과 경로 사이를 이을지. 위와 같은 이유로 한 곳에서만 정한다.
+   *
+   * 얹었으면 점이 이미 경로선 위에 있어 이을 자리가 없다. 상담자 화면은 이 값을 보지 않고 늘
+   * 이어 그렸으므로, 사용자에게는 없는 선이 상담자 화면에만 있었다.
+   */
+  const connectDisplayedToRoute = progress.snappedLocation === null;
+
+  /**
    * 보고 있는 지도를 상담자 화면에 그대로 옮긴다.
    *
    * 상담자는 사용자의 안내 상태를 알 방법이 없다. 이 스냅숏이 없으면 상담자 화면은 사용자와
    * 무관한 지도를 띄우고, 거기에 그린 길은 사용자가 보는 자리와 어긋난다.
+   *
+   * **보내는 것은 "내부 상태"가 아니라 "화면에 그린 것"이다.** (S15P11A206-382) 이 원칙이 깨져
+   * 세 값이 갈라져 있었다 — 현재 위치, 경로 연결선, 표시 층.
    */
   useEffect(() => {
     if (stationId == null) return;
@@ -934,8 +969,22 @@ export function ConsultSessionPage() {
       eventType: 'MAP_SYNC',
       payload: {
         stationId,
-        floorId: currentLocation?.floorId ?? currentFloorId,
-        current: currentLocation,
+        /**
+         * **사용자가 보고 있는 층이다.** 서 있는 층이 아니다. (S15P11A206-382)
+         *
+         * 예전에는 `currentLocation?.floorId` 를 보냈다. 걸어서 층이 바뀌는 경우는 맞았지만, 층
+         * 버튼으로 다른 층을 열어 보면(`pickedFloorId`) 사용자 화면은 B2 인데 상담자 화면과
+         * 거울은 계속 B3 를 그렸다 — "사용자와 같은 지도를 보고 있다"고 적힌 화면에서 상담자가
+         * 다른 층을 본다.
+         */
+        floorId: displayedFloorId ?? null,
+        current: displayedLocation,
+        /**
+         * 내 점과 경로 사이의 연결선을 그릴지. 사용자 화면과 같은 값이어야 한다.
+         *
+         * 옛 사용자 화면은 이 값을 보내지 않으므로 상담자 쪽에서 `?? true` 로 옛 동작을 지킨다.
+         */
+        connectCurrentToRoute: connectDisplayedToRoute,
         /**
          * 사용자가 바라보는 방향. 상담자 화면은 이것으로 마커의 부채꼴만 돌린다 — 지도는
          * 북쪽에 고정한다(`rotateWithHeading={false}`). 역 구조를 짚어 주려면 도면의 방위가
@@ -957,8 +1006,15 @@ export function ConsultSessionPage() {
       },
     });
   }, [
-    currentFloorId,
-    currentLocation,
+    /*
+      화면에 그리는 값들. 사용자가 보는 것이 바뀌면 곧 다시 보낸다. (S15P11A206-382)
+
+      `currentFloorId`·`currentLocation` 을 직접 넣지 않는다 — 아래 세 값이 그것들에서 파생되고,
+      층 버튼 조작(`pickedFloorId`)처럼 원본에는 없는 변화까지 담는다.
+    */
+    displayedFloorId,
+    displayedLocation,
+    connectDisplayedToRoute,
     destination,
     destinationPoint,
     /**
@@ -1310,10 +1366,10 @@ export function ConsultSessionPage() {
               <IndoorMapView
                 stationId={stationId ?? 0}
                 floorId={displayedFloorId}
-                /* 안내 화면과 같이 경로 위에 얹은 자리로 그린다. 두 화면이 같은 자리를 보여야
-                   상담자가 짚어 주는 지점과 사용자가 보는 점이 어긋나지 않는다. 얹을 수 없을
-                   만큼 멀면 null이라 날것의 좌표로 떨어진다. */
-                currentLocation={progress.snappedLocation ?? currentLocation}
+                /* 안내 화면과 같이 경로 위에 얹은 자리로 그린다. 얹을 수 없을 만큼 멀면 날것의
+                   좌표로 떨어진다. **MAP_SYNC 가 보내는 값과 같은 변수다** — 두 곳에 따로 적어
+                   두었더니 상담자 마커만 경로선 밖에 떠 있었다. (S15P11A206-382) */
+                currentLocation={displayedLocation}
                 /* 사용자 화면은 안내 화면과 같이 진행 방향이 위를 향하게 돈다. */
                 currentHeadingDeg={headingDeg}
                 destination={destinationPoint}
@@ -1333,7 +1389,7 @@ export function ConsultSessionPage() {
                   판정되어 지도가 통째로 빈다. 아무것도 그리지 않으면 사용자는 자기 층에 경로가
                   없다고 읽는다. (S15P11A206-83)
                 */
-                connectCurrentToRoute={progress.snappedLocation === null}
+                connectCurrentToRoute={connectDisplayedToRoute}
                 followCamera
                 /* `내 위치` 버튼은 고른 층까지 함께 되돌린다. 시점만 돌리면 다른 층을 보던
                    사용자는 그 층 지도가 자기 좌표로 옮겨진 것만 보고 마커는 그려지지 않는다. */

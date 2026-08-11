@@ -32,6 +32,15 @@ const signaling = vi.hoisted(() => ({
   } as Record<string, unknown>,
   /** 화면이 넘긴 이벤트 처리기. 테스트가 상담원이 보낸 것처럼 밀어 넣는다. */
   onDataEvent: null as ((event: unknown) => void) | null,
+  /**
+   * 화면이 상담자에게 보낸 이벤트. **렌더마다 새로 만들지 않는다.**
+   *
+   * 예전에는 훅 반환값 안에서 `vi.fn()` 을 만들어 테스트가 호출 기록을 볼 수 없었다. MAP_SYNC 가
+   * 무엇을 보내는지가 검사 대상이므로(S15P11A206-382) 밖으로 끌어낸다.
+   */
+  sendConsultEvent: vi.fn(
+    (_event: { eventType: string; payload: Record<string, unknown> }) => true,
+  ),
 }));
 
 /** 권한 조회는 이 화면의 관심사가 아니다. 사라졌는지 여부만 테스트가 정한다. */
@@ -91,7 +100,7 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
       localCaption: '',
       captionsSupported: true,
       transcript: [],
-      sendConsultEvent: vi.fn(() => true),
+      sendConsultEvent: signaling.sendConsultEvent,
       ...signaling.state,
     };
   },
@@ -536,6 +545,112 @@ describe('ConsultSessionPage', () => {
     });
 
     /** 상담원은 자유 탐색으로 다른 층을 볼 수 있다. 그 층에 그린 선이 여기 남으면 안 된다. */
+    /**
+     * MAP_SYNC 는 **화면에 그린 것**을 보낸다. 내부 상태가 아니다. (S15P11A206-382)
+     *
+     * 세 값이 갈라져 있었다 — 현재 위치, 경로 연결선, 표시 층. 셋 다 사용자 화면은 한 값을 쓰고
+     * 상담자에게는 다른 값이 갔다. 상담자는 "사용자와 같은 지도"라고 적힌 화면에서 다른 그림을
+     * 보고 안내하게 된다.
+     */
+    describe('상담자에게 보내는 지도 스냅숏', () => {
+      /** 마지막으로 보낸 MAP_SYNC 페이로드. 위치·방향이 바뀔 때마다 여러 번 나간다. */
+      function lastMapSync() {
+        const sent = signaling.sendConsultEvent.mock.calls
+          .map(([event]) => event)
+          .filter((event) => event.eventType === 'MAP_SYNC');
+
+        expect(sent.length).toBeGreaterThan(0);
+
+        return sent[sent.length - 1].payload;
+      }
+
+      /**
+       * 경로선에서 3m 옆으로 벗어난 자리.
+       *
+       * 경로는 (0,0)→(-12.4,15.6)이고 이 점은 그 선의 중간 지점에서 수직으로 3m 떨어져 있다.
+       * `OFF_ROUTE_M`(15m) 안쪽이라 경로 위에 얹히고, 얹은 자리는 중간 지점 (-6.2, 7.8)이다.
+       * 날것의 좌표를 보내면 상담자 마커가 경로선 밖 3m 지점에 뜬다.
+       */
+      const OFF_LINE = { mapX: -3.852, mapY: 9.667 };
+
+      it('경로 위에 얹은 자리를 보낸다. 날것의 좌표가 아니다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: OFF_LINE.mapX,
+          currentMapY: OFF_LINE.mapY,
+          routeResult: { pathNodes: PATH },
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        const current = lastMapSync().current as { floorId: number; mapX: number; mapY: number };
+
+        expect(current.floorId).toBe(1);
+        expect(current.mapX).toBeCloseTo(-6.2, 1);
+        expect(current.mapY).toBeCloseTo(7.8, 1);
+      });
+
+      /** 얹었으면 점이 이미 경로선 위에 있어 이을 자리가 없다. */
+      it('얹었으면 경로 연결선을 그리지 말라고 알린다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: OFF_LINE.mapX,
+          currentMapY: OFF_LINE.mapY,
+          routeResult: { pathNodes: PATH },
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        expect(lastMapSync().connectCurrentToRoute).toBe(false);
+      });
+
+      /**
+       * 경로가 없으면 얹을 곳도 없다. 그때는 날것의 좌표를 보내고 이어 그리라고 알린다 —
+       * 상담자 화면에서 경로가 중간에 끊겨 보이는 것을 막는 쪽이다.
+       */
+      it('얹지 못했으면 날것의 좌표를 보내고 이어 그리라고 알린다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: 3,
+          currentMapY: -4,
+          routeResult: null,
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        expect(lastMapSync().current).toMatchObject({ floorId: 1, mapX: 3, mapY: -4 });
+        expect(lastMapSync().connectCurrentToRoute).toBe(true);
+      });
+
+      /**
+       * 층 버튼으로 다른 층을 열어 본 경우. **서 있는 층이 아니라 보고 있는 층을 보낸다.**
+       *
+       * 예전에는 `currentLocation.floorId` 를 보냈다. 걸어서 층이 바뀌는 경우는 맞았지만 층
+       * 버튼 조작은 담기지 않아, 사용자가 B3 를 열어 보는 동안 상담자는 B2 를 보고 있었다.
+       */
+      it('층 버튼으로 다른 층을 열면 그 층을 보낸다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: 0,
+          currentMapY: 0,
+          routeResult: { pathNodes: PATH },
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        expect(lastMapSync().floorId).toBe(1);
+
+        // floorId 2 가 B3 다. 목업 층 목록의 두 번째 항목이다.
+        await userEvent.click(await screen.findByRole('button', { name: 'B3' }));
+
+        expect(lastMapSync().floorId).toBe(2);
+      });
+    });
+
     it('층 목록을 지도 응답에서 만들어 버튼으로 둔다', async () => {
       renderPage();
 
