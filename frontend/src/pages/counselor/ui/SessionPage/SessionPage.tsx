@@ -37,6 +37,10 @@ import {
 import { Badge, Button, FloorRail, Icon, MapPreview, MapToggle, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import { IndoorMapView } from '@/widgets/indoor-map';
+import {
+  consultationDestinationLabel,
+  consultationOriginLabel,
+} from '../../lib/consultationPlaceLabel';
 import styles from './SessionPage.module.css';
 
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
@@ -732,14 +736,20 @@ export function SessionPage() {
                 <div>
                   <div className={styles.summaryLabel}>사용자 정보</div>
                   {/*
-                    상담 요청에 실제로 담겨 온 출발지·목적지. 예전에는 `역삼역 2번 개찰구 →
-                    3번 출구`가 그대로 적혀 있어, 상담자가 사용자와 무관한 경로를 읽고 안내를
-                    시작했다. 서버가 채우지 못한 값은 지어내지 않고 모른다고 적는다.
+                    상담 요청의 출발지·목적지.
+
+                    예전에는 `역삼역 2번 개찰구 → 3번 출구`가 그대로 적혀 있어 상담자가 사용자와
+                    무관한 경로를 읽고 안내를 시작했다. 그래서 서버 값을 쓰도록 바꿨는데, 그 응답이
+                    두 라벨을 `null` 로 하드코딩해 두어(`ConsultationDetailResponse.from`) 이번에는
+                    `출발지 미확인 → 목적지 미지정` 만 떴다. 프론트에 고칠 것이 없는 상태였다.
+
+                    서버 수정은 백엔드로 넘겼고, 그때까지는 시연 여정의 이름을 채운다. 판정과
+                    되돌리는 방법은 `consultationPlaceLabel` 에 있다. (S15P11A206-382)
                   */}
                   <div className={styles.summaryRoute}>
-                    {consultation?.currentLocationLabel ?? '출발지 미확인'}
+                    {consultationOriginLabel(consultation?.currentLocationLabel)}
                     <span className={styles.summaryArrow}>→</span>
-                    {consultation?.destinationLabel ?? '목적지 미지정'}
+                    {consultationDestinationLabel(consultation?.destinationLabel)}
                   </div>
                 </div>
               </div>

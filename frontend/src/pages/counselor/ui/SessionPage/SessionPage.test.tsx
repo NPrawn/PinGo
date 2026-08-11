@@ -282,14 +282,19 @@ describe('SessionPage', () => {
   /**
    * 사용자 정보는 상담 요청에 실제로 담겨 온 값이어야 한다. 예전에는 `역삼역 2번 개찰구 →
    * 3번 출구`가 고정으로 적혀 있어, 상담자가 사용자와 무관한 경로를 읽고 안내를 시작했다.
+   *
+   * **서버 값이 있으면 그것이 이긴다.** 지금은 서버가 이름을 만들지 못해 시연 문구로 채우는데
+   * (`consultationPlaceLabel`), 그 대체 문구가 실제 값을 덮으면 예전 문제로 되돌아간다.
+   * (S15P11A206-382)
    */
-  it('출발지·목적지를 상담 데이터에서 읽고, 없으면 지어내지 않는다', async () => {
+  it('출발지·목적지는 상담 데이터가 있으면 그것을 쓴다', async () => {
     apiMocks.getCounselorConsultations.mockResolvedValue([
       {
         consultationId: 'cs_1',
         status: 'ACCEPTED',
         requestedAt: '2026-08-03T00:00:00Z',
         currentLocationLabel: '역삼역 3번 개찰구',
+        destinationLabel: '7번 출구',
         problemType: 'CANNOT_FIND_EXIT',
       },
     ]);
@@ -297,10 +302,40 @@ describe('SessionPage', () => {
     renderPage();
 
     expect(await screen.findByText(/역삼역 3번 개찰구/)).toBeInTheDocument();
-    // 목적지를 아직 안 골랐으면 빈 자리로 두지 말고 모른다고 적는다.
-    expect(screen.getByText(/목적지 미지정/)).toBeInTheDocument();
+    expect(screen.getByText(/7번 출구/)).toBeInTheDocument();
     expect(screen.getByText('출구를 못 찾겠어요')).toBeInTheDocument();
+    // 예전에 박혀 있던 문구가 되살아나지 않았는지.
     expect(screen.queryByText(/2번 개찰구/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * 서버가 이름을 만들지 못하는 동안의 처리. (S15P11A206-382)
+   *
+   * 상세 응답은 두 라벨을 `null` 로 하드코딩해 두었고, 목록 응답은 `"Node " + nodeId` 를 조립해
+   * 보낸다. 둘 다 상담자에게 아무 뜻이 없으므로 시연 여정의 이름으로 채운다. 서버 수정은 백엔드로
+   * 넘겼고, 실제 이름이 오기 시작하면 위 검사가 그대로 통과한다.
+   */
+  it('서버가 이름을 못 만들면 식별자를 그대로 적지 않는다', async () => {
+    apiMocks.getCounselorConsultations.mockResolvedValue([
+      {
+        consultationId: 'cs_1',
+        status: 'ACCEPTED',
+        requestedAt: '2026-08-03T00:00:00Z',
+        // 서버가 조립해 보내는 자리표시자. `place 3` 도 같은 형태다.
+        currentLocationLabel: 'Node 204',
+        destinationLabel: null,
+        problemType: 'CANNOT_FIND_EXIT',
+      },
+    ]);
+
+    renderPage();
+
+    /* 한 줄에 둘이 함께 적히므로 그 요소를 잡아 두 값을 함께 본다. */
+    const route = await screen.findByText(/지하3층 승강장/);
+
+    expect(route.textContent).toContain('3번 출구');
+    // 식별자는 상담자에게 아무 뜻이 없다. 화면에 남기지 않는다.
+    expect(screen.queryByText(/Node 204/)).not.toBeInTheDocument();
   });
 
   /**
