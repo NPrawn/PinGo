@@ -32,7 +32,7 @@ import {
   useTranslatedSpeech,
 } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
-import { readForwardMap } from '@/features/xr-tracking';
+import { readForwardMap, type PlanarVector } from '@/features/xr-tracking';
 import { useRemoteScreenDraw, useSharedScreenGeometry } from '@/features/shared-screen-draw';
 import { createIndoorRoute, endConsultationByUser, getConsultation, localize } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
@@ -71,6 +71,18 @@ const CONSULTATION_WATCH_MS = 4000;
  * 짚어 주는 자리를 찾는 데도 지장이 없다.
  */
 const RELOCALIZE_INTERVAL_MS = 30_000;
+
+/**
+ * 자세가 나빠 거절된 앵커를 다시 세워 보는 간격(ms). (S15P11A206-382)
+ *
+ * `setAnchor` 는 카메라가 앞을 보지 않는 자세의 방향을 앵커에 굽지 않는다 — 한 번 구워지면
+ * 뒤집힘이 영구히 남기 때문이다. 그 거절은 자세가 풀리는 순간 사라지므로 짧게 두드리는 것이 맞다.
+ * 하는 일은 `getLatestReading` 하나와 자세 판정 하나다.
+ */
+const PENDING_ANCHOR_RETRY_MS = 200;
+
+/** 들고 있던 재인식 좌표를 버리는 나이(ms). 근거는 아래 재시도 effect 주석에 있다. */
+const PENDING_ANCHOR_MAX_AGE_MS = 5000;
 
 /** Screen 20 (FR-U-015 / FR-W-002) — live consultation from the user's side. */
 export function ConsultSessionPage() {
@@ -285,6 +297,18 @@ export function ConsultSessionPage() {
    */
   const cameraStreamRef = useRef<XrCameraStreamHandle | null>(null);
   const [cameraStreamState, setCameraStreamState] = useState<XrCameraStreamState>('idle');
+
+  /**
+   * 자세 때문에 거절돼 아직 세우지 못한 재인식 결과. (S15P11A206-382)
+   *
+   * ref 가 아니라 상태다 — 대기가 생길 때만 재시도 타이머를 걸어야 하고, ref 변경으로는 effect 가
+   * 다시 돌지 않는다.
+   */
+  const [pendingAnchor, setPendingAnchor] = useState<{
+    point: IndoorPoint;
+    forwardMap: PlanarVector | null;
+    atMs: number;
+  } | null>(null);
 
   useEffect(() => {
     /**
@@ -507,8 +531,18 @@ export function ConsultSessionPage() {
      *
      * 방향이 없으면(정합되지 않은 층 등) 앵커를 만들지 못한다. 그때는 지금 앵커를 그대로 두는
      * 편이 낫다 — 오차가 남더라도 방향 없는 앵커보다는 정확하다.
+     *
+     * **거절되면 좌표를 들고 있다가 곧 다시 세운다.** (S15P11A206-382) `setAnchor` 가 자세를 보게
+     * 된 뒤로 이 경로가 새로 열렸다. 상담 중에는 통화하면서 폰을 낮춰 드는 일이 흔해 거절이
+     * 이어질 수 있고, 반환값을 버리면 재인식이 매 주기 조용히 실패한 채 누적 오차만 쌓인다.
+     *
+     * 프레임을 다시 올리지 않는다. VPS 는 성공했고 좌표도 손에 있다 — 어긋난 것은 그 순간의
+     * 자세뿐이므로 그것이 풀릴 때까지 같은 좌표로 앵커만 다시 세우면 된다.
      */
-    setAnchor({ floorId: position.floorId, mapX: position.mapX, mapY: position.mapY }, forwardMap);
+    const point = { floorId: position.floorId, mapX: position.mapX, mapY: position.mapY };
+    const anchored = setAnchor(point, forwardMap);
+
+    setPendingAnchor(anchored ? null : { point, forwardMap, atMs: Date.now() });
 
     /**
      * 경로 시작 노드가 달라졌을 때만 스토어를 건드린다.
@@ -529,6 +563,37 @@ export function ConsultSessionPage() {
       });
     }
   }, [currentNodeId, setAnchor, setCurrentLocation, stationId, userSessionId]);
+
+  /**
+   * 자세 때문에 거절된 앵커를 다시 세운다. (S15P11A206-382)
+   *
+   * 대기 중일 때만 타이머를 건다. 세션 내내 도는 간격을 두면 상담 영상과 같은 스레드에서 아무
+   * 일도 하지 않는 일을 초당 다섯 번 하게 된다.
+   */
+  useEffect(() => {
+    if (!pendingAnchor) return;
+
+    const timer = window.setInterval(() => {
+      /**
+       * 너무 오래된 좌표는 버린다.
+       *
+       * 앵커는 지도 좌표와 pose 를 **같은 순간의 값으로** 묶어야 한다. 기다린 시간만큼 그 짝이
+       * 어긋나므로 무한히 들고 있을 수는 없다. 5초면 걸어서 4m 안쪽이고, 그것을 넘기면 다음 재인식
+       * 주기가 더 신선한 좌표를 준다. 그래도 180도 회전 오차(20m 걸으면 위치 40m)와는 비교가
+       * 되지 않는 크기다.
+       */
+      if (Date.now() - pendingAnchor.atMs > PENDING_ANCHOR_MAX_AGE_MS) {
+        setPendingAnchor(null);
+        return;
+      }
+
+      if (setAnchor(pendingAnchor.point, pendingAnchor.forwardMap)) setPendingAnchor(null);
+    }, PENDING_ANCHOR_RETRY_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [pendingAnchor, setAnchor]);
 
   useEffect(() => {
     // 세션이 열려야 카메라 프레임이 나온다. 추적을 포기한 사용자에게는 재인식할 것도 없다.
