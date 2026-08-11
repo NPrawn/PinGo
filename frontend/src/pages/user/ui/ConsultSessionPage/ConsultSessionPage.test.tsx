@@ -32,6 +32,16 @@ const signaling = vi.hoisted(() => ({
   } as Record<string, unknown>,
   /** 화면이 넘긴 이벤트 처리기. 테스트가 상담원이 보낸 것처럼 밀어 넣는다. */
   onDataEvent: null as ((event: unknown) => void) | null,
+  /**
+   * 화면이 상담자에게 보낸 이벤트. **렌더마다 새로 만들지 않는다.**
+   *
+   * 예전에는 훅 반환값 안에서 `vi.fn()` 을 만들어 테스트가 호출 기록을 볼 수 없었다. MAP_SYNC 가
+   * 무엇을 보내는지가 검사 대상이므로(S15P11A206-382) 밖으로 끌어낸다.
+   */
+  /* 인자 타입은 제네릭으로 준다. 자리만 채우는 매개변수를 두면 미사용으로 잡힌다. */
+  sendConsultEvent: vi.fn<
+    (event: { eventType: string; payload: Record<string, unknown> }) => boolean
+  >(() => true),
 }));
 
 /** 권한 조회는 이 화면의 관심사가 아니다. 사라졌는지 여부만 테스트가 정한다. */
@@ -91,11 +101,40 @@ vi.mock('@/features/consult-signaling', async (importOriginal) => ({
       localCaption: '',
       captionsSupported: true,
       transcript: [],
-      sendConsultEvent: vi.fn(() => true),
+      sendConsultEvent: signaling.sendConsultEvent,
       ...signaling.state,
     };
   },
 }));
+
+/**
+ * 지도 상자 크기를 알려주는 가짜 `ResizeObserver`. (S15P11A206-382)
+ *
+ * jsdom 에는 없어서 지도 위젯이 상자를 재지 못하고, 그러면 추종 시점도 정규화한 시점도 만들어지지
+ * 않는다. **전역 설정에 두지 않는다** — 심는 순간 모든 지도가 추종 배율로 들어가 마커·경로 좌표를
+ * 검사하는 기존 테스트들이 다른 값을 보게 된다. 필요한 테스트에서만 심는다.
+ */
+function stubMapBox(size = { width: 314, height: 291 }) {
+  class Stub {
+    callback: ResizeObserverCallback;
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+
+    observe() {
+      this.callback(
+        [{ contentRect: size } as ResizeObserverEntry],
+        this as unknown as ResizeObserver,
+      );
+    }
+
+    unobserve() {}
+    disconnect() {}
+  }
+
+  vi.stubGlobal('ResizeObserver', Stub);
+}
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -146,6 +185,8 @@ describe('ConsultSessionPage', () => {
     useConsultStore.getState().reset();
     useUserSessionStore.setState({ userSessionId: null, expiresAt: undefined });
     vi.clearAllMocks();
+    // 지도 상자 크기를 심은 검사가 다음 검사에까지 영향을 주지 않게 되돌린다.
+    vi.unstubAllGlobals();
   });
 
   /**
@@ -536,6 +577,180 @@ describe('ConsultSessionPage', () => {
     });
 
     /** 상담원은 자유 탐색으로 다른 층을 볼 수 있다. 그 층에 그린 선이 여기 남으면 안 된다. */
+    /**
+     * MAP_SYNC 는 **화면에 그린 것**을 보낸다. 내부 상태가 아니다. (S15P11A206-382)
+     *
+     * 세 값이 갈라져 있었다 — 현재 위치, 경로 연결선, 표시 층. 셋 다 사용자 화면은 한 값을 쓰고
+     * 상담자에게는 다른 값이 갔다. 상담자는 "사용자와 같은 지도"라고 적힌 화면에서 다른 그림을
+     * 보고 안내하게 된다.
+     */
+    describe('상담자에게 보내는 지도 스냅숏', () => {
+      /** 마지막으로 보낸 MAP_SYNC 페이로드. 위치·방향이 바뀔 때마다 여러 번 나간다. */
+      function lastMapSync() {
+        const sent = signaling.sendConsultEvent.mock.calls
+          .map(([event]) => event)
+          .filter((event) => event.eventType === 'MAP_SYNC');
+
+        expect(sent.length).toBeGreaterThan(0);
+
+        return sent[sent.length - 1].payload;
+      }
+
+      /**
+       * 경로선에서 3m 옆으로 벗어난 자리.
+       *
+       * 경로는 (0,0)→(-12.4,15.6)이고 이 점은 그 선의 중간 지점에서 수직으로 3m 떨어져 있다.
+       * `OFF_ROUTE_M`(15m) 안쪽이라 경로 위에 얹히고, 얹은 자리는 중간 지점 (-6.2, 7.8)이다.
+       * 날것의 좌표를 보내면 상담자 마커가 경로선 밖 3m 지점에 뜬다.
+       */
+      const OFF_LINE = { mapX: -3.852, mapY: 9.667 };
+
+      it('경로 위에 얹은 자리를 보낸다. 날것의 좌표가 아니다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: OFF_LINE.mapX,
+          currentMapY: OFF_LINE.mapY,
+          routeResult: { pathNodes: PATH },
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        const current = lastMapSync().current as { floorId: number; mapX: number; mapY: number };
+
+        expect(current.floorId).toBe(1);
+        expect(current.mapX).toBeCloseTo(-6.2, 1);
+        expect(current.mapY).toBeCloseTo(7.8, 1);
+      });
+
+      /** 얹었으면 점이 이미 경로선 위에 있어 이을 자리가 없다. */
+      it('얹었으면 경로 연결선을 그리지 말라고 알린다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: OFF_LINE.mapX,
+          currentMapY: OFF_LINE.mapY,
+          routeResult: { pathNodes: PATH },
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        expect(lastMapSync().connectCurrentToRoute).toBe(false);
+      });
+
+      /**
+       * 경로가 없으면 얹을 곳도 없다. 그때는 날것의 좌표를 보내고 이어 그리라고 알린다 —
+       * 상담자 화면에서 경로가 중간에 끊겨 보이는 것을 막는 쪽이다.
+       */
+      it('얹지 못했으면 날것의 좌표를 보내고 이어 그리라고 알린다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: 3,
+          currentMapY: -4,
+          routeResult: null,
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        expect(lastMapSync().current).toMatchObject({ floorId: 1, mapX: 3, mapY: -4 });
+        expect(lastMapSync().connectCurrentToRoute).toBe(true);
+      });
+
+      /**
+       * 확대·이동한 상태를 거울에 그대로 비추는 근거. (S15P11A206-382)
+       *
+       * 이것이 없으면 거울이 자기 추종을 돌린다. 사용자가 지도를 밀면 그쪽 화면은 회전까지 멈추는데
+       * 거울은 계속 도므로 두 화면이 전혀 다른 곳을 본다.
+       *
+       * `x`·`y` 는 상자 크기로 나눈 값이라 크기가 다른 거울에 그대로 넣을 수 있다.
+       */
+      it('지도 시점을 상자 크기와 무관한 값으로 보낸다', async () => {
+        // 상자를 재지 못하면 시점을 만들 수 없다. 이 검사에서만 크기를 알려 준다.
+        stubMapBox();
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: 0,
+          currentMapY: 0,
+          routeResult: { pathNodes: PATH },
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        const view = lastMapSync().view as {
+          x: number;
+          y: number;
+          scale: number;
+          rotation: number;
+        } | null;
+
+        expect(view).not.toBeNull();
+        // 추종 중이라 확대돼 있다. 배율이 1이면 시점을 전혀 담지 못한 것이다.
+        expect(view!.scale).toBeGreaterThan(1);
+        expect(Number.isFinite(view!.x)).toBe(true);
+        expect(Number.isFinite(view!.y)).toBe(true);
+      });
+
+      /**
+       * 거울이 시설 아이콘까지 같이 그리는 근거. (S15P11A206-382)
+       *
+       * 이 값이 없으면 거울에는 도면과 경로만 있고 시설이 하나도 없다. 상담자가 "저기 화장실
+       * 앞에서 기다리세요"라고 짚어 준 자리를 사용자가 무엇을 보고 있는지 확인할 수 없다.
+       */
+      it('시설 표시 상태를 보내고, 칩을 누르면 바뀐 상태를 다시 보낸다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: 0,
+          currentMapY: 0,
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+        vi.mocked(useStationFacilities).mockReturnValue({
+          data: [{ facilityId: 1, floorId: 1, facilityType: 'exit', nameKo: '2번 출입구' }],
+        } as unknown as ReturnType<typeof useStationFacilities>);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        // 진입 시 기본값은 그 층 시설을 모두 보여 주는 상태다.
+        expect(lastMapSync().facilityView).toBe('all');
+        expect(lastMapSync().selectedFacilityId).toBeNull();
+
+        const filters = await screen.findByRole('group', { name: '시설 필터' });
+        const exitChip = [...filters.querySelectorAll('button')].find(
+          (each) => each.getAttribute('title') === '출구',
+        );
+
+        await userEvent.click(exitChip!);
+
+        expect(lastMapSync().facilityView).toBe('exit');
+      });
+
+      /**
+       * 층 버튼으로 다른 층을 열어 본 경우. **서 있는 층이 아니라 보고 있는 층을 보낸다.**
+       *
+       * 예전에는 `currentLocation.floorId` 를 보냈다. 걸어서 층이 바뀌는 경우는 맞았지만 층
+       * 버튼 조작은 담기지 않아, 사용자가 B3 를 열어 보는 동안 상담자는 B2 를 보고 있었다.
+       */
+      it('층 버튼으로 다른 층을 열면 그 층을 보낸다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: 0,
+          currentMapY: 0,
+          routeResult: { pathNodes: PATH },
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        expect(lastMapSync().floorId).toBe(1);
+
+        // floorId 2 가 B3 다. 목업 층 목록의 두 번째 항목이다.
+        await userEvent.click(await screen.findByRole('button', { name: 'B3' }));
+
+        expect(lastMapSync().floorId).toBe(2);
+      });
+    });
+
     it('층 목록을 지도 응답에서 만들어 버튼으로 둔다', async () => {
       renderPage();
 

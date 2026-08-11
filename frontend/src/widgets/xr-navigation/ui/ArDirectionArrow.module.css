@@ -1,0 +1,86 @@
+/*
+  카메라 위 방향 화살표. 셰브론 셋을 겹쳐 바닥에 눕힌 모양이다. (S15P11A206-382)
+
+  기울기는 `--arrow-tilt`, 방향은 `--arrow-deg`로 들어온다. 둘 다 컴포넌트가 채우며 기울기의
+  출처는 `ARROW_TILT_DEG` 하나다.
+
+  **`rotateX`가 먼저, `rotateZ`가 나중이다.** 순서를 뒤집으면 눕힌 그림을 화면 안에서 통째로
+  돌리는 것이 되어, 화살표가 바닥을 따라 도는 대신 옆으로 누워 버린다. 자식이 이 3D 공간을
+  물려받아야 하므로 `preserve-3d`를 함께 둔다.
+*/
+.arrow {
+  margin-top: 30px;
+  display: flex;
+  /* 앞쪽 셰브론이 아래(사용자에게 가까운 쪽)에 오게 쌓는다. */
+  flex-direction: column-reverse;
+  align-items: center;
+  transform: perspective(340px) rotateX(var(--arrow-tilt, 58deg))
+    rotateZ(var(--arrow-deg, 0deg));
+  transform-origin: center;
+  transform-style: preserve-3d;
+  /* 방향은 계단으로 들어오므로(5° 데드밴드) 짧게 이어 붙여 튀지 않게 한다. */
+  transition: transform 0.24s ease-out;
+}
+
+/*
+  셰브론 하나. 꺾인 띠 모양을 `clip-path`로 만든다.
+
+  원경으로 갈수록 작고 흐리다. 흐름 애니메이션이 도는 동안에는 그쪽이 명도를 맡으므로 여기서는
+  크기만 줄인다.
+*/
+.chevron {
+  width: 78px;
+  height: 30px;
+  clip-path: polygon(50% 0, 100% 62%, 100% 100%, 50% 38%, 0 100%, 0 62%);
+  background: linear-gradient(180deg, var(--color-mint-highlight), var(--color-mint));
+  filter: drop-shadow(0 4px 6px rgb(0 32 22 / 55%));
+  /* 앞쪽부터 차례로 밝아져 진행 방향을 훑는다. */
+  animation: arrow-flow 1.55s ease-in-out infinite;
+}
+
+.chevron:nth-child(2) {
+  transform: scale(0.9);
+  animation-delay: 0.17s;
+}
+
+.chevron:nth-child(3) {
+  transform: scale(0.8);
+  animation-delay: 0.34s;
+}
+
+@keyframes arrow-flow {
+  0%,
+  100% {
+    opacity: 0.34;
+  }
+
+  45% {
+    opacity: 1;
+  }
+}
+
+/*
+  모션을 줄인 환경. 흐름을 끄는 대신 원근으로 명도를 고정한다 — 셋이 같은 밝기로 서면 겹친
+  띠가 하나의 두꺼운 덩어리로 보여 어느 쪽이 앞인지 알 수 없다.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .arrow {
+    transition: none;
+  }
+
+  .chevron {
+    animation: none;
+  }
+
+  .chevron:nth-child(1) {
+    opacity: 1;
+  }
+
+  .chevron:nth-child(2) {
+    opacity: 0.7;
+  }
+
+  .chevron:nth-child(3) {
+    opacity: 0.42;
+  }
+}

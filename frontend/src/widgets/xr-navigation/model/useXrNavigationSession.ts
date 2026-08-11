@@ -18,6 +18,23 @@ import {
  */
 type GatePhase = 'notice' | 'session' | 'without-tracking';
 
+/**
+ * 앵커를 만들지 못했을 때 다시 시도하는 간격(ms). (S15P11A206-382)
+ *
+ * `setAnchor`는 추적이 잡히지 않았거나 **자세가 나빠 방향을 믿을 수 없을 때** 거절한다. 예전에는
+ * 거절되면 그것으로 끝이었다 — 발화 effect의 의존성이 `isTracking`·좌표·방향뿐이라 다시 돌
+ * 계기가 없었고, 그 세션은 앵커 없이 남았다. 자세 게이트가 붙은 지금은 그 경로가 훨씬 자주
+ * 열리므로 다시 시도할 길이 반드시 있어야 한다.
+ *
+ * 200ms면 손을 들어 앞을 보게 되는 순간 곧 붙는다. 한 번에 하는 일은 `getLatestReading` 하나와
+ * 자세 판정 하나라 비용이 없다.
+ *
+ * **횟수를 제한하지 않는다.** 제한하면 폰을 계속 이상하게 든 사용자의 세션이 영구히 앵커 없이
+ * 남는다. 오래 기다린 만큼 지도 좌표와 pose의 짝이 어긋나지만, 앵커가 없으면 마커가 확정 위치에
+ * 붙어 아예 움직이지 않으므로 어느 쪽이든 위치 오차는 같고 방향은 앵커가 있는 쪽만 맞다.
+ */
+const ANCHOR_RETRY_MS = 200;
+
 export interface UseXrNavigationSessionOptions {
   /**
    * 안내 화면 진입 시점의 확정 실내 위치.
@@ -165,16 +182,26 @@ export function useXrNavigationSession({
   /** 이 세션에서 첫 위치 인식을 이미 발화했는지. 세션이 다시 열리면 되돌린다. */
   const anchorFiredRef = useRef(false);
 
+  /**
+   * 층 전환처럼 위치가 새로 확정된 자리에서 앵커를 다시 세운다.
+   *
+   * **실패하면 지금 앵커를 그대로 둔다.** (S15P11A206-382) 예전에는 `clearAnchor()`를 먼저 부른
+   * 뒤 새로 만들었다. 자세가 나빠 거절되는 경로가 생긴 지금은 그 순서가 멀쩡히 돌던 앵커를 버리고
+   * 아무것도 남기지 않는다 — 추적이 통째로 죽는다.
+   *
+   * 먼저 지우지 않아도 된다. `setAnchor`가 성공하면 앵커·평활 기준점·방향 필터를 모두 새로
+   * 세우므로 지울 것이 남지 않는다. 개정 번호가 올라가 배지가 `refreshed`로 바뀌는데, 층 전환은
+   * 실제로 갱신이므로 그쪽이 더 맞다.
+   */
   const reanchor = useCallback(
     (map: IndoorPoint, forwardMap: PlanarVector) => {
-      anchorFiredRef.current = false;
-      clearAnchor();
-
       const anchored = setAnchor(map, forwardMap);
-      anchorFiredRef.current = anchored;
+
+      if (anchored) anchorFiredRef.current = true;
+
       return anchored;
     },
-    [clearAnchor, setAnchor],
+    [setAnchor],
   );
 
   /**
@@ -215,19 +242,32 @@ export function useXrNavigationSession({
    *
    * 진입 전 VPS 응답의 실제 `forwardMap`만 사용한다. 방향이 없으면 회전을 추정하지 않고
    * 앵커를 만들지 않는다. 임의 방향을 사용하면 지도 경로를 가로지르는 오차가 생기기 때문이다.
+   *
+   * **거절되면 붙을 때까지 다시 시도한다.** (S15P11A206-382) `setAnchor`가 자세를 보게 된 뒤로는
+   * 거절이 흔한 일이 됐다 — 위치 인식을 위해 주변을 훑은 직후가 정확히 자세가 나쁜 구간이고,
+   * 첫 앵커를 만드는 순간이 바로 그 직후다. 한 번 실패로 끝내면 그 세션은 앵커 없이 남는다.
    */
   useEffect(() => {
-    if (
-      !isTracking ||
-      anchorFiredRef.current ||
-      !currentIndoorLocation ||
-      !anchorForwardMap
-    ) {
+    if (!isTracking || anchorFiredRef.current || !currentIndoorLocation || !anchorForwardMap) {
       return;
     }
 
     // 실패하면 다시 시도할 수 있게 표시를 남기지 않는다. 성공한 뒤에만 발화를 닫는다.
-    anchorFiredRef.current = setAnchor(currentIndoorLocation, anchorForwardMap);
+    const attempt = (): boolean => {
+      anchorFiredRef.current = setAnchor(currentIndoorLocation, anchorForwardMap);
+
+      return anchorFiredRef.current;
+    };
+
+    if (attempt()) return;
+
+    const timer = window.setInterval(() => {
+      if (attempt()) window.clearInterval(timer);
+    }, ANCHOR_RETRY_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
   }, [anchorForwardMap, isTracking, currentIndoorLocation, setAnchor]);
 
   /**

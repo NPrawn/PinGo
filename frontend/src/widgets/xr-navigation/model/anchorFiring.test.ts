@@ -99,6 +99,9 @@ function createFakeController(initial: XrSessionState) {
     clearReading() {
       latestReading = null;
     },
+    setReading(next: XrPoseReading) {
+      latestReading = next;
+    },
     emitHeading(yawDeg: number) {
       headingListeners.forEach((listener) => {
         listener(yawDeg);
@@ -130,6 +133,24 @@ function renderSession(controller: XrSessionController) {
 
 const TRACKING: XrSessionState = { status: 'tracking', referenceSpaceType: 'local' };
 const WARMING_UP: XrSessionState = { status: 'warming-up', referenceSpaceType: 'local' };
+
+/**
+ * 앞뒤로 `pitchDeg`만큼 눕힌 자세의 pose. 회전축은 단말 X축이다.
+ *
+ * 그 자세에서 `cameraTiltSinOf`는 `sin θ`, `deviceUprightOf`는 `cos θ`가 된다. 150도면 sin이
+ * 0.5로 기울임 한계(sin 65도 = 0.906)를 통과하지만 cos가 -0.866이라 뒤집힘 조건에 걸린다 —
+ * 몸은 정면인데 들고 있던 손을 내려 카메라만 뒤를 보는 자세가 정확히 그것이다.
+ */
+function tiltedReading(pitchDeg: number): XrPoseReading {
+  const half = (pitchDeg * Math.PI) / 360;
+
+  return {
+    position: { x: 0, y: 0, z: 0 },
+    orientation: { x: Math.sin(half), y: 0, z: 0, w: Math.cos(half) },
+    yawDeg: 0,
+    timestamp: 0,
+  };
+}
 
 describe('첫 위치 인식 발화', () => {
   it('추적이 잡히면 앵커를 만든다', () => {
@@ -306,6 +327,49 @@ describe('첫 위치 인식 발화', () => {
      */
     expect(result.current.anchorStatus).toBe('established');
     expect(result.current.currentLocation).toEqual(CONFIRMED);
+  });
+
+  /**
+   * 자세가 나쁜 순간에 앵커를 구우면 뒤집힘이 **영구히** 남는다. (S15P11A206-382)
+   *
+   * 앵커는 `forwardXr`과 `forwardMap` 사이의 회전을 얼려 두고, 그 뒤 모든 방향각과 변위가 그
+   * 회전을 지난다. 구울 때 yaw가 180도 틀어져 있었다면 화면 전체가 뒤집힌 좌표계에서 살고,
+   * 자세가 정상으로 돌아와도 회복되지 않는다 — "방향이 한번 뒤집히면 본래 방향을 잃고 뒤집힌
+   * 쪽을 정면으로 인지한다"는 보고의 정체다.
+   *
+   * 그래서 거절하는데, 거절하고 끝내면 그 세션은 앵커 없이 남는다. 다시 시도해야 한다.
+   */
+  it('자세가 나쁘면 앵커를 만들지 않고, 자세가 돌아올 때까지 다시 시도한다', () => {
+    vi.useFakeTimers();
+
+    try {
+      const fake = createFakeController(TRACKING);
+
+      // 위치 인식을 위해 주변을 훑은 직후의 자세. 첫 앵커가 만들어지는 순간이 바로 이때다.
+      fake.setReading(tiltedReading(150));
+
+      const { result } = renderSession(fake.controller);
+
+      expect(result.current.anchorStatus).toBe('none');
+
+      // 아직 붙지 않았으므로 계속 두드리고 있어야 한다.
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(result.current.anchorStatus).toBe('none');
+
+      // 손을 다시 들어 앞을 보게 됐다.
+      fake.setReading(tiltedReading(10));
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+
+      expect(result.current.anchorStatus).toBe('established');
+      // 붙은 뒤에는 두드리기를 멈춘다.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   /** 세션이 끝난 구간에서는 마지막 유효 위치를 그대로 보여준다(11.7). */

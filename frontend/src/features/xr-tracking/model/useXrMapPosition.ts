@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { IndoorPoint } from '@/entities/navigation';
-import { xrSessionController, type XrSessionController } from '@/shared/lib/webxr';
+import {
+  isHeadingTrustworthy,
+  xrSessionController,
+  type XrSessionController,
+} from '@/shared/lib/webxr';
 import {
   createXrMapAnchor,
   mapHeadingDegOf,
@@ -255,6 +259,30 @@ export function useXrMapPosition({
        * 값 자체가 틀렸다(11.2). 그 값으로 앵커를 만들면 이후 전체가 어긋난다.
        */
       if (!reading || controller.getState().status !== 'tracking') return false;
+
+      /**
+       * **자세가 나쁘면 앵커를 만들지 않는다.** (S15P11A206-382)
+       *
+       * 이 게이트가 없어서 "방향이 한번 뒤집히면 본래 방향을 잃고 뒤집힌 쪽을 정면으로 인지"하는
+       * 현상이 났다. 표시 단계의 뒤집힘은 자세가 돌아오면 함께 돌아오는데, 이쪽은 **영구적이다.**
+       *
+       * 앵커는 `forwardXr`(지금 yaw)과 `forwardMap`(VPS 방향) 사이의 회전을 만들어 **얼려 둔다**
+       * (`createXrMapAnchor`). 그 뒤 모든 방향각과 **모든 변위**가 그 회전을 지나므로, 구울 때
+       * yaw가 180도 틀어져 있었다면 이후 화면 전체가 뒤집힌 좌표계에서 산다 — 방향은 반대를
+       * 가리키고 앞으로 걸으면 마커가 뒤로 간다. 자세가 정상으로 돌아와도 회복되지 않는다.
+       * 이 세션에서 앵커를 다시 만들 계기는 층 전환과 상담 화면의 30초 재인식뿐이다.
+       *
+       * yaw가 180도 틀어지는 자세는 실재한다. `yawDegOf`는 기울임 78~102도 구간에서 up 축
+       * 대체식을 쓰고 그 밖으로 넘어가면 주 식으로 돌아오는데, 수직을 지나며 값이 뒤집힌다.
+       * 위치 인식을 위해 주변을 훑는 동작이 정확히 그 구간을 지나고, **첫 앵커가 만들어지는
+       * 순간이 바로 그 직후다.**
+       *
+       * **거절이 곧 실패는 아니다.** 부르는 쪽이 다시 시도한다(`useXrNavigationSession`). 손을
+       * 들어 앞을 보게 되는 순간 앵커가 만들어진다. 그동안 걸은 거리만큼 지도 좌표와 pose의 짝이
+       * 어긋나지만, 그 오차는 걸은 거리에 비례할 뿐이고 180도 회전 오차는 20m 걸었을 때 위치를
+       * 40m 옮긴다. 비교가 되지 않는다.
+       */
+      if (!isHeadingTrustworthy(reading.orientation)) return false;
 
       const nextRevision = anchorRef.current ? anchorRef.current.revision + 1 : 0;
       const anchor = createXrMapAnchor({ map, reading, forwardMap }, nextRevision);

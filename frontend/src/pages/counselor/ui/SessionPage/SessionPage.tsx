@@ -37,6 +37,10 @@ import {
 import { Badge, Button, FloorRail, Icon, MapPreview, MapToggle, PillButton } from '@/shared/ui';
 import { CounselorConsoleShell } from '@/widgets/counselor-console';
 import { IndoorMapView } from '@/widgets/indoor-map';
+import {
+  consultationDestinationLabel,
+  consultationOriginLabel,
+} from '../../lib/consultationPlaceLabel';
 import styles from './SessionPage.module.css';
 
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
@@ -357,6 +361,21 @@ export function SessionPage() {
       : facilityView;
   /** 위젯에 넘길 유형. 전부 보이거나 전부 감출 때는 유형이 없다. */
   const facilityType = effectiveView === 'all' || effectiveView === 'none' ? null : effectiveView;
+  /**
+   * 거울이 그릴 시설 유형. **사용자 화면이 보낸 상태에서 온다.** (S15P11A206-382)
+   *
+   * 위 `facilityType` 은 상담자가 자기 지도에서 고른 것이라 거울에 쓰면 안 된다. 거울은 사용자가
+   * 보고 있는 것을 비추는 자리이고, 상담자가 왼쪽에서 화장실만 켜 두었다고 사용자 화면도 그렇다는
+   * 뜻은 아니다.
+   *
+   * 옛 사용자 화면은 이 값을 보내지 않아 `null` 이다. 그때는 유형도 `null` 이고 `showAllFacilities`
+   * 도 거짓이 되어 아무것도 그리지 않는다 — 지금까지의 동작이다.
+   */
+  const mirrorFacilityView = mapSync?.facilityView ?? null;
+  const mirrorFacilityType =
+    mirrorFacilityView === null || mirrorFacilityView === 'all' || mirrorFacilityView === 'none'
+      ? null
+      : mirrorFacilityView;
   /**
    * 사용자 화면 거울의 배치. 사용자가 직접 재서 보낸 값을 그대로 쓴다. (S15P11A206-89)
    *
@@ -721,14 +740,20 @@ export function SessionPage() {
                 <div>
                   <div className={styles.summaryLabel}>사용자 정보</div>
                   {/*
-                    상담 요청에 실제로 담겨 온 출발지·목적지. 예전에는 `역삼역 2번 개찰구 →
-                    3번 출구`가 그대로 적혀 있어, 상담자가 사용자와 무관한 경로를 읽고 안내를
-                    시작했다. 서버가 채우지 못한 값은 지어내지 않고 모른다고 적는다.
+                    상담 요청의 출발지·목적지.
+
+                    예전에는 `역삼역 2번 개찰구 → 3번 출구`가 그대로 적혀 있어 상담자가 사용자와
+                    무관한 경로를 읽고 안내를 시작했다. 그래서 서버 값을 쓰도록 바꿨는데, 그 응답이
+                    두 라벨을 `null` 로 하드코딩해 두어(`ConsultationDetailResponse.from`) 이번에는
+                    `출발지 미확인 → 목적지 미지정` 만 떴다. 프론트에 고칠 것이 없는 상태였다.
+
+                    서버 수정은 백엔드로 넘겼고, 그때까지는 시연 여정의 이름을 채운다. 판정과
+                    되돌리는 방법은 `consultationPlaceLabel` 에 있다. (S15P11A206-382)
                   */}
                   <div className={styles.summaryRoute}>
-                    {consultation?.currentLocationLabel ?? '출발지 미확인'}
+                    {consultationOriginLabel(consultation?.currentLocationLabel)}
                     <span className={styles.summaryArrow}>→</span>
-                    {consultation?.destinationLabel ?? '목적지 미지정'}
+                    {consultationDestinationLabel(consultation?.destinationLabel)}
                   </div>
                 </div>
               </div>
@@ -865,10 +890,14 @@ export function SessionPage() {
                        * 미터 떨어져 보인다. 거울 지도에는 이 옵션이 있었는데 이 지도에만 빠져
                        * 있어, 상담자가 보는 큰 지도에서만 경로가 중간에 끊겨 있었다.
                        *
-                       * 사용자 화면과 같은 값이어야 한다. 두 지도가 다른 그림을 보여 주면
-                       * 상담자가 짚어 주는 자리를 사용자가 자기 화면에서 찾을 수 없다.
+                       * **사용자 화면이 보낸 값을 그대로 쓴다.** (S15P11A206-382) 예전에는 `true`
+                       * 로 박혀 있었다. 주석은 "사용자 화면과 같은 값이어야 한다"고 적혀 있었지만
+                       * 실제로는 사용자가 잇지 않는 동안에도 여기만 이어 그렸다.
+                       *
+                       * 옛 사용자 화면은 이 값을 보내지 않아 `null` 로 읽힌다. 그때는 옛 동작을
+                       * 지킨다 — 잇지 않는 쪽으로 떨어지면 경로가 중간에 끊겨 보인다.
                        */
-                      connectCurrentToRoute
+                      connectCurrentToRoute={mapSync.connectCurrentToRoute ?? true}
                       /* 마우스만 있는 화면이라 휠 말고 눌러서 확대할 길도 둔다. */
                       showZoomControls
                       facilityType={facilityType}
@@ -882,6 +911,14 @@ export function SessionPage() {
                       selectedFacilityId={selectedFacility?.facilityId}
                       /* 따라가기일 때만 사용자 위치를 좇는다. 자유 탐색은 층 전체를 본다. */
                       followCamera={synced}
+                      /**
+                       * 사용자가 보는 범위를 담는다. (S15P11A206-382)
+                       *
+                       * 이 상자는 가로로 길어(비율 약 0.40) 기본 배율로는 세로 24m밖에 담지
+                       * 못했다. 사용자는 57m 를 보고 있었으므로 상담자가 보는 것이 사용자가 보는
+                       * 것의 절반도 되지 않았고, 같은 경로가 전혀 다른 그림으로 보였다.
+                       */
+                      coverUserSpan
                       /*
                         사용자를 좇되 지도는 돌리지 않는다.
                         사용자 화면은 진행 방향이 위를 향하게 돌아가지만(네비게이션 모드), 상담자
@@ -1231,9 +1268,38 @@ export function SessionPage() {
                          어느 것이 목적지인지 알 수 없다. (S15P11A206-206) */
                       destinationNodeId={mapSync.destinationNodeId ?? null}
                       pathNodes={mapSync.pathNodes}
-                      /* 사용자 화면과 같은 값이어야 시점이 같아진다. 회전은 기본값(켬)이다. */
-                      connectCurrentToRoute
+                      /* 사용자 화면이 보낸 값을 그대로 쓴다. 시점이 같아야 그리기 좌표가 맞는다.
+                         회전은 기본값(켬)이다. 근거는 왼쪽 지도의 같은 속성 주석에 있다. */
+                      connectCurrentToRoute={mapSync.connectCurrentToRoute ?? true}
+                      /**
+                       * 시설 아이콘도 사용자 화면과 같이 그린다. (S15P11A206-382)
+                       *
+                       * 예전에는 도면과 경로만 있었다. 상담자가 "저기 화장실 앞에서 기다리세요"
+                       * 라고 짚어 줘도 그 아이콘이 거울에 없어, 사용자가 무엇을 보고 있는지 확인할
+                       * 수 없었다.
+                       *
+                       * **누를 수는 없다.** `onSelectFacility` 를 넘기지 않으면 마커가 탭을 받지
+                       * 않는다(`IndoorMapOverlay`). 거울에서 시설을 골라 사용자 화면을 바꾸면
+                       * 거울이 아니게 된다 — 그 조작은 왼쪽 지도에 있다.
+                       *
+                       * 옛 사용자 화면은 표시 상태를 보내지 않는다. 그때는 그리지 않는다 —
+                       * 모르는 상태를 짐작해 그리면 사용자 화면에 없는 아이콘이 거울에 뜬다.
+                       */
+                      facilityType={mirrorFacilityType}
+                      showAllFacilities={mapSync.facilityView === 'all'}
+                      selectedFacilityId={mapSync.selectedFacilityId}
                       followCamera
+                      /**
+                       * 사용자가 확대·이동해 둔 시점을 그대로 비춘다. (S15P11A206-382)
+                       *
+                       * 없으면 이 지도가 자기 추종을 돌린다. 사용자가 지도를 밀면 그쪽 화면은
+                       * 회전까지 그 자리에 멈추는데 거울은 계속 돌아, 두 화면이 전혀 다른 곳을
+                       * 보게 된다.
+                       *
+                       * 옛 사용자 화면은 이 값을 보내지 않아 null 이다. 그때는 지금까지처럼
+                       * 스스로 추종한다.
+                       */
+                      mirroredView={mapSync.view}
                     />
                   </div>
                 </>

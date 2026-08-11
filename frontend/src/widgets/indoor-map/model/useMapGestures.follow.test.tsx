@@ -1,5 +1,10 @@
 import { act, render } from '@testing-library/react';
-import { useMapGestures, type FollowOptions, type MapView } from './useMapGestures';
+import {
+  useMapGestures,
+  type FollowOptions,
+  type MapView,
+  type NormalizedMapView,
+} from './useMapGestures';
 
 /**
  * 시점 추종. (S15P11A206-79)
@@ -39,20 +44,36 @@ function stubResizeObserver({ width, height }: { width: number; height: number }
 /** 검사에 쓰는 것만 노출한다. ref까지 넘기면 렌더 중 읽는 것으로 판정된다. */
 type Gestures = Omit<ReturnType<typeof useMapGestures>, 'ref'>;
 
-function Harness({ options, expose }: { options: FollowOptions; expose: (g: Gestures) => void }) {
+function Harness({
+  options,
+  mirroredView,
+  expose,
+}: {
+  options: FollowOptions;
+  mirroredView?: NormalizedMapView | null;
+  expose: (g: Gestures) => void;
+}) {
   // 훅 반환값을 그대로 들고 다니면 ref 전달이 나머지 속성 접근까지 오염된 것으로 판정된다.
-  const { ref, view, reset, zoomBy, isFollowing, isTransformed, handlers } =
-    useMapGestures(options);
-  expose({ view, reset, zoomBy, isFollowing, isTransformed, handlers });
+  const { ref, view, normalizedView, reset, zoomBy, isFollowing, isTransformed, handlers } =
+    useMapGestures(options, mirroredView);
+  expose({ view, normalizedView, reset, zoomBy, isFollowing, isTransformed, handlers });
   // 실제 사용처와 같이 ref를 요소에 붙인다. 붙지 않으면 크기를 관찰하지 못해 추종이 꺼진다.
   return <div ref={ref} {...handlers} />;
 }
 
-function mount(options: FollowOptions) {
+function mount(options: FollowOptions, mirroredView?: NormalizedMapView | null) {
   const state: { current: Gestures | null } = { current: null };
-  const view = render(<Harness options={options} expose={(g) => (state.current = g)} />);
-  const rerender = (next: FollowOptions) =>
-    view.rerender(<Harness options={next} expose={(g) => (state.current = g)} />);
+  const view = render(
+    <Harness options={options} mirroredView={mirroredView} expose={(g) => (state.current = g)} />,
+  );
+  const rerender = (next: FollowOptions, nextMirrored?: NormalizedMapView | null) =>
+    view.rerender(
+      <Harness
+        options={next}
+        mirroredView={nextMirrored ?? mirroredView}
+        expose={(g) => (state.current = g)}
+      />,
+    );
   return { state, rerender };
 }
 
@@ -382,6 +403,146 @@ describe('시점 추종', () => {
       const { state } = mount(followOptions({ px: 1200, py: 400 }, null));
 
       expect(state.current!.view.rotation).toBe(0);
+    });
+  });
+
+  /**
+   * 다른 화면의 시점을 그대로 비추기. (S15P11A206-382)
+   *
+   * 사용자가 지도를 확대·이동하면 상담자 거울도 같은 곳을 보여야 한다. `x`·`y`가 상자 픽셀이라
+   * 그대로는 옮길 수 없어 상자 크기로 나눈 값을 주고받는다. **비율이 같은 상자 사이에서는 크기가
+   * 달라도 정확히 옮겨진다**는 것이 이 값의 계약이다.
+   */
+  describe('시점 비추기', () => {
+    /** 거울 상자. `BOX`(314×291)와 비율이 같고 크기는 60%다. */
+    const MIRROR_BOX = { width: 188, height: 175 };
+
+    it('정규화한 시점은 상자 크기가 달라도 같은 값이다', () => {
+      const target = { px: 1200, py: 400 };
+      const big = mount(followOptions(target, -130));
+      const bigNormalized = big.state.current!.normalizedView!;
+
+      vi.unstubAllGlobals();
+      stubResizeObserver(MIRROR_BOX);
+      const small = mount(followOptions(target, -130));
+      const smallNormalized = small.state.current!.normalizedView!;
+
+      // 비율이 같으므로 나눈 값이 일치한다. 이것이 거울로 옮길 수 있는 근거다.
+      expect(smallNormalized.x).toBeCloseTo(bigNormalized.x, 2);
+      expect(smallNormalized.y).toBeCloseTo(bigNormalized.y, 2);
+      expect(smallNormalized.scale).toBeCloseTo(bigNormalized.scale, 3);
+      expect(smallNormalized.rotation).toBeCloseTo(bigNormalized.rotation, 6);
+
+      // 상자 픽셀 값은 크기만큼 다르다. 그대로 넘기면 어긋난다는 뜻이다.
+      expect(small.state.current!.view.x).not.toBeCloseTo(big.state.current!.view.x, 0);
+    });
+
+    /**
+     * 손으로 밀어 둔 시점을 비출 때. **추종보다 앞선다.**
+     *
+     * 사용자가 지도를 밀면 그쪽 화면은 회전까지 그 자리에 멈춘다. 거울이 자기 추종을 계속 돌리면
+     * 사용자는 멈춘 지도를 보고 상담자는 도는 지도를 본다.
+     */
+    it('비출 시점이 있으면 추종을 제치고 그 값을 쓴다', () => {
+      const panned: NormalizedMapView = { x: 0.25, y: -0.4, scale: 3, rotation: 0 };
+      const { state } = mount(followOptions({ px: 1200, py: 400 }, -130), panned);
+      const view = state.current!.view;
+
+      expect(view.scale).toBe(3);
+      expect(view.rotation).toBe(0);
+      expect(view.x).toBeCloseTo(0.25 * BOX.width, 6);
+      expect(view.y).toBeCloseTo(-0.4 * BOX.height, 6);
+    });
+
+    /** 보낸 값을 그대로 되돌려 받으면 같은 화면이어야 한다. 왕복이 손실 없이 닫힌다. */
+    it('보내고 되돌린 시점이 원래 화면과 같다', () => {
+      const target = { px: 900, py: 700 };
+      const source = mount(followOptions(target, -130));
+      const sent = source.state.current!.normalizedView!;
+
+      vi.unstubAllGlobals();
+      stubResizeObserver(MIRROR_BOX);
+      const mirror = mount(followOptions(null, null), sent);
+      const mirrored = mirror.state.current!.normalizedView!;
+
+      expect(mirrored.x).toBeCloseTo(sent.x, 6);
+      expect(mirrored.y).toBeCloseTo(sent.y, 6);
+      expect(mirrored.scale).toBeCloseTo(sent.scale, 6);
+      expect(mirrored.rotation).toBeCloseTo(sent.rotation, 6);
+    });
+
+    it('비출 시점이 없으면 스스로 추종한다', () => {
+      const target = { px: 1200, py: 400 };
+      const withMirror = mount(followOptions(target), { x: 0, y: 0, scale: 1, rotation: 0 });
+      const withoutMirror = mount(followOptions(target), null);
+
+      expect(withMirror.state.current!.view.scale).toBe(1);
+      // 옛 사용자 화면에서 온 스냅숏이다. 지금까지처럼 자기 추종을 돌린다.
+      expect(withoutMirror.state.current!.view.scale).toBeGreaterThan(1);
+    });
+  });
+
+  /**
+   * `spanPx`를 어느 축에 맞출지. (S15P11A206-382)
+   *
+   * 기본은 가로다. 그래서 세로로 보이는 범위가 상자 비율에 그대로 좌우된다 — 가로로 긴 상담자
+   * 지도(비율 0.40)는 사용자 화면(비율 0.95)의 절반도 담지 못했고, 같은 경로가 전혀 다른 그림으로
+   * 보였다. `shorter`는 짧은 축에 맞춰 두 축 모두 최소 `spanPx`를 담게 한다.
+   */
+  describe('담을 범위의 기준축', () => {
+    /** 상담자 메인 지도와 같은 비율. 가로로 길다. */
+    const WIDE_BOX = { width: 1170, height: 468 };
+
+    /** 캔버스 픽셀로 잰 가시 범위. `scale * fit`이 캔버스→화면 배율이다. */
+    function visibleSpan(view: MapView, box: { width: number; height: number }) {
+      const fit = Math.min(box.width / CANVAS.width, box.height / CANVAS.height);
+      const perCanvasPx = view.scale * fit;
+
+      return { x: box.width / perCanvasPx, y: box.height / perCanvasPx };
+    }
+
+    it('기본은 가로에 맞춘다. 세로는 상자 비율만큼만 담긴다', () => {
+      vi.unstubAllGlobals();
+      stubResizeObserver(WIDE_BOX);
+
+      const { state } = mount(followOptions({ px: 1200, py: 400 }));
+      const span = visibleSpan(state.current!.view, WIDE_BOX);
+
+      expect(span.x).toBeCloseTo(SPAN_PX, 0);
+      // 가로로 긴 상자라 세로는 절반도 담기지 않는다. 이것이 보고된 현상이었다.
+      expect(span.y).toBeCloseTo(SPAN_PX * (WIDE_BOX.height / WIDE_BOX.width), 0);
+      expect(span.y).toBeLessThan(SPAN_PX / 2);
+    });
+
+    it('shorter는 짧은 축에 맞춰 두 축 모두 담는다', () => {
+      vi.unstubAllGlobals();
+      stubResizeObserver(WIDE_BOX);
+
+      const { state } = mount({ ...followOptions({ px: 1200, py: 400 }), spanAxis: 'shorter' });
+      const span = visibleSpan(state.current!.view, WIDE_BOX);
+
+      // 짧은 축(세로)에 정확히 담기고, 긴 축은 비율만큼 더 담는다.
+      expect(span.y).toBeCloseTo(SPAN_PX, 0);
+      expect(span.x).toBeCloseTo(SPAN_PX * (WIDE_BOX.width / WIDE_BOX.height), 0);
+      // 두 축 모두 최소 `spanPx`를 담는다는 것이 이 값의 계약이다.
+      expect(span.x).toBeGreaterThanOrEqual(SPAN_PX - 1);
+      expect(span.y).toBeGreaterThanOrEqual(SPAN_PX - 1);
+    });
+
+    /** 사용자 화면처럼 정사각형에 가까운 상자에서는 기준축을 바꿔도 거의 같다. */
+    it('정사각형에 가까운 상자에서는 두 기준이 사실상 같다', () => {
+      const byWidth = mount(followOptions({ px: 1200, py: 400 }));
+      const widthSpan = visibleSpan(byWidth.state.current!.view, BOX);
+
+      const byShorter = mount({
+        ...followOptions({ px: 1200, py: 400 }),
+        spanAxis: 'shorter',
+      });
+      const shorterSpan = visibleSpan(byShorter.state.current!.view, BOX);
+
+      // 314×291 이면 차이가 8% 안쪽이다. 거울 지도가 기본값으로 이미 맞는 근거다.
+      expect(shorterSpan.y / widthSpan.y).toBeCloseTo(BOX.width / BOX.height, 1);
+      expect(shorterSpan.y).toBeGreaterThanOrEqual(widthSpan.y);
     });
   });
 });

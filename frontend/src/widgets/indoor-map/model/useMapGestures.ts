@@ -25,11 +25,14 @@ const IDENTITY: MapView = { scale: 1, x: 0, y: 0, rotation: 0 };
  */
 const MIN_SCALE = 1;
 /**
- * 시점 추종이 폭 60m를 담으려면 안내 화면 지도 박스에서 약 5.4배가 필요하다
- * (1m가 0.97화면px인 전체 조망 기준).
+ * 시점 추종이 담을 폭을 배율로 옮기면 이 상한이 필요하다.
  *
- * **박스가 낮으면 5.4배로 모자란다.** `fit`이 폭이 아니라 높이로 정해지기 때문이다
- * (`computeFollowView`). 상세 경로를 펼치면 지도 박스가 낮아지는데, 실측하면 이렇다.
+ * **아래 실측은 추종 폭이 60m였을 때의 값이다.** 지금은 90m이므로(`FOLLOW_SPAN_PX`) 필요한 배율이
+ * 3분의 2로 내려갔다 — 안내 화면 지도 박스에서 5.38 대신 약 3.6배다. 실측을 지금 값으로 고쳐 쓰지
+ * 않는다. 이 표는 **6으로 잘랐다가 실제로 깨진 기록**이고, 계산으로 덮어쓰면 왜 12인지가 사라진다.
+ *
+ * **박스가 낮으면 배율이 더 필요하다.** `fit`이 폭이 아니라 높이로 정해지기 때문이다
+ * (`computeFollowView`). 상세 경로를 펼치면 지도 박스가 낮아지는데, 60m 시절 실측이 이렇다.
  *
  * ```
  * 390×844  상세 닫힘  박스 358×278  필요 5.38   ← 여유 있음
@@ -40,6 +43,8 @@ const MIN_SCALE = 1;
  * 6으로 잘라 두었더니 360×640 기기에서 상세 경로를 펼치면 표시가 의도의 67%로 줄었다. 도면의
  * 얇은 선이 사라지고, `viewScale`로 화면상 크기를 맞추는 마커·이름표까지 같은 비율로 작아져
  * **화질이 깨진 것처럼 보였다.** 잘리지 않을 만큼 올린다. (S15P11A206-206)
+ *
+ * 추종 폭을 다시 좁히면 이 표가 그대로 유효해지므로 12를 내리지 않는다.
  *
  * 손 조작의 상한도 함께 올라간다. 더 당길 수 있게 되는 것뿐이라 문제가 없고, 추종 배율과 상한을
  * 따로 두면 추종 시점을 손으로 이어받는 순간 `clamp`가 배율을 끌어내려 화면이 튄다.
@@ -64,8 +69,22 @@ export interface FollowOptions {
   target: { px: number; py: number } | null;
   /** 표시 캔버스 크기. 화면 배치를 계산하는 데 쓴다. */
   canvas: { width: number; height: number };
-  /** 화면 가로에 담을 캔버스 픽셀. 내비처럼 앞쪽을 보려면 좁게 잡는다. */
+  /** 화면에 담을 캔버스 픽셀. 내비처럼 앞쪽을 보려면 좁게 잡는다. 어느 축에 맞출지는 `spanAxis`. */
   spanPx: number;
+  /**
+   * `spanPx`를 상자의 어느 축에 맞출지. 기본은 `width`다. (S15P11A206-382)
+   *
+   * **왜 필요한가.** `width`로만 맞추면 세로로 보이는 범위가 상자 비율에 그대로 좌우된다. 같은
+   * `spanPx`(90m)를 두고도 사용자 화면(비율 약 0.95)은 90m×85m를, 상담자 화면(비율 약 0.40)은
+   * 90m×36m를 본다. 상담자가 사용자의 절반도 못 보면서 "사용자와 같은 지도"라고 적혀 있었다.
+   *
+   * `shorter`는 짧은 축에 맞춘다. 그러면 **두 축이 모두 최소 `spanPx`를 담는다** — 가로로 긴
+   * 상자에서는 세로 90m·가로 225m가 되어 사용자가 보는 범위를 품는다.
+   *
+   * 기본을 바꾸지 않는다. 안내 화면 지도 상자도 가로로 길어(358×278) 기본을 `shorter`로 바꾸면
+   * 사용자 화면의 배율까지 함께 내려간다. 필요한 화면만 켠다.
+   */
+  spanAxis?: 'width' | 'shorter';
   /**
    * 따라갈 지점을 화면 세로 어디에 둘지(0이 위, 1이 아래).
    *
@@ -82,7 +101,54 @@ export interface FollowOptions {
   rotationDeg: number | null;
 }
 
-export function useMapGestures(follow?: FollowOptions) {
+/**
+ * 상자 크기로 나눈 시점. **다른 크기의 상자에 그대로 옮길 수 있다.** (S15P11A206-382)
+ *
+ * `MapView` 의 `x`·`y` 는 상자 픽셀이라 크기가 다른 화면에 그대로 넣으면 어긋난다. 상자 폭·높이로
+ * 나눠 두면 **비율이 같은 상자 사이에서는 정확히 옮겨진다** — `scale` 은 이미 비율값이고,
+ * `computeFollowView` 가 만드는 `x`·`y` 는 상자 크기에 비례하므로 나눈 값이 상자 크기와 무관해진다.
+ *
+ * 사용자 화면의 확대·이동을 상담자 거울에 그대로 비추는 데 쓴다. 거울 상자는 사용자가 잰 비율로
+ * 만들어져 있어(`ScreenGeometryPayload`) 이 조건이 성립한다.
+ */
+export interface NormalizedMapView {
+  /** 상자 폭으로 나눈 가로 이동량. */
+  x: number;
+  /** 상자 높이로 나눈 세로 이동량. */
+  y: number;
+  scale: number;
+  rotation: number;
+}
+
+function normalizeView(view: MapView, box: { width: number; height: number }): NormalizedMapView {
+  return {
+    x: box.width === 0 ? 0 : view.x / box.width,
+    y: box.height === 0 ? 0 : view.y / box.height,
+    scale: view.scale,
+    rotation: view.rotation,
+  };
+}
+
+function denormalizeView(
+  view: NormalizedMapView,
+  box: { width: number; height: number },
+): MapView {
+  return {
+    x: view.x * box.width,
+    y: view.y * box.height,
+    scale: view.scale,
+    rotation: view.rotation,
+  };
+}
+
+/**
+ * @param mirroredView 다른 화면의 시점을 그대로 비출 때 넘긴다. 넘기면 추종과 손 조작을 모두
+ *   제치고 이 값이 화면이 된다 — 비추는 자리는 스스로 시점을 정하지 않는다.
+ */
+export function useMapGestures(
+  follow?: FollowOptions,
+  mirroredView?: NormalizedMapView | null,
+) {
   const [view, setView] = useState<MapView>(IDENTITY);
   /**
    * 시점이 내 위치를 따라가는 중인지.
@@ -144,7 +210,8 @@ export function useMapGestures(follow?: FollowOptions) {
    *
    * **이어받은 추종 시점은 이 한계를 넘어 있다.** 추종은 내 위치를 화면 아래쪽에 붙이는 것이
    * 목적이라 이동량을 일부러 자르지 않는다(`computeFollowView`). 그래서 손을 대는 순간 그 값이
-   * 한계로 끌려오면 지도가 튄다 — 안내 화면 지도 박스(358×300)·추종 배율 5.38에서 도면 면적의
+   * 한계로 끌려오면 지도가 튄다 — 안내 화면 지도 박스(358×300)·추종 배율 5.38(추종 폭 60m 시절
+   * 실측이며 지금은 90m·약 3.6배다)에서 도면 면적의
    * 18~32%가 그렇고, 지도가 방향에 따라 돌아 있으면 최대 476px 튀어 내 위치 마커가 화면 밖으로
    * 나간다. (S15P11A206-206)
    *
@@ -414,11 +481,26 @@ export function useMapGestures(follow?: FollowOptions) {
     followViewRef.current = followView;
   }, [followView]);
 
-  const active = following && followView ? followView : view;
+  /**
+   * 비출 시점이 들어왔으면 그것이 화면이다. (S15P11A206-382)
+   *
+   * 추종보다 앞선다. 사용자가 지도를 밀어 추종을 풀면 그쪽 시점은 회전까지 그 자리에 멈추는데,
+   * 거울이 자기 추종을 계속 돌리면 사용자는 멈춘 지도를 보고 상담자는 도는 지도를 본다.
+   *
+   * 상자 크기를 모르는 첫 렌더에는 되돌릴 수 없으므로 평소 경로로 떨어진다. 곧 관찰값이 들어온다.
+   */
+  const mirrored = mirroredView && box ? denormalizeView(mirroredView, box) : null;
+  const active = mirrored ?? (following && followView ? followView : view);
 
   return {
     ref,
     view: active,
+    /**
+     * 지금 화면을 상자 크기와 무관한 값으로. 다른 화면에 비추게 보낼 때 쓴다.
+     *
+     * 상자를 아직 재지 못했으면 null 이다 — 그때 0으로 채워 보내면 받는 쪽이 원점으로 튄다.
+     */
+    normalizedView: box ? normalizeView(active, box) : null,
     reset,
     /** 버튼으로 배율만 바꾼다. 1보다 크면 확대, 작으면 축소다. */
     zoomBy,
@@ -453,7 +535,15 @@ function computeFollowView(
   const fit = Math.min(box.width / follow.canvas.width, box.height / follow.canvas.height);
   if (!(fit > 0)) return null;
 
-  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, box.width / (follow.spanPx * fit)));
+  /**
+   * `spanPx`를 어느 축에 맞출지. (S15P11A206-382)
+   *
+   * `scale * fit`이 캔버스→화면 배율이므로, 아래 식은 `기준축 길이 / spanPx`가 된다. 즉 **기준으로
+   * 삼은 축에 정확히 `spanPx`가 담기고** 다른 축은 상자 비율만큼 더 담긴다. 짧은 축을 기준으로
+   * 삼으면 두 축 모두 최소 `spanPx`를 담는다.
+   */
+  const basis = follow.spanAxis === 'shorter' ? Math.min(box.width, box.height) : box.width;
+  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, basis / (follow.spanPx * fit)));
   const rotation = follow.rotationDeg ?? 0;
   const radians = (rotation * Math.PI) / 180;
   const cos = Math.cos(radians);
