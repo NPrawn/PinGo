@@ -75,7 +75,6 @@ vi.mock('@/shared/api', async (importOriginal) => ({
 vi.mock('@/features/consult-signaling', async (importOriginal) => ({
   // 번역은 이 화면의 관심사가 아니다. 옮기지 않은 것으로 둔다.
   useCaptionTranslation: apiMocks.useCaptionTranslation,
-  useTranslatedSpeech: vi.fn(),
   // 안내 문구를 만드는 것은 순수 함수다. 가짜로 바꾸면 실제로 무슨 말이 뜨는지 못 본다.
   describeRemoteCaptionTrouble: (
     await importOriginal<typeof import('@/features/consult-signaling')>()

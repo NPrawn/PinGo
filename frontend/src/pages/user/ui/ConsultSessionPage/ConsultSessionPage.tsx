@@ -29,7 +29,6 @@ import {
   releaseConsultMedia,
   useCaptionTranslation,
   useConsultSignaling,
-  useTranslatedSpeech,
 } from '@/features/consult-signaling';
 import { usePermissionsRevoked } from '@/features/permissions';
 import { readForwardMap, type PlanarVector } from '@/features/xr-tracking';
@@ -186,7 +185,6 @@ export function ConsultSessionPage() {
     remoteCaption,
     remoteFinalCaption,
     remoteFinalCaptionId,
-    remoteCaptionFinal,
     remoteCaptionError,
     captionsSupported,
     captionError,
@@ -210,11 +208,6 @@ export function ConsultSessionPage() {
     remoteFinalCaption,
     userLanguage,
     remoteFinalCaptionId,
-  );
-  useTranslatedSpeech(
-    translatedRemoteCaption,
-    userLanguage === 'en' ? 'en-US' : 'ko-KR',
-    remoteCaptionFinal,
   );
   /**
    * 화면에 띄우는 자막. **고른 언어 하나뿐이다.**
@@ -1008,19 +1001,16 @@ export function ConsultSessionPage() {
     pendingViewRef.current = view;
     if (viewTimerRef.current !== undefined) return;
 
-    viewTimerRef.current = window.setTimeout(
-      () => {
-        viewTimerRef.current = undefined;
-        const pending = pendingViewRef.current;
+    viewTimerRef.current = window.setTimeout(() => {
+      viewTimerRef.current = undefined;
+      const pending = pendingViewRef.current;
 
-        if (!pending) return;
+      if (!pending) return;
 
-        pendingViewRef.current = null;
-        viewSentAtRef.current = Date.now();
-        setSyncedMapView(pending);
-      },
-      MAP_VIEW_SYNC_INTERVAL_MS - waited,
-    );
+      pendingViewRef.current = null;
+      viewSentAtRef.current = Date.now();
+      setSyncedMapView(pending);
+    }, MAP_VIEW_SYNC_INTERVAL_MS - waited);
   }, []);
 
   useEffect(
@@ -1294,11 +1284,8 @@ export function ConsultSessionPage() {
               <span>{t('user.consultSession.reconnecting')}</span>
             </div>
           )}
-          {/*
-            상담원은 목소리만 보낸다. 소리를 내려면 요소 자체는 있어야 하므로 보이지 않게만
-            둔다.
-          */}
-          <video ref={remoteVideoRef} autoPlay playsInline className={styles.remoteAudio} />
+          {/* 원격 영상은 표시하되 상담 음성은 재생하지 않는다. */}
+          <video ref={remoteVideoRef} autoPlay muted playsInline className={styles.remoteAudio} />
           {/*
             셀프뷰를 두지 않는다. XR 세션이 그리는 카메라 영상이 이 화면의 배경이므로, 사용자가
             보고 있는 것이 곧 상담자에게 건너가는 것이다. 같은 그림을 작은 창으로 한 번 더

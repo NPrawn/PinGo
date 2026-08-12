@@ -80,7 +80,6 @@ vi.mock('@/shared/api', async (importOriginal) => ({
 vi.mock('@/features/consult-signaling', async (importOriginal) => ({
   DEMO_PHARMACY_DRAW_DELAY_MS: 9500,
   useCaptionTranslation: signalingMocks.translateCaption,
-  useTranslatedSpeech: vi.fn(),
   // 안내 문구를 만드는 것은 순수 함수다. 가짜로 바꾸면 실제로 무슨 말이 뜨는지 못 본다.
   describeRemoteCaptionTrouble: (
     await importOriginal<typeof import('@/features/consult-signaling')>()
@@ -208,11 +207,8 @@ describe('SessionPage', () => {
     });
   });
 
-  /**
-   * 상담원 콘솔은 한국어 전용이다. 사용자가 어느 언어로 말했든 한국어로 옮겨 한 줄만 띄운다 —
-   * 영어 줄은 상담원이 읽지 않으면서 발화마다 번역 요청만 두 배로 냈다.
-   */
-  it('실시간 자막을 한국어로만 표시한다', async () => {
+  /** 앱 언어 설정과 무관하게 사용자 발화는 영어, 상담원 발화는 한국어로 표시한다. */
+  it('실시간 자막을 사용자 영어와 상담원 한국어로 표시한다', async () => {
     apiMocks.getCounselorConsultations.mockResolvedValue([
       { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
     ]);
@@ -224,21 +220,21 @@ describe('SessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('한국어: Where is exit three?')).toBeInTheDocument();
+    expect(await screen.findByText('English: Where is exit three?')).toBeInTheDocument();
     // 상담원 발화는 이미 한국어라 옮기지 않는다.
     expect(screen.getByText('3번 출구는 왼쪽입니다.')).toBeInTheDocument();
-    expect(screen.queryByText('English: Where is exit three?')).toBeNull();
+    expect(screen.queryByText('한국어: Where is exit three?')).toBeNull();
     expect(screen.queryByText('English: 3번 출구는 왼쪽입니다.')).toBeNull();
-    // 번역은 사용자 발화 한 건에 대해 한국어 한 번만 나간다.
+    // 번역은 사용자 발화 한 건에 대해 영어 한 번만 나간다.
     expect(signalingMocks.translateCaption).toHaveBeenCalledWith(
       'cs_1',
       'Where is exit three?',
-      'ko',
+      'en',
       'caption-user-1',
       expect.any(Function),
     );
     expect(
-      signalingMocks.translateCaption.mock.calls.filter((call: unknown[]) => call[2] === 'en'),
+      signalingMocks.translateCaption.mock.calls.filter((call: unknown[]) => call[2] === 'ko'),
     ).toHaveLength(0);
   });
 
@@ -261,8 +257,8 @@ describe('SessionPage', () => {
     expect(screen.queryByText('Where is exit three?')).toBeNull();
   });
 
-  /** 대화 로그도 한국어 한 줄이다. 상담원이 읽지 못하는 원문 줄은 화면에 남기지 않는다. */
-  it('대화 로그를 한국어로만 보여 준다', async () => {
+  /** 대화 로그도 사용자 영어와 상담원 한국어로 표시한다. */
+  it('대화 로그를 화자별 언어로 보여 준다', async () => {
     apiMocks.getCounselorConsultations.mockResolvedValue([
       { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
     ]);
@@ -271,7 +267,7 @@ describe('SessionPage', () => {
         seq: 1,
         speaker: 'USER',
         content: 'Where is exit three?',
-        translatedContent: '3번 출구가 어디예요?',
+        translatedContent: 'English: Where is exit three?',
         captionId: 'caption-user-1',
       },
       {
@@ -284,7 +280,7 @@ describe('SessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('3번 출구가 어디예요?')).toBeInTheDocument();
+    expect(await screen.findByText('English: Where is exit three?')).toBeInTheDocument();
     expect(screen.getByText('왼쪽으로 가시면 됩니다')).toBeInTheDocument();
     expect(screen.queryByText('Where is exit three?')).toBeNull();
   });
