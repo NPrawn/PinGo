@@ -169,6 +169,24 @@ export function mapHeadingDegOf(yawDeg: number, anchor: XrMapAnchor): number | n
 }
 
 /**
+ * 지도 프레임 방향각(도)을 전방 벡터로 되돌린다. `mapHeadingDegOf`의 역이다. (S15P11A206-382)
+ *
+ * 위 함수가 `atan2(y, x)`로 각을 만들므로 그 역은 `(cos, sin)`이다. 앵커 시점에는
+ * `mapHeadingDegOf`가 `atan2(forwardMap.y, forwardMap.x)`와 같은 값을 내니, 그 각을 이 함수에
+ * 넣으면 원래의 `forwardMap`(길이 1로 정규화된 것)이 그대로 나온다.
+ *
+ * **앵커를 새로 구울 때 지금 향한 쪽을 넘기는 용도다.** 앵커의 기준 방향은 확정 시점의 값으로
+ * 굳어 있어서, 사용자가 그 뒤로 몸을 돌린 채 다음 화면에 들어가면 옛 방향으로 앵커가 구워진다.
+ */
+export function forwardMapOfHeadingDeg(headingDeg: number): PlanarVector | null {
+  if (!Number.isFinite(headingDeg)) return null;
+
+  const rad = (headingDeg * Math.PI) / 180;
+
+  return { x: Math.cos(rad), y: Math.sin(rad) };
+}
+
+/**
  * XR pose를 지도 캐노니컬 미터 좌표로 옮긴다. (좌표 스펙 8.3)
  *
  * **`dZ`의 부호를 뒤집지 않고 거울 보정도 넣지 않는다.** 3차 실기기 검증에서 90° 우회전 후

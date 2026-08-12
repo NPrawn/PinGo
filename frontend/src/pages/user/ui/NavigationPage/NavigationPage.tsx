@@ -32,6 +32,7 @@ import {
 import { routeOriginOf, routeUnavailableText, SEND_CURRENT_POSITION } from '@/entities/route';
 import { useStationStore } from '@/entities/station';
 import { ConsultCta } from '@/features/consult-request';
+import { forwardMapOfHeadingDeg } from '@/features/xr-tracking';
 import { createIndoorRoute } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { localizedLocationLabelOf } from '@/shared/lib/localizedLocationLabel';
@@ -94,6 +95,15 @@ const TEMP_FLOOR_TRANSITION_LOCATION = {
  * 둘을 다시 하나로 합치면 VPS가 참조하지 못하는 358이 현재 위치 노드로 저장된다.
  */
 const TEMP_FLOOR_TRANSITION_ROUTE_NODE_ID = 358;
+
+/**
+ * 걸어온 자리를 스토어에 남기는 최소 간격(ms). (S15P11A206-382)
+ *
+ * 스토어는 sessionStorage 에 저장되므로 한 번 쓸 때마다 상태 전체가 직렬화된다. 방향은
+ * 120ms·5도마다 갱신되니 그대로 받으면 초당 여러 번이다. 상담 화면으로 넘어가는 순간의
+ * 값만 정확하면 되는 용도라 1초면 충분하다.
+ */
+const TRACKED_POSITION_MIN_INTERVAL_MS = 1000;
 
 /**
  * 카메라 화면의 문구. 화살표가 가리키는 방향을 말로 한 번 더 적는다.
@@ -357,6 +367,48 @@ export function NavigationPage() {
      */
     releaseCamera: stopCamera,
   });
+
+  /**
+   * 걸어온 자리를 스토어에 남긴다. **상담 화면이 이것을 출발점으로 쓴다.** (S15P11A206-382)
+   *
+   * 이 화면은 추적 좌표를 훅의 내부 상태로만 들고 있었다. 그래서 상담 화면이 스토어에서 읽는
+   * 출발점이 마지막 **확정** 시점에 얼어붙었다 — B3→B2 층 이동 모달이 하드코딩 좌표를 넣은 뒤
+   * 3번 출구까지 걸어가도 스토어는 B2 엘리베이터 앞이었고, 상담 화면은 그 자리에 앵커를
+   * 구웠다. 앵커가 모든 좌표의 기준이므로 이후 위치가 그만큼 어긋난 채로 남는다.
+   *
+   * `setCurrentLocation` 이 아니라 `setTrackedPosition` 을 부른다. 확정이 아니므로
+   * `currentNodeId` 와 `routeResult` 를 건드려서는 안 되고, `currentMapX/Y` 는 이 화면 경로
+   * 조회의 쿼리 키라서 걸음마다 갱신하면 경로를 다시 받는다.
+   *
+   * 방향도 함께 남긴다. 앵커의 기준 방향까지 확정 시점 값으로 굳어 있어서, 위치만 고치면
+   * 사용자가 그 뒤로 몸을 돌린 만큼 회전이 어긋난다.
+   */
+  const setTrackedPosition = useNavigationStore((state) => state.setTrackedPosition);
+  const trackedFloorId = currentLocation?.floorId ?? null;
+  const trackedMapX = currentLocation?.mapX ?? null;
+  const trackedMapY = currentLocation?.mapY ?? null;
+  const trackedWrittenAtRef = useRef(0);
+
+  useEffect(() => {
+    if (trackedFloorId == null || trackedMapX == null || trackedMapY == null) return;
+
+    /*
+      묶어서 쓴다. 위치는 확정 주기(2m 또는 5초)로 오지만 방향은 120ms·5도마다 와서, 그대로
+      받으면 초당 여러 번 sessionStorage 에 스토어 전체를 다시 쓴다. 흘린 변경은 다음 변경이
+      곧 덮으므로 값은 1초 안에 따라잡는다.
+    */
+    const now = Date.now();
+    if (now - trackedWrittenAtRef.current < TRACKED_POSITION_MIN_INTERVAL_MS) return;
+    trackedWrittenAtRef.current = now;
+
+    setTrackedPosition({
+      floorId: trackedFloorId,
+      mapX: trackedMapX,
+      mapY: trackedMapY,
+      // 방향을 아직 모르면 넘기지 않는다. 넘기면 남아 있는 값을 지운다.
+      forwardMap: headingDeg == null ? undefined : forwardMapOfHeadingDeg(headingDeg),
+    });
+  }, [trackedFloorId, trackedMapX, trackedMapY, headingDeg, setTrackedPosition]);
 
   /**
    * 층 탭. **목록을 지도 응답에서 만든다.** (S15P11A206-280)

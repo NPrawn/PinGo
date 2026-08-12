@@ -321,15 +321,41 @@ export function ConsultSessionPage() {
    * 고정하지 않아도 앵커가 흔들리지 않는다. 앵커는 한 번 성공하면 발화가 닫히므로(`anchorFiredRef`)
    * 그 뒤의 변경은 무시되고, 성공 전의 변경은 더 최신 방향으로 앵커를 만드는 쪽이 맞다.
    */
-  const confirmedForwardMap = useNavigationStore((state) => state.currentForwardMap);
+  const trackedForwardMap = useNavigationStore((state) => state.trackedForwardMap);
+  const currentForwardMap = useNavigationStore((state) => state.currentForwardMap);
+  /**
+   * 안내 화면에서 걸어온 만큼 반영된 방향을 먼저 쓴다. (S15P11A206-382)
+   *
+   * `currentForwardMap` 은 마지막 확정 시점의 방향이라, 그 뒤로 몸을 돌린 채 이 화면에 들어오면
+   * 앵커가 옛 방향으로 구워진다. 걸어온 기록이 없으면(안내 화면을 거치지 않았거나 아직 추적이
+   * 잡히기 전) 확정 방향으로 떨어진다 — 이 값이 생기기 전의 동작이다.
+   */
+  const confirmedForwardMap = trackedForwardMap ?? currentForwardMap;
 
-  const storedLocation = useMemo<IndoorPoint | null>(
-    () =>
-      currentFloorId != null && currentMapX != null && currentMapY != null
-        ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
-        : null,
-    [currentFloorId, currentMapX, currentMapY],
-  );
+  const trackedFloorId = useNavigationStore((state) => state.trackedFloorId);
+  const trackedMapX = useNavigationStore((state) => state.trackedMapX);
+  const trackedMapY = useNavigationStore((state) => state.trackedMapY);
+
+  /**
+   * 앵커를 구울 자리. **안내 화면에서 걸어온 자리를 먼저 쓴다.** (S15P11A206-382)
+   *
+   * `currentMapX/Y` 는 위치를 **확정한** 자리라 걸어간 거리를 담지 않는다. B3→B2 층 이동 모달이
+   * 하드코딩 좌표(B2 엘리베이터 앞)를 넣은 뒤 3번 출구까지 걸어가 상담을 열면, 이 화면은 그
+   * 엘리베이터 앞에 앵커를 굽고 사용자를 거기 세웠다. 앵커는 이후 모든 좌표의 기준이라 추적이
+   * 정상으로 잡혀도 그 오차가 사라지지 않는다.
+   *
+   * 걸어온 기록이 없으면 확정 좌표로 떨어진다. 안내 화면을 거치지 않고 상담을 시작한 경우이며,
+   * 그때는 이 값이 생기기 전과 똑같이 동작한다.
+   */
+  const storedLocation = useMemo<IndoorPoint | null>(() => {
+    if (trackedFloorId != null && trackedMapX != null && trackedMapY != null) {
+      return { floorId: trackedFloorId, mapX: trackedMapX, mapY: trackedMapY };
+    }
+
+    return currentFloorId != null && currentMapX != null && currentMapY != null
+      ? { floorId: currentFloorId, mapX: currentMapX, mapY: currentMapY }
+      : null;
+  }, [trackedFloorId, trackedMapX, trackedMapY, currentFloorId, currentMapX, currentMapY]);
 
   /**
    * 상담자에게 보낼 카메라 트랙. **세션보다 먼저 켠다.** (S15P11A206-89)
@@ -398,7 +424,17 @@ export function ConsultSessionPage() {
    * 캐시에서 즉시 나오고 요청이 한 번 더 나가지 않는다.
    */
   const waypointNodeIds = waypoints.map((waypoint) => waypoint.nodeId);
-  const origin = SEND_CURRENT_POSITION ? routeOriginOf(currentMapX, currentMapY) : null;
+  /*
+    출발 좌표도 걸어온 자리를 쓴다. **`currentMapX/Y` 가 아니다.** (S15P11A206-382)
+
+    서버는 이 좌표로 진입 노드를 다시 고른다(`withChosenEntry`). 확정 좌표를 보내면 사용자가
+    이미 지나온 지점에서 경로가 시작해, 지도에 그려지는 길이 뒤로 걷는 구간을 품는다 — 앵커와
+    같은 어긋남이 경로 쪽에도 남는다. 이 화면에 있는 동안 이 값은 갱신되지 않으므로(기록하는
+    쪽은 안내 화면이다) 조회 키가 흔들리지도 않는다.
+  */
+  const origin = SEND_CURRENT_POSITION
+    ? routeOriginOf(storedLocation?.mapX, storedLocation?.mapY)
+    : null;
   const routeQuery = useQuery({
     queryKey: [
       'indoor-route',
