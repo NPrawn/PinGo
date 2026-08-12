@@ -202,7 +202,7 @@ export function ConsultSessionPage() {
     /* Demo mode replaces both sides' STT with the fixed presentation script. */
     env.VITE_DEMO_CAPTIONS === 'true' ? 'demo' : 'server',
   );
-  /** 데모에서는 앱 언어 설정과 무관하게 상담원 고정 자막을 영어로 보여 준다. */
+  /** 데모에서는 사용자 설정과 무관하게 상담원 고정 자막을 영어로 보여 준다. */
   const captionLanguage = env.VITE_DEMO_CAPTIONS === 'true' ? 'en' : userLanguage;
   const translatedRemoteCaption = useCaptionTranslation(
     consultationId,
