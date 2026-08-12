@@ -13,61 +13,57 @@
   filter: brightness(0.8);
 }
 
+/*
+  카메라 자리. **상담 화면(ConsultSessionPage)의 `.cam` 과 같은 값이어야 한다.**
+
+  `height: 250px` 고정이었다. 상담 화면은 그 고정값을 이미 걷어냈는데(같은 파일의 `.cam` 주석 —
+  "화면 높이가 다른 기기에서 카메라와 지도의 비율이 안내 화면과 어긋나, 두 화면을 오갈 때 지도
+  크기가 눈에 띄게 달라졌다") 이 화면만 남아 있었다. 그래서 상담을 끝내는 순간 배경 지도의
+  배율이 직전 화면과 달라졌다.
+
+  **배율은 지도 상자의 폭이 정한다** — 추종 시점의 m당 픽셀이 `추종 폭 / 상자 폭` 이다. 그래서
+  아래 `.mapWrap` 의 좌우 패딩까지 상담 화면과 같아야 한다.
+*/
 .cam {
   position: relative;
   display: flex;
-  flex: none;
+  flex: 0 0 calc(var(--camera-region-ratio) + 22.08px);
   align-items: center;
   justify-content: center;
-  height: 250px;
+  min-height: 0;
   overflow: hidden;
   background: radial-gradient(120% 90% at 50% 20%, #2b2b30, #0e0e11);
 }
 
-.arrow {
-  font-size: 60px;
-  color: #fff;
-  text-shadow: 0 3px 12px rgb(0 0 0 / 50%);
-}
-
+/* 상담 화면의 `.lower` 와 같은 값이다. */
 .mapWrap {
-  flex: 1;
-  padding: 12px 14px;
+  display: flex;
+  flex: 0 0 calc(var(--content-region-ratio) - 22.08px);
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px 16px;
+  overflow: hidden;
   background: var(--color-cream);
 }
 
+/* 상담 화면의 `.map` 과 같은 값이다. */
 .map {
-  height: 100%;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #eef1f5;
+  border: 1px solid #dfe3e8;
 }
 
-.floorButtons {
+/* 상담 화면의 `.mapCanvas` 와 같은 값이다. 도면이 실제로 그려지는 자리다. */
+.mapCanvas {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 3px;
-  background: rgb(255 255 255 / 78%);
-  border: 1px solid rgb(255 255 255 / 90%);
-  border-radius: 12px;
+  inset: 0;
 }
 
-.floorButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 27px;
-  font: 800 10.5px/1 var(--font-family-base);
-  color: #7c8c85;
-  border-radius: 9px;
-}
-
-.floorButtonOn {
-  color: #fff;
-  background: linear-gradient(135deg, var(--color-mint), var(--color-mint-dark));
+.mapCanvas svg {
+  z-index: 4;
 }
 
 .scrim {

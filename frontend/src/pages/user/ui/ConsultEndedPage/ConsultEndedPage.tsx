@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { SATISFACTION_LABELS, useConsultStore } from '@/entities/consult';
+import { useNavigationStore } from '@/entities/navigation';
+import { useStationStore } from '@/entities/station';
 import { useUserSessionStore } from '@/entities/user-session';
 import { releaseConsultMedia } from '@/features/consult-signaling';
 import { ApiError, rateConsultation } from '@/shared/api';
 import { USER_ROUTES } from '@/shared/config';
 import { Icon, MapPreview, Sub } from '@/shared/ui';
+import { IndoorMapView } from '@/widgets/indoor-map';
 import { PhoneFrame } from '@/widgets/phone-frame';
 import styles from './ConsultEndedPage.module.css';
 
-const FLOORS = ['1F', 'B1', 'B2'];
 const STARS = [1, 2, 3, 4, 5];
 /** Keep the selected score visible briefly before returning to destination search. */
 const DISMISS_MS = 550;
@@ -45,6 +47,30 @@ export function ConsultEndedPage() {
    * 평가 API가 호출되지 않는 문제가 있어 이 방식을 유지한다.)
    */
   const [ratingConsultationId] = useState(consultationId);
+
+  /**
+   * 모달 뒤에 비치는 배경. **도면만 그린다. 현재 위치와 경로는 그리지 않는다.** (S15P11A206-382)
+   *
+   * 프로토타입 목업이 그대로 남아 있던 자리다 — 퍼센트로 고정한 가짜 내 위치·목적지 마커,
+   * `['1F','B1','B2']` 로 박아 둔 층 버튼, 카메라 자리의 하드코딩 `↑` 화살표였다. 안내 화면은
+   * 그 셋을 모두 걷어냈다(가짜 마커는 "표시가 둘이 되어 어느 쪽이 실제인지 구분할 수 없다",
+   * 층 목록은 응답에서 만든다 — 역삼역에 `1F` 지도는 없다). 이 화면만 남아 있었다.
+   *
+   * **마커와 경로를 그리지 않는 이유.** 이 화면은 상담 화면이 보여 주던 것을 이어서 보여 줄
+   * 수단이 없다. 상담 화면은 살아 있는 XR 세션의 좌표와 방향으로 시점을 사용자 진행 방향에
+   * 맞춰 돌려 두는데, 여기서는 마운트 즉시 `releaseConsultMedia()` 로 세션을 놓기 때문에 그
+   * 방향이 없다. 그러면 같은 좌표를 그려도 도면이 기본 회전으로 돌아가, 내 위치와 경로가 서로
+   * 맞지 않는 것처럼 읽힌다. 틀린 자리를 그리는 것보다 그리지 않는 편이 낫다 — 모달 뒤에서
+   * `brightness(0.8)` 로 어두워진 뒤 55% 검은 막까지 덮이는 배경이라 더 그렇다.
+   *
+   * 층은 그대로 쓴다. 어느 도면을 펼칠지는 위치가 아니라 "어디에 있었는지" 이고, 그것이 틀리면
+   * 아예 다른 역·다른 층 그림이 뒤에 깔린다.
+   */
+  const stationId = useStationStore((state) => state.stationId);
+  const trackedFloorId = useNavigationStore((state) => state.trackedFloorId);
+  const currentFloorId = useNavigationStore((state) => state.currentFloorId);
+  /** 상담 화면과 같은 우선순위다 — 걸어온 층이 있으면 그것, 없으면 확정 층. */
+  const backdropFloorId = trackedFloorId ?? currentFloorId ?? undefined;
 
   /**
    * 상담이 끝나고 돌아갈 자리. (S15P11A206-89)
@@ -112,26 +138,15 @@ export function ConsultEndedPage() {
     <PhoneFrame layout="flush" bodyClassName={styles.body}>
       <>
         <div className={styles.backdrop} aria-hidden>
-          <div className={styles.cam}>
-            <div className={styles.arrow}>↑</div>
-          </div>
+          {/* 카메라 자리. 영상은 이미 반납했으므로 비운다 — 가짜 화살표를 그리지 않는다. */}
+          <div className={styles.cam} />
           <div className={styles.mapWrap}>
-            <MapPreview
-              className={styles.map}
-              me={{ left: '40%', top: '70%' }}
-              dest={{ left: '74%', top: '22%' }}
-            >
-              <div className={styles.floorButtons}>
-                {FLOORS.map((floor, index) => (
-                  <span
-                    key={floor}
-                    className={[styles.floorButton, index === 0 && styles.floorButtonOn]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
-                    {floor}
-                  </span>
-                ))}
+            {/* `MapPreview` 는 테두리 카드만 맡는다. 상담 화면과 같은 감싸기다. */}
+            <MapPreview className={styles.map}>
+              <div className={styles.mapCanvas}>
+                {/* 층 도면만 넘긴다. 위치·방향·경로를 넘기지 않으므로 추종 시점도 켜지 않는다 —
+                    따라갈 대상이 없으면 도면 전체가 상자에 맞춰 들어온다. */}
+                <IndoorMapView stationId={stationId ?? 0} floorId={backdropFloorId} />
               </div>
             </MapPreview>
           </div>

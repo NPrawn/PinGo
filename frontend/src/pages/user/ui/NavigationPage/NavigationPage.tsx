@@ -81,6 +81,22 @@ const PERSONA_STAIRS_6 = {
 /**
  * 층 이동 API가 연결되기 전 페르소나 테스트에서 사용하는 임시 도착 위치.
  * B2-B3 계단 6을 올라가는 안내의 완료 버튼은 이 위치에서 경로를 다시 계산한다.
+ *
+ * **이름을 함께 둔다.** (S15P11A206-382)
+ *
+ * 예전에는 좌표만 넘겼다. 그러면 `currentLocationLabel` 이 `null` 이 되고, 화면은 위치 이름
+ * 자리에 역 이름(`역삼역`)을 적는다 — 층 이동을 막 끝낸 사용자에게는 위치를 잃은 것으로 읽힌다.
+ * 계단을 오르기 전 B3 에서는 `B3 · 승강장` 이라고 적혀 있었으니 더 그렇다.
+ *
+ * **이 문구는 서버가 말할 이름을 그대로 옮긴 것이다.** 위치 이름은 노드의 DB 라벨
+ * (`B2_R023` 같은 내부 코드)이 아니라 층의 공간 유형에서 조립된다 —
+ * `IndoorPositionResolver.labelsOf` 가 `concourse` 를 `{층} · 대합실`, `platform` 을
+ * `{층} · 승강장` 으로 만든다. 역삼역 `floor_id 1` 은 `B2` 이고 공간 유형이 `concourse` 이므로
+ * 위치 인식이 이 자리를 잡으면 서버가 정확히 아래 두 문자열을 보낸다.
+ *
+ * 그런데 이 모달은 위치 인식을 거치지 않는다 — 층 이동 API 가 없어 클라이언트가 좌표를 대신
+ * 넣는 자리다. 그래서 서버 라벨이 도착하지 않고, 같은 문구를 여기 적어 둔다. 가운뎃점 양쪽 공백까지
+ * 같게 두는 것이 중요하다 — 층 이동 API 가 들어와 이 상수가 사라질 때 화면의 글자가 바뀌지 않는다.
  */
 const TEMP_FLOOR_TRANSITION_LOCATION = {
   nodeId: 353,
@@ -88,6 +104,8 @@ const TEMP_FLOOR_TRANSITION_LOCATION = {
   mapX: -4.986,
   mapY: 27.654,
   forwardMap: { x: 0.995, y: -0.099 },
+  label: 'B2 · 대합실',
+  labelEn: 'B2 · Concourse',
 } as const;
 
 /**
@@ -1471,7 +1489,9 @@ export function NavigationPage() {
               onClick={() => {
                 setCompletedVerticalStepKey(verticalStepKey);
                 if (!previewTransition && verticalDestination) {
-                  const { nodeId, forwardMap, ...indoorLocation } = TEMP_FLOOR_TRANSITION_LOCATION;
+                  /* 이름은 따로 뺀다. `indoorLocation` 은 앵커에 넘기는 순수한 좌표여야 한다. */
+                  const { nodeId, forwardMap, label, labelEn, ...indoorLocation } =
+                    TEMP_FLOOR_TRANSITION_LOCATION;
                   const temporaryFloorCode = floorCodeOf(floorMaps, indoorLocation.floorId);
                   if (temporaryFloorCode) {
                     setPickedFloorCode(temporaryFloorCode);
@@ -1483,6 +1503,8 @@ export function NavigationPage() {
                     nodeId,
                     ...indoorLocation,
                     forwardMap,
+                    label,
+                    labelEn,
                   });
 
                   if (import.meta.env.DEV) {
@@ -1491,6 +1513,7 @@ export function NavigationPage() {
                       nodeId,
                       ...indoorLocation,
                       forwardMap,
+                      label,
                     });
                   }
                 }
