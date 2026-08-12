@@ -54,6 +54,26 @@ type NavigationStore = {
   currentConfidenceScore: number | null;
   /** VPS 좌표를 평면도에 표시할 때 사용하는 층별 좌표 정합 평균 오차(m). */
   currentAccuracyM: number | null;
+  /**
+   * 안내 화면이 마지막으로 추적한 자리. **`currentMapX/Y` 와 따로 둔다.** (S15P11A206-382)
+   *
+   * `currentMapX/Y` 는 위치를 **확정한** 자리다 — VPS 인식이나 층 이동처럼 노드까지 정해지는
+   * 순간에만 바뀐다. 걸어가는 동안의 좌표는 안내 화면 내부에만 있었고, 그래서 상담 화면이
+   * 스토어에서 읽는 출발점이 확정 시점에 얼어붙어 있었다. B3→B2 층 이동 모달이 하드코딩
+   * 좌표를 넣은 뒤 3번 출구까지 걸어가면, 상담 화면은 그 걸어간 거리를 모른 채 **B2 엘리베이터
+   * 앞에 앵커를 굽는다.** 앵커가 기준이므로 이후 모든 위치가 그만큼 어긋난 채로 남는다.
+   *
+   * **`currentMapX/Y` 를 실시간으로 갱신해서 해결할 수는 없다.** 그 두 값이 안내 화면 경로 조회의
+   * 쿼리 키에 들어 있어(서버가 좌표로 진입 노드를 다시 고른다) 한 걸음마다 경로를 다시 받는다.
+   * 그래서 어느 쿼리 키에도 들어가지 않는 칸을 따로 만든다.
+   *
+   * 노드는 담지 않는다. 걷는 중의 좌표에 맞는 노드를 이쪽에서 정할 방법이 없고, 정할 필요도
+   * 없다 — 상담 화면은 좌표만으로 앵커를 굽고 서버는 좌표에서 진입 노드를 다시 고른다.
+   */
+  trackedFloorId: number | null;
+  trackedMapX: number | null;
+  trackedMapY: number | null;
+  trackedForwardMap: MapDirection | null;
   routeResult: RouteResponse | null;
   /**
    * 사용자가 고른 경로 유형.
@@ -127,6 +147,19 @@ type NavigationStore = {
     confidenceScore?: number | null;
     accuracyM?: number | null;
   }) => void;
+  /**
+   * 걸어가는 동안의 자리를 기록한다. 안내 화면이 부른다. (S15P11A206-382)
+   *
+   * `setCurrentLocation` 과 달리 노드·이름·경로를 건드리지 않는다. 위치를 **확정한** 것이 아니라
+   * 어디까지 걸어왔는지만 남기는 것이므로, `currentNodeId` 가 바뀌면 안 되고 `routeResult` 도
+   * 지워지면 안 된다.
+   */
+  setTrackedPosition: (position: {
+    floorId: number;
+    mapX: number;
+    mapY: number;
+    forwardMap?: MapDirection | null;
+  }) => void;
   setRoute: (route: RouteType) => void;
   /**
    * 고른 경로가 도착할 실내 노드와 그 출구 이름.
@@ -179,6 +212,10 @@ export const useNavigationStore = create<NavigationStore>()(
       currentForwardMap: null,
       currentConfidenceScore: null,
       currentAccuracyM: null,
+      trackedFloorId: null,
+      trackedMapX: null,
+      trackedMapY: null,
+      trackedForwardMap: null,
       routeResult: null,
       route: 'fastest',
       stepsOpen: false,
@@ -202,6 +239,11 @@ export const useNavigationStore = create<NavigationStore>()(
           routeResult: null,
           waypoints: [],
           relocalizing: false,
+          // 지난 여정에서 걸어온 자리를 물려받지 않는다.
+          trackedFloorId: null,
+          trackedMapX: null,
+          trackedMapY: null,
+          trackedForwardMap: null,
         }),
       setDestination: (destination, details) =>
         set({
@@ -242,8 +284,36 @@ export const useNavigationStore = create<NavigationStore>()(
            */
           currentForwardMap:
             location.forwardMap === undefined ? state.currentForwardMap : location.forwardMap,
+          /**
+           * 위치를 확정하면 걸어온 기록을 비운다. **새 확정이 옛 추적보다 나중이다.**
+           *
+           * 비우지 않으면 순서가 뒤집힌다 — 층 이동 모달이나 재인식이 자리를 옮겼는데 그 전에
+           * 걸어온 좌표가 남아 있어, 읽는 쪽이 옛 자리를 그대로 쓴다. 비우면 확정 좌표로
+           * 떨어지고(이 값이 생기기 전의 동작이다) 이후 걸음이 다시 채운다.
+           */
+          trackedFloorId: null,
+          trackedMapX: null,
+          trackedMapY: null,
+          trackedForwardMap: null,
           routeResult: null,
         })),
+      setTrackedPosition: (position) =>
+        set((state) =>
+          state.trackedFloorId === position.floorId &&
+          state.trackedMapX === position.mapX &&
+          state.trackedMapY === position.mapY
+            ? state
+            : {
+                trackedFloorId: position.floorId,
+                trackedMapX: position.mapX,
+                trackedMapY: position.mapY,
+                // 방향은 넘기지 않으면 그대로 둔다. `setCurrentLocation` 과 같은 규칙이다.
+                trackedForwardMap:
+                  position.forwardMap === undefined
+                    ? state.trackedForwardMap
+                    : position.forwardMap,
+              },
+        ),
       setRoute: (route) => set({ route }),
       // 도착점이 바뀌면 이전 유형으로 받아 둔 상세 경로는 더 이상 그 경로가 아니다.
       setTargetNode: (targetNodeId, exitLabel) =>

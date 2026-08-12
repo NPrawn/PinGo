@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { XrPoseReading } from '@/shared/lib/webxr';
 import {
   createXrMapAnchor,
+  forwardMapOfHeadingDeg,
   forwardXrOf,
   mapHeadingDegOf,
   normalizePlanar,
@@ -286,6 +287,48 @@ describe('mapHeadingDegOf', () => {
 
   it('yaw가 유한하지 않으면 null이다', () => {
     expect(mapHeadingDegOf(Number.NaN, identity)).toBeNull();
+  });
+});
+
+/**
+ * `mapHeadingDegOf` 의 역. 앵커를 새로 구울 때 지금 향한 쪽을 넘기는 데 쓴다. (S15P11A206-382)
+ *
+ * 부호나 축을 하나만 틀려도 앵커가 뒤집힌 방향으로 구워지고, 앵커는 이후 모든 좌표의 기준이라
+ * 그 오차가 회복되지 않는다. 그래서 왕복이 정확히 닫히는지를 검사한다.
+ */
+describe('forwardMapOfHeadingDeg', () => {
+  it('앵커 시점의 각도를 넣으면 그 앵커의 forwardMap 이 나온다', () => {
+    const forwardMap = { x: 0.6, y: 0.8 };
+    const anchor = createXrMapAnchor({ map: ANCHOR_MAP, reading: reading(0, 0, 37), forwardMap })!;
+
+    const restored = forwardMapOfHeadingDeg(mapHeadingDegOf(37, anchor)!)!;
+
+    expect(restored.x).toBeCloseTo(forwardMap.x, 6);
+    expect(restored.y).toBeCloseTo(forwardMap.y, 6);
+  });
+
+  /** 앵커 이후 몸을 돌린 만큼도 그대로 복원돼야 한다. 이 경우가 실제 사용처다. */
+  it('앵커 이후 회전한 방향도 그대로 복원한다', () => {
+    const anchor = createXrMapAnchor({
+      map: ANCHOR_MAP,
+      reading: reading(0, 0, 0),
+      forwardMap: { x: 1, y: 0 },
+    })!;
+
+    const turnedDeg = mapHeadingDegOf(90, anchor)!;
+    const restored = forwardMapOfHeadingDeg(turnedDeg)!;
+
+    expect((Math.atan2(restored.y, restored.x) * 180) / Math.PI).toBeCloseTo(turnedDeg, 6);
+  });
+
+  it('길이 1로 나온다', () => {
+    const restored = forwardMapOfHeadingDeg(137)!;
+
+    expect(Math.hypot(restored.x, restored.y)).toBeCloseTo(1, 6);
+  });
+
+  it('각도가 유한하지 않으면 null이다', () => {
+    expect(forwardMapOfHeadingDeg(Number.NaN)).toBeNull();
   });
 });
 

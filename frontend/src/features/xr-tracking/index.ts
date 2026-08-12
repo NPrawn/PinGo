@@ -6,6 +6,7 @@ export {
 export type { DisplaySmoothingOptions } from './lib/displaySmoothing';
 export {
   createXrMapAnchor,
+  forwardMapOfHeadingDeg,
   forwardXrOf,
   mapHeadingDegOf,
   normalizePlanar,

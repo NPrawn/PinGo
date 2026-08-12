@@ -658,6 +658,55 @@ describe('ConsultSessionPage', () => {
       });
 
       /**
+       * 안내 화면에서 걸어온 자리에서 시작한다. **확정 좌표가 아니다.** (S15P11A206-382)
+       *
+       * 시연에서 이렇게 깨졌다 — B3→B2 층 이동 모달이 확정 좌표에 B2 엘리베이터 앞을 하드코딩해
+       * 넣고, 사용자는 그 뒤로 3번 출구까지 걸어갔다. 걸어간 좌표는 안내 화면 내부에만 있어서
+       * 이 화면은 엘리베이터 앞에 앵커를 굽고 사용자를 거기 세웠다. 앵커가 모든 좌표의 기준이라
+       * 추적이 정상으로 잡혀도 그 오차가 남는다.
+       */
+      it('안내 화면에서 걸어온 자리를 쓴다. 확정 좌표가 아니다', async () => {
+        useNavigationStore.setState({
+          // 층 이동 모달이 넣은 하드코딩 좌표.
+          currentFloorId: 1,
+          currentMapX: -4.986,
+          currentMapY: 27.654,
+          // 그 뒤로 걸어가 도착한 자리.
+          trackedFloorId: 1,
+          trackedMapX: 3,
+          trackedMapY: -4,
+          routeResult: null,
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        expect(lastMapSync().current).toMatchObject({ floorId: 1, mapX: 3, mapY: -4 });
+      });
+
+      /** 걸어온 기록이 없으면 확정 좌표로 떨어진다. 안내 화면을 거치지 않고 상담을 연 경우다. */
+      it('걸어온 기록이 없으면 확정 좌표를 쓴다', async () => {
+        useNavigationStore.setState({
+          currentFloorId: 1,
+          currentMapX: -4.986,
+          currentMapY: 27.654,
+          trackedFloorId: null,
+          trackedMapX: null,
+          trackedMapY: null,
+          routeResult: null,
+        } as unknown as Parameters<typeof useNavigationStore.setState>[0]);
+
+        renderPage();
+        await screen.findByRole('img', { name: 'Current location' });
+
+        expect(lastMapSync().current).toMatchObject({
+          floorId: 1,
+          mapX: -4.986,
+          mapY: 27.654,
+        });
+      });
+
+      /**
        * 확대·이동한 상태를 거울에 그대로 비추는 근거. (S15P11A206-382)
        *
        * 이것이 없으면 거울이 자기 추종을 돌린다. 사용자가 지도를 밀면 그쪽 화면은 회전까지 멈추는데
