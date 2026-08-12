@@ -210,11 +210,12 @@ describe('ConsultSessionPage', () => {
   });
 
   it('상담원의 확정 발화를 영어 자막으로 번역한다', async () => {
+    await i18n.changeLanguage('ko');
     apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
 
     renderPage();
 
-    await screen.findByRole('button', { name: 'End consultation' });
+    await screen.findByRole('button', { name: '상담 종료' });
     expect(apiMocks.useCaptionTranslation).toHaveBeenCalledWith('cs_1', '', 'en', undefined);
   });
 
