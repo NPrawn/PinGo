@@ -75,7 +75,6 @@ vi.mock('@/shared/api', async (importOriginal) => ({
 vi.mock('@/features/consult-signaling', async (importOriginal) => ({
   // 번역은 이 화면의 관심사가 아니다. 옮기지 않은 것으로 둔다.
   useCaptionTranslation: apiMocks.useCaptionTranslation,
-  useTranslatedSpeech: vi.fn(),
   // 안내 문구를 만드는 것은 순수 함수다. 가짜로 바꾸면 실제로 무슨 말이 뜨는지 못 본다.
   describeRemoteCaptionTrouble: (
     await importOriginal<typeof import('@/features/consult-signaling')>()
@@ -211,11 +210,12 @@ describe('ConsultSessionPage', () => {
   });
 
   it('상담원의 확정 발화를 영어 자막으로 번역한다', async () => {
+    await i18n.changeLanguage('ko');
     apiMocks.getConsultation.mockResolvedValue({ consultationId: 'cs_1', status: 'IN_PROGRESS' });
 
     renderPage();
 
-    await screen.findByRole('button', { name: 'End consultation' });
+    await screen.findByRole('button', { name: '상담 종료' });
     expect(apiMocks.useCaptionTranslation).toHaveBeenCalledWith('cs_1', '', 'en', undefined);
   });
 
