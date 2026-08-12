@@ -207,8 +207,8 @@ describe('SessionPage', () => {
     });
   });
 
-  /** 앱 언어 설정과 무관하게 사용자 발화는 영어, 상담원 발화는 한국어로 표시한다. */
-  it('실시간 자막을 사용자 영어와 상담원 한국어로 표시한다', async () => {
+  /** 상담원 화면에서는 사용자 발화를 한국어, 상담원 발화를 한국어로 표시한다. */
+  it('실시간 자막을 한국어로 표시한다', async () => {
     apiMocks.getCounselorConsultations.mockResolvedValue([
       { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
     ]);
@@ -220,21 +220,21 @@ describe('SessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('English: Where is exit three?')).toBeInTheDocument();
+    expect(await screen.findByText('한국어: Where is exit three?')).toBeInTheDocument();
     // 상담원 발화는 이미 한국어라 옮기지 않는다.
     expect(screen.getByText('3번 출구는 왼쪽입니다.')).toBeInTheDocument();
-    expect(screen.queryByText('한국어: Where is exit three?')).toBeNull();
+    expect(screen.queryByText('English: Where is exit three?')).toBeNull();
     expect(screen.queryByText('English: 3번 출구는 왼쪽입니다.')).toBeNull();
-    // 번역은 사용자 발화 한 건에 대해 영어 한 번만 나간다.
+    // 번역은 사용자 발화 한 건에 대해 한국어 한 번만 나간다.
     expect(signalingMocks.translateCaption).toHaveBeenCalledWith(
       'cs_1',
       'Where is exit three?',
-      'en',
+      'ko',
       'caption-user-1',
       expect.any(Function),
     );
     expect(
-      signalingMocks.translateCaption.mock.calls.filter((call: unknown[]) => call[2] === 'ko'),
+      signalingMocks.translateCaption.mock.calls.filter((call: unknown[]) => call[2] === 'en'),
     ).toHaveLength(0);
   });
 
@@ -257,8 +257,8 @@ describe('SessionPage', () => {
     expect(screen.queryByText('Where is exit three?')).toBeNull();
   });
 
-  /** 대화 로그도 사용자 영어와 상담원 한국어로 표시한다. */
-  it('대화 로그를 화자별 언어로 보여 준다', async () => {
+  /** 대화 로그도 사용자 한국어와 상담원 한국어로 표시한다. */
+  it('대화 로그를 한국어로 보여 준다', async () => {
     apiMocks.getCounselorConsultations.mockResolvedValue([
       { consultationId: 'cs_1', status: 'IN_PROGRESS', requestedAt: '2026-08-03T00:00:00Z' },
     ]);
@@ -267,7 +267,7 @@ describe('SessionPage', () => {
         seq: 1,
         speaker: 'USER',
         content: 'Where is exit three?',
-        translatedContent: 'English: Where is exit three?',
+        translatedContent: '한국어: Where is exit three?',
         captionId: 'caption-user-1',
       },
       {
@@ -280,7 +280,7 @@ describe('SessionPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('English: Where is exit three?')).toBeInTheDocument();
+    expect(await screen.findByText('한국어: Where is exit three?')).toBeInTheDocument();
     expect(screen.getByText('왼쪽으로 가시면 됩니다')).toBeInTheDocument();
     expect(screen.queryByText('Where is exit three?')).toBeNull();
   });

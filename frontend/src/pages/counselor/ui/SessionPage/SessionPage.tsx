@@ -46,8 +46,8 @@ import styles from './SessionPage.module.css';
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
 
-/** 상담원 화면에서 사용자 발화를 표시할 언어. 앱 UI 언어와 무관하게 영어로 고정한다. */
-const COUNSELOR_USER_CAPTION_LANGUAGE = 'en';
+/** 상담원 화면에서 사용자 발화를 표시할 언어. 상담원은 한국어 자막을 읽는다. */
+const COUNSELOR_USER_CAPTION_LANGUAGE = 'ko';
 const TRANSCRIPT_SAVE_ATTEMPTS = 3;
 const TRANSCRIPT_RETRY_DELAY_MS = 500;
 
@@ -192,17 +192,16 @@ export function SessionPage() {
   );
 
   /**
-   * 사용자가 한 말을 영어로 옮겨 둔다.
+   * 사용자가 한 말을 한국어로 옮겨 둔다.
    *
-   * 앱 언어 설정이 한국어여도 사용자 발화는 영어 자막으로 표시해야 하므로,
-   * 상담원 발화의 한국어 자막과 별도의 기준 언어를 사용한다.
+   * 상담원 화면의 사용자 자막은 상담원이 읽을 수 있도록 한국어로 표시한다.
    */
   const handleUserCaptionTranslation = useCallback(
     (captionId: string, _source: string, translated: string) =>
       updateTranscriptTranslation(captionId, translated),
     [updateTranscriptTranslation],
   );
-  const translatedUserCaptionEn = useCaptionTranslation(
+  const translatedUserCaptionKo = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
     COUNSELOR_USER_CAPTION_LANGUAGE,
@@ -210,7 +209,7 @@ export function SessionPage() {
     handleUserCaptionTranslation,
   );
   /**
-   * 화면에 띄우는 사용자 자막. **옮긴 영어만 띄운다.**
+   * 화면에 띄우는 사용자 자막. **옮긴 한국어만 띄운다.**
    *
    * 아직 옮기지 못한 동안 원문을 대신 띄우지 않는다. 사용자가 어느 언어로 말할지는 상담원이
    * 고르지 않았고, 읽지 못하는 글자를 잠깐 보여 주는 것은 빈 자리보다 나을 것이 없다. 대신
@@ -220,9 +219,9 @@ export function SessionPage() {
    * 계속 고쳐 쓰인다) 그동안 이 자리는 지난 문장에 머문다. 말하고 있다는 사실은 머리말의
    * `말하는 중` 표시가 이미 알린다.
    */
-  const userCaptionEnglish = translatedUserCaptionEn;
+  const userCaptionKorean = translatedUserCaptionKo;
   /** 사용자가 방금 한 말을 아직 옮기는 중인지. */
-  const userCaptionTranslating = Boolean(remoteCaption) && !userCaptionEnglish;
+  const userCaptionTranslating = Boolean(remoteCaption) && !userCaptionKorean;
   /** 상담원 발화는 `ko-KR` 로 인식하므로 옮길 것이 없다. */
   const counselorCaptionKorean = localCaption;
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
@@ -1130,10 +1129,10 @@ export function SessionPage() {
                       {remoteCaptionFinal ? '확정' : '말하는 중'}
                     </span>
                   </div>
-                  {/* 앱 언어 설정과 무관하게 사용자의 발화는 영어로 옮겨 보여 준다. */}
+                  {/* 사용자의 발화는 상담원이 읽을 수 있도록 한국어로 옮겨 보여 준다. */}
                   <div className={styles.bilingualCaption} aria-live="polite" aria-atomic="true">
                     <span className={styles.bilingualText}>
-                      {userCaptionEnglish ||
+                      {userCaptionKorean ||
                         (userCaptionTranslating
                           ? '옮기는 중…'
                           : captionsSupported
