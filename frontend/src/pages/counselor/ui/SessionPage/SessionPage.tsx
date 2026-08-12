@@ -17,7 +17,6 @@ import {
   describeRemoteCaptionTrouble,
   useCaptionTranslation,
   useConsultSignaling,
-  useTranslatedSpeech,
 } from '@/features/consult-signaling';
 import type {
   ConsultDataEvent,
@@ -47,13 +46,8 @@ import styles from './SessionPage.module.css';
 /** 사용자가 끊었는지 확인하는 간격. 사용자 화면의 감시 주기와 맞춘다. */
 const CONSULTATION_WATCH_MS = 4000;
 
-/**
- * 상담원 화면이 쓰는 언어. **고정이다.**
- *
- * 상담원 콘솔의 모든 문구가 한국어이고 상담원의 발화 인식도 `ko-KR` 로 고정돼 있다. 자막만
- * 상대 언어를 따라가면 상담원은 자기가 읽을 수 없는 글자를 보게 된다.
- */
-const COUNSELOR_CAPTION_LANGUAGE = 'ko';
+/** 상담원 화면에서 사용자 발화를 표시할 언어. 앱 UI 언어와 무관하게 영어로 고정한다. */
+const COUNSELOR_USER_CAPTION_LANGUAGE = 'en';
 const TRANSCRIPT_SAVE_ATTEMPTS = 3;
 const TRANSCRIPT_RETRY_DELAY_MS = 500;
 
@@ -198,44 +192,25 @@ export function SessionPage() {
   );
 
   /**
-   * 사용자가 한 말을 한국어로 옮겨 둔다.
+   * 사용자가 한 말을 영어로 옮겨 둔다.
    *
-   * 상담자 콘솔은 한국어로 쓰인다. 사용자가 다른 언어로 말하면 상담자는 자막을 읽고도
-   * 무슨 말인지 알 수 없어, 실시간 자막이 있으나 마나가 된다.
-   *
-   * **여기서 만드는 언어는 한국어 하나뿐이다.** 예전에는 사용자·상담원 발화를 각각 영어로도
-   * 옮겨 자막을 두 줄로 띄웠는데, 상담원이 읽는 것은 언제나 한국어 줄이었다. 영어 줄은 자리만
-   * 차지하면서 발화마다 번역 요청을 두 배로 냈고, 상담원 발화의 영어 번역이 전문의
-   * `translatedContent` 자리를 차지해 사용자 언어 번역이 들어갈 곳도 없었다.
+   * 앱 언어 설정이 한국어여도 사용자 발화는 영어 자막으로 표시해야 하므로,
+   * 상담원 발화의 한국어 자막과 별도의 기준 언어를 사용한다.
    */
   const handleUserCaptionTranslation = useCallback(
     (captionId: string, _source: string, translated: string) =>
       updateTranscriptTranslation(captionId, translated),
     [updateTranscriptTranslation],
   );
-  const translatedUserCaptionKo = useCaptionTranslation(
+  const translatedUserCaptionEn = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
-    COUNSELOR_CAPTION_LANGUAGE,
+    COUNSELOR_USER_CAPTION_LANGUAGE,
     remoteFinalCaptionId,
     handleUserCaptionTranslation,
   );
   /**
-   * 사용자 발화의 번역문을 소리내어 읽을지. **기본은 끔이다.**
-   *
-   * 이 소리는 상담원 노트북 스피커에서 나와 상담원 마이크로 돌아오고, 하필 읽는 언어(`ko-KR`)와
-   * 상담원 인식기의 언어가 같다. 그대로 두면 **사용자가 한 말이 상담원 발화로 기록된다** —
-   * 전문이 통째로 `COUNSELOR` 로 남던 원인이다. 되먹임 자체는 `captionEchoGuard` 가 막지만,
-   * 상담원은 자막·번역문·로그를 이미 눈으로 보고 있어 소리로 또 들을 이유가 크지 않다.
-   * 얻는 것이 적고 잃을 것이 큰 기능이라 켜는 쪽을 선택으로 둔다.
-   *
-   * 사용자 화면은 그대로 켜 둔다. 그쪽은 폰을 들고 걸으며 AR 안내를 보는 터라 자막을 읽으려면
-   * 멈춰 서야 한다.
-   */
-  const [readUserCaptionAloud, setReadUserCaptionAloud] = useState(false);
-  useTranslatedSpeech(translatedUserCaptionKo, 'ko-KR', remoteCaptionFinal && readUserCaptionAloud);
-  /**
-   * 화면에 띄우는 사용자 자막. **옮긴 한국어만 띄운다.**
+   * 화면에 띄우는 사용자 자막. **옮긴 영어만 띄운다.**
    *
    * 아직 옮기지 못한 동안 원문을 대신 띄우지 않는다. 사용자가 어느 언어로 말할지는 상담원이
    * 고르지 않았고, 읽지 못하는 글자를 잠깐 보여 주는 것은 빈 자리보다 나을 것이 없다. 대신
@@ -245,9 +220,9 @@ export function SessionPage() {
    * 계속 고쳐 쓰인다) 그동안 이 자리는 지난 문장에 머문다. 말하고 있다는 사실은 머리말의
    * `말하는 중` 표시가 이미 알린다.
    */
-  const userCaptionKorean = translatedUserCaptionKo;
+  const userCaptionEnglish = translatedUserCaptionEn;
   /** 사용자가 방금 한 말을 아직 옮기는 중인지. */
-  const userCaptionTranslating = Boolean(remoteCaption) && !userCaptionKorean;
+  const userCaptionTranslating = Boolean(remoteCaption) && !userCaptionEnglish;
   /** 상담원 발화는 `ko-KR` 로 인식하므로 옮길 것이 없다. */
   const counselorCaptionKorean = localCaption;
   /** 사용자 쪽 자막이 죽었다는 사실. 상담원 자신의 마이크 문제와 섞이지 않게 따로 띄운다. */
@@ -1117,19 +1092,6 @@ export function SessionPage() {
                   <span className={styles.captionPanelKicker}>LIVE</span>
                   <h3 className={styles.captionPanelTitle}>실시간 자막</h3>
                 </div>
-                {/*
-                  켜면 사용자 발화의 번역문을 소리내어 읽는다. 기본은 꺼 둔다 — 그 소리가
-                  이 노트북 마이크로 돌아오면 사용자가 한 말이 상담원 발화로 기록된다.
-                */}
-                <button
-                  type="button"
-                  className={styles.notesRetry}
-                  aria-pressed={readUserCaptionAloud}
-                  onClick={() => setReadUserCaptionAloud((on) => !on)}
-                  title="사용자 발화의 번역문을 소리내어 읽습니다. 마이크가 그 소리를 다시 잡을 수 있으니 헤드셋과 함께 쓰세요."
-                >
-                  번역 음성 {readUserCaptionAloud ? '끄기' : '켜기'}
-                </button>
               </div>
               {/*
               기록이 안 되고 있으면 그 사실을 상담 중에 알아야 한다. 끝난 뒤에 알면 이미
@@ -1168,10 +1130,10 @@ export function SessionPage() {
                       {remoteCaptionFinal ? '확정' : '말하는 중'}
                     </span>
                   </div>
-                  {/* 사용자가 어느 언어로 말했든 상담원에게는 한국어로만 옮겨 보여 준다. */}
+                  {/* 앱 언어 설정과 무관하게 사용자의 발화는 영어로 옮겨 보여 준다. */}
                   <div className={styles.bilingualCaption} aria-live="polite" aria-atomic="true">
                     <span className={styles.bilingualText}>
-                      {userCaptionKorean ||
+                      {userCaptionEnglish ||
                         (userCaptionTranslating
                           ? '옮기는 중…'
                           : captionsSupported
@@ -1287,6 +1249,7 @@ export function SessionPage() {
                 <video
                   ref={remoteVideoRef}
                   autoPlay
+                  muted
                   playsInline
                   className={styles.mirrorCamera}
                   aria-label="사용자가 공유 중인 화면"
