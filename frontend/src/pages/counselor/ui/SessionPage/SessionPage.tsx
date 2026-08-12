@@ -13,7 +13,6 @@ import {
 import { FACILITY_MAP_FILTERS, useStationFacilities, type Facility } from '@/entities/facility';
 import { useStationFloorMaps } from '@/entities/floor-map';
 import {
-  DEMO_PHARMACY_DRAW_DELAY_MS,
   describeRemoteCaptionTrouble,
   useCaptionTranslation,
   useConsultSignaling,
@@ -367,63 +366,15 @@ export function SessionPage() {
    * 어긋난다. 어긋나는 쪽에서는 상담자가 짚어 준 자리가 사용자 화면의 다른 곳에 찍힌다.
    */
   const screen = mapSync?.screen ?? null;
-  const demoDrawTimersRef = useRef<number[]>([]);
-  const demoDrawingScheduledRef = useRef(false);
-  const demoStartedAtRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    demoStartedAtRef.current = Date.now();
-    return () => {
-      demoDrawTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      demoDrawTimersRef.current = [];
-    };
-  }, []);
-
-  /** In demo mode, draw the pharmacy highlight when its counselor caption appears. */
-  useEffect(() => {
-    if (
-      env.VITE_DEMO_CAPTIONS !== 'true' ||
-      demoStartedAtRef.current === null ||
-      !screen?.map ||
-      demoDrawingScheduledRef.current
-    ) {
-      return;
-    }
-
-    demoDrawingScheduledRef.current = true;
-    const delay = Math.max(
-      0,
-      DEMO_PHARMACY_DRAW_DELAY_MS - (Date.now() - demoStartedAtRef.current),
-    );
-    const map = screen.map;
-    const startTimer = window.setTimeout(() => {
-      const strokeId = 'demo-pharmacy-highlight';
-      const points = [
-        { x: map.x + map.width * 0.2, y: map.y + map.height * 0.62 },
-        { x: map.x + map.width * 0.5, y: map.y + map.height * 0.62 },
-        { x: map.x + map.width * 0.72, y: map.y + map.height * 0.42 },
-      ];
-
-      sendConsultEvent({
-        eventType: 'DRAW_STROKE_START',
-        payload: { strokeId, x: points[0].x, y: points[0].y, color: '#ffd23f', width: 3.5 },
-      });
-      const moveTimer = window.setTimeout(
-        () =>
-          sendConsultEvent({
-            eventType: 'DRAW_STROKE_MOVE',
-            payload: { strokeId, points },
-          }),
-        180,
-      );
-      const endTimer = window.setTimeout(
-        () => sendConsultEvent({ eventType: 'DRAW_STROKE_END', payload: { strokeId } }),
-        360,
-      );
-      demoDrawTimersRef.current.push(moveTimer, endTimer);
-    }, delay);
-    demoDrawTimersRef.current.push(startTimer);
-  }, [screen, sendConsultEvent]);
+  /**
+   * 지도 위의 표시는 상담자가 직접 긋는다. 자동으로 그리지 않는다. (S15P11A206-382)
+   *
+   * 데모 모드에서 화면 진입 19.5초 뒤에 노란 선을 스스로 보내던 자리다. 좌표가 `screen.map` 의
+   * 고정 비율이라 사용자가 지도를 확대·이동하거나 층을 옮기면 약국과 상관없는 곳에 찍혔고,
+   * 사용자 눈에는 아무도 그리지 않았는데 선이 나타났다가 상담자가 `지우기` 를 누르면 사라지는
+   * 것으로 보였다. 자막(`DEMO_CAPTIONS`)은 그대로 흐르므로 16초 자막이 "여기로 표시해
+   * 드리겠습니다" 라고 말하는 그 시점에 상담자가 `그리기` 로 직접 그으면 된다.
+   */
 
   const mirrorStyle = {
     '--mirror-aspect': screen ? screen.width / screen.height : FALLBACK_MIRROR_ASPECT,
