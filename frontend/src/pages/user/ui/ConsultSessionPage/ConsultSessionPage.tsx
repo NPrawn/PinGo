@@ -202,12 +202,11 @@ export function ConsultSessionPage() {
     /* Demo mode replaces both sides' STT with the fixed presentation script. */
     env.VITE_DEMO_CAPTIONS === 'true' ? 'demo' : 'server',
   );
-  /** 데모에서는 앱 언어 설정과 무관하게 상담원 고정 자막을 영어로 보여 준다. */
-  const captionLanguage = env.VITE_DEMO_CAPTIONS === 'true' ? 'en' : userLanguage;
+  /** 상담원이 말한 한국어를 사용자가 고른 언어로 옮겨 보여 준다. */
   const translatedRemoteCaption = useCaptionTranslation(
     consultationId,
     remoteFinalCaption,
-    captionLanguage,
+    userLanguage,
     remoteFinalCaptionId,
   );
   /**
@@ -222,23 +221,17 @@ export function ConsultSessionPage() {
    * 요청도 초당 몇 번씩 나간다. 그래서 상담원이 말하는 중에는 지난 문장이 그대로 남고, 아래
    * `captionPending` 이 지금 옮기고 있다는 것을 알린다.
    *
-   * **데모 모드에서는 한국어 설정이어도 영어 고정 자막을 표시한다.** 실제 상담에서는 사용자가
-   * 고른 언어를 그대로 따른다.
+   * **한국어를 고른 사용자에게는 옮길 것이 없다.** 상담원 발화가 이미 한국어이므로 원문을
+   * 그대로 띄운다 — 번역 응답을 기다리는 동안 자막이 비는 일이 없다.
    */
-  const captionPrimary =
-    env.VITE_DEMO_CAPTIONS === 'true' || userLanguage !== 'ko'
-      ? translatedRemoteCaption
-      : remoteCaption;
+  const captionPrimary = userLanguage === 'ko' ? remoteCaption : translatedRemoteCaption;
   /**
    * 아직 옮기지 못한 상담원 발화가 있는지.
    *
    * 그동안 원문을 대신 띄우지 않는다 — 읽지 못하는 언어를 고른 사용자에게는 글자가 있는 것이
    * 없는 것보다 낫지 않다. 대신 옮기는 중이라고 적어 자막이 죽은 것과 구분한다.
    */
-  const captionTranslating =
-    (env.VITE_DEMO_CAPTIONS === 'true' || userLanguage !== 'ko') &&
-    Boolean(remoteCaption) &&
-    !captionPrimary;
+  const captionTranslating = userLanguage !== 'ko' && Boolean(remoteCaption) && !captionPrimary;
   /** 상담원 쪽 자막이 죽었다는 사실. 이쪽 마이크 문제와 섞이지 않게 따로 띄운다. */
   const remoteCaptionNotice = describeRemoteCaptionTrouble(
     remoteCaptionError,
