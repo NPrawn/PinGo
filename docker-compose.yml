@@ -4,10 +4,10 @@ services:
     container_name: pingo-mysql
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: pingo
-      MYSQL_USER: pingo
-      MYSQL_PASSWORD: pingo
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-pingo}
+      MYSQL_USER: ${MYSQL_USER:?set MYSQL_USER in .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
       TZ: Asia/Seoul
     ports:
       - "3306:3306"

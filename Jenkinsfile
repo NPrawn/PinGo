@@ -7,16 +7,18 @@ pipeline {
 
     environment {
         SPRING_PROFILES_ACTIVE = 'local'
-        SPRING_DATASOURCE_USERNAME = 'pingo'
-        SPRING_DATASOURCE_PASSWORD = 'REDACTED'
+        // Jenkins Credentials(Username with password)에서 주입: DB_CREDS_USR / DB_CREDS_PSW
+        DB_CREDS = credentials('pingo-db')
+        // Jenkins Credentials(Secret text)에서 주입
+        AI_LOCALIZATION_BASE_URL = credentials('pingo-ai-localization-url')
         BACKEND_RELEASE_JAR = '/opt/pingo/backend/releases/pingo-backend.jar'
         BACKEND_BACKUP_JAR = '/opt/pingo/backend/releases/pingo-backend.previous.jar'
         BACKEND_SERVICE_NAME = 'pingo-backend'
         BACKEND_HEALTH_URL = 'http://127.0.0.1:8080/api/health'
-        AI_LOCALIZATION_BASE_URL = 'http://192.0.2.10:8000'
         FRONTEND_RELEASE_DIR = '/opt/pingo/frontend/releases/current'
         FRONTEND_BACKUP_DIR = '/opt/pingo/frontend/releases/previous'
-        FRONTEND_HEALTH_URL = 'https://jenkins.example.invalid/'
+        // SERVICE_DOMAIN은 Jenkins 전역 환경변수로 설정
+        FRONTEND_HEALTH_URL = "https://${env.SERVICE_DOMAIN}/"
     }
 
     stages {
@@ -27,18 +29,20 @@ pipeline {
                         docker rm -f pingo-ci-mysql || true
                         docker run -d --name pingo-ci-mysql \
                           -e MYSQL_DATABASE=pingo \
-                          -e MYSQL_USER=pingo \
-                          -e MYSQL_PASSWORD=REDACTED \
-                          -e MYSQL_ROOT_PASSWORD=REDACTED \
+                          -e MYSQL_USER="$DB_CREDS_USR" \
+                          -e MYSQL_PASSWORD="$DB_CREDS_PSW" \
+                          -e MYSQL_RANDOM_ROOT_PASSWORD=yes \
                           -p 3306 \
                           mysql:8.4
 
                         CI_MYSQL_PORT=$(docker port pingo-ci-mysql 3306/tcp | awk -F: 'NR == 1 {print $NF}')
+                        export SPRING_DATASOURCE_USERNAME="$DB_CREDS_USR"
+                        export SPRING_DATASOURCE_PASSWORD="$DB_CREDS_PSW"
                         export SPRING_DATASOURCE_URL="jdbc:mysql://localhost:${CI_MYSQL_PORT}/pingo?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useSSL=false"
                         echo "CI MySQL host port: ${CI_MYSQL_PORT}"
 
                         for i in $(seq 1 30); do
-                          if docker exec pingo-ci-mysql mysqladmin ping -h localhost -uREDACTED -pREDACTED --silent; then
+                          if docker exec pingo-ci-mysql mysqladmin ping -h localhost -u"$DB_CREDS_USR" -p"$DB_CREDS_PSW" --silent; then
                             echo "MySQL is ready"
                             break
                           fi
@@ -69,7 +73,7 @@ pipeline {
                         sh '''
                             npm ci
                             export VITE_API_BASE_URL=""
-			    export VITE_WS_BASE_URL="wss://jenkins.example.invalid"
+			    export VITE_WS_BASE_URL="wss://${SERVICE_DOMAIN}"
 			    export VITE_APP_ENV="production"
 
 			    echo "Frontend build env:"
@@ -77,7 +81,7 @@ pipeline {
 
 			    npm run build
 
-			    grep -R "wss://jenkins.example.invalid" dist/assets >/dev/null
+			    grep -R "wss://${SERVICE_DOMAIN}" dist/assets >/dev/null
 
                             if npm run | grep -q " lint"; then
                               npm run lint
